@@ -53,7 +53,7 @@ public class AccountController {
 		return account;		 
 	}
 	@PutMapping(UrlsMapping.UPDATE_ACCOUNT_DATA)
-	public ManageSales updateAccountData(UpdateAccountData updateAccountData)
+	public ManageSales updateAccountData(@RequestBody UpdateAccountData updateAccountData)
 	{
 		ManageSales account=accountService.updateAccountData(updateAccountData);
 		return account;		 

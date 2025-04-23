@@ -22,9 +22,9 @@ import lombok.Setter;
 
 @Table
 @Entity
-//@Getter
-//@Setter
-//@Data
+@Getter
+@Setter
+@Data
 public class PaymentRegister {
 	
 	@Id
@@ -80,6 +80,7 @@ public class PaymentRegister {
 	int certificatePersent;
 
 	String companyName;
+	Long companyId;
 	String updateDate;
 	private Long approvedById;
 	private Date approveDate;
@@ -372,6 +373,12 @@ public class PaymentRegister {
 	}
 	public void setComment(String comment) {
 		this.comment = comment;
+	}
+	public Long getCompanyId() {
+		return companyId;
+	}
+	public void setCompanyId(Long companyId) {
+		this.companyId = companyId;
 	}
 	
     

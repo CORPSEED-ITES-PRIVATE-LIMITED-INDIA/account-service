@@ -21,7 +21,7 @@ public interface PaymentRegisterRepository  extends JpaRepository<PaymentRegiste
 	List<PaymentRegister> findAllByEstimateId(String status);
 	
 	@Query(value = "SELECT * FROM payment_register v WHERE v.status in(:status)", nativeQuery = true)
-	List<PaymentRegister> findAllByEstimateStatus(List<String> status);
+	List<PaymentRegister> findAllByStatus(List<String> status);
 
 	@Query(value = "SELECT * FROM payment_register v WHERE v.register_type =:registerType", nativeQuery = true)
 	List<PaymentRegister> findAllByRegisterType(String registerType);

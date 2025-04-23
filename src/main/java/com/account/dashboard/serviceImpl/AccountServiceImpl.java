@@ -98,7 +98,7 @@ public class AccountServiceImpl implements AccountService{
 
 	@Override
 	public ManageSales updateAccountData(UpdateAccountData updateAccountData) {
-		// TODO Auto-generated method stub
+		
 		return null;
 	}
 

@@ -7,11 +7,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.stereotype.Service;
 
+import com.account.dashboard.config.GetAllCompanyDto;
 import com.account.dashboard.config.LeadFeignClient;
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.Organization;
@@ -70,6 +72,9 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 	@Autowired
 	TdsServiceImpl tdsServiceImpl;
+	
+	@Autowired
+	LeadFeignClient leadFeignClient;
 
 
 	@Autowired
@@ -144,7 +149,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 //		List<String>status=Arrays.asList("initiated","approved");
 		List<String>status=Arrays.asList("initiated");
 
-		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByEstimateStatus(status);
+		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(status);
 		return paymentRegisterList;
 	}
 
@@ -1311,7 +1316,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						double cgst=totalCreditGst/2;
 						double sgst=totalCreditGst/2;
 						v.setCgstSgstPresent(true);
-						v.setCgst(cgst+"");
+						v.setCgst(cgst+"");  
 						v.setSgst(sgst+"");
 					}else {
 						v.setIgstPresent(false);
@@ -1330,7 +1335,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						v.setProduct(product);
 					}else {
 						product= new Ledger();
-						product.setName(paymentRegister.getServiceName());
+						product.setName("Professional Fees");
 						ledgerRepository.save(product);
 						v.setProduct(product);
 
@@ -1561,6 +1566,39 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		}
 		return list;
+	}
+
+
+	@Override
+	public List<Map<String, Object>> getAllPaymentRegisterWithCompany(Long userId) {
+		List<String>status=Arrays.asList("initiated");
+
+		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(status);
+		List<Long>companyList=paymentRegisterList.stream().map(i->i.getCompanyId()).collect(Collectors.toList());
+		System.out.println("map    ......"+companyList.size());
+
+	    Map<Object, Object> map = paymentRegisterList.stream().collect(Collectors.toMap(i->i.getCompanyId(), i->i));
+	    System.out.println("map    ......"+map);
+		GetAllCompanyDto getAllCompanyDto =new GetAllCompanyDto();
+	    System.out.println("companyList ...."+companyList);
+
+		getAllCompanyDto.setIds(companyList);
+	    System.out.println("test ...."+getAllCompanyDto.getIds());
+
+		List<Map<String, Object>> test = leadFeignClient.getAllCompanyByIdsForFeign(getAllCompanyDto);
+	    System.out.println("test  t1...."+test.size());
+	    List<Map<String, Object>>res=new ArrayList<>();
+	    for(Map<String, Object> t:test) {
+//	    	Long id = t.get("id")!=null?Long.valueOf(t.get("id")):null;
+	    	Long l=Long.parseLong(t.get("id")!=null?t.get("id").toString():"0");
+	    			if(l!=null) {
+	    				System.out.println("Final");
+	    				 t.put("paymentRegister",  map.get(l));
+	    			};
+	    			res.add(t);
+	    	
+	    }
+		return res;
 	}
 
 

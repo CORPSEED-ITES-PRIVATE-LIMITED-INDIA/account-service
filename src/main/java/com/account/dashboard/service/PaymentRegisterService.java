@@ -50,5 +50,7 @@ public interface PaymentRegisterService {
 
 	List<Map<String,Object>> getAllPurchaseOrder(Long userId);
 
+	List<Map<String, Object>> getAllPaymentRegisterWithCompany(Long userId);
+
 
 }
