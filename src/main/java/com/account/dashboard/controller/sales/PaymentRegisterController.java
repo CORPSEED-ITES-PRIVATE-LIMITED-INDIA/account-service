@@ -161,7 +161,7 @@ public class PaymentRegisterController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_PAYMENT_REGISTER_WITH_COMPANY)
-	public List<Map<String,Object>> getAllPaymentRegisterWithCompany(@RequestParam Long userId){
+	public List<Map<String,Object>> getAllPaymentRegisterWithCompany(@RequestParam(required = false) Long userId){
 		List<Map<String,Object>> res=paymentRegisterService.getAllPaymentRegisterWithCompany(userId);	
 		return res;
 		

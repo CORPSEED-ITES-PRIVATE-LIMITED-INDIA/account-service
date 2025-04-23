@@ -1577,8 +1577,22 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		List<Long>companyList=paymentRegisterList.stream().map(i->i.getCompanyId()).collect(Collectors.toList());
 		System.out.println("map    ......"+companyList.size());
 
-	    Map<Object, Object> map = paymentRegisterList.stream().collect(Collectors.toMap(i->i.getCompanyId(), i->i));
-	    System.out.println("map    ......"+map);
+//	    Map<Object, Object> map = paymentRegisterList.stream().collect(Collectors.toMap(i->i.getCompanyId(), i->i));
+	    Map<Object, List<PaymentRegister>> m=new HashMap<>();
+	    for(PaymentRegister p:paymentRegisterList) {
+	    	
+	    	if(m.get(p.getCompanyId())!=null) {
+	    		List<PaymentRegister> d = m.get(p.getCompanyId());
+	    		d.add(p);
+	    		m.put(p.getCompanyId(), d);
+	    	}else {
+	    		List<PaymentRegister> d = new ArrayList<>();
+	    		d.add(p);
+	    		m.put(p.getCompanyId(), d);
+	    	}
+	    	
+	    }
+//	    System.out.println("map    ......"+map);
 		GetAllCompanyDto getAllCompanyDto =new GetAllCompanyDto();
 	    System.out.println("companyList ...."+companyList);
 
@@ -1591,9 +1605,11 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	    for(Map<String, Object> t:test) {
 //	    	Long id = t.get("id")!=null?Long.valueOf(t.get("id")):null;
 	    	Long l=Long.parseLong(t.get("id")!=null?t.get("id").toString():"0");
+	    	List<Object>pay=new ArrayList<>();
 	    			if(l!=null) {
 	    				System.out.println("Final");
-	    				 t.put("paymentRegister",  map.get(l));
+	    				pay.addAll( m.get(l));
+	    				 t.put("paymentRegister", pay);
 	    			};
 	    			res.add(t);
 	    	
