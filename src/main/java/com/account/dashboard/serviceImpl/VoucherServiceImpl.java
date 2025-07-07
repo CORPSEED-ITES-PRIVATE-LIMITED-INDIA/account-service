@@ -48,7 +48,7 @@ public class VoucherServiceImpl implements VoucherService{
 		if(createVoucherDto.getCreditAmount()!=null ) {
 			v.setCreditDebit(true);
 			v.setCreditAmount(createVoucherDto.getCreditAmount());
-			if(createVoucherDto.isCgstIgstPresent()) {
+//			if(createVoucherDto.isCgstIgstPresent()) {
 				v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
 				v.setCgst(createVoucherDto.getCgst());
 				v.setSgst(createVoucherDto.getSgst());
@@ -58,14 +58,14 @@ public class VoucherServiceImpl implements VoucherService{
 				v.setSgstCreditAmount(createVoucherDto.getSgstCreditAmount());
 				v.setSgstDebitAmount(createVoucherDto.getSgstDebitAmount());
 
-			}
-			if(createVoucherDto.isIgstPresent()) {
+//			}
+//			if(createVoucherDto.isIgstPresent()) {
 				v.setIgstPresent(createVoucherDto.isIgstPresent());
 				v.setIgst(createVoucherDto.getIgst());
 				v.setIgstCreditAmount(createVoucherDto.getIgstCreditAmount());
 				v.setIgstDebitAmount(createVoucherDto.getIgstDebitAmount());
 
-			}	
+//			}	
 		}
 
 		if(createVoucherDto.getDebitAmount()!=null ) {
@@ -396,8 +396,15 @@ public class VoucherServiceImpl implements VoucherService{
 			res.add(map);
 
 			if(v.isCreditDebit()) {
-				double debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
-				double creditAmount =Double.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+				double debitAmount =0;
+				if(v.getDebitAmount()!=null && (!v.getDebitAmount().equals(""))) {
+					debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+				}
+				double creditAmount =0;
+				if(v.getCreditAmount()!=null && (!v.getCreditAmount().equals(""))) {
+					 creditAmount =Double.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+
+				}
 				totalCredit=totalCredit+creditAmount;
 				totalDebit=totalDebit+debitAmount;
 

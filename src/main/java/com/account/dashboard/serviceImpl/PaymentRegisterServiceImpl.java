@@ -215,14 +215,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		l.setCountry(feignLeadClient.get("country").toString());
 		l.setPin(feignLeadClient.get("pin").toString());
 
-		//
-		//				if(ledgerDto.isHsnSacPresent()) {
-		//					l.setHsnSacDetails(ledgerDto.getHsnSacDetails());
-		//					l.setHsnSacPrsent(ledgerDto.isHsnSacPresent());
-		//					l.setHsnSac(ledgerDto.getHsnSac());
-		//					l.setHsnDescription(ledgerDto.getHsnDescription());
-		//				}
-
 		//		ledger gst part
 		if(l.isGstRateDetailPresent()) {
 			l.setGstRateDetailPresent(l.isGstRateDetailPresent());
@@ -258,16 +250,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			l.setGstRates(updatePaymentDto.getProfesionalGst()+"");
 		}
 
-
-		//		if(ledgerDto.isBankAccountPresent()){
-		//			l.setBankAccountPrsent(ledgerDto.isBankAccountPresent());
-		//			l.setAccountHolderName(ledgerDto.getAccountHolderName());
-		//			l.setAccountNo(ledgerDto.getAccountNo());
-		//			l.setIfscCode(ledgerDto.getIfscCode());
-		//			l.setSwiftCode(ledgerDto.getSwiftCode());
-		//			l.setBankName(ledgerDto.getBankName());
-		//			l.setBranch(ledgerDto.getBranch());
-		//		}
 		ledgerRepository.save(l);
 		return null;
 
@@ -452,6 +434,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		return null;
 	}
 
+	
+	
 
 	@Override
 	public PaymentRegister getPaymentRegisterById(long id) {
@@ -549,7 +533,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		//		 invoiceData.setProduct(product);
 		invoiceData.setAddress(null);
-
+		invoiceData.setCompanyName(feignLeadClient.get("companyName")!=null?feignLeadClient.get("companyName").toString():null);
 		invoiceData.setPrimaryContactId(estimateId);
 
 		invoiceData.setProductName(feignLeadClient.get("productName").toString());
@@ -572,7 +556,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setGstType(feignLeadClient.get("gstType")!=null?feignLeadClient.get("gstType").toString():null);
 		invoiceData.setGstDocuments(feignLeadClient.get("gstNo")!=null?feignLeadClient.get("gstNo").toString():null);//misssing 
 
-		invoiceData.setCompanyAge(feignLeadClient.get("companyAge").toString());
+//		invoiceData.setCompanyAge(feignLeadClient.get("companyAge").toString());
 		
 		invoiceData.setGovermentfees(feignLeadClient.get("govermentFees").toString());
 		invoiceData.setGovermentCode(feignLeadClient.get("govermentCode")!=null?feignLeadClient.get("govermentCode").toString():null);
@@ -583,8 +567,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst").toString());
 
 		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
-		invoiceData.setServiceCode(feignLeadClient.get("serviceCode").toString());
-		invoiceData.setServiceGst(feignLeadClient.get("serviceGst").toString());
+		if(feignLeadClient.get("serviceCode")!=null) {
+			invoiceData.setServiceCode(feignLeadClient.get("serviceCode").toString());
+		}
+		if(feignLeadClient.get("serviceGst")!=null) {
+			invoiceData.setServiceGst(feignLeadClient.get("serviceGst").toString());
+
+		}
+
 
 		invoiceData.setOtherFees(feignLeadClient.get("otherFees").toString());
 		invoiceData.setOtherCode(feignLeadClient.get("otherCode")!=null?feignLeadClient.get("otherCode").toString():null);
@@ -596,16 +586,16 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setState(feignLeadClient.get("state").toString());
 		invoiceData.setCountry(feignLeadClient.get("country").toString());
 
-		invoiceData.setSecondaryAddress(feignLeadClient.get("secondaryAddress").toString());
-		invoiceData.setSecondaryCity(feignLeadClient.get("secondaryCity").toString()); 
-		invoiceData.setSecondaryPinCode(feignLeadClient.get("secondaryPinCode").toString());
-		invoiceData.setSecondaryState(feignLeadClient.get("secondaryState").toString());
-		invoiceData.setSecondaryCountry(feignLeadClient.get("secondaryCountry").toString());
+		invoiceData.setSecondaryAddress(feignLeadClient.get("secondaryAddress")!=null?feignLeadClient.get("secondaryAddress").toString():null);
+		invoiceData.setSecondaryCity(feignLeadClient.get("secondaryCity")!=null?feignLeadClient.get("secondaryCity").toString():null); 
+		invoiceData.setSecondaryPinCode(feignLeadClient.get("secondaryPinCode")!=null?feignLeadClient.get("secondaryPinCode").toString():null);
+		invoiceData.setSecondaryState(feignLeadClient.get("secondaryState")!=null?feignLeadClient.get("secondaryState").toString():null);
+		invoiceData.setSecondaryCountry(feignLeadClient.get("secondaryCountry")!=null?feignLeadClient.get("secondaryCountry").toString():null);
 
 		invoiceData.setInvoiceNote(feignLeadClient.get("invoiceNote").toString());
 		invoiceData.setOrderNumber(feignLeadClient.get("orderNumber").toString());
 		invoiceData.setPurchaseDate(feignLeadClient.get("purchaseDate").toString());//CURRENT DATE 
-		invoiceData.setEstimateData((Date)feignLeadClient.get("estimateDate"));
+//		invoiceData.setEstimateData((Date)feignLeadClient.get("estimateDate"));
 		invoiceData.setRemarksForOption(feignLeadClient.get("address").toString());
 		invoiceData.setCc((List<String>)feignLeadClient.get("ccMail"));
 		if(feignLeadClient.get("primaryContactId")!=null) {
@@ -1090,10 +1080,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 	@Transactional
 	public Boolean allPaymentApprovedV3(Long id) {
-		Boolean flag=false;
+		Boolean flag=true;
 		PaymentRegister paymentRegister = paymentRegisterRepository.findById(id).get();
 		Boolean invoice = createInvoice(paymentRegister.getEstimateId());
-		Boolean payment = paymentApproveAndDisapprovedV4(paymentRegister.getId() ,paymentRegister.getEstimateId());
+		Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
 		if(invoice && payment) {
 			flag=true;
 		}
@@ -1108,6 +1098,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		System.out.println("test . . "+ledgerName);
 		List<Voucher> voucherList=voucherRepository.findByEstimateId(estimateId);
 		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentRegisterId).get();
+		//Group
 		VoucherType vType=voucherTypeRepo.findByName(paymentRegister.getRegisterBy());
 		if(vType ==null) {
 			vType=new VoucherType();
@@ -1115,7 +1106,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			vType.setDeleted(false);
 			voucherTypeRepo.save(vType);
 		}
+		// Voucher Exist
 		if(voucherList!=null &&voucherList.size()>0) {  // Already created
+			System.out.println("Voucher Exist");
+
 			System.out.println("ledgerName . . .. "+ledgerName);
 			Ledger ledger = ledgerRepository.findByName(ledgerName);
 			
@@ -1233,16 +1227,20 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			flag=true;
 		}else {
-			System.out.println("test99999999999999");
+			//Voucher not exist
+			System.out.println("Voucher not Exist");
 
 			LedgerType group = ledgerTypeRepository.findByName("Sales");
 			Organization organization = organizationRepository.findByName("corpseed");
+			//ledger group not exist
 			if(group==null) {
 				group =new LedgerType();
 				group.setName("Sales");
 				ledgerTypeRepository.save(group);
 			}
 			if(group!=null) { 
+				//ledger group exist
+
 				System.out.println("test111111111112222222222");
 				Ledger ledger = ledgerRepository.findByName(paymentRegister.getCompanyName());
 				double totalEstimateAmount = Double.parseDouble(feignLeadClient.get("totalAmount")!=null?feignLeadClient.get("totalAmount").toString():"0");
@@ -1291,7 +1289,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				if(ledger==null) {
 					ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
 				}
-
+                // ledger exist
 				if(ledger!=null) {
 					System.out.println("test3333333311");
 
@@ -1615,6 +1613,630 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	    	
 	    }
 		return res;
+	}
+
+	
+	public Boolean paymentApproveAndDisapprovedTest(UpdatePaymentDto updatePaymentDto) {
+		//hit project and company creation
+		//create create group
+		//create ledger
+		//create voucher
+		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(updatePaymentDto.getEstimateId());
+
+		LedgerType group = ledgerTypeRepository.findByName(updatePaymentDto.getPaymentType());
+		if(group!=null) {
+			if(updatePaymentDto.getRegisterBy().equals("SALES")) {
+				Ledger ledger = ledgerRepository.findByName(updatePaymentDto.getCompanyName());
+				if(ledger!=null) {
+					Voucher v =new Voucher();
+					double govermentfees =updatePaymentDto.getGovermentfees();
+					double govermentGst =updatePaymentDto.getGovermentGst();;
+					double professionalFees =updatePaymentDto.getProfessionalFees();
+					double professionalGst =updatePaymentDto.getProfesionalGst();
+					double serviceCharge =updatePaymentDto.getServiceCharge();
+					double getServiceGst =updatePaymentDto.getServiceGst();
+					double otherFees =updatePaymentDto.getOtherFees();
+					double otherGst =updatePaymentDto.getOtherGst();
+
+					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
+					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
+					v.setDebitAmount(totalDebit+"");
+					v.setIgstPresent(true);//cgst+sgst concept
+					v.setIgst(totaDebitGst+"");			
+					v.setLedger(ledger);
+					v.setEstimateId(updatePaymentDto.getEstimateId());
+
+					voucherRepository.save(v);
+				}else {
+					Voucher v =new Voucher();
+					double govermentfees =updatePaymentDto.getGovermentfees();
+					double govermentGst =updatePaymentDto.getGovermentGst();
+					double professionalFees =updatePaymentDto.getProfessionalFees();
+					double professionalGst =updatePaymentDto.getProfesionalGst();
+					double serviceCharge =updatePaymentDto.getServiceCharge();
+					double getServiceGst =updatePaymentDto.getServiceGst();
+					double otherFees =updatePaymentDto.getOtherFees();
+					double otherGst =updatePaymentDto.getOtherGst();
+					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
+					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
+					v.setDebitAmount(totalDebit+"");
+					v.setIgstPresent(true);//cgst+sgst concept
+					v.setIgst(totaDebitGst+"");
+
+					v.setLedger(ledger);
+					v.setEstimateId(updatePaymentDto.getEstimateId());
+
+					voucherRepository.save(v);
+				}
+
+			}else {
+
+			}
+
+		}else {
+			if(updatePaymentDto.getPaymentType().equals("SALES")) {
+
+
+				LedgerType g = new LedgerType();
+				g.setName(updatePaymentDto.getPaymentType());
+
+				//				Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(updatePaymentDto.getEstimateId());
+				Ledger l=createLedgerData(feignLeadClient,updatePaymentDto);
+
+				Voucher v =new Voucher();
+				double govermentfees =updatePaymentDto.getGovermentfees();
+				double govermentGst =updatePaymentDto.getGovermentGst();
+				double professionalFees =updatePaymentDto.getProfessionalFees();
+				double professionalGst =updatePaymentDto.getProfesionalGst();
+				double serviceCharge =updatePaymentDto.getServiceCharge();
+				double getServiceGst =updatePaymentDto.getServiceGst();
+				double otherFees =updatePaymentDto.getOtherFees();
+				double otherGst =updatePaymentDto.getOtherGst();
+				double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
+				double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
+				v.setDebitAmount(totalDebit+"");
+				v.setIgstPresent(true);//cgst+sgst concept
+				v.setIgst(totaDebitGst+"");
+
+				v.setLedger(l);
+				voucherRepository.save(v);
+
+				//also project api hit 
+
+			}else {
+
+			}
+
+		}
+
+
+		Ledger ledger=ledgerRepository.findByName(updatePaymentDto.getCompanyName());
+		ledger.setName(updatePaymentDto.getCompanyName());
+
+		return null;
+	}
+	public Boolean paymentApproveAndDisapprovedV3(UpdatePaymentDto updatePaymentDto) {
+
+		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(updatePaymentDto.getEstimateId());
+
+		LedgerType group = ledgerTypeRepository.findByName(updatePaymentDto.getPaymentType());
+		if(group!=null) {
+			if(updatePaymentDto.getRegisterBy().equals("SALES")) {
+				Ledger ledger = ledgerRepository.findByName(updatePaymentDto.getCompanyName());
+				if(ledger!=null) {
+					Voucher v =new Voucher();
+					double govermentfees =updatePaymentDto.getGovermentfees();
+					double govermentGst =updatePaymentDto.getGovermentGst();;
+					double professionalFees =updatePaymentDto.getProfessionalFees();
+					double professionalGst =updatePaymentDto.getProfesionalGst();
+					double serviceCharge =updatePaymentDto.getServiceCharge();
+					double getServiceGst =updatePaymentDto.getServiceGst();
+					double otherFees =updatePaymentDto.getOtherFees();
+					double otherGst =updatePaymentDto.getOtherGst();
+
+					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
+					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
+					v.setDebitAmount(totalDebit+"");
+					v.setIgstPresent(true);//cgst+sgst concept
+					v.setIgst(totaDebitGst+"");			
+					v.setLedger(ledger);
+					v.setEstimateId(updatePaymentDto.getEstimateId());
+
+					voucherRepository.save(v);
+				}else {
+					String primaryPinCode = feignLeadClient.get("primaryPinCode")!=null?feignLeadClient.get("primaryPinCode").toString():null;
+					String country = feignLeadClient.get("country")!=null?feignLeadClient.get("country").toString():null;
+					String address = feignLeadClient.get("address")!=null?feignLeadClient.get("address").toString():null;
+                    String state=feignLeadClient.get("state")!=null?feignLeadClient.get("state").toString():null;
+					//					String email,String pinCode,String country,String state,String Address
+					ledger=createLedger(updatePaymentDto.getCompanyName(),group.getId(),null,primaryPinCode,country,state,address);
+					
+					Voucher v =new Voucher();
+					double govermentfees =updatePaymentDto.getGovermentfees();
+					double govermentGst =updatePaymentDto.getGovermentGst();
+					double professionalFees =updatePaymentDto.getProfessionalFees();
+					double professionalGst =updatePaymentDto.getProfesionalGst();
+					double serviceCharge =updatePaymentDto.getServiceCharge();
+					double getServiceGst =updatePaymentDto.getServiceGst();
+					double otherFees =updatePaymentDto.getOtherFees();
+					double otherGst =updatePaymentDto.getOtherGst();
+					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
+					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
+					v.setDebitAmount(totalDebit+"");
+					v.setIgstPresent(true);//cgst+sgst concept
+					v.setIgst(totaDebitGst+"");
+
+					v.setLedger(ledger);
+					v.setEstimateId(updatePaymentDto.getEstimateId());
+
+					voucherRepository.save(v);
+				}
+
+			}else {
+
+			}
+
+		}else {
+			if(updatePaymentDto.getPaymentType().equals("SALES")) {
+
+
+				LedgerType g = new LedgerType();
+				g.setName(updatePaymentDto.getPaymentType());
+				ledgerTypeRepository.save(g);
+				Ledger l=createLedgerData(feignLeadClient,updatePaymentDto);
+
+				Voucher v =new Voucher();
+				double govermentfees =updatePaymentDto.getGovermentfees();
+				double govermentGst =updatePaymentDto.getGovermentGst();
+				double professionalFees =updatePaymentDto.getProfessionalFees();
+				double professionalGst =updatePaymentDto.getProfesionalGst();
+				double serviceCharge =updatePaymentDto.getServiceCharge();
+				double getServiceGst =updatePaymentDto.getServiceGst();
+				double otherFees =updatePaymentDto.getOtherFees();
+				double otherGst =updatePaymentDto.getOtherGst();
+				double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
+				double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
+				v.setDebitAmount(totalDebit+"");
+				v.setIgstPresent(true);//cgst+sgst concept
+				v.setIgst(totaDebitGst+"");
+
+				v.setLedger(l);
+				voucherRepository.save(v);
+
+				//also project api hit 
+
+			}
+		}
+
+
+		Ledger ledger=ledgerRepository.findByName(updatePaymentDto.getCompanyName());
+		ledger.setName(updatePaymentDto.getCompanyName());
+
+		return null;
+	}
+	
+	
+	//create Ledger
+	public Ledger createLedger(String name,Long ledgerTypeId,String email,String pinCode,String country,String state,String Address) {
+
+		Boolean flag=false;
+		Ledger l = new Ledger();
+		l.setName(name);
+		l.setEmail(email);
+		l.setAddress(Address);
+		l.setState(state);
+		l.setCountry(country);
+		l.setPin(pinCode);
+
+		LedgerType ledgerType = ledgerTypeRepository.findById(ledgerTypeId).get();
+		l.setLedgerType(ledgerType);
+
+		
+		if(ledgerType.isGstRateDetailPresent()) {
+			l.setGstRateDetailPresent(ledgerType.isGstRateDetailPresent());
+			l.setGstRateDetails(ledgerType.getGstRateDetails());
+			Organization org = organizationRepository.findByName("corpseed");
+			if(org!=null) {
+				String stated = org.getState();
+				if(state.equalsIgnoreCase(stated)) {
+					String gstRateDetails=ledgerType.getGstRateDetails();
+					double gst = Double.parseDouble(gstRateDetails);
+					double cgst=gst/2;
+					double sgst=gst-cgst;
+//					ledgerDto.get
+				l.setCgst(cgst+"");
+				l.setSgst(sgst+"");
+                l.setCgstSgstPresent(true);
+
+				l.setGstRateDetails(gstRateDetails);
+				}else {
+					String gstRateDetails=ledgerType.getGstRateDetails();
+                    l.setIgstPresent(true);
+					l.setGstRateDetails(gstRateDetails);
+					l.setIgst(gstRateDetails);
+
+
+				}
+			}else {
+				String gstRateDetails=ledgerType.getGstRateDetails();
+				l.setGstRateDetails(gstRateDetails);
+				l.setIgst(gstRateDetails);
+			}
+			l.setTaxabilityType(ledgerType.getTaxabilityType());
+			l.setGstRates(ledgerType.getGstRateDetails());
+		}
+		//
+
+		if(ledgerType.isBankAccountPresent()){
+			l.setBankAccountPrsent(ledgerType.isBankAccountPresent());
+			l.setAccountHolderName(ledgerType.getAccountHolderName());
+			l.setAccount(ledgerType.getAccountNo());
+			l.setIfscCode(ledgerType.getIfscCode());
+			l.setSwiftCode(ledgerType.getSwiftCode());
+			l.setBankName(ledgerType.getBankName());
+			l.setBranch(ledgerType.getBranch());
+		}
+		ledgerRepository.save(l);
+		flag=true;
+		return l;
+
+	
+		
+	}
+	
+	public Boolean paymentApproveAndDisapprovedV5(Long paymentRegisterId ,Long estimateId) {
+
+		Boolean flag=false;
+		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(estimateId);
+		String ledgerName = (String)feignLeadClient.get("companyName");
+		System.out.println("test . . "+ledgerName);
+		List<Voucher> voucherList=voucherRepository.findByEstimateId(estimateId);
+		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentRegisterId).get();
+		//Group
+		VoucherType vType=voucherTypeRepo.findByName(paymentRegister.getRegisterBy());
+		if(vType ==null) {
+			vType=new VoucherType();
+			vType.setName(paymentRegister.getRegisterBy());
+			vType.setDeleted(false);
+			voucherTypeRepo.save(vType);
+		}
+		
+		// Voucher Exist
+		if(voucherList!=null &&voucherList.size()>0) {  // Already created
+			System.out.println("Voucher Exist");
+
+			System.out.println("ledgerName . . .. "+ledgerName);
+			Ledger ledger = ledgerRepository.findByName(ledgerName);
+			
+			if(ledger==null) {
+				ledger=createLedgerDataV5( feignLeadClient,paymentRegister.getProfesionalGst());
+			}
+			
+			System.out.println("test"+voucherList.size());
+			Organization organization = organizationRepository.findByName("corpseed");
+			
+            // voucher
+			Voucher v =new Voucher();
+			v.setVoucherType(vType);
+			double govermentfees =paymentRegister.getGovermentfees();
+			double govermentGst =paymentRegister.getGovermentGst();
+			double professionalFees =paymentRegister.getProfessionalFees();
+			double professionalGst =paymentRegister.getProfesionalGst();
+			double serviceCharge =paymentRegister.getServiceCharge();
+			double getServiceGst =paymentRegister.getServiceGst();
+			double otherFees =paymentRegister.getOtherFees();
+			double otherGst =paymentRegister.getOtherGst();
+
+			v.setCreateDate(new Date());
+			v.setVoucherType(vType);
+			System.out.println("test111111");
+			double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
+			double totalProfessionalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
+
+			double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
+
+			String org=(String)feignLeadClient.get("state");
+
+			v.setCreditAmount(totalCredit+"");
+			if(organization!=null && organization.getState()!=null && organization.getState().equals(org)) {
+				System.out.println("test222222");
+				double cgst=totalCreditGst/2;
+				double sgst=totalCreditGst/2;
+				v.setCgstSgstPresent(true);
+				v.setCgst(cgst+"");
+				v.setSgst(sgst+"");
+			}else {
+				System.out.println("test333333");
+				v.setIgstPresent(false);
+				v.setIgst(totalCreditGst+"");
+			}
+//			Ledger product = ledgerRepository.findByName(paymentRegister.getServiceName());
+			Ledger product = ledgerRepository.findByName("Professional Fees");
+
+			if(product!=null) {
+				System.out.println("test4444444..."+product.getName());
+//				v.setProduct(product);
+			}else {
+				System.out.println("test5555555");
+				product= new Ledger();
+				product.setName("Professional Fees");
+				ledgerRepository.save(product);
+				v.setProduct(product);
+			}
+			v.setLedger(ledger);
+			v.setEstimateId(paymentRegister.getEstimateId());
+			voucherRepository.save(v);
+			
+			
+			//tds concept
+			if(paymentRegister.isTdsPresent()) {
+				System.out.println("test666666666");
+				Voucher tdsRegister =new Voucher();
+				tdsRegister.setVoucherType(vType);
+				tdsRegister.setCreditDebit(true);
+				tdsRegister.setCreateDate(new Date());
+				tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+				Ledger l = ledgerRepository.findByName(paymentRegister.getCompanyName());
+				if(l!=null) {
+					tdsRegister.setLedger(l);
+				}else {
+					l=new Ledger();
+					l.setName(paymentRegister.getCompanyName());
+					ledgerRepository.save(l);
+					tdsRegister.setLedger(l);
+				}
+				tdsRegister.setCreateDate(new Date());
+				tdsRegister.setLedger(ledger);
+				tdsRegister.setEstimateId(estimateId);
+				Ledger productTds = ledgerRepository.findByName("TDS RECEIVABLE");
+				if(productTds!=null) {
+					System.out.println("test77777777777");
+					tdsRegister.setProduct(productTds);
+				}else{
+					System.out.println("test888888888888");
+					Ledger tdsLedger = new Ledger();
+					tdsLedger.setName("TDS RECEIVABLE");
+					ledgerRepository.save(tdsLedger);
+					tdsRegister.setProduct(tdsLedger);
+				}
+				tdsRegister.setProduct(productTds);
+				tdsRegister.getCreateDate();
+				voucherRepository.save(tdsRegister);
+				CreateTdsDto createTdsDto= new CreateTdsDto();
+				createTdsDto.setOrganization(paymentRegister.getCompanyName());
+				createTdsDto.setPaymentRegisterId(paymentRegister.getTransactionId());
+				if(ledger!=null) {
+					createTdsDto.setLedgerId(ledger.getId());
+				}
+				createTdsDto.setTdsAmount(paymentRegister.getTdsAmount());
+				createTdsDto.setTdsPrecent(paymentRegister.getTdsPercent());
+				createTdsDto.setTdsType("receivable");
+				createTdsDto.setTotalPaymentAmount(paymentRegister.getProfessionalFees()+paymentRegister.getTdsAmount());
+				tdsServiceImpl.createTds(createTdsDto);
+			}
+
+
+			flag=true;
+		}else {
+			//Voucher not exist
+			System.out.println("Voucher not Exist");
+
+			LedgerType group = ledgerTypeRepository.findByName("Sales");
+			Organization organization = organizationRepository.findByName("corpseed");
+			//ledger group not exist
+			if(group==null) {
+				group =new LedgerType();
+				group.setName("Sales");
+				ledgerTypeRepository.save(group);
+			}
+			if(group!=null) { 
+				//ledger group exist
+
+				System.out.println("test111111111112222222222");
+				Ledger ledger = ledgerRepository.findByName(paymentRegister.getCompanyName());
+				double totalEstimateAmount = Double.parseDouble(feignLeadClient.get("totalAmount")!=null?feignLeadClient.get("totalAmount").toString():"0");
+				
+				// == total amount register ==total product amount register
+				Voucher totalAmountRegister = new Voucher();
+				totalAmountRegister.setVoucherType(vType);
+				totalAmountRegister.setCreditDebit(true);
+				totalAmountRegister.setCreateDate(new Date());
+				totalAmountRegister.setDebitAmount(totalEstimateAmount+"");
+				//company
+				if(ledger==null) {
+					ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
+				}
+				totalAmountRegister.setLedger(ledger);
+				Ledger prod =ledgerRepository.findByName(paymentRegister.getServiceName());
+				if(prod!=null) {
+					totalAmountRegister.setLedger(prod);
+					System.out.println("==== new product ======");
+				}else {
+					prod=new Ledger();
+					System.out.println("==== new service name ======"+paymentRegister.getCompanyName());
+					prod.setName(paymentRegister.getCompanyName());
+					ledgerRepository.save(prod);
+					totalAmountRegister.setLedger(prod);
+				}
+				totalAmountRegister.setLedger(ledger);
+				Ledger p = ledgerRepository.findByName(paymentRegister.getServiceName());
+				if(p!=null) {
+					totalAmountRegister.setProduct(p);
+				}else{
+					p =new Ledger();
+					p.setName(paymentRegister.getServiceName());
+					ledgerRepository.save(p);
+					totalAmountRegister.setProduct(p);
+				}
+//				totalAmountRegister.setProduct(p);
+				totalAmountRegister.setCreditDebit(true);
+				voucherRepository.save(totalAmountRegister);
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				
+				System.out.println("555555555556666666");
+				if(ledger==null) {
+					ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
+				}
+                // ledger exist then Professional fee
+				if(ledger!=null) {
+					System.out.println("test3333333311");
+
+					Voucher v =new Voucher();
+					v.setVoucherType(vType);
+					double govermentfees =paymentRegister.getGovermentfees();
+					double govermentGst =paymentRegister.getGovermentGst();
+					double professionalFees =paymentRegister.getProfessionalFees();
+					double professionalGst =paymentRegister.getProfesionalGst();
+					double serviceCharge =paymentRegister.getProfesionalGst();
+					double getServiceGst =paymentRegister.getServiceGst();
+					double otherFees =paymentRegister.getOtherFees();
+					double otherGst =paymentRegister.getOtherGst();
+					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
+					double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
+					v.setCreditAmount(totalCredit+"");
+					v.setCreditDebit(true);
+					v.setCreateDate(new Date());
+					//					v.setIgstPresent(true);//cgst+sgst concept
+					//					v.setIgst(totaDebitGst+"");	
+					String org=(String)feignLeadClient.get("state");
+
+					if(organization.getState().equals(org)) {
+						double cgst=totalCreditGst/2;
+						double sgst=totalCreditGst/2;
+						v.setCgstSgstPresent(true);
+						v.setCgst(cgst+"");  
+						v.setSgst(sgst+"");
+					}else {
+						v.setIgstPresent(false);
+						v.setIgst(totalCreditGst+"");
+					}
+					ledger=ledgerRepository.findByName(paymentRegister.getCompanyName());
+					if(ledger==null) {
+						ledger=new Ledger();
+						ledger.setName(paymentRegister.getCompanyName());
+						ledgerRepository.save(ledger);
+					}
+					
+					v.setLedger(ledger);
+					Ledger product = ledgerRepository.findByName("Professional Fees");
+					if(product!=null) {
+						v.setProduct(product);
+					}else {
+						product= new Ledger();
+						product.setName("Professional Fees");
+						ledgerRepository.save(product);
+						v.setProduct(product);
+
+					}
+
+					v.setEstimateId(paymentRegister.getEstimateId());
+					voucherRepository.save(v);
+
+
+					if(paymentRegister.isTdsPresent()) {
+						System.out.println("33333333333344444444444");
+
+						Voucher tdsRegister =new Voucher();
+						tdsRegister.setVoucherType(vType);
+						tdsRegister.setCreditDebit(true);
+						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+						tdsRegister.setCreateDate(new Date());
+						tdsRegister.setLedger(ledger);
+						tdsRegister.setEstimateId(estimateId);
+						Ledger productTds = ledgerRepository.findByName("TDS RECEIVABLE");
+						if(productTds!=null) {
+							tdsRegister.setProduct(productTds);
+						}else{
+							Ledger tdsLedger = new Ledger();
+							tdsLedger.setName("TDS RECEIVABLE");
+							ledgerRepository.save(tdsLedger);
+							tdsRegister.setProduct(tdsLedger);
+						}
+						tdsRegister.setCreditDebit(true);
+						tdsRegister.setProduct(productTds);
+						tdsRegister.getCreateDate();
+						voucherRepository.save(tdsRegister);
+						CreateTdsDto createTdsDto= new CreateTdsDto();
+						createTdsDto.setOrganization(paymentRegister.getCompanyName());
+						createTdsDto.setPaymentRegisterId(paymentRegister.getTransactionId());
+						createTdsDto.setLedgerId(ledger.getId());
+						createTdsDto.setTdsAmount(paymentRegister.getTdsAmount());
+						createTdsDto.setTdsPrecent(paymentRegister.getTdsPercent());
+						createTdsDto.setTdsType("receivable");
+						createTdsDto.setTotalPaymentAmount(paymentRegister.getProfessionalFees()+paymentRegister.getTdsAmount());
+						tdsServiceImpl.createTds(createTdsDto);
+					}
+
+
+					flag=true;
+				}
+
+			}			
+		}
+		return flag;
+
+
+	}
+	
+	public Ledger createLedgerDataV5(Map<String, Object> feignLeadClient,double profesionalGst) {
+
+		Boolean flag=false;
+		Ledger l = new Ledger();
+		l.setName(feignLeadClient.get("name").toString());
+		l.setEmail(feignLeadClient.get("name").toString());
+		l.setAddress(feignLeadClient.get("address").toString());
+		l.setState(feignLeadClient.get("State").toString());
+		l.setCountry(feignLeadClient.get("country").toString());
+		l.setPin(feignLeadClient.get("pin").toString());
+
+		//		ledger gst part
+		if(l.isGstRateDetailPresent()) {
+			l.setGstRateDetailPresent(l.isGstRateDetailPresent());
+			l.setGstRateDetails(l.getGstRateDetails());
+			Organization org = organizationRepository.findByName("corpseed");
+			if(org!=null) {
+				String state = org.getState();
+				String eState=feignLeadClient.get("state").toString();
+				if(state.equalsIgnoreCase(eState)) {
+					double gstRateDetails=profesionalGst;//gst percent from company
+					double gst =gstRateDetails;
+					double cgst=gst/2;
+					double sgst=gst-cgst;
+					l.setCgst(cgst+"");
+					l.setSgst(sgst+"");
+					l.setCgstSgstPresent(true);
+
+					l.setGstRateDetails(gstRateDetails+"");
+				}else {
+					double gstRateDetails=profesionalGst;//gst percent from company
+					l.setIgstPresent(true);
+					l.setGstRateDetails(gstRateDetails+"");
+					l.setIgst(gstRateDetails+"");
+
+
+				}
+			}else {
+				double gstRateDetails=profesionalGst;//gst percent from company
+				l.setGstRateDetails(gstRateDetails+"");
+				l.setIgst(gstRateDetails+"");
+			}
+			//					l.setTaxabilityType(ledgerDto.getTaxabilityType());
+			l.setGstRates(profesionalGst+"");
+		}
+
+		ledgerRepository.save(l);
+		return null;
+
+
 	}
 
 

@@ -11,7 +11,7 @@ import com.account.dashboard.domain.BankStatement;
 @Repository
 public interface BankStatementRepository extends JpaRepository<BankStatement, Long> {
 
-	@Query(value = "SELECT * FROM dashaccount.bank_statement bs WHERE bs.left_amount >0", nativeQuery = true)
+	@Query(value = "SELECT * FROM bank_statement bs WHERE bs.left_amount >0", nativeQuery = true)
 	List<BankStatement> findAllByLeftAmount();
 
 }
