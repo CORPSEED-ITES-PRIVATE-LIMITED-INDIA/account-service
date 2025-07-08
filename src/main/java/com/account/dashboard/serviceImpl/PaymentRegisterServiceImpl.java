@@ -131,13 +131,28 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setEstimateNo(createAmountDto.getEstimateNo());
 		//		paymentRegister.setDoc(createAmountDto.getDoc());
 		paymentRegister.setCompanyName(createAmountDto.getCompanyName());
-
+̥
 		paymentRegister.setRegisterBy(createAmountDto.getRegisterBy());
-
-		paymentRegister.setDocPersent(createAmountDto.getDocPersent());
-		paymentRegister.setFilingPersent(createAmountDto.getFilingPersent());
-		paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
-		paymentRegister.setCertificatePersent(createAmountDto.getCertificatePersent());
+        if("milestone".equals(createAmountDto.getPaymentType())) {
+    		paymentRegister.setDocPersent(createAmountDto.getDocPersent());
+    		paymentRegister.setFilingPersent(createAmountDto.getFilingPersent());
+    		paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
+    		paymentRegister.setCertificatePersent(100);
+        }else if("partial".equals(createAmountDto.getPaymentType())) {
+    		paymentRegister.setDocPersent(50);
+    		paymentRegister.setFilingPersent(50);
+    		paymentRegister.setLiasoningPersent(50);
+    		paymentRegister.setCertificatePersent(100);
+        }else {
+    		paymentRegister.setDocPersent(100);
+    		paymentRegister.setFilingPersent(100);
+    		paymentRegister.setLiasoningPersent(100);
+    		paymentRegister.setCertificatePersent(100);
+        }
+//		paymentRegister.setDocPersent(createAmountDto.getDocPersent());
+//		paymentRegister.setFilingPersent(createAmountDto.getFilingPersent());
+//		paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
+//		paymentRegister.setCertificatePersent(createAmountDto.getCertificatePersent());
 		paymentRegisterRepository.save(paymentRegister);
 		return paymentRegister;
 	}
@@ -547,11 +562,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			//			invoiceData.setAssignee(user);
 		}
 		
-		String lead = feignLeadClient.get("leadId").toString();
-		Long leadId=Long.parseLong(lead);
-		invoiceData.setLeadId(leadId);
+		String lead = feignLeadClient.get("leadId")!=null?feignLeadClient.get("leadId").toString():null;
+		if(lead!=null) {
+			Long leadId=Long.parseLong(lead);
+			invoiceData.setLeadId(leadId);
 
-		invoiceData.setGstNo(feignLeadClient.get("gstNo").toString());
+		}
+
+		invoiceData.setGstNo(feignLeadClient.get("gstNo")!=null?feignLeadClient.get("gstNo").toString().toString():null);
 
 		invoiceData.setGstType(feignLeadClient.get("gstType")!=null?feignLeadClient.get("gstType").toString():null);
 		invoiceData.setGstDocuments(feignLeadClient.get("gstNo")!=null?feignLeadClient.get("gstNo").toString():null);//misssing 
@@ -2095,13 +2113,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double govermentfees =paymentRegister.getGovermentfees();
 					double govermentGst =paymentRegister.getGovermentGst();
 					double professionalFees =paymentRegister.getProfessionalFees();
-					double professionalGst =paymentRegister.getProfesionalGst();
-					double serviceCharge =paymentRegister.getProfesionalGst();
+					double professionalGst =paymentRegister.getProfessionalGstAmount();
+					double serviceCharge =paymentRegister.getServiceCharge();
 					double getServiceGst =paymentRegister.getServiceGst();
 					double otherFees =paymentRegister.getOtherFees();
 					double otherGst =paymentRegister.getOtherGst();
-					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
-					double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
+					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;//  create same gov fees
+					double totalCreditGst = professionalGst;
+					
 					v.setCreditAmount(totalCredit+"");
 					v.setCreditDebit(true);
 					v.setCreateDate(new Date());

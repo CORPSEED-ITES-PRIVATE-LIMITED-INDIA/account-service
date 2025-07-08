@@ -11,7 +11,7 @@ public class CreateAmountDto {
 	private Long estimateId;
 
 	private String billingQuantity;
-	private String paymentType;
+	private String paymentType;// full , prtial and milestone
     
 	private String registerBy;
 
