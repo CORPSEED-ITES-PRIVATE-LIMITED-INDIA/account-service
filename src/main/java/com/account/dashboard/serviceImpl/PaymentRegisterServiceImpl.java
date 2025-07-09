@@ -10,6 +10,9 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Controller;
 import org.springframework.stereotype.Service;
 
@@ -131,7 +134,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setEstimateNo(createAmountDto.getEstimateNo());
 		//		paymentRegister.setDoc(createAmountDto.getDoc());
 		paymentRegister.setCompanyName(createAmountDto.getCompanyName());
-̥
 		paymentRegister.setRegisterBy(createAmountDto.getRegisterBy());
         if("milestone".equals(createAmountDto.getPaymentType())) {
     		paymentRegister.setDocPersent(createAmountDto.getDocPersent());
@@ -159,12 +161,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 
 	@Override
-	public List<PaymentRegister> getAllPaymentRegister() {
-//		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAll();
-//		List<String>status=Arrays.asList("initiated","approved");
-		List<String>status=Arrays.asList("initiated");
-
-		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(status);
+	public List<PaymentRegister> getAllPaymentRegister(String status) {
+		List<String>statusList=new ArrayList<>();
+		if(statusList!=null && (!statusList.equals("all"))) {
+			statusList.add(status);
+		}else {
+			statusList=Arrays.asList("initiated","approved");
+		}
+		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(statusList);
 		return paymentRegisterList;
 	}
 
@@ -2256,6 +2260,39 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		return null;
 
 
+	}
+
+
+	@Override
+	public List<PaymentRegister> getAllPaymentRegisterWithPage(int page, int size, String status) {
+		List<Map<String,Object>>res=new ArrayList<>();
+		Pageable pageable = PageRequest.of(page, size, Sort.by("id"));
+		List<String>statusList=new ArrayList<>();
+
+		// For descending order, use:
+		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		if(statusList!=null && (!statusList.equals("all"))) {
+			statusList.add(status);
+		}else {
+			statusList=Arrays.asList("initiated","approved");
+		}
+		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageableDesc,statusList);
+		
+		return paymentRegisterList;
+	}
+
+
+	@Override
+	public Long getAllPaymentRegisterCount(String status) {
+		
+		List<String>statusList=new ArrayList<>();
+		if(statusList!=null && (!statusList.equals("all"))) {
+			statusList.add(status);
+		}else {
+			statusList=Arrays.asList("initiated","approved");
+		}
+		long paymentRegisterList = paymentRegisterRepository.findCountByStatus(statusList);
+		return paymentRegisterList;
 	}
 
 

@@ -117,6 +117,9 @@ public interface UrlsMapping {
 		public static final String GET_ALL_PURCHASE_ORDER=PREFIX+ "/paymentRegister/getAllPurchaseOrder";
 		public static final String GET_ALL_PAYMENT_REGISTER_WITH_COMPANY=PREFIX+ "/paymentRegister/getAllPaymentRegisterWithCompany";
 
+		public static final String GET_ALL_PAYMENT_REGISTER_WITH_PAGE=PREFIX+ "/paymentRegister/getAllPaymentRegisterWithPage";
+		public static final String GET_ALL_PAYMENT_REGISTER_COUNT=PREFIX+ "/paymentRegister/getAllPaymentRegisterCount";
+
 
 	
 	//====================================  BankStatements ===========================================

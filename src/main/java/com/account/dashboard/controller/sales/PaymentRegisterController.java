@@ -37,8 +37,16 @@ public class PaymentRegisterController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_PAYMENT_REGISTER)
-	public List<PaymentRegister> getAllPaymentRegister(){
-		List<PaymentRegister> res=paymentRegisterService.getAllPaymentRegister();	
+	public List<PaymentRegister> getAllPaymentRegister(@RequestParam(required = false) String status){
+		List<PaymentRegister> res=paymentRegisterService.getAllPaymentRegister(status);	
+		return res;
+		
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_PAYMENT_REGISTER_WITH_PAGE)
+	public List<PaymentRegister> getAllPaymentRegisterWithPage(@RequestParam(value = "page", defaultValue = "1") int page,
+			@RequestParam(value = "size", defaultValue = "10") int size,@RequestParam String status){
+		List<PaymentRegister> res=paymentRegisterService.getAllPaymentRegisterWithPage(page-1,size,status);	
 		return res;
 		
 	}
@@ -163,6 +171,13 @@ public class PaymentRegisterController {
 	@GetMapping(UrlsMapping.GET_ALL_PAYMENT_REGISTER_WITH_COMPANY)
 	public List<Map<String,Object>> getAllPaymentRegisterWithCompany(@RequestParam(required = false) Long userId){
 		List<Map<String,Object>> res=paymentRegisterService.getAllPaymentRegisterWithCompany(userId);	
+		return res;
+		
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_PAYMENT_REGISTER_COUNT)
+	public Long getAllPaymentRegisterCount(@RequestParam(required = false) String status){
+		Long res=paymentRegisterService.getAllPaymentRegisterCount(status);	
 		return res;
 		
 	}

@@ -16,7 +16,7 @@ public interface PaymentRegisterService {
 
 	PaymentRegister createPaymentRegister(CreateAmountDto createAmountDto);
 
-	List<PaymentRegister> getAllPaymentRegister();
+	List<PaymentRegister> getAllPaymentRegister(String status);
 
 	Boolean updatePaymentRegister(UpdatePaymentDto updatePaymentDto);
 
@@ -51,6 +51,10 @@ public interface PaymentRegisterService {
 	List<Map<String,Object>> getAllPurchaseOrder(Long userId);
 
 	List<Map<String, Object>> getAllPaymentRegisterWithCompany(Long userId);
+
+	List<PaymentRegister> getAllPaymentRegisterWithPage(int page, int size, String status);
+
+	Long getAllPaymentRegisterCount(String status);
 
 
 }
