@@ -119,6 +119,7 @@ public interface UrlsMapping {
 
 		public static final String GET_ALL_PAYMENT_REGISTER_WITH_PAGE=PREFIX+ "/paymentRegister/getAllPaymentRegisterWithPage";
 		public static final String GET_ALL_PAYMENT_REGISTER_COUNT=PREFIX+ "/paymentRegister/getAllPaymentRegisterCount";
+		public static final String GET_ALL_PAYMENT_REGISTER_BY_USER=PREFIX+ "/paymentRegister/getAllPaymentRegisterByUser";
 
 
 	

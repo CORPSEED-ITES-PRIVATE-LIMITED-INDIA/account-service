@@ -32,5 +32,7 @@ public interface PaymentRegisterRepository  extends JpaRepository<PaymentRegiste
 	
 	@Query(value = "SELECT * FROM payment_register v WHERE v.status in(:status)", nativeQuery = true)
 	List<PaymentRegister> findAllByStatus(Pageable pageable,List<String> status);
+	
+	
 
 }

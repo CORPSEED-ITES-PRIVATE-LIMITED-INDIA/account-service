@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.PaymentRegister;
@@ -55,6 +56,8 @@ public interface PaymentRegisterService {
 	List<PaymentRegister> getAllPaymentRegisterWithPage(int page, int size, String status);
 
 	Long getAllPaymentRegisterCount(String status);
+
+	List<PaymentRegister> getAllPaymentRegisterByUser( int page, int size,Long userId, String status);
 
 
 }

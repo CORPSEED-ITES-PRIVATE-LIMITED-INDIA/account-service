@@ -181,4 +181,12 @@ public class PaymentRegisterController {
 		return res;
 		
 	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_PAYMENT_REGISTER_BY_USER)
+	public List<PaymentRegister> getAllPaymentRegisterByUser(@RequestParam(value = "page", defaultValue = "1") int page,
+			@RequestParam(value = "size", defaultValue = "10") int size,@RequestParam Long userId, @RequestParam(required = false) String status){
+		List<PaymentRegister> res=paymentRegisterService.getAllPaymentRegisterByUser(page,size,userId,status);	
+		return res;
+		
+	}
 }
