@@ -46,7 +46,7 @@ public class LedgerController {
 	}
 	
 	@PutMapping(UrlsMapping.UPDATE_LEDGER)
-	public Boolean updateLadger(UpdateLedgerDto updateLedgerDto){
+	public Boolean updateLadger(@RequestBody UpdateLedgerDto updateLedgerDto){
 		Boolean res=ledgerService.updateLadger(updateLedgerDto );	
 		return res;
 	}
