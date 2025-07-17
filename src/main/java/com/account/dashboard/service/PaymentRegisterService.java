@@ -59,5 +59,9 @@ public interface PaymentRegisterService {
 
 	List<PaymentRegister> getAllPaymentRegisterByUser( int page, int size,Long userId, String status);
 
+	List<InvoiceData> getAllInvoice(Long userId, int page, int size);
+
+	long getAllInvoiceCount(Long userId);
+
 
 }

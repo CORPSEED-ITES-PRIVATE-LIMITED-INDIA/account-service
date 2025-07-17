@@ -140,11 +140,24 @@ public class PaymentRegisterController {
 	}
 	
 	
-	@GetMapping(UrlsMapping.GET_ALL_INVOICE)
+	@GetMapping(UrlsMapping.GET_ALL_INVOICE_ACCORDING_TO_USER)
 	public List<InvoiceData> getAllInvoiceAccordingToUser(@RequestParam Long userId){
 		List<InvoiceData> res=paymentRegisterService.getAllInvoiceAccordingToUser(userId);	
 		return res;
 		
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_INVOICE)
+	public List<InvoiceData> getAllInvoice(@RequestParam Long userId,@RequestParam(value = "page", defaultValue = "1") int page,
+			@RequestParam(value = "size", defaultValue = "10") int size){
+		List<InvoiceData> res=paymentRegisterService.getAllInvoice(userId,page,size);	
+		return res;		
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_INVOICE_COUNT)
+	public long getAllInvoiceCount(@RequestParam Long userId){
+		long res=paymentRegisterService.getAllInvoiceCount(userId);	
+		return res;		
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_INVOICE_FOR_MANAGE_SALES)

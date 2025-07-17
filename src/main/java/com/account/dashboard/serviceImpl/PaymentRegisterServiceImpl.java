@@ -2339,5 +2339,26 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	}
 
 
+	@Override
+	public List<InvoiceData> getAllInvoice(Long userId, int page, int size) {
+		Pageable pageable = PageRequest.of(page, size, Sort.by("id"));
+		// For descending order, use:
+		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		Optional<User> user = userRepository.findById(userId);
+		
+		List<InvoiceData>invoice=invoiceDataRepository.findAll(pageableDesc).getContent();
+
+		
+		return invoice;
+	}
+
+
+	@Override
+	public long getAllInvoiceCount(Long userId) {
+		long invoice=invoiceDataRepository.findAllCount();
+		return invoice;
+	}
+
+
 
 }
