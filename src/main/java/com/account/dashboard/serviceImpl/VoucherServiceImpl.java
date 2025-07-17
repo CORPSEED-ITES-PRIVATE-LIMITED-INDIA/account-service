@@ -48,24 +48,21 @@ public class VoucherServiceImpl implements VoucherService{
 		if(createVoucherDto.getCreditAmount()!=null ) {
 			v.setCreditDebit(true);
 			v.setCreditAmount(createVoucherDto.getCreditAmount());
-//			if(createVoucherDto.isCgstIgstPresent()) {
-				v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
-				v.setCgst(createVoucherDto.getCgst());
-				v.setSgst(createVoucherDto.getSgst());
-				v.setCgstCreditAmount(createVoucherDto.getCgstCreditAmount());
-				v.setCgstDebitAmount(createVoucherDto.getCgstDebitAmount());
+			
+			v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
+			v.setCgst(createVoucherDto.getCgst());
+			v.setCgstCreditAmount(createVoucherDto.getCgstCreditAmount());
+			v.setCgstDebitAmount(createVoucherDto.getCgstDebitAmount());
+			
+			v.setSgst(createVoucherDto.getSgst());
+			v.setSgstCreditAmount(createVoucherDto.getSgstCreditAmount());
+			v.setSgstDebitAmount(createVoucherDto.getSgstDebitAmount());
 
-				v.setSgstCreditAmount(createVoucherDto.getSgstCreditAmount());
-				v.setSgstDebitAmount(createVoucherDto.getSgstDebitAmount());
+			v.setIgstPresent(createVoucherDto.isIgstPresent());
+			v.setIgst(createVoucherDto.getIgst());
+			v.setIgstCreditAmount(createVoucherDto.getIgstCreditAmount());
+			v.setIgstDebitAmount(createVoucherDto.getIgstDebitAmount());
 
-//			}
-//			if(createVoucherDto.isIgstPresent()) {
-				v.setIgstPresent(createVoucherDto.isIgstPresent());
-				v.setIgst(createVoucherDto.getIgst());
-				v.setIgstCreditAmount(createVoucherDto.getIgstCreditAmount());
-				v.setIgstDebitAmount(createVoucherDto.getIgstDebitAmount());
-
-//			}	
 		}
 
 		if(createVoucherDto.getDebitAmount()!=null ) {
@@ -89,7 +86,7 @@ public class VoucherServiceImpl implements VoucherService{
 		if(product!=null && product.isPresent()&&product.get()!=null) {
 			v.setProduct (product.get());
 		}    
-
+         v.setTotalAmount(createVoucherDto.getTotalAmount());
 		voucherRepository.save(v);
 		flag=true;
 		return flag;
@@ -109,46 +106,50 @@ public class VoucherServiceImpl implements VoucherService{
 			map.put("id", v.getId());
 			map.put("ledgerId", v.getLedger()!=null?v.getLedger().getId():0);
 			map.put("ledgerName", v.getLedger()!=null?v.getLedger().getName():"NA");
-			
+
 			map.put("creditAmount", v.getCreditAmount());
 			map.put("debitAmount", v.getDebitAmount());
-//			d gstAmount=0;
-//			if(v.getCgst()!=null &&v.getSgst()!=null) {
-//				Double cgst = Double.valueOf(v.getCgst());
-//				Double sgst = Double.valueOf(v.getSgst());
-//				double gst = cgst+sgst;
-//                double remGstAmount = 100-gst;
-//                if(v.getCreditAmount()) {
-//                	
-//                }
-//
-//			}
-//			Double.valueOf(v.getCgst());
+			//			d gstAmount=0;
+			//			if(v.getCgst()!=null &&v.getSgst()!=null) {
+			//				Double cgst = Double.valueOf(v.getCgst());
+			//				Double sgst = Double.valueOf(v.getSgst());
+			//				double gst = cgst+sgst;
+			//                double remGstAmount = 100-gst;
+			//                if(v.getCreditAmount()) {
+			//                	
+			//                }
+			//
+			//			}
+			//			Double.valueOf(v.getCgst());
 			map.put("cgst", v.getCgst());
 			map.put("sgst", v.getSgst());
-            map.put("cgstCreditAmount", v.getCgstCreditAmount());
-            map.put("cgstDebitAmount", v.getCgstDebitAmount());
+			map.put("cgstCreditAmount", v.getCgstCreditAmount());
+			map.put("cgstDebitAmount", v.getCgstDebitAmount());
 
-            map.put("sgstCreditAmount", v.getSgstCreditAmount());
-            map.put("sgstDebitAmount", v.getSgstDebitAmount());
+			map.put("sgstCreditAmount", v.getSgstCreditAmount());
+			map.put("sgstDebitAmount", v.getSgstDebitAmount());
 
 			map.put("igst", v.getIgst());
-            map.put("igstCreditAmount", v.getIgstCreditAmount());
-            map.put("igstDebitAmount", v.getIgstDebitAmount());
+			map.put("igstCreditAmount", v.getIgstCreditAmount());
+			map.put("igstDebitAmount", v.getIgstDebitAmount());
 
-			
+
 			map.put("paymentType", v.getPaymentType());
 			map.put("product", v.getProduct()!=null?v.getProduct().getName():"NA");
 			map.put("productId", v.getProduct()!=null?v.getProduct().getId():"0");
 
 			map.put("group", v.getLedger()!=null?v.getLedger().getLedgerType()!=null?v.getLedger().getLedgerType().getName():"NA":"");
-            map.put("voucherTypeId", v!=null?v.getLedgerType()!=null?v.getLedgerType().getId():0:0);
+			map.put("voucherTypeId", v!=null?v.getLedgerType()!=null?v.getLedgerType().getId():0:0);
 			map.put("ledgerTypeId", v.getLedgerType()!=null?v.getLedgerType().getId():0);
 
 			map.put("createDate", v.getCreateDate());
 			map.put("ledgerType", v.getLedgerType());
 			map.put("voucherType", v.getVoucherType());
 			map.put("cerateDate", v.getCreateDate());
+			map.put("cerateDate", v.getCreateDate());
+			map.put("professionalGstAmount", v.getProfessionalGstAmount());
+			map.put("totalAmount", v.getTotalAmount());
+
 			res.add(map);
 		}
 		return res;
@@ -169,6 +170,8 @@ public class VoucherServiceImpl implements VoucherService{
 			map.put("ledgerType", v.getLedgerType());
 			map.put("voucherType", v.getVoucherType());
 			map.put("cerateDate", v.getCreateDate());
+			map.put("professionalGstAmount", v.getProfessionalGstAmount());
+			map.put("totalAmount", v.getTotalAmount());
 			result.add(map);
 
 		}
@@ -229,7 +232,7 @@ public class VoucherServiceImpl implements VoucherService{
 				totalCredit=totalCredit+creditAmount;
 				totalDebit=totalDebit+debitAmount;
 
-				        		totalAmount=totalAmount-debitAmount+creditAmount;
+				totalAmount=totalAmount-debitAmount+creditAmount;
 			}else {
 				long debitAmount =Long.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
 				//        	
@@ -324,7 +327,7 @@ public class VoucherServiceImpl implements VoucherService{
 				totalCredit=totalCredit+creditAmount;
 				totalDebit=totalDebit+debitAmount;
 
-				        		totalAmount=totalAmount-debitAmount+creditAmount;
+				totalAmount=totalAmount-debitAmount+creditAmount;
 			}else {
 				double debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
 				//        	
@@ -382,6 +385,8 @@ public class VoucherServiceImpl implements VoucherService{
 			map.put("companyName", v.getCompanyName());
 			map.put("paymentType", v.getPaymentType());
 			map.put("createDate", v.getCreateDate());
+			map.put("professionalGstAmount", v.getProfessionalGstAmount());
+			map.put("totalAmount", v.getTotalAmount());
 			if( v.getLedger()!=null) {
 				map.put("ledgerId", v.getLedger()!=null?v.getLedger().getId():0);
 				map.put("ledgerName", v.getLedger().getName());
@@ -402,7 +407,7 @@ public class VoucherServiceImpl implements VoucherService{
 				}
 				double creditAmount =0;
 				if(v.getCreditAmount()!=null && (!v.getCreditAmount().equals(""))) {
-					 creditAmount =Double.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+					creditAmount =Double.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
 
 				}
 				totalCredit=totalCredit+creditAmount;

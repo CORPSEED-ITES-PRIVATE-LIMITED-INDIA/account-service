@@ -50,6 +50,7 @@ public class CreateVoucherDto {
 
 	double sgstCreditAmount;
 	double sgstDebitAmount;
+	double totalAmount;
 
 	public String getCompanyName() {
 		return companyName;
@@ -176,6 +177,12 @@ public class CreateVoucherDto {
 	}
 	public void setSgstDebitAmount(double sgstDebitAmount) {
 		this.sgstDebitAmount = sgstDebitAmount;
+	}
+	public double getTotalAmount() {
+		return totalAmount;
+	}
+	public void setTotalAmount(double totalAmount) {
+		this.totalAmount = totalAmount;
 	}
 	
 	

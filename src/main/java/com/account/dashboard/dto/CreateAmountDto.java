@@ -25,7 +25,7 @@ public class CreateAmountDto {
 	
 	private double professionalFees;
 	private double profesionalGst;
-	private int profesionalGstPercent;
+	private double profesionalGstFee;
 
 	private double serviceCharge;
 	private double serviceGst;
@@ -107,9 +107,6 @@ public class CreateAmountDto {
 		return profesionalGst;
 	}
 
-	public int getProfesionalGstPercent() {
-		return profesionalGstPercent;
-	}
 
 	public double getServiceCharge() {
 		return serviceCharge;
@@ -231,9 +228,6 @@ public class CreateAmountDto {
 		this.profesionalGst = profesionalGst;
 	}
 
-	public void setProfesionalGstPercent(int profesionalGstPercent) {
-		this.profesionalGstPercent = profesionalGstPercent;
-	}
 
 	public void setServiceCharge(double serviceCharge) {
 		this.serviceCharge = serviceCharge;
@@ -317,6 +311,14 @@ public class CreateAmountDto {
 
 	public void setTdsPercent(int tdsPercent) {
 		this.tdsPercent = tdsPercent;
+	}
+
+	public double getProfesionalGstFee() {
+		return profesionalGstFee;
+	}
+
+	public void setProfesionalGstFee(double profesionalGstFee) {
+		this.profesionalGstFee = profesionalGstFee;
 	}
 
      

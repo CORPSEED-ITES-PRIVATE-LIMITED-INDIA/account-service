@@ -18,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import com.account.dashboard.config.GetAllCompanyDto;
 import com.account.dashboard.config.LeadFeignClient;
+import com.account.dashboard.config.OpenAPIConfig;
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.Organization;
 import com.account.dashboard.domain.PaymentRegister;
@@ -45,9 +46,10 @@ import com.account.dashboard.service.PaymentRegisterService;
 import jakarta.transaction.Transactional;
 
 
-
 @Service
 public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
+
+    private final OpenAPIConfig openAPIConfig;
 
 
 	@Autowired
@@ -90,6 +92,11 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	TdsDetailRepository tdsDetailRepository;
 
 
+    PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig) {
+        this.openAPIConfig = openAPIConfig;
+    }
+
+
 	@Override
 	public PaymentRegister createPaymentRegister(CreateAmountDto createAmountDto) {
 
@@ -121,7 +128,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 
 		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
-		paymentRegister.setProfessionalGstPercent(createAmountDto.getProfesionalGstPercent());
+		
+		double profesionalGst = createAmountDto.getProfesionalGst();
+		
+		System.out.println("Professional  fees ...."+createAmountDto.getProfessionalFees());
+		System.out.println("Professional gst  ...."+profesionalGst);
+
+		double gstAmount = ((createAmountDto.getProfessionalFees()/100)*profesionalGst);
+		System.out.println("Professional gst amount ...."+gstAmount);
+
+		paymentRegister.setProfessionalGstAmount(gstAmount);
+
+//		paymentRegister.setProfessionalGstAmount(createAmountDto.getProfesionalGstFee());
+
 		paymentRegister.setServiceCharge(createAmountDto.getServiceCharge());		
 
 		paymentRegister.setOtherFees(createAmountDto.getOtherFees());
@@ -585,7 +604,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setGovermentGst(feignLeadClient.get("govermentGst")!=null?feignLeadClient.get("govermentGst").toString():null);
 
 		invoiceData.setProfessionalFees(feignLeadClient.get("professionalFees").toString());
-		invoiceData.setProfessionalCode(feignLeadClient.get("profesionalCode").toString());
+		invoiceData.setProfessionalCode(feignLeadClient.get("profesionalCode")!=null?feignLeadClient.get("profesionalCode").toString():null);
 		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst").toString());
 
 		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
@@ -1926,26 +1945,24 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		// Voucher Exist
 		if(voucherList!=null &&voucherList.size()>0) {  // Already created
 			System.out.println("Voucher Exist");
-
-			System.out.println("ledgerName . . .. "+ledgerName);
 			Ledger ledger = ledgerRepository.findByName(ledgerName);
-
 			if(ledger==null) {
 				ledger=createLedgerDataV5( feignLeadClient,paymentRegister.getProfesionalGst());
 			}
-
-			System.out.println("test"+voucherList.size());
 			Organization organization = organizationRepository.findByName("corpseed");
-
+			
 			// voucher
 			Voucher v =new Voucher();
 			v.setVoucherType(vType);
 			double govermentfees =paymentRegister.getGovermentfees();
 			double govermentGst =paymentRegister.getGovermentGst();
+			
 			double professionalFees =paymentRegister.getProfessionalFees();
 			double professionalGst =paymentRegister.getProfesionalGst();
+			
 			double serviceCharge =paymentRegister.getServiceCharge();
 			double getServiceGst =paymentRegister.getServiceGst();
+			
 			double otherFees =paymentRegister.getOtherFees();
 			double otherGst =paymentRegister.getOtherGst();
 
@@ -1956,7 +1973,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			double totalProfessionalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
 
 			double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
-
 			String org=(String)feignLeadClient.get("state");
 
 			v.setCreditAmount(totalCredit+"");
@@ -2054,16 +2070,24 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			if(group!=null) { 
 				//ledger group exist
 
-				System.out.println("test111111111112222222222");
+				System.out.println("test111111111112222222222");  //professionalFees
 				Ledger ledger = ledgerRepository.findByName(paymentRegister.getCompanyName());
 				double totalEstimateAmount = Double.parseDouble(feignLeadClient.get("totalAmount")!=null?feignLeadClient.get("totalAmount").toString():"0");
+				
+				double proFees = Double.parseDouble(feignLeadClient.get("professionalFees")!=null?feignLeadClient.get("professionalFees").toString():"0");
+				double gstAmount = Double.parseDouble(feignLeadClient.get("gstAmount")!=null?feignLeadClient.get("gstAmount").toString():"0");
+				double gst = Double.parseDouble(feignLeadClient.get("gst")!=null?feignLeadClient.get("gst").toString():"0");
 
 				// == total amount register ==total product amount register
 				Voucher totalAmountRegister = new Voucher();
 				totalAmountRegister.setVoucherType(vType);
 				totalAmountRegister.setCreditDebit(true);
 				totalAmountRegister.setCreateDate(new Date());
-				totalAmountRegister.setDebitAmount(totalEstimateAmount+"");
+				totalAmountRegister.setDebitAmount(proFees+"");
+				
+				totalAmountRegister.setTotalAmount(totalEstimateAmount);
+				totalAmountRegister.setIgst(gst+"");
+				totalAmountRegister.setIgstDebitAmount(gstAmount);
 				//company
 				if(ledger==null) {
 					ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
@@ -2095,15 +2119,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				voucherRepository.save(totalAmountRegister);
 
 
-
-
-
-
-
-
-
-
-
 				System.out.println("555555555556666666");
 				if(ledger==null) {
 					ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
@@ -2115,14 +2130,18 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					Voucher v =new Voucher();
 					v.setVoucherType(vType);
 					double govermentfees =paymentRegister.getGovermentfees();
-					double govermentGst =paymentRegister.getGovermentGst();
+					
 					double professionalFees =paymentRegister.getProfessionalFees();
-					double professionalGst =paymentRegister.getProfessionalGstAmount();
+					double professionalGst =paymentRegister.getProfesionalGst();
+					
 					double serviceCharge =paymentRegister.getServiceCharge();
-					double getServiceGst =paymentRegister.getServiceGst();
 					double otherFees =paymentRegister.getOtherFees();
-					double otherGst =paymentRegister.getOtherGst();
 					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;//  create same gov fees
+					v.setCreditAmount(totalCredit+"");
+
+					totalCredit=totalCredit+ paymentRegister.getProfessionalGstAmount();
+					v.setTotalAmount(totalCredit);
+					
 					double totalCreditGst = professionalGst;
 
 					v.setCreditAmount(totalCredit+"");
@@ -2131,7 +2150,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					//					v.setIgstPresent(true);//cgst+sgst concept
 					//					v.setIgst(totaDebitGst+"");	
 					String org=(String)feignLeadClient.get("state");
-
+                    System.out.println("totalCreditGst   . ...."+totalCreditGst);
 					if(organization.getState().equals(org)) {
 						double cgst=totalCreditGst/2;
 						double sgst=totalCreditGst/2;
@@ -2139,7 +2158,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						v.setCgst(cgst+"");  
 						v.setSgst(sgst+"");
 					}else {
-						v.setIgstPresent(false);
+						v.setIgstPresent(true);
 						v.setIgst(totalCreditGst+"");
 					}
 					ledger=ledgerRepository.findByName(paymentRegister.getCompanyName());
