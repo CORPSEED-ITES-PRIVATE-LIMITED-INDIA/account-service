@@ -46,6 +46,8 @@ public interface UrlsMapping {
 	public static final String CREATE_LEDGER=PREFIX+ "/ledger/createLedger";
 	public static final String UPDATE_LEDGER=PREFIX+ "/ledger/updateLedger";
 	public static final String GET_ALL_LEDGER=PREFIX+ "/ledger/getAllLedger";
+	public static final String GET_ALL_LEDGER_COUNT=PREFIX+ "/ledger/getAllLedgerCount";
+
 	public static final String GET_LEDGER_BY_ID=PREFIX+ "/ledger/getLedgerById";
 	public static final String GLOBAL_SEARCH_LEDGER=PREFIX+ "/ledger/globalSearchLedger";
 	public static final String GET_ALL_LEDGER_BY_GROUP_ID=PREFIX+ "/ledger/getAllLedgerByGroupId";

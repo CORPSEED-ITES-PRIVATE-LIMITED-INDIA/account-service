@@ -33,8 +33,15 @@ public class LedgerController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_LEDGER)
-	public List<Ledger> getAllLedger(){
-		List<Ledger> res=ledgerService.getAllLedger();	
+	public List<Ledger> getAllLedger(@RequestParam(value = "page", defaultValue = "1") int page,
+			@RequestParam(value = "size", defaultValue = "10") int size){
+		List<Ledger> res=ledgerService.getAllLedger(page-1,size);	
+		return res;
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_LEDGER_COUNT)
+	public long getAllLedgerCount(){
+		long res=ledgerService.getAllLedgerCount();	
 		return res;
 	}
 	

@@ -22,5 +22,8 @@ public interface LedgerRepository extends JpaRepository<Ledger, Long> {
 	@Query(value = "SELECT * FROM ledger l WHERE l.ledger_type_id =:id", nativeQuery = true)
 	List<Ledger> findAllByLedgerTypeId(Long id);
 
+	@Query(value = "SELECT count(*) FROM ledger l", nativeQuery = true)
+	long findAllCount();
+
 
 }

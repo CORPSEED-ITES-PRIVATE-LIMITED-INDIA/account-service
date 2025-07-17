@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.Organization;
@@ -109,8 +111,10 @@ public class LedgerServiceImpl implements LedgerService{
 	}
 
 	@Override
-	public List<Ledger> getAllLedger() {
-		List<Ledger> ledgerList = ledgerRepository.findAll();
+	public List<Ledger> getAllLedger(int page,int size) {
+		Pageable pageable = PageRequest.of(page, size);
+
+		List<Ledger> ledgerList = ledgerRepository.findAll(pageable).getContent();
 		return ledgerList;
 	}
 
@@ -255,6 +259,12 @@ public class LedgerServiceImpl implements LedgerService{
 
 		return result;
 	
+	}
+
+	@Override
+	public long getAllLedgerCount() {
+		long ledgerCount=ledgerRepository.findAllCount();
+		return ledgerCount;
 	}
 
 

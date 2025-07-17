@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import com.account.dashboard.domain.account.Ledger;
 import com.account.dashboard.dto.LedgerDto;
@@ -13,7 +14,7 @@ public interface LedgerService {
 
 	Boolean createLedger(LedgerDto ledgerDto);
 
-	List<Ledger> getAllLedger();
+	List<Ledger> getAllLedger(int page,int size);
 
 	Boolean updateLadger(UpdateLedgerDto updateLedgerDto);
 
@@ -26,6 +27,8 @@ public interface LedgerService {
 	Map<String, Object> getAllAmountByGroupId(Long id);
 
 	Map<String, Object> getAllAmountByLedgerId(Long id);
+
+	long getAllLedgerCount();
 
 
 }
