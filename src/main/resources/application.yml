@@ -1,0 +1,36 @@
+management:
+    endpoints:
+        web:
+            exposure:
+                include: info
+    info:
+        env:
+            enabled: true
+            
+
+
+            
+#spring:
+#  mail:
+#    host: smtppro.zoho.in
+#    port: 465
+#    username: erp@corpseed.com
+#    password: PbDnMCyW2Ygp
+#    properties:
+#      mail:
+#        smtp:
+#          auth: true
+#          starttls:
+#            enable: true
+spring:
+  mail:
+    host: smtppro.zoho.in
+    port: 465
+    username: erp@corpseed.com
+    password: Erp@5454
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: true
