@@ -605,7 +605,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		invoiceData.setProfessionalFees(feignLeadClient.get("professionalFees").toString());
 		invoiceData.setProfessionalCode(feignLeadClient.get("profesionalCode")!=null?feignLeadClient.get("profesionalCode").toString():null);
-		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst").toString());
+		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst")!=null?feignLeadClient.get("profesionalGst").toString():null);
 
 		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
 		if(feignLeadClient.get("serviceCode")!=null) {
