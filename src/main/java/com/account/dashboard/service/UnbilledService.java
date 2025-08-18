@@ -9,11 +9,11 @@ import com.account.dashboard.dto.UnbilledDTO;
 @Service
 public interface UnbilledService {
 
-	List<UnbilledDTO> getAll();
+	List<UnbilledDTO> getAllUnbilled();
 
-	UnbilledDTO getById(Long id);
+	UnbilledDTO getUnbilledById(Long id);
 
-	UnbilledDTO create(UnbilledDTO dto);
+	UnbilledDTO createUnbilled(UnbilledDTO dto);
 
 	UnbilledDTO update(Long id, UnbilledDTO dto);
 

@@ -71,15 +71,15 @@ public class UnbilledServiceImpl implements UnbilledService{
 
     // CRUD Methods
 
-    public List<UnbilledDTO> getAll() {
+    public List<UnbilledDTO> getAllUnbilled() {
         return unbilledRepository.findAll().stream().map(this::toDTO).collect(Collectors.toList());
     }
 
-    public UnbilledDTO getById(Long id) {
+    public UnbilledDTO getUnbilledById(Long id) {
         return unbilledRepository.findById(id).map(this::toDTO).orElse(null);
     }
 
-    public UnbilledDTO create(UnbilledDTO dto) {
+    public UnbilledDTO createUnbilled(UnbilledDTO dto) {
         Unbilled entity = toEntity(dto);
         Unbilled saved = unbilledRepository.save(entity);
         return toDTO(saved);
