@@ -33,25 +33,12 @@ public class UnbilledServiceImpl implements UnbilledService{
         return dto;
     }
 
-    // Convert Invoiced entity to DTO
-//    private InvoicedDTO toInvoicedDTO(Invoiced invoiced) {
-//        InvoicedDTO dto = new InvoicedDTO();
-//        dto.setInvoiceNumber(invoiced.getInvoiceNumber());
-//        dto.setAmount(invoiced.getAmount());
-//        return dto;
-//    }
-
     // Convert DTO to Entity
     private Unbilled toEntity(UnbilledDTO dto) {
         Unbilled entity = new Unbilled();
         entity.setDate(dto.getDate());
         entity.setProject(dto.getProject());
         entity.setEstimateId(dto.getEstimateId());
-//        if (dto.getInvoiced() != null) {
-//            List<Invoiced> invoicedList = dto.getInvoiced().stream().map(this::toInvoicedEntity).collect(Collectors.toList());
-//            invoicedList.forEach(inv -> inv.setUnbilled(entity)); // set back reference
-//            entity.setInvoiced(invoicedList);
-//        }
         entity.setClient(dto.getClient());
         entity.setCompany(dto.getCompany());
         entity.setTxnAmount(dto.getTxnAmount());
@@ -90,15 +77,6 @@ public class UnbilledServiceImpl implements UnbilledService{
             existing.setDate(dto.getDate());
             existing.setProject(dto.getProject());
             existing.setEstimateId(dto.getEstimateId());
-
-            // Replace invoiced list properly
-//            existing.getInvoiced().clear();
-//            if (dto.getInvoiced() != null) {
-//                List<Invoiced> invoicedList = dto.getInvoiced().stream().map(this::toInvoicedEntity).collect(Collectors.toList());
-//                invoicedList.forEach(inv -> inv.setUnbilled(existing));
-//                existing.getInvoiced().addAll(invoicedList);
-//            }
-
             existing.setClient(dto.getClient());
             existing.setCompany(dto.getCompany());
             existing.setTxnAmount(dto.getTxnAmount());

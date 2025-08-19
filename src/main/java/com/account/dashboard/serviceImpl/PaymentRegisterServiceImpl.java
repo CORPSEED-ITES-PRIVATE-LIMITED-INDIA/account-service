@@ -22,6 +22,7 @@ import com.account.dashboard.config.OpenAPIConfig;
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.Organization;
 import com.account.dashboard.domain.PaymentRegister;
+import com.account.dashboard.domain.Unbilled;
 import com.account.dashboard.domain.User;
 import com.account.dashboard.domain.account.Ledger;
 import com.account.dashboard.domain.account.LedgerType;
@@ -31,6 +32,7 @@ import com.account.dashboard.dto.CreateAccountData;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreatePurchaseOrderDto;
 import com.account.dashboard.dto.CreateTdsDto;
+import com.account.dashboard.dto.UnbilledDTO;
 import com.account.dashboard.dto.UpdatePaymentDto;
 import com.account.dashboard.repository.InvoiceDataRepository;
 import com.account.dashboard.repository.LedgerRepository;
@@ -38,6 +40,7 @@ import com.account.dashboard.repository.LedgerTypeRepository;
 import com.account.dashboard.repository.OrganizationRepository;
 import com.account.dashboard.repository.PaymentRegisterRepository;
 import com.account.dashboard.repository.TdsDetailRepository;
+import com.account.dashboard.repository.UnbilledRepository;
 import com.account.dashboard.repository.UserRepository;
 import com.account.dashboard.repository.VoucherRepository;
 import com.account.dashboard.repository.VoucherTypeRepo;
@@ -49,7 +52,14 @@ import jakarta.transaction.Transactional;
 @Service
 public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
-    private final OpenAPIConfig openAPIConfig;
+	private final OpenAPIConfig openAPIConfig;
+
+
+	@Autowired
+	UnbilledServiceImpl unbilledServiceImpl;
+
+	@Autowired
+	private UnbilledRepository unbilledRepository;
 
 
 	@Autowired
@@ -92,9 +102,9 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	TdsDetailRepository tdsDetailRepository;
 
 
-    PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig) {
-        this.openAPIConfig = openAPIConfig;
-    }
+	PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig) {
+		this.openAPIConfig = openAPIConfig;
+	}
 
 
 	@Override
@@ -128,9 +138,9 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 
 		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
-		
+
 		double profesionalGst = createAmountDto.getProfesionalGst();
-		
+
 		System.out.println("Professional  fees ...."+createAmountDto.getProfessionalFees());
 		System.out.println("Professional gst  ...."+profesionalGst);
 
@@ -139,7 +149,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		paymentRegister.setProfessionalGstAmount(gstAmount);
 
-//		paymentRegister.setProfessionalGstAmount(createAmountDto.getProfesionalGstFee());
+		//		paymentRegister.setProfessionalGstAmount(createAmountDto.getProfesionalGstFee());
 
 		paymentRegister.setServiceCharge(createAmountDto.getServiceCharge());		
 
@@ -483,6 +493,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		return paymentRegister;
 	}
 
+
+
 	public Boolean paymentApproveAndDisapprovedV2(UpdatePaymentDto updatePaymentDto) {
 		Boolean flag=false;
 		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(updatePaymentDto.getEstimateId());
@@ -565,7 +577,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 	public Boolean createInvoice(Long estimateId) {
 		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(estimateId);
-
+		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(estimateId);
 		InvoiceData invoiceData=new InvoiceData();
 		invoiceData.setCreateDate(new Date());
 
@@ -581,8 +593,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		Long assigneeId=Long.parseLong(assignee);
 
 		if(assigneeId!=null) {
-			//			User user = userRepository.findById(assigneeId).get();
-			//			invoiceData.setAssignee(user);
+//						User user = userRepository.findById(assigneeId).get();
+//						invoiceData.setAssignee(user);
 		}
 
 		String lead = feignLeadClient.get("leadId")!=null?feignLeadClient.get("leadId").toString():null;
@@ -597,8 +609,9 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setGstType(feignLeadClient.get("gstType")!=null?feignLeadClient.get("gstType").toString():null);
 		invoiceData.setGstDocuments(feignLeadClient.get("gstNo")!=null?feignLeadClient.get("gstNo").toString():null);//misssing 
 
-		//		invoiceData.setCompanyAge(feignLeadClient.get("companyAge").toString());
-
+				invoiceData.setCompanyAge(feignLeadClient.get("companyAge").toString());
+				
+				
 		invoiceData.setGovermentfees(feignLeadClient.get("govermentFees").toString());
 		invoiceData.setGovermentCode(feignLeadClient.get("govermentCode")!=null?feignLeadClient.get("govermentCode").toString():null);
 		invoiceData.setGovermentGst(feignLeadClient.get("govermentGst")!=null?feignLeadClient.get("govermentGst").toString():null);
@@ -608,6 +621,29 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst")!=null?feignLeadClient.get("profesionalGst").toString():null);
 
 		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
+
+//		invoiceData.setGovermentfees(feignLeadClient.get("govermentFees").toString());
+//		invoiceData.setGovermentCode(feignLeadClient.get("govermentCode")!=null?feignLeadClient.get("govermentCode").toString():null);
+//		invoiceData.setGovermentGst(feignLeadClient.get("govermentGst")!=null?feignLeadClient.get("govermentGst").toString():null);
+//
+//		invoiceData.setProfessionalFees(feignLeadClient.get("professionalFees").toString());
+//		invoiceData.setProfessionalCode(feignLeadClient.get("profesionalCode")!=null?feignLeadClient.get("profesionalCode").toString():null);
+//		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst")!=null?feignLeadClient.get("profesionalGst").toString():null);
+//
+//		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
+		
+		
+		invoiceData.setGovermentfees(feignLeadClient.get("govermentFees").toString());
+		invoiceData.setGovermentCode(feignLeadClient.get("govermentCode")!=null?feignLeadClient.get("govermentCode").toString():null);
+		invoiceData.setGovermentGst(feignLeadClient.get("govermentGst")!=null?feignLeadClient.get("govermentGst").toString():null);
+
+		invoiceData.setProfessionalFees(feignLeadClient.get("professionalFees").toString());
+		invoiceData.setProfessionalCode(feignLeadClient.get("profesionalCode")!=null?feignLeadClient.get("profesionalCode").toString():null);
+		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst")!=null?feignLeadClient.get("profesionalGst").toString():null);
+
+		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
+		
+		
 		if(feignLeadClient.get("serviceCode")!=null) {
 			invoiceData.setServiceCode(feignLeadClient.get("serviceCode").toString());
 		}
@@ -616,10 +652,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		}
 
-
-		invoiceData.setOtherFees(feignLeadClient.get("otherFees").toString());
-		invoiceData.setOtherCode(feignLeadClient.get("otherCode")!=null?feignLeadClient.get("otherCode").toString():null);
-		invoiceData.setOtherGst(feignLeadClient.get("otherGst")!=null?feignLeadClient.get("otherGst").toString():null);
+//
+//		invoiceData.setOtherFees(feignLeadClient.get("otherFees").toString());
+//		invoiceData.setOtherCode(feignLeadClient.get("otherCode")!=null?feignLeadClient.get("otherCode").toString():null);
+//		invoiceData.setOtherGst(feignLeadClient.get("otherGst")!=null?feignLeadClient.get("otherGst").toString():null);
 
 		invoiceData.setAddress(feignLeadClient.get("address").toString());
 		invoiceData.setCity(feignLeadClient.get("city").toString());
@@ -1119,17 +1155,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		return flag;
 	}
 
-	@Transactional
-	public Boolean allPaymentApprovedV3(Long id) {
-		Boolean flag=true;
-		PaymentRegister paymentRegister = paymentRegisterRepository.findById(id).get();
-		Boolean invoice = createInvoice(paymentRegister.getEstimateId());
-		Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
-		if(invoice && payment) {
-			flag=true;
-		}
-		return flag;
-	}
+
 	//    
 	public Boolean paymentApproveAndDisapprovedV4(Long paymentRegisterId ,Long estimateId) {
 
@@ -1950,19 +1976,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				ledger=createLedgerDataV5( feignLeadClient,paymentRegister.getProfesionalGst());
 			}
 			Organization organization = organizationRepository.findByName("corpseed");
-			
+
 			// voucher
 			Voucher v =new Voucher();
 			v.setVoucherType(vType);
 			double govermentfees =paymentRegister.getGovermentfees();
 			double govermentGst =paymentRegister.getGovermentGst();
-			
+
 			double professionalFees =paymentRegister.getProfessionalFees();
 			double professionalGst =paymentRegister.getProfesionalGst();
-			
+
 			double serviceCharge =paymentRegister.getServiceCharge();
 			double getServiceGst =paymentRegister.getServiceGst();
-			
+
 			double otherFees =paymentRegister.getOtherFees();
 			double otherGst =paymentRegister.getOtherGst();
 
@@ -2073,7 +2099,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				System.out.println("test111111111112222222222");  //professionalFees
 				Ledger ledger = ledgerRepository.findByName(paymentRegister.getCompanyName());
 				double totalEstimateAmount = Double.parseDouble(feignLeadClient.get("totalAmount")!=null?feignLeadClient.get("totalAmount").toString():"0");
-				
+
 				double proFees = Double.parseDouble(feignLeadClient.get("professionalFees")!=null?feignLeadClient.get("professionalFees").toString():"0");
 				double gstAmount = Double.parseDouble(feignLeadClient.get("gstAmount")!=null?feignLeadClient.get("gstAmount").toString():"0");
 				double gst = Double.parseDouble(feignLeadClient.get("gst")!=null?feignLeadClient.get("gst").toString():"0");
@@ -2084,7 +2110,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				totalAmountRegister.setCreditDebit(true);
 				totalAmountRegister.setCreateDate(new Date());
 				totalAmountRegister.setDebitAmount(proFees+"");
-				
+
 				totalAmountRegister.setTotalAmount(totalEstimateAmount);
 				totalAmountRegister.setIgst(gst+"");
 				totalAmountRegister.setIgstDebitAmount(gstAmount);
@@ -2130,10 +2156,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					Voucher v =new Voucher();
 					v.setVoucherType(vType);
 					double govermentfees =paymentRegister.getGovermentfees();
-					
+
 					double professionalFees =paymentRegister.getProfessionalFees();
 					double professionalGst =paymentRegister.getProfesionalGst();
-					
+
 					double serviceCharge =paymentRegister.getServiceCharge();
 					double otherFees =paymentRegister.getOtherFees();
 					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;//  create same gov fees
@@ -2141,7 +2167,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 					totalCredit=totalCredit+ paymentRegister.getProfessionalGstAmount();
 					v.setTotalAmount(totalCredit);
-					
+
 					double totalCreditGst = professionalGst;
 
 					v.setCreditAmount(totalCredit+"");
@@ -2150,7 +2176,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					//					v.setIgstPresent(true);//cgst+sgst concept
 					//					v.setIgst(totaDebitGst+"");	
 					String org=(String)feignLeadClient.get("state");
-                    System.out.println("totalCreditGst   . ...."+totalCreditGst);
+					System.out.println("totalCreditGst   . ...."+totalCreditGst);
 					if(organization.getState().equals(org)) {
 						double cgst=totalCreditGst/2;
 						double sgst=totalCreditGst/2;
@@ -2345,20 +2371,87 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		// For descending order, use:
 		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
 		Optional<User> user = userRepository.findById(userId);
-		
+
 		List<InvoiceData>invoice=invoiceDataRepository.findAll(pageableDesc).getContent();
 
-		
+
 		return invoice;
 	}
-
+	//================================================================
 
 	@Override
 	public long getAllInvoiceCount(Long userId) {
 		long invoice=invoiceDataRepository.findAllCount();
 		return invoice;
 	}
+	@Transactional
+	public Boolean allPaymentApprovedV3(Long id) {
+		Boolean flag=true;
+		PaymentRegister paymentRegister = paymentRegisterRepository.findById(id).get();
+		Boolean invoice = createInvoice(paymentRegister.getEstimateId());
+		Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
+		createUnbilled(paymentRegister);
+		if(invoice && payment) {
+			flag=true;
+		}
+		return flag;
+	}
 
+	public Boolean createUnbilled(PaymentRegister paymentRegister){
+		Boolean flag=false;
+		Map<String, Object>estimate=leadFeignClient.getEstimateById(paymentRegister.getEstimateId());
+		Unbilled unbilled=unbilledRepository.findByEstimateId(paymentRegister.getEstimateId());
+		if(unbilled!=null) {
+			double totalAmount = paymentRegister.getTotalAmount();
+			Date approveDate = paymentRegister.getApproveDate();
 
+			double paidAmount = unbilled.getPaidAmount();
+			paidAmount=paidAmount+totalAmount;
+			double dueAmount = unbilled.getDueAmount();
+			dueAmount=dueAmount+totalAmount;
+			unbilled.setPaidAmount(paidAmount);
+			unbilled.setDueAmount(dueAmount);
+			unbilled.setDate(approveDate);
+			unbilledRepository.save(unbilled);
+			flag=true;
+		}else {
+			unbilled=new Unbilled();
+			unbilled.setCompany(paymentRegister.getCompanyName());
+			unbilled.setDate(paymentRegister.getApproveDate());
+			unbilled.setEstimateId(paymentRegister.getEstimateId());
+
+			double totalPaidAmount = paymentRegister.getTotalAmount();			   
+			unbilled.setPaidAmount(totalPaidAmount);
+
+			double totalAmount = objectToDouble(estimate.get("totalAmount"));
+			unbilled.setOrderAmount(totalAmount);
+
+			double paidAmount = totalAmount-totalPaidAmount;
+			unbilled.setDueAmount(paidAmount);
+			unbilledRepository.save(unbilled);
+			flag=true;
+
+		}
+		return flag;
+	}
+	public double objectToDouble(Object totalAmountObj) {
+		double totalAmount = 0.0;
+
+		if (totalAmountObj != null) {
+			if (totalAmountObj instanceof Number) {
+				totalAmount = ((Number) totalAmountObj).doubleValue();
+			} else if (totalAmountObj instanceof String) {
+				try {
+					totalAmount = Double.parseDouble((String) totalAmountObj);
+				} catch (NumberFormatException e) {
+					// Handle invalid string format here if needed
+					totalAmount = 0.0; // or some default
+				}
+			} else {
+				// Handle other unexpected types if needed
+			}
+		}
+		return totalAmount;
+	}
 
 }

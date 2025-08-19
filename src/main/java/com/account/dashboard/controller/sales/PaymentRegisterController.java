@@ -150,7 +150,7 @@ public class PaymentRegisterController {
 	@GetMapping(UrlsMapping.GET_ALL_INVOICE)
 	public List<InvoiceData> getAllInvoice(@RequestParam Long userId,@RequestParam(value = "page", defaultValue = "1") int page,
 			@RequestParam(value = "size", defaultValue = "10") int size){
-		List<InvoiceData> res=paymentRegisterService.getAllInvoice(userId,page,size);	
+		List<InvoiceData> res=paymentRegisterService.getAllInvoice(userId,page-1,size);	
 		return res;		
 	}
 	
