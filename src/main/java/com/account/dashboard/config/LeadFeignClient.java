@@ -30,4 +30,7 @@ public interface LeadFeignClient {
 	@PostMapping("/leadService/api/v1/company/getAllCompanyByIds")
 	public List<Map<String,Object>> getAllCompanyByIdsForFeign(@RequestBody GetAllCompanyDto getAllCompanyDto);
 	
+	@PostMapping("/leadService/api/v1/project/createProject")
+	public Long createProject(@RequestBody Long estimateId);
+	
 }

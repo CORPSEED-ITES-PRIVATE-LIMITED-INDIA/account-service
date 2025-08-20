@@ -297,7 +297,11 @@ public class VoucherServiceImpl implements VoucherService{
 
 			if(v.isCreditDebit()) {
 				double debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
-				double creditAmount =Double.parseDouble(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+				System.out.println("Voucher id . . ."+v);
+				System.out.println("Voucher id . . ."+debitAmount);
+				System.out.println("Voucher id . . ."+v.getCreditAmount());
+
+				double creditAmount =Double.parseDouble(v!=null?v.getCreditAmount()!=null?v.getCreditAmount():"0":"0");
 
 
 

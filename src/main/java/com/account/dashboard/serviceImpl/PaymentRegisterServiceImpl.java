@@ -609,7 +609,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setGstType(feignLeadClient.get("gstType")!=null?feignLeadClient.get("gstType").toString():null);
 		invoiceData.setGstDocuments(feignLeadClient.get("gstNo")!=null?feignLeadClient.get("gstNo").toString():null);//misssing 
 
-				invoiceData.setCompanyAge(feignLeadClient.get("companyAge").toString());
+//				invoiceData.setCompanyAge(feignLeadClient.get("companyAge").toString());
 				
 				
 		invoiceData.setGovermentfees(feignLeadClient.get("govermentFees").toString());
@@ -2391,6 +2391,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		Boolean invoice = createInvoice(paymentRegister.getEstimateId());
 		Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
 		createUnbilled(paymentRegister);
+		leadFeignClient.createProject(paymentRegister.getEstimateId());
 		if(invoice && payment) {
 			flag=true;
 		}

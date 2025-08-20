@@ -9,6 +9,7 @@ import com.account.dashboard.service.UnbilledService;
 import com.account.dashboard.util.UrlsMapping;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 public class UnbilledController {
@@ -32,6 +33,12 @@ public class UnbilledController {
     public ResponseEntity<UnbilledDTO> createUnbilled(@RequestBody UnbilledDTO dto) {
         UnbilledDTO created = unbilledService.createUnbilled(dto);
         return ResponseEntity.ok(created);
+    }
+    
+    
+    @GetMapping(UrlsMapping.GET_ALL_UNBILLED_AMOUNT)
+    public Map<String,Object> getAllUnbilledAmount() {
+        return unbilledService.getAllUnbilledAmount();
     }
 
   

@@ -1,6 +1,8 @@
 package com.account.dashboard.serviceImpl;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -93,6 +95,25 @@ public class UnbilledServiceImpl implements UnbilledService{
     public void delete(Long id) {
         unbilledRepository.deleteById(id);
     }
+
+	@Override
+	public Map<String, Object> getAllUnbilledAmount() {
+		List<Unbilled> unbilledList = unbilledRepository.findAll();
+		double totalAmount=0l;
+		double paidAmount=0l;
+		double dueAmount=0l;
+		Map<String,Object>res=new HashMap<>();
+		for(Unbilled u:unbilledList) {
+			totalAmount=totalAmount+u.getOrderAmount();
+			paidAmount=paidAmount+u.getPaidAmount();
+			dueAmount=dueAmount+u.getDueAmount();
+		}
+		res.put("totalAmount", totalAmount);
+		res.put("paidAmount", paidAmount);
+		res.put("dueAmount", dueAmount);
+
+		return res;
+	}
 
 	
 

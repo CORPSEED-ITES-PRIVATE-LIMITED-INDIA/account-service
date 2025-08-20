@@ -156,6 +156,7 @@ public interface UrlsMapping {
 		public static final String UPDATE_UNBILLED=PREFIX+ "/ledgerType/updateUnbilled";
 		public static final String GET_UNBILLED_BY_ID=PREFIX+ "/ledgerType/getUnbilledById";
 		public static final String GET_ALL_UNBILLED=PREFIX+ "/ledgerType/getAllUnbilled";
+		public static final String GET_ALL_UNBILLED_AMOUNT=PREFIX+ "/ledgerType/getAllUnbilledAmount";
 
 
 }
