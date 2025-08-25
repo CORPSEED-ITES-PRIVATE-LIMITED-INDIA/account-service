@@ -26,4 +26,6 @@ public interface VoucherService {
 
 	List<Map<String, Object>> getAllVoucherV2();
 
+	Map<String, Object> getVoucheById(Long id);
+
 }

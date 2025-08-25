@@ -70,4 +70,10 @@ public class VoucherController {
 		Map<String,Object> res=voucherService.getAllVoucherByGroup(id);	
 		return res;
 	}
+	
+	@GetMapping(UrlsMapping.GET_VOUCHER_BY_ID)
+	public Map<String,Object> getVoucheById(@RequestParam Long id){
+		Map<String,Object> res=voucherService.getVoucheById(id);	
+		return res;
+	}
 }

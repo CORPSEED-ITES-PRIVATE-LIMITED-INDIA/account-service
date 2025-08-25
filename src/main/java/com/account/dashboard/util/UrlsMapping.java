@@ -72,6 +72,7 @@ public interface UrlsMapping {
 	public static final String GET_ALL_VOUCHER_IN_BETWEEN_DATE=PREFIX+ "/voucher/getAllVoucherInBetweenDate";
 	public static final String GET_ALL_VOUCHER_BY_GROUP=PREFIX+ "/voucher/getAllVoucherByGroup";
 	public static final String GET_ALL_PAYABLE_VOUCHER=PREFIX+ "/voucher/getAllVoucher";
+	public static final String GET_VOUCHER_BY_ID=PREFIX+ "/voucher/getVoucherById";
 
 	
 	//=============================== Bank Details ========================================
