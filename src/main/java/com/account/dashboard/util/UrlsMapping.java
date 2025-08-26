@@ -159,5 +159,8 @@ public interface UrlsMapping {
 		public static final String GET_ALL_UNBILLED=PREFIX+ "/ledgerType/getAllUnbilled";
 		public static final String GET_ALL_UNBILLED_AMOUNT=PREFIX+ "/ledgerType/getAllUnbilledAmount";
 
+// get all trial balance
+		
+		public static final String GET_ALL_TRIAL_BALANCE=PREFIX+ "/trialBalance/getAllTrialBalance";
 
 }
