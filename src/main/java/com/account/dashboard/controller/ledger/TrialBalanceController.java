@@ -34,7 +34,7 @@ public class TrialBalanceController {
 	
 	
 	
-	@PostMapping(UrlsMapping.GET_ALL_TRIAL_BALANCE)
+	@GetMapping(UrlsMapping.GET_ALL_TRIAL_BALANCE)
 	public List<Map<String,Object>> getAllTrialBalance(){
 		List<Map<String,Object>> res=trialBalanceService.getAllTrialBalance();	
 		return res;
