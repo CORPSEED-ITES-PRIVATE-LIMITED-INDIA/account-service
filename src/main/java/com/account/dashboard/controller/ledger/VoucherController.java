@@ -30,7 +30,7 @@ public class VoucherController {
 	public Boolean createVoucher(@RequestBody CreateVoucherDto createVoucherDto){
 		System.out.println("ghghgg name .."+createVoucherDto.getCompanyName());
 
-		Boolean res=voucherService.createVoucher(createVoucherDto);	
+		Boolean res=voucherService.createVoucherV2(createVoucherDto);	
 		return res;
 	}
 	

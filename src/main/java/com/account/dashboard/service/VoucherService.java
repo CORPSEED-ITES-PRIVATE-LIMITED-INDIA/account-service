@@ -28,4 +28,6 @@ public interface VoucherService {
 
 	Map<String, Object> getVoucheById(Long id);
 
+	Boolean createVoucherV2(CreateVoucherDto createVoucherDto);
+
 }

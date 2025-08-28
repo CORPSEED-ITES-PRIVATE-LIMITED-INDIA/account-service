@@ -42,30 +42,238 @@ public class VoucherServiceImpl implements VoucherService{
 	public Boolean createVoucher(CreateVoucherDto createVoucherDto) {
 
 		Boolean flag=false;
+//		Voucher v = new Voucher();
+//		v.setCompanyName(createVoucherDto.getCompanyName());
+//
+//		if(createVoucherDto.getCreditAmount()!=null ) {
+//			v.setCreditDebit(true);
+//			v.setCreditAmount(createVoucherDto.getCreditAmount());
+//			
+//			v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
+//			v.setCgst(createVoucherDto.getCgst());
+//			v.setCgstCreditAmount(createVoucherDto.getCgstCreditAmount());
+//			v.setCgstDebitAmount(createVoucherDto.getCgstDebitAmount());
+//			
+//			v.setSgst(createVoucherDto.getSgst());
+//			v.setSgstCreditAmount(createVoucherDto.getSgstCreditAmount());
+//			v.setSgstDebitAmount(createVoucherDto.getSgstDebitAmount());
+//
+//			v.setIgstPresent(createVoucherDto.isIgstPresent());
+//			v.setIgst(createVoucherDto.getIgst());
+//			v.setIgstCreditAmount(createVoucherDto.getIgstCreditAmount());
+//			v.setIgstDebitAmount(createVoucherDto.getIgstDebitAmount());
+//
+//		}
+//
+//		if(createVoucherDto.getDebitAmount()!=null ) {
+//			v.setCreditDebit(true);
+//			v.setDebitAmount(createVoucherDto.getDebitAmount());
+//		}
+//		v.setCreateDate(new Date());
+//		Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+//		if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+//			v.setLedger(ledger.get());
+//			v.setLedgerType(ledger.get().getLedgerType());
+//		}        
+//		v.setPaymentType(createVoucherDto.getPaymentType());
+//
+//		Optional<VoucherType> voucherType = voucherTypeRepo.findById(createVoucherDto.getVoucherTypeId());
+//		if(voucherType!=null &&voucherType.isPresent() && voucherType.get()!=null) {
+//			v.setVoucherType(voucherType.get());
+//		}
+//
+//		Optional<Ledger> product = ledgerRepository.findById(createVoucherDto.getProductId());
+//		if(product!=null && product.isPresent()&&product.get()!=null) {
+//			v.setProduct (product.get());
+//		}    
+//         v.setTotalAmount(createVoucherDto.getTotalAmount());
+//		voucherRepository.save(v);
+		flag=true;
+		return flag;
+	}
+ 
+//	public Boolean createIgstCredit(CreateVoucherDto createVoucherDto) {
+//		Boolean flag=false;
+//		Voucher v = new Voucher();
+//		v.setCompanyName(createVoucherDto.getCompanyName());
+//
+//		if(createVoucherDto.getIgstCreditAmount()!=0) {
+//			v.setCreditDebit(true);
+//			v.setCreditAmount(createVoucherDto.getIgstCreditAmount());
+//
+//		}
+//		v.setCreateDate(new Date());
+//		Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+//		if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+//			v.setLedger(ledger.get());
+//			v.setLedgerType(ledger.get().getLedgerType());
+//		}        
+//		v.setPaymentType(createVoucherDto.getPaymentType());
+//
+//		Optional<VoucherType> voucherType = voucherTypeRepo.findById(createVoucherDto.getVoucherTypeId());
+//		if(voucherType!=null &&voucherType.isPresent() && voucherType.get()!=null) {
+//			v.setVoucherType(voucherType.get());
+//		}
+//
+//		Ledger product = ledgerRepository.findByName("IGST");
+//		if(product!=null) {
+//			v.setProduct (product);
+//		}    
+//         v.setTotalAmount(createVoucherDto.getIgstCreditAmount());
+//		voucherRepository.save(v);
+//		flag=true;
+//		return flag;
+//	}
+	
+	
+	public Voucher createIgstCredit(CreateVoucherDto createVoucherDto,double igstAmount,String type) {
+		Boolean flag=false;
 		Voucher v = new Voucher();
 		v.setCompanyName(createVoucherDto.getCompanyName());
 
-		if(createVoucherDto.getCreditAmount()!=null ) {
+		if(createVoucherDto.getIgstCreditAmount()!=0) {
+			v.setCreditDebit(true);
+			if("credit".equals(type)) {
+				v.setCreditAmount(igstAmount);
+			}else {
+				v.setDebitAmount(igstAmount);
+			}
+		}
+		v.setCreateDate(new Date());
+		Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+		if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+			v.setLedger(ledger.get());
+			v.setLedgerType(ledger.get().getLedgerType());
+		}        
+		v.setPaymentType(createVoucherDto.getPaymentType());
+
+		Optional<VoucherType> voucherType = voucherTypeRepo.findById(createVoucherDto.getVoucherTypeId());
+		if(voucherType!=null &&voucherType.isPresent() && voucherType.get()!=null) {
+			v.setVoucherType(voucherType.get());
+		}
+
+		Ledger product = ledgerRepository.findByName("IGST");
+		if(product!=null) {
+			v.setProduct (product);
+		}    
+         v.setTotalAmount(igstAmount);
+		voucherRepository.save(v);
+		flag=true;
+		return v;
+	}
+	
+	public Voucher createCgstCredit(CreateVoucherDto createVoucherDto,double cgstAmount) {
+		Boolean flag=false;
+		Voucher v = new Voucher();
+		v.setCompanyName(createVoucherDto.getCompanyName());
+
+		if(createVoucherDto.getIgstCreditAmount()!=0) {
+			v.setCreditDebit(true);
+			v.setCreditAmount(cgstAmount);
+
+		}
+		v.setCreateDate(new Date());
+		Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+		if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+			v.setLedger(ledger.get());
+			v.setLedgerType(ledger.get().getLedgerType());
+		}        
+		v.setPaymentType(createVoucherDto.getPaymentType());
+
+		Optional<VoucherType> voucherType = voucherTypeRepo.findById(createVoucherDto.getVoucherTypeId());
+		if(voucherType!=null &&voucherType.isPresent() && voucherType.get()!=null) {
+			v.setVoucherType(voucherType.get());
+		}
+
+		Ledger product = ledgerRepository.findByName("CGST");
+		if(product!=null) {
+			v.setProduct (product);
+		}    
+         v.setTotalAmount(cgstAmount);
+		voucherRepository.save(v);
+		flag=true;
+		return v;
+	}
+	public Voucher createSgstCredit(CreateVoucherDto createVoucherDto,double sgstAmount,String type) {
+		Boolean flag=false;
+		Voucher v = new Voucher();
+		v.setCompanyName(createVoucherDto.getCompanyName());
+
+		if(sgstAmount!=0) {
+			v.setCreditDebit(true);
+			if("credit".equals(type)) {
+				v.setCreditAmount(sgstAmount);
+
+			}else {
+				v.setDebitAmount(sgstAmount);
+
+			}
+		}
+		v.setCreateDate(new Date());
+		Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+		if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+			v.setLedger(ledger.get());
+			v.setLedgerType(ledger.get().getLedgerType());
+		}        
+		v.setPaymentType(createVoucherDto.getPaymentType());
+
+		Optional<VoucherType> voucherType = voucherTypeRepo.findById(createVoucherDto.getVoucherTypeId());
+		if(voucherType!=null &&voucherType.isPresent() && voucherType.get()!=null) {
+			v.setVoucherType(voucherType.get());
+		}
+
+		Ledger product = ledgerRepository.findByName("SGST");
+		if(product!=null) {
+			v.setProduct (product);
+		}    
+         v.setTotalAmount(sgstAmount);
+		voucherRepository.save(v);
+		flag=true;
+		return v;
+	}
+	public Boolean createVoucherV2(CreateVoucherDto createVoucherDto) {
+
+		Boolean flag=false;
+		Voucher v = new Voucher();
+		v.setCompanyName(createVoucherDto.getCompanyName());
+
+		if(createVoucherDto.getCreditAmount() !=0 ) {
 			v.setCreditDebit(true);
 			v.setCreditAmount(createVoucherDto.getCreditAmount());
 			
 			v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
-			v.setCgst(createVoucherDto.getCgst());
-			v.setCgstCreditAmount(createVoucherDto.getCgstCreditAmount());
-			v.setCgstDebitAmount(createVoucherDto.getCgstDebitAmount());
-			
-			v.setSgst(createVoucherDto.getSgst());
-			v.setSgstCreditAmount(createVoucherDto.getSgstCreditAmount());
-			v.setSgstDebitAmount(createVoucherDto.getSgstDebitAmount());
+//			v.setCgst(createVoucherDto.getCgst());
+//			v.setCgstCreditAmount(createVoucherDto.getCgstCreditAmount());
+//			v.setCgstDebitAmount(createVoucherDto.getCgstDebitAmount());
+			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount());
+			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount());
+			v.setCgstCreditVoucher(cgstCredit);
+            v.setCgstDebitVoucher(cgstDedit);
+            if(createVoucherDto.getSgstCreditAmount()>0) {
+    			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"credit");
+                v.setSgstCreditVoucher(sgstCredit);
+            }
+            if(createVoucherDto.getSgstDebitAmount()>0) {
+                Voucher sgstDebit = createSgstCredit(createVoucherDto,createVoucherDto.getSgstDebitAmount(),"debit");
+                v.setSgstDebitVoucher(sgstDebit);
+            }
+
 
 			v.setIgstPresent(createVoucherDto.isIgstPresent());
-			v.setIgst(createVoucherDto.getIgst());
-			v.setIgstCreditAmount(createVoucherDto.getIgstCreditAmount());
-			v.setIgstDebitAmount(createVoucherDto.getIgstDebitAmount());
+			if(createVoucherDto.getIgstCreditAmount()>0) {
+				Voucher igstCreditAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstCreditAmount(),"credit");
+				v.setIgstCreditVoucher(igstCreditAmount);
+
+			}
+				
+			if(createVoucherDto.getIgstDebitAmount()>0) {
+				Voucher igstDebitAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstDebitAmount(),"debit");
+				v.setIgstDebitVoucher(igstDebitAmount);
+			}
 
 		}
 
-		if(createVoucherDto.getDebitAmount()!=null ) {
+		if(createVoucherDto.getDebitAmount()!=0 ) {
 			v.setCreditDebit(true);
 			v.setDebitAmount(createVoucherDto.getDebitAmount());
 		}
@@ -92,6 +300,8 @@ public class VoucherServiceImpl implements VoucherService{
 		return flag;
 	}
 
+	
+	
 	@Override
 	public List<Voucher>  getAllVoucher() {
 		List<Voucher>voucher=voucherRepository.findAll();
@@ -123,15 +333,15 @@ public class VoucherServiceImpl implements VoucherService{
 			//			Double.valueOf(v.getCgst());
 			map.put("cgst", v.getCgst());
 			map.put("sgst", v.getSgst());
-			map.put("cgstCreditAmount", v.getCgstCreditAmount());
-			map.put("cgstDebitAmount", v.getCgstDebitAmount());
+			map.put("cgstCreditAmount", v.getCgstCreditVoucher()!=null?v.getCgstCreditVoucher().getCreditAmount():0);
+			map.put("cgstDebitAmount", v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0);
 
-			map.put("sgstCreditAmount", v.getSgstCreditAmount());
-			map.put("sgstDebitAmount", v.getSgstDebitAmount());
+			map.put("sgstCreditAmount", v.getSgstCreditVoucher()!=null?v.getSgstCreditVoucher().getCreditAmount():0);
+			map.put("sgstDebitAmount", v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0);
 
 			map.put("igst", v.getIgst());
-			map.put("igstCreditAmount", v.getIgstCreditAmount());
-			map.put("igstDebitAmount", v.getIgstDebitAmount());
+			map.put("igstCreditAmount", v.getIgstCreditVoucher()!=null?v.getIgstCreditVoucher().getCreditAmount():0);
+			map.put("igstDebitAmount", v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0);
 
 
 			map.put("paymentType", v.getPaymentType());
@@ -201,12 +411,12 @@ public class VoucherServiceImpl implements VoucherService{
 			//        	}
 
 			if(v.isCreditDebit()) {
-				long debitAmount =Long.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
-				long creditAmount =Long.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+				long debitAmount =(long)v.getDebitAmount();
+				long creditAmount =(long)v.getCreditAmount();
 
 
 
-				if(v.getDebitAmount()!=null) {
+				if(v.getDebitAmount()!=0) {
 					if(v.isIgstPresent()) {
 						long amount =Long.valueOf(v.getIgst()!=null?v.getIgst():"0");
 						debitAmount=debitAmount+amount;
@@ -234,7 +444,7 @@ public class VoucherServiceImpl implements VoucherService{
 
 				totalAmount=totalAmount-debitAmount+creditAmount;
 			}else {
-				long debitAmount =Long.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+				long debitAmount =(long)v.getDebitAmount();
 				//        	
 
 				totalDebit=totalDebit+debitAmount;
@@ -300,30 +510,28 @@ public class VoucherServiceImpl implements VoucherService{
 			if(v.isCreditDebit()) {
 		           System.out.println("aaaaaaaaaaa222");
 
-				long creditGstAmount =0;
-				long debitGstAmount =0;
-				double debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+		        double creditGstAmount =0;
+		        double debitGstAmount =0;
+				double debitAmount =(long)v.getDebitAmount();
 				System.out.println("Voucher id . . ."+v);
 				System.out.println("Voucher id . . ."+debitAmount);
 				System.out.println("Voucher id . . ."+v.getCreditAmount());
 
-				double creditAmount =Double.parseDouble(v!=null?v.getCreditAmount()!=null?v.getCreditAmount():"0":"0");
-
-		           System.out.println(!v.getDebitAmount().equals("0"));
+				double creditAmount =v.getCreditAmount();
 
 
-				if(!v.getDebitAmount().equals("0")) {
+				if(v.getDebitAmount()!=0) {
 			           System.out.println("aaaaaaaaaaa333");
 
 					if(v.isIgstPresent()) {
 				           System.out.println("aaaaaaaaaaa444");
 
-						debitGstAmount =(long)(v.getIgstDebitAmount());
+						debitGstAmount =v.getIgstDebitVoucher().getDebitAmount();
 					}
 					if(!v.isCgstSgstPresent()) {
 				           System.out.println("aaaaaaaaaaa555");
 
-						debitGstAmount =(long)(v.getCgstDebitAmount()+v.getSgstDebitAmount());
+						debitGstAmount =(v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount());
 					}
 				}else {
 			           System.out.println("aaaaaaaaaaa666");
@@ -332,13 +540,14 @@ public class VoucherServiceImpl implements VoucherService{
 					if(v.isIgstPresent()) {
 				           System.out.println("aaaaaaaaaaa777");
 
-						creditGstAmount =(long)(v.getIgstCreditAmount());
+						creditGstAmount =(v.getIgstCreditVoucher().getCreditAmount());
 						creditAmount=creditAmount;
 					}
 					if(!v.isCgstSgstPresent()) {
 				           System.out.println("aaaaaaaaaaa888");
-
-						creditGstAmount =(long)(v.getCgstCreditAmount()+v.getSgstCreditAmount());
+				           double cgstCreditVoucher = v.getCgstCreditVoucher()!=null?v.getCgstCreditVoucher().getCreditAmount():0;
+				           double sgstCreditVoucher = v.getSgstCreditVoucher()!=null?v.getSgstCreditVoucher().getCreditAmount():0;
+						creditGstAmount =cgstCreditVoucher+sgstCreditVoucher;
 
 						creditAmount=creditAmount;
 
@@ -349,16 +558,18 @@ public class VoucherServiceImpl implements VoucherService{
 
 				totalAmount=totalAmount-debitAmount-debitGstAmount+creditAmount+creditGstAmount;
 			}else {
-				double debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
-				long debitGstAmount =0;   	
+				double debitAmount =v.getDebitAmount();
+				double debitGstAmount =0;   	
 				
 				//        		totalAmount=totalAmount+debitAmount;
 				if(v.isIgstPresent()) {
-					debitGstAmount =(long)(v.getIgstCreditAmount());
+					debitGstAmount =(v.getIgstCreditVoucher().getCreditAmount());
 					debitAmount=debitAmount;
 				}
 				if(!v.isCgstSgstPresent()) {
-					debitGstAmount =(long)(v.getCgstDebitAmount()+v.getSgstDebitAmount());
+					double cgstDebitVoucher = v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0;
+					double sgstDebitVoucher = v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0;
+					debitGstAmount =cgstDebitVoucher+sgstDebitVoucher;
 
 					debitAmount=debitAmount;
 
@@ -445,26 +656,26 @@ public class VoucherServiceImpl implements VoucherService{
 				double igstDebitAmount =0;
 				System.out.println("test1");
 				double cgstSgstDebitAmount=0;
-				if(v.getDebitAmount()!=null && (!v.getDebitAmount().equals(""))) {
+				if(v.getDebitAmount()!=0) {
 					System.out.println("test2");
-					debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+					debitAmount =v.getDebitAmount();
 					if(v.isCgstSgstPresent()) {
-						 cgstSgstDebitAmount = v.getCgstDebitAmount()+v.getSgstDebitAmount();
+						 cgstSgstDebitAmount = v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount();
 					}else {
-					   igstDebitAmount = v.getIgstDebitAmount();
+					   igstDebitAmount = v.getIgstDebitVoucher().getDebitAmount();
 					}
 				}
 				double creditAmount =0;
 				double cgstSgstCreditAmount =0;
 				double igstCreditAmount =0;
-				if(v.getCreditAmount()!=null && (!v.getCreditAmount().equals(""))) {
+				if(v.getCreditAmount()!=0) {
 					System.out.println("test3"+v.isCgstSgstPresent());
 
-					creditAmount =Double.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+					creditAmount =v.getCreditAmount();
 					if(!v.isCgstSgstPresent()) {
-						 cgstSgstCreditAmount = v.getCgstCreditAmount()+v.getSgstCreditAmount();
+						 cgstSgstCreditAmount = v.getCgstCreditVoucher().getCreditAmount()+v.getSgstCreditVoucher().getCreditAmount();
 					}else {
-					   igstCreditAmount = v.getIgstCreditAmount();
+					   igstCreditAmount = v.getIgstCreditVoucher().getCreditAmount();
 					}
 
 				}
@@ -480,11 +691,11 @@ public class VoucherServiceImpl implements VoucherService{
 				System.out.println("test4");
 				double igstDebitAmount =0;
 				double cgstSgstDebitAmount=0;
-				double debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+				double debitAmount =v.getDebitAmount();
 				if(v.isCgstSgstPresent()) {
-					 cgstSgstDebitAmount = v.getCgstDebitAmount()+v.getSgstDebitAmount();
+					 cgstSgstDebitAmount = v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount();
 				}else {
-				   igstDebitAmount = v.getIgstDebitAmount();
+				   igstDebitAmount = v.getIgstDebitVoucher().getDebitAmount();
 				}
 				totalDebit=totalDebit+debitAmount+igstDebitAmount+cgstSgstDebitAmount;
 				totalAmount=totalAmount-totalDebit;
@@ -530,13 +741,13 @@ public class VoucherServiceImpl implements VoucherService{
 			map.put("debitAmount", v.getDebitAmount());
 			res.add(map);
 			if(v.isCreditDebit()) {
-				double debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
-				double creditAmount =Double.parseDouble(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+				double debitAmount =v.getDebitAmount();
+				double creditAmount =v.getCreditAmount();
 				totalCredit=totalCredit+creditAmount;
 				totalDebit=totalDebit+debitAmount;
 				totalAmount=totalAmount-debitAmount+creditAmount;
 			}else {
-				double debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+				double debitAmount =v.getDebitAmount();
 				totalDebit=totalDebit+debitAmount;
 				totalAmount=totalAmount-debitAmount;
 
@@ -583,26 +794,26 @@ public class VoucherServiceImpl implements VoucherService{
 			double igstDebitAmount =0;
 			System.out.println("test1");
 			double cgstSgstDebitAmount=0;
-			if(v.getDebitAmount()!=null && (!v.getDebitAmount().equals(""))) {
+			if(v.getDebitAmount()!=0) {
 				System.out.println("test2");
-				debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+				debitAmount =v.getDebitAmount();
 				if(v.isCgstSgstPresent()) {
-					 cgstSgstDebitAmount = v.getCgstDebitAmount()+v.getSgstDebitAmount();
+					 cgstSgstDebitAmount = v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount();
 				}else {
-				   igstDebitAmount = v.getIgstDebitAmount();
+				   igstDebitAmount = v.getIgstDebitVoucher().getDebitAmount();
 				}
 			}
 			double creditAmount =0;
 			double cgstSgstCreditAmount =0;
 			double igstCreditAmount =0;
-			if(v.getCreditAmount()!=null && (!v.getCreditAmount().equals(""))) {
+			if(v.getCreditAmount()!=0) {
 				System.out.println("test3"+v.isCgstSgstPresent());
 
-				creditAmount =Double.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+				creditAmount =v.getCreditAmount();
 				if(!v.isCgstSgstPresent()) {
-					 cgstSgstCreditAmount = v.getCgstCreditAmount()+v.getSgstCreditAmount();
+					 cgstSgstCreditAmount = v.getCgstCreditVoucher().getCreditAmount()+v.getSgstCreditVoucher().getCreditAmount();
 				}else {
-				   igstCreditAmount = v.getIgstCreditAmount();
+				   igstCreditAmount = v.getIgstCreditVoucher().getCreditAmount();
 				}
 
 			}
@@ -618,11 +829,11 @@ public class VoucherServiceImpl implements VoucherService{
 			System.out.println("test4");
 			double igstDebitAmount =0;
 			double cgstSgstDebitAmount=0;
-			double debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+			double debitAmount =v.getDebitAmount();
 			if(v.isCgstSgstPresent()) {
-				 cgstSgstDebitAmount = v.getCgstDebitAmount()+v.getSgstDebitAmount();
+				 cgstSgstDebitAmount = v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount();
 			}else {
-			   igstDebitAmount = v.getIgstDebitAmount();
+			   igstDebitAmount = v.getIgstDebitVoucher().getDebitAmount();
 			}
 			totalDebit=totalDebit+debitAmount+igstDebitAmount+cgstSgstDebitAmount;
 			totalAmount=totalAmount-totalDebit;

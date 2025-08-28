@@ -46,17 +46,17 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
 				if(v.isCreditDebit()) {
 					double debitAmount =0;
 					double creditAmount =0;
-					if(v!=null && v.getDebitAmount()!=null && (!v.getDebitAmount().equals(""))) {
-						debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+					if(v!=null && v.getDebitAmount()!=0) {
+						debitAmount =v.getDebitAmount();
 					}
-					if(v!=null && v.getCreditAmount()!=null && (!v.getCreditAmount().equals(""))) {
-						creditAmount =Double.parseDouble(v.getCreditAmount()!=null?v.getCreditAmount():"0");
+					if(v!=null && v.getCreditAmount()!=0) {
+						creditAmount =v.getCreditAmount();
 					}
 					totalCredit=totalCredit+creditAmount;
 					totalDebit=totalDebit+debitAmount;
 					totalAmount=totalAmount-debitAmount+creditAmount;
 				}else {
-					double debitAmount =Double.parseDouble(v.getDebitAmount()!=null?v.getDebitAmount():"0");
+					double debitAmount =v.getDebitAmount();
 					totalDebit=totalDebit+debitAmount;
 					totalAmount=totalAmount-debitAmount;
 

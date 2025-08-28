@@ -30,8 +30,8 @@ public class CreateVoucherDto {
 	
 	boolean isCreditDebit;
 	
-	String creditAmount ;
-	String debitAmount;
+	double creditAmount ;
+	double debitAmount;
 	Date createDate;
 	
 	String paymentType;
@@ -70,12 +70,7 @@ public class CreateVoucherDto {
 	public boolean isCreditDebit() {
 		return isCreditDebit;
 	}
-	public String getCreditAmount() {
-		return creditAmount;
-	}
-	public String getDebitAmount() {
-		return debitAmount;
-	}
+
 	public Date getCreateDate() {
 		return createDate;
 	}
@@ -115,12 +110,7 @@ public class CreateVoucherDto {
 	public void setCreditDebit(boolean isCreditDebit) {
 		this.isCreditDebit = isCreditDebit;
 	}
-	public void setCreditAmount(String creditAmount) {
-		this.creditAmount = creditAmount;
-	}
-	public void setDebitAmount(String debitAmount) {
-		this.debitAmount = debitAmount;
-	}
+
 	public void setCreateDate(Date createDate) {
 		this.createDate = createDate;
 	}
@@ -183,6 +173,18 @@ public class CreateVoucherDto {
 	}
 	public void setTotalAmount(double totalAmount) {
 		this.totalAmount = totalAmount;
+	}
+	public double getCreditAmount() {
+		return creditAmount;
+	}
+	public void setCreditAmount(double creditAmount) {
+		this.creditAmount = creditAmount;
+	}
+	public double getDebitAmount() {
+		return debitAmount;
+	}
+	public void setDebitAmount(double debitAmount) {
+		this.debitAmount = debitAmount;
 	}
 	
 	

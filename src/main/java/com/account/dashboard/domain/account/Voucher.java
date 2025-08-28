@@ -35,9 +35,15 @@ public class Voucher {
 	@ManyToOne
 	Ledger product;
 	
+	@ManyToOne
+	Voucher igstCreditVoucher;
+	
+	@ManyToOne
+	Voucher igstDebitVoucher;
+	
 	boolean isCreditDebit;	
-	String creditAmount ;
-	String debitAmount;
+	double creditAmount ;
+	double debitAmount;
 	Date createDate;
 	String paymentType;
  
@@ -46,16 +52,26 @@ public class Voucher {
 	// out side state
 	boolean igstPresent;
 	String igst;
-	double igstCreditAmount;
-	double igstDebitAmount;
 
 	boolean cgstSgstPresent;
+	@ManyToOne
+	Voucher cgstCreditVoucher;	
+	@ManyToOne
+	Voucher sgstCreditVoucher;
+	
+	@ManyToOne
+	Voucher cgstDebitVoucher;	
+	@ManyToOne
+	Voucher sgstDebitVoucher;
+	
+	
+//	
 	String cgst;
 	String sgst;
-	double cgstCreditAmount;
-	double cgstDebitAmount;
-	double sgstCreditAmount;
-	double sgstDebitAmount;
+//	double cgstCreditAmount;
+//	double cgstDebitAmount;
+//	double sgstCreditAmount;
+//	double sgstDebitAmount;
 	double totalAmount;
 
 	private double professionalGstAmount;
@@ -63,159 +79,212 @@ public class Voucher {
 	public Long getId() {
 		return id;
 	}
-	public String getCompanyName() {
-		return companyName;
-	}
-	public Ledger getLedger() {
-		return ledger;
-	}
-	public LedgerType getLedgerType() {
-		return ledgerType;
-	}
-	public VoucherType getVoucherType() {
-		return voucherType;
-	}
-	public Ledger getProduct() {
-		return product;
-	}
-	public boolean isCreditDebit() {
-		return isCreditDebit;
-	}
-	public String getCreditAmount() {
-		return creditAmount;
-	}
-	public String getDebitAmount() {
-		return debitAmount;
-	}
-	public Date getCreateDate() {
-		return createDate;
-	}
-	public String getPaymentType() {
-		return paymentType;
-	}
-	public boolean isDeleted() {
-		return isDeleted;
-	}
-	public boolean isIgstPresent() {
-		return igstPresent;
-	}
-	public String getIgst() {
-		return igst;
-	}
-	public boolean isCgstSgstPresent() {
-		return cgstSgstPresent;
-	}
-	public String getCgst() {
-		return cgst;
-	}
-	public String getSgst() {
-		return sgst;
-	}
+
 	public void setId(Long id) {
 		this.id = id;
 	}
+
+	public String getCompanyName() {
+		return companyName;
+	}
+
 	public void setCompanyName(String companyName) {
 		this.companyName = companyName;
 	}
-	public void setLedger(Ledger ledger) {
-		this.ledger = ledger;
-	}
-	public void setLedgerType(LedgerType ledgerType) {
-		this.ledgerType = ledgerType;
-	}
-	public void setVoucherType(VoucherType voucherType) {
-		this.voucherType = voucherType;
-	}
-	public void setProduct(Ledger product) {
-		this.product = product;
-	}
-	public void setCreditDebit(boolean isCreditDebit) {
-		this.isCreditDebit = isCreditDebit;
-	}
-	public void setCreditAmount(String creditAmount) {
-		this.creditAmount = creditAmount;
-	}
-	public void setDebitAmount(String debitAmount) {
-		this.debitAmount = debitAmount;
-	}
-	public void setCreateDate(Date createDate) {
-		this.createDate = createDate;
-	}
-	public void setPaymentType(String paymentType) {
-		this.paymentType = paymentType;
-	}
-	public void setDeleted(boolean isDeleted) {
-		this.isDeleted = isDeleted;
-	}
-	public void setIgstPresent(boolean igstPresent) {
-		this.igstPresent = igstPresent;
-	}
-	public void setIgst(String igst) {
-		this.igst = igst;
-	}
-	public void setCgstSgstPresent(boolean cgstSgstPresent) {
-		this.cgstSgstPresent = cgstSgstPresent;
-	}
-	public void setCgst(String cgst) {
-		this.cgst = cgst;
-	}
-	public void setSgst(String sgst) {
-		this.sgst = sgst;
-	}
+
 	public Long getEstimateId() {
 		return estimateId;
 	}
+
 	public void setEstimateId(Long estimateId) {
 		this.estimateId = estimateId;
 	}
-	public double getProfessionalGstAmount() {
-		return professionalGstAmount;
+
+	public Ledger getLedger() {
+		return ledger;
 	}
-	public void setProfessionalGstAmount(double professionalGstAmount) {
-		this.professionalGstAmount = professionalGstAmount;
+
+	public void setLedger(Ledger ledger) {
+		this.ledger = ledger;
 	}
-	public double getIgstCreditAmount() {
-		return igstCreditAmount;
+
+	public LedgerType getLedgerType() {
+		return ledgerType;
 	}
-	public double getIgstDebitAmount() {
-		return igstDebitAmount;
+
+	public void setLedgerType(LedgerType ledgerType) {
+		this.ledgerType = ledgerType;
 	}
-	public double getCgstCreditAmount() {
-		return cgstCreditAmount;
+
+	public VoucherType getVoucherType() {
+		return voucherType;
 	}
-	public double getCgstDebitAmount() {
-		return cgstDebitAmount;
+
+	public void setVoucherType(VoucherType voucherType) {
+		this.voucherType = voucherType;
 	}
-	public double getSgstCreditAmount() {
-		return sgstCreditAmount;
+
+	public Ledger getProduct() {
+		return product;
 	}
-	public double getSgstDebitAmount() {
-		return sgstDebitAmount;
+
+	public void setProduct(Ledger product) {
+		this.product = product;
 	}
-	public void setIgstCreditAmount(double igstCreditAmount) {
-		this.igstCreditAmount = igstCreditAmount;
+
+	public Voucher getIgstCreditVoucher() {
+		return igstCreditVoucher;
 	}
-	public void setIgstDebitAmount(double igstDebitAmount) {
-		this.igstDebitAmount = igstDebitAmount;
+
+	public void setIgstCreditVoucher(Voucher igstCreditVoucher) {
+		this.igstCreditVoucher = igstCreditVoucher;
 	}
-	public void setCgstCreditAmount(double cgstCreditAmount) {
-		this.cgstCreditAmount = cgstCreditAmount;
+
+	public Voucher getIgstDebitVoucher() {
+		return igstDebitVoucher;
 	}
-	public void setCgstDebitAmount(double cgstDebitAmount) {
-		this.cgstDebitAmount = cgstDebitAmount;
+
+	public void setIgstDebitVoucher(Voucher igstDebitVoucher) {
+		this.igstDebitVoucher = igstDebitVoucher;
 	}
-	public void setSgstCreditAmount(double sgstCreditAmount) {
-		this.sgstCreditAmount = sgstCreditAmount;
+
+	public boolean isCreditDebit() {
+		return isCreditDebit;
 	}
-	public void setSgstDebitAmount(double sgstDebitAmount) {
-		this.sgstDebitAmount = sgstDebitAmount;
+
+	public void setCreditDebit(boolean isCreditDebit) {
+		this.isCreditDebit = isCreditDebit;
 	}
+
+    
+
+	public double getCreditAmount() {
+		return creditAmount;
+	}
+
+	public void setCreditAmount(double creditAmount) {
+		this.creditAmount = creditAmount;
+	}
+
+	public double getDebitAmount() {
+		return debitAmount;
+	}
+
+	public void setDebitAmount(double debitAmount) {
+		this.debitAmount = debitAmount;
+	}
+
+	public Date getCreateDate() {
+		return createDate;
+	}
+
+	public void setCreateDate(Date createDate) {
+		this.createDate = createDate;
+	}
+
+	public String getPaymentType() {
+		return paymentType;
+	}
+
+	public void setPaymentType(String paymentType) {
+		this.paymentType = paymentType;
+	}
+
+	public boolean isDeleted() {
+		return isDeleted;
+	}
+
+	public void setDeleted(boolean isDeleted) {
+		this.isDeleted = isDeleted;
+	}
+
+	public boolean isIgstPresent() {
+		return igstPresent;
+	}
+
+	public void setIgstPresent(boolean igstPresent) {
+		this.igstPresent = igstPresent;
+	}
+
+	public boolean isCgstSgstPresent() {
+		return cgstSgstPresent;
+	}
+
+	public void setCgstSgstPresent(boolean cgstSgstPresent) {
+		this.cgstSgstPresent = cgstSgstPresent;
+	}
+
+	public Voucher getCgstCreditVoucher() {
+		return cgstCreditVoucher;
+	}
+
+	public void setCgstCreditVoucher(Voucher cgstCreditVoucher) {
+		this.cgstCreditVoucher = cgstCreditVoucher;
+	}
+
+	public Voucher getSgstCreditVoucher() {
+		return sgstCreditVoucher;
+	}
+
+	public void setSgstCreditVoucher(Voucher sgstCreditVoucher) {
+		this.sgstCreditVoucher = sgstCreditVoucher;
+	}
+
+	public Voucher getCgstDebitVoucher() {
+		return cgstDebitVoucher;
+	}
+
+	public void setCgstDebitVoucher(Voucher cgstDebitVoucher) {
+		this.cgstDebitVoucher = cgstDebitVoucher;
+	}
+
+	public Voucher getSgstDebitVoucher() {
+		return sgstDebitVoucher;
+	}
+
+	public void setSgstDebitVoucher(Voucher sgstDebitVoucher) {
+		this.sgstDebitVoucher = sgstDebitVoucher;
+	}
+
 	public double getTotalAmount() {
 		return totalAmount;
 	}
+
 	public void setTotalAmount(double totalAmount) {
 		this.totalAmount = totalAmount;
 	}
-	
+
+	public double getProfessionalGstAmount() {
+		return professionalGstAmount;
+	}
+
+	public void setProfessionalGstAmount(double professionalGstAmount) {
+		this.professionalGstAmount = professionalGstAmount;
+	}
+
+	public String getIgst() {
+		return igst;
+	}
+
+	public void setIgst(String igst) {
+		this.igst = igst;
+	}
+
+	public String getCgst() {
+		return cgst;
+	}
+
+	public void setCgst(String cgst) {
+		this.cgst = cgst;
+	}
+
+	public String getSgst() {
+		return sgst;
+	}
+
+	public void setSgst(String sgst) {
+		this.sgst = sgst;
+	}
+
 	
 }

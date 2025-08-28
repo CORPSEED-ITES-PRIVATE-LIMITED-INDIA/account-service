@@ -406,7 +406,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");			
 					v.setLedger(ledger);
@@ -425,7 +425,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double otherGst =updatePaymentDto.getOtherGst();
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");
 
@@ -460,7 +460,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				double otherGst =updatePaymentDto.getOtherGst();
 				double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 				double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-				v.setDebitAmount(totalDebit+"");
+				v.setDebitAmount(totalDebit);
 				v.setIgstPresent(true);//cgst+sgst concept
 				v.setIgst(totaDebitGst+"");
 
@@ -515,7 +515,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			double otherGst =updatePaymentDto.getOtherGst();
 			double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 			double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-			v.setDebitAmount(totalDebit+"");
+			v.setDebitAmount(totalDebit);
 			v.setIgstPresent(true);//cgst+sgst concept
 			v.setIgst(totaDebitGst+"");			
 			v.setLedger(ledger);
@@ -540,7 +540,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double otherGst =updatePaymentDto.getOtherGst();
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");			
 					v.setLedger(ledger);
@@ -561,7 +561,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double otherGst =updatePaymentDto.getOtherGst();
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");			
 					v.setLedger(ledger);
@@ -737,7 +737,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			String org=(String)feignLeadClient.get("state");
 
-			v.setCreditAmount(totalCredit+"");
+			v.setCreditAmount(totalCredit);
 			if(organization!=null && organization.getState()!=null && organization.getState().equals(org)) {
 				System.out.println("test222222");
 				double cgst=totalCreditGst/2;
@@ -771,7 +771,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				tdsRegister.setVoucherType(vType);
 				tdsRegister.setCreditDebit(true);
 				tdsRegister.setCreateDate(new Date());
-				tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+				tdsRegister.setCreditAmount(paymentRegister.getTdsAmount());
 				Ledger l = ledgerRepository.findByName(paymentRegister.getCompanyName());
 				if(l!=null) {
 					tdsRegister.setLedger(l);
@@ -832,7 +832,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				totalAmountRegister.setVoucherType(vType);
 				totalAmountRegister.setCreditDebit(true);
 				totalAmountRegister.setCreateDate(new Date());
-				totalAmountRegister.setDebitAmount(totalEstimateAmount+"");
+				totalAmountRegister.setDebitAmount(totalEstimateAmount);
 				totalAmountRegister.setLedger(ledger);
 				Ledger prod =ledgerRepository.findByName(paymentRegister.getServiceName());
 				if(prod!=null) {
@@ -878,7 +878,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double otherGst =paymentRegister.getOtherGst();
 					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setCreditAmount(totalCredit+"");
+					v.setCreditAmount(totalCredit);
 					v.setCreditDebit(true);
 					v.setCreateDate(new Date());
 					//					v.setIgstPresent(true);//cgst+sgst concept
@@ -915,7 +915,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						Voucher tdsRegister =new Voucher();
 						tdsRegister.setVoucherType(vType);
 						tdsRegister.setCreditDebit(true);
-						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount());
 						tdsRegister.setCreateDate(new Date());
 						tdsRegister.setLedger(ledger);
 						tdsRegister.setEstimateId(estimateId);
@@ -955,7 +955,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					totalAmountRegister.setVoucherType(vType);
 					totalAmountRegister.setCreditDebit(true);
 					totalAmountRegister.setCreateDate(new Date());
-					totalAmountRegister.setDebitAmount(totalEstimateAmount+"");
+					totalAmountRegister.setDebitAmount(totalEstimateAmount);
 					totalAmountRegister.setLedger(l);
 					prod =ledgerRepository.findByName(paymentRegister.getServiceName());
 					if(prod!=null) {
@@ -988,7 +988,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
 					v.setCreditDebit(true);
-					v.setCreditAmount(totalDebit+"");
+					v.setCreditAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");			
 					v.setLedger(l);
@@ -1015,7 +1015,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						Voucher tdsRegister =new Voucher();
 						tdsRegister.setVoucherType(vType);
 						tdsRegister.setCreditDebit(true);
-						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount());
 						tdsRegister.setCreateDate(new Date());
 						tdsRegister.setLedger(ledger);
 						tdsRegister.setEstimateId(estimateId);
@@ -1213,7 +1213,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			String org=(String)feignLeadClient.get("state");
 
-			v.setCreditAmount(totalCredit+"");
+			v.setCreditAmount(totalCredit);
 			if(organization!=null && organization.getState()!=null && organization.getState().equals(org)) {
 				System.out.println("test222222");
 				double cgst=totalCreditGst/2;
@@ -1251,7 +1251,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				tdsRegister.setVoucherType(vType);
 				tdsRegister.setCreditDebit(true);
 				tdsRegister.setCreateDate(new Date());
-				tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+				tdsRegister.setCreditAmount(paymentRegister.getTdsAmount());
 				Ledger l = ledgerRepository.findByName(paymentRegister.getCompanyName());
 				if(l!=null) {
 					tdsRegister.setLedger(l);
@@ -1317,7 +1317,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				totalAmountRegister.setVoucherType(vType);
 				totalAmountRegister.setCreditDebit(true);
 				totalAmountRegister.setCreateDate(new Date());
-				totalAmountRegister.setDebitAmount(totalEstimateAmount+"");
+				totalAmountRegister.setDebitAmount(totalEstimateAmount);
 				if(ledger==null) {
 					ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
 				}
@@ -1372,7 +1372,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double otherGst =paymentRegister.getOtherGst();
 					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setCreditAmount(totalCredit+"");
+					v.setCreditAmount(totalCredit);
 					v.setCreditDebit(true);
 					v.setCreateDate(new Date());
 					//					v.setIgstPresent(true);//cgst+sgst concept
@@ -1416,7 +1416,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						Voucher tdsRegister =new Voucher();
 						tdsRegister.setVoucherType(vType);
 						tdsRegister.setCreditDebit(true);
-						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount());
 						tdsRegister.setCreateDate(new Date());
 						tdsRegister.setLedger(ledger);
 						tdsRegister.setEstimateId(estimateId);
@@ -1707,7 +1707,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");			
 					v.setLedger(ledger);
@@ -1726,7 +1726,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double otherGst =updatePaymentDto.getOtherGst();
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");
 
@@ -1761,7 +1761,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				double otherGst =updatePaymentDto.getOtherGst();
 				double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 				double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-				v.setDebitAmount(totalDebit+"");
+				v.setDebitAmount(totalDebit);
 				v.setIgstPresent(true);//cgst+sgst concept
 				v.setIgst(totaDebitGst+"");
 
@@ -1803,7 +1803,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");			
 					v.setLedger(ledger);
@@ -1829,7 +1829,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double otherGst =updatePaymentDto.getOtherGst();
 					double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 					double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-					v.setDebitAmount(totalDebit+"");
+					v.setDebitAmount(totalDebit);
 					v.setIgstPresent(true);//cgst+sgst concept
 					v.setIgst(totaDebitGst+"");
 
@@ -1863,7 +1863,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				double otherGst =updatePaymentDto.getOtherGst();
 				double totalDebit=govermentfees+professionalFees+serviceCharge+otherFees;
 				double totaDebitGst = govermentGst+professionalGst+getServiceGst+otherGst;
-				v.setDebitAmount(totalDebit+"");
+				v.setDebitAmount(totalDebit);
 				v.setIgstPresent(true);//cgst+sgst concept
 				v.setIgst(totaDebitGst+"");
 
@@ -2001,7 +2001,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
 			String org=(String)feignLeadClient.get("state");
 
-			v.setCreditAmount(totalCredit+"");
+			v.setCreditAmount(totalCredit);
 			if(organization!=null && organization.getState()!=null && organization.getState().equals(org)) {
 				System.out.println("test222222");
 				double cgst=totalCreditGst/2;
@@ -2039,7 +2039,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				tdsRegister.setVoucherType(vType);
 				tdsRegister.setCreditDebit(true);
 				tdsRegister.setCreateDate(new Date());
-				tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+				tdsRegister.setCreditAmount(paymentRegister.getTdsAmount());
 				Ledger l = ledgerRepository.findByName(paymentRegister.getCompanyName());
 				if(l!=null) {
 					tdsRegister.setLedger(l);
@@ -2109,11 +2109,11 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				totalAmountRegister.setVoucherType(vType);
 				totalAmountRegister.setCreditDebit(true);
 				totalAmountRegister.setCreateDate(new Date());
-				totalAmountRegister.setDebitAmount(proFees+"");
+				totalAmountRegister.setDebitAmount(proFees);
 
 				totalAmountRegister.setTotalAmount(totalEstimateAmount);
 				totalAmountRegister.setIgst(gst+"");
-				totalAmountRegister.setIgstDebitAmount(gstAmount);
+//				totalAmountRegister.setIgstDebitAmount(gstAmount);
 				//company
 				if(ledger==null) {
 					ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
@@ -2163,14 +2163,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					double serviceCharge =paymentRegister.getServiceCharge();
 					double otherFees =paymentRegister.getOtherFees();
 					double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;//  create same gov fees
-					v.setCreditAmount(totalCredit+"");
+					v.setCreditAmount(totalCredit);
 
 					totalCredit=totalCredit+ paymentRegister.getProfessionalGstAmount();
 					v.setTotalAmount(totalCredit);
 
 					double totalCreditGst = professionalGst;
 
-					v.setCreditAmount(totalCredit+"");
+					v.setCreditAmount(totalCredit);
 					v.setCreditDebit(true);
 					v.setCreateDate(new Date());
 					//					v.setIgstPresent(true);//cgst+sgst concept
@@ -2216,7 +2216,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						Voucher tdsRegister =new Voucher();
 						tdsRegister.setVoucherType(vType);
 						tdsRegister.setCreditDebit(true);
-						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount()+"");
+						tdsRegister.setCreditAmount(paymentRegister.getTdsAmount());
 						tdsRegister.setCreateDate(new Date());
 						tdsRegister.setLedger(ledger);
 						tdsRegister.setEstimateId(estimateId);
