@@ -1,6 +1,7 @@
 package com.account.dashboard.serviceImpl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +31,10 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	@Override
 	public List<Map<String, Object>> getAllProfit() {
 
-		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<String>gList=Arrays.asList("Sales Account",
+				"Direct Incomes");
+//		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
@@ -79,7 +83,10 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	@Override
 	public List<Map<String, Object>> getAllLoss() {
 
-		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<String>gList=Arrays.asList("Purchase Accounts",
+				"Indirect Incomes","Direct Expenses","Indirect Expenses");
+//		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());

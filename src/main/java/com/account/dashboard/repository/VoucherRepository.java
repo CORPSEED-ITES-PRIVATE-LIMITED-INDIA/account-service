@@ -23,6 +23,9 @@ public interface VoucherRepository extends JpaRepository<Voucher, Long> {
 	@Query(value = "SELECT * FROM voucher v WHERE v.ledger_id in (:ledgerList)", nativeQuery = true)
 	List<Voucher> findAllByLedgerIdIn(List<Long> ledgerList);
 	
+	@Query(value = "SELECT * FROM voucher v WHERE v.ledger_id in (:ledgerList) and v.create_date BETWEEN :d1 AND :d2", nativeQuery = true)
+	List<Voucher> findByLedgerIdInAndInBetween(List<Long> ledgerList,String d1, String d2);
+	
 	@Query(value = "SELECT * FROM voucher v WHERE v.estimate_id in (:estimateId)", nativeQuery = true)
 	List<Voucher> findByEstimateId(Long estimateId);
 

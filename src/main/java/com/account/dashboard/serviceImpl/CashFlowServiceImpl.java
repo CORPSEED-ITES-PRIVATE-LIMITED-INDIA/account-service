@@ -1,6 +1,7 @@
 package com.account.dashboard.serviceImpl;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +31,10 @@ public class CashFlowServiceImpl implements CashFlowService {
 	@Override
 	public List<Map<String, Object>> getAllInFlow() {
 
-		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<String>gList=Arrays.asList("Current Liabilities","Current Assets","Suspense Account"
+				,"Direct Expenses","Indirect Expenses");
+//		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
@@ -79,7 +83,10 @@ public class CashFlowServiceImpl implements CashFlowService {
 	@Override
 	public List<Map<String, Object>> getAllOutFlow() {
 
-		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<String>gList=Arrays.asList("Loans","Current Liabilities"
+				,"Current Assets","Suspense Account","Direct Expenses","Indirect Expenses");
+//		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
