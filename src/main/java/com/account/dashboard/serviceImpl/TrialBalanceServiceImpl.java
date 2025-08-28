@@ -33,9 +33,13 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
 		List<LedgerType> group = ledgerTypeRepository.findAll();
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
+			System.out.println("Group name .."+g.getId());
+
 			Map<String,Object>map=new HashMap<>();
 			List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
-	         LedgerType ledgerType = ledgerTypeRepository.findById(g.getId()).get();
+			System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
+
+//	         LedgerType ledgerType = ledgerTypeRepository.findById(g.getId()).get();
 			List<Voucher>voucherList=voucherRepository.findAllByLedgerIdIn(ledgerList);
 
 			double totalCredit=0;
@@ -63,7 +67,7 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
 				}
 			}
 			map.put("totalCredit", totalCredit);
-			map.put("groupName", ledgerType.getName());
+			map.put("groupName", g.getName());
 			map.put("totalDebit", totalDebit);
 			map .put("totalAmount", totalAmount);
 			result.add(map);

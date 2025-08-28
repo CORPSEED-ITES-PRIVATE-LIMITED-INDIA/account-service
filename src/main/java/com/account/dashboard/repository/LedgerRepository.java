@@ -11,7 +11,7 @@ import com.account.dashboard.domain.account.Ledger;
 @Repository
 public interface LedgerRepository extends JpaRepository<Ledger, Long> {
 
-	@Query(value = "SELECT id FROM ledger l WHERE l.id =:id", nativeQuery = true)
+	@Query(value = "SELECT id FROM ledger l WHERE l.ledger_type_id =:id", nativeQuery = true)
 	List<Long> findByLedgerTypeId(Long id);
 
 	@Query(value = "SELECT * FROM ledger l WHERE name=:companyName limit 1", nativeQuery = true)
