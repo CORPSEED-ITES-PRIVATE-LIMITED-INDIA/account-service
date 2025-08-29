@@ -488,6 +488,7 @@ public class VoucherServiceImpl implements VoucherService{
 //		List<Voucher> vS = voucherRepository.findAllByLedgerIdOrProductId(ledgerId,ledgerId);
 		
 //		List<Voucher> productList = voucherRepository.findAllByProductId(ledgerId);
+//		System.out.println(productList);
 //		if(voucherList!=null) {
 //			voucherList.addAll(productList);
 //		}else {
@@ -549,8 +550,9 @@ public class VoucherServiceImpl implements VoucherService{
 					}
 					if(!v.isCgstSgstPresent()) {
 				           System.out.println("aaaaaaaaaaa555");
-
-						debitGstAmount =(v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount());
+				           double cgstDebitVoucher = v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0;
+				           double sgstDebitVoucher = v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0;
+						debitGstAmount =cgstDebitVoucher+sgstDebitVoucher;
 					}
 				}else {
 			           System.out.println("aaaaaaaaaaa666");
