@@ -45,7 +45,8 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
 			System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
 
 //	         LedgerType ledgerType = ledgerTypeRepository.findById(g.getId()).get();
-			List<Voucher>voucherList=voucherRepository.findAllByLedgerIdIn(ledgerList);
+//			List<Voucher>voucherList=voucherRepository.findAllByLedgerIdIn(ledgerList);
+			List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
 
 			double totalCredit=0;
 			double totalDebit=0;
