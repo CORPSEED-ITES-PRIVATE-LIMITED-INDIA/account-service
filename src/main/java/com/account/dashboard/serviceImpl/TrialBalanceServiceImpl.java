@@ -30,7 +30,7 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
 
 
 	@Override
-	public List<Map<String, Object>> getAllTrialBalance() {
+	public List<Map<String, Object>> getAllTrialBalance(String startDate, String endDate) {
 		List<String>gList=Arrays.asList("Capital Account","Loans","Current Liabilities","Fixed Assets"
 				,"Suspense Account","Current Assets","Suspense Account","Direct Incomes",
 				"Indirect Incomes","Direct Expenses","Indirect Expenses");

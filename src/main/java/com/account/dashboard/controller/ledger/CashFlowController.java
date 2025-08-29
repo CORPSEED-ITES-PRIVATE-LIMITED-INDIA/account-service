@@ -6,6 +6,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.account.dashboard.service.CashFlowService;
@@ -18,13 +19,13 @@ public class CashFlowController {
 	CashFlowService cashFlowService;
 	
 	@GetMapping(UrlsMapping.GET_ALL_IN_FLOW)
-	public List<Map<String,Object>> getAllInFlow(){
-		List<Map<String,Object>> res=cashFlowService.getAllInFlow();	
+	public List<Map<String,Object>> getAllInFlow(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>> res=cashFlowService.getAllInFlow(startDate,endDate);	
 		return res;
 	}
 	@GetMapping(UrlsMapping.GET_ALL_OUT_FLOW)
-	public List<Map<String,Object>> getAllOutFlow(){
-		List<Map<String,Object>> res=cashFlowService.getAllOutFlow();	
+	public List<Map<String,Object>> getAllOutFlow(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>> res=cashFlowService.getAllOutFlow(startDate,endDate);	
 		return res;
 	}
 }

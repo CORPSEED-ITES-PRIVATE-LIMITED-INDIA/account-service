@@ -35,8 +35,8 @@ public class TrialBalanceController {
 	
 	
 	@GetMapping(UrlsMapping.GET_ALL_TRIAL_BALANCE)
-	public List<Map<String,Object>> getAllTrialBalance(){
-		List<Map<String,Object>> res=trialBalanceService.getAllTrialBalance();	
+	public List<Map<String,Object>> getAllTrialBalance(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>> res=trialBalanceService.getAllTrialBalance(startDate,endDate);	
 		return res;
 	}
 }

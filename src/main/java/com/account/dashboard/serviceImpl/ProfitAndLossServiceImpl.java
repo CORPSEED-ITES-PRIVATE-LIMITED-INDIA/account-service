@@ -29,7 +29,7 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	VoucherRepository voucherRepository;
 
 	@Override
-	public List<Map<String, Object>> getAllProfit() {
+	public List<Map<String, Object>> getAllProfit(String startDate, String endDate) {
 
 		List<String>gList=Arrays.asList("Sales Account",
 				"Direct Incomes");
@@ -81,7 +81,7 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	}
 
 	@Override
-	public List<Map<String, Object>> getAllLoss() {
+	public List<Map<String, Object>> getAllLoss(String startDate, String endDate) {
 
 		List<String>gList=Arrays.asList("Purchase Accounts",
 				"Indirect Incomes","Direct Expenses","Indirect Expenses");
@@ -131,5 +131,6 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 		return result;
 	
 	}
+
 
 }
