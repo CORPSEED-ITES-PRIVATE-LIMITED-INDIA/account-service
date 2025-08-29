@@ -159,7 +159,7 @@ public interface UrlsMapping {
 		public static final String GET_ALL_UNBILLED=PREFIX+ "/ledgerType/getAllUnbilled";
 		public static final String GET_ALL_UNBILLED_AMOUNT=PREFIX+ "/ledgerType/getAllUnbilledAmount";
 
-// get all trial balance
+        // get all trial balance
 		
 		public static final String GET_ALL_TRIAL_BALANCE=PREFIX+ "/trialBalance/getAllTrialBalance";
 
@@ -172,5 +172,9 @@ public interface UrlsMapping {
 		
 		public static final String GET_ALL_PROFIT=PREFIX+ "/cashFlow/getAllProfit";
 		public static final String GET_ALL_LOSS=PREFIX+ "/cashFlow/getAllLoss";
+		
+		// get All Balance sheet liabilities
+		public static final String GET_ALL_BALANCE_SHEET_LIABILITIES=PREFIX+ "/balanceSheet/getAllBalanceSheetLiabilities";
+		public static final String GET_ALL_BALANCE_SHEET_ASSETS=PREFIX+ "/balanceSheet/getAllBalanceSheetAssets";
 
 }
