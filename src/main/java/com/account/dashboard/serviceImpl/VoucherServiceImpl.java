@@ -162,14 +162,18 @@ public class VoucherServiceImpl implements VoucherService{
 		return v;
 	}
 	
-	public Voucher createCgstCredit(CreateVoucherDto createVoucherDto,double cgstAmount) {
+	public Voucher createCgstCredit(CreateVoucherDto createVoucherDto,double cgstAmount,String type) {
 		Boolean flag=false;
 		Voucher v = new Voucher();
 		v.setCompanyName(createVoucherDto.getCompanyName());
 
 		if(createVoucherDto.getIgstCreditAmount()!=0) {
 			v.setCreditDebit(true);
-			v.setCreditAmount(cgstAmount);
+			if("credit".equals(type)) {
+				v.setCreditAmount(cgstAmount);
+			}else{
+				v.setDebitAmount(cgstAmount);
+			}
 
 		}
 		v.setCreateDate(new Date());
@@ -242,13 +246,19 @@ public class VoucherServiceImpl implements VoucherService{
 			v.setCreditAmount(createVoucherDto.getCreditAmount());
 			
 			v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
-//			v.setCgst(createVoucherDto.getCgst());
-//			v.setCgstCreditAmount(createVoucherDto.getCgstCreditAmount());
-//			v.setCgstDebitAmount(createVoucherDto.getCgstDebitAmount());
-			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount());
-			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount());
-			v.setCgstCreditVoucher(cgstCredit);
-            v.setCgstDebitVoucher(cgstDedit);
+            if(createVoucherDto.getCgstCreditAmount()>0) {
+    			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
+    			v.setCgstCreditVoucher(cgstCredit);
+            }
+            if(createVoucherDto.getCgstDebitAmount()>0) {
+    			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
+                v.setCgstDebitVoucher(cgstDedit);
+
+            }
+//			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
+//			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
+//			v.setCgstCreditVoucher(cgstCredit);
+//            v.setCgstDebitVoucher(cgstDedit);
             if(createVoucherDto.getSgstCreditAmount()>0) {
     			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"credit");
                 v.setSgstCreditVoucher(sgstCredit);
@@ -475,6 +485,8 @@ public class VoucherServiceImpl implements VoucherService{
 	public Map<String, Object> getAllVoucherByLedgerId(Long ledgerId) {
 
 		List<Voucher> voucherList = voucherRepository.findAllByLedgerId(ledgerId);
+		List<Voucher> vS = voucherRepository.findAllByLedgerIdOrProductId(ledgerId,ledgerId);
+
 		Map<String,Object>result = new HashMap<>();
 		List<Map<String, Object>>res= new ArrayList<>();
 		double totalCredit=0;
