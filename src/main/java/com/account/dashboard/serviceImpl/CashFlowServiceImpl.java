@@ -29,7 +29,7 @@ public class CashFlowServiceImpl implements CashFlowService {
 	VoucherRepository voucherRepository;
 
 	@Override
-	public List<Map<String, Object>> getAllInFlow() {
+	public List<Map<String, Object>> getAllInFlow(String startDate, String endDate) {
 
 		List<String>gList=Arrays.asList("Current Liabilities","Current Assets","Suspense Account"
 				,"Direct Expenses","Indirect Expenses");
@@ -81,7 +81,7 @@ public class CashFlowServiceImpl implements CashFlowService {
 	}
 
 	@Override
-	public List<Map<String, Object>> getAllOutFlow() {
+	public List<Map<String, Object>> getAllOutFlow(String startDate, String endDate) {
 
 		List<String>gList=Arrays.asList("Loans","Current Liabilities"
 				,"Current Assets","Suspense Account","Direct Expenses","Indirect Expenses");

@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.account.dashboard.service.ProfitAndLossService;
@@ -17,14 +18,14 @@ public class ProfitAndLossController {
 	ProfitAndLossService profitAndLossService;
 	
 	@GetMapping(UrlsMapping.GET_ALL_PROFIT)
-	public List<Map<String,Object>> getAllProfit(){
-		List<Map<String,Object>> res=profitAndLossService.getAllProfit();	
+	public List<Map<String,Object>> getAllProfit(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>> res=profitAndLossService.getAllProfit(startDate,endDate);	
 		return res;
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_LOSS)
-	public List<Map<String,Object>> getAllLoss(){
-		List<Map<String,Object>> res=profitAndLossService.getAllLoss();	
+	public List<Map<String,Object>> getAllLoss(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>> res=profitAndLossService.getAllLoss(startDate,endDate);	
 		return res;
 	}
 	

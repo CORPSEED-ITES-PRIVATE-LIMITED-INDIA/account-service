@@ -8,8 +8,9 @@ import org.springframework.stereotype.Service;
 @Service
 public interface ProfitAndLossService {
 
-	List<Map<String, Object>> getAllProfit();
 
-	List<Map<String, Object>> getAllLoss();
+	List<Map<String, Object>> getAllProfit(String startDate, String endDate);
+
+	List<Map<String, Object>> getAllLoss(String startDate, String endDate);
 
 }
