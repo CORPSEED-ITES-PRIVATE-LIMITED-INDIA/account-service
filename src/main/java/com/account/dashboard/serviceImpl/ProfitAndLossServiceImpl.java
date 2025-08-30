@@ -112,8 +112,11 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 		List<String>gList=Arrays.asList("Sales Account",
 				"Direct Incomes");
 //		List<LedgerType> group = ledgerTypeRepository.findAll();
+		Map<String, Object>res=new HashMap<>();
 		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 		List<Map<String, Object>>result=new ArrayList<>();
+		double totalSum=0;
+
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
 
@@ -149,16 +152,19 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 
 				}
 			}
-			double loss = getLossCount(startDate,endDate);
-			double grossProfit = totalAmount-loss;
+
 			map.put("totalCredit", totalCredit);
 			map.put("groupName", g.getName());
 			map.put("totalDebit", totalDebit);
 			map .put("totalAmount", totalAmount);
-			map .put("grossProfit", grossProfit);
-
+            totalSum=totalSum+totalAmount;
 			result.add(map);
 		}
+		double loss = getLossCount(startDate,endDate);
+		double grossProfit = totalSum-loss;
+		res .put("totalSum", totalSum);
+		res .put("data", result);
+		res .put("grossProfit", grossProfit);
 		return result;
 	
 	}
