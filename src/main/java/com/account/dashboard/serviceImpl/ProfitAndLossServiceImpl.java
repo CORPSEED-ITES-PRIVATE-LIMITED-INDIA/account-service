@@ -27,6 +27,84 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	
 	@Autowired
 	VoucherRepository voucherRepository;
+	
+
+	public double getLossCount(String startDate, String endDate) {
+
+		List<String>gList=Arrays.asList("Purchase Account","Direct Expenses");
+//		List<LedgerType> group = ledgerTypeRepository.findAll();
+		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+		List<Map<String, Object>>result=new ArrayList<>();
+		double allPurchase=0;
+
+		for(LedgerType g:group) {
+			System.out.println("Group name .."+g.getName());
+
+			Map<String,Object>map=new HashMap<>();
+			List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
+			System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
+
+//	         LedgerType ledgerType = ledgerTypeRepository.findById(g.getId()).get();
+			List<Voucher>voucherList=voucherRepository.findAllByLedgerIdIn(ledgerList);
+//			List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
+
+			double totalCredit=0;
+			double totalDebit=0;
+			double totalAmount=0;
+			double indirectExpenses=0;
+			System.out.println("..."+voucherList.size());
+			for(Voucher v:voucherList) {			
+				if(v.isCreditDebit()) {
+					double debitAmount =0;
+					double creditAmount =0;
+					if(v!=null && v.getDebitAmount()!=0) {
+						debitAmount =v.getDebitAmount();
+						String gName = g.getName();
+                         System.out.println("gName .. . . "+gName);
+						if("Purchase Account".equals(gName) ||"Direct Expenses".equals(gName)) {
+							allPurchase=allPurchase+debitAmount;
+						}
+						if("Indirect Incomes".equals(gName) ||"Indirect Expenses".equals(gName)) {
+							indirectExpenses=indirectExpenses+debitAmount;
+						}
+					}
+					if(v!=null && v.getCreditAmount()!=0) {
+						creditAmount =v.getCreditAmount();
+						String gName = g.getName();
+                        System.out.println("gName .. . . "+gName);
+
+						if("Purchase Account".equals(gName) ||"Direct Expenses".equals(gName)) {
+							allPurchase=allPurchase-creditAmount;
+						}
+						if("Indirect Incomes".equals(gName) ||"Indirect Expenses".equals(gName)) {
+							indirectExpenses=indirectExpenses-creditAmount;
+						}
+					}
+					totalCredit=totalCredit+creditAmount;
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount+creditAmount;
+					
+				}else {
+					double debitAmount =v.getDebitAmount();
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount;
+					String gName = g.getName();
+                    System.out.println("gName .. . . "+gName);
+
+					if("Purchase Account".equals(gName) ||"Direct Expenses".equals(gName)) {
+						allPurchase=allPurchase+debitAmount;
+					}
+					if("Indirect Incomes".equals(gName) ||"Indirect Expenses".equals(gName)) {
+						indirectExpenses=indirectExpenses+debitAmount;
+					}
+
+				}
+			}
+
+		}
+		return allPurchase;
+	
+	}
 
 	@Override
 	public List<Map<String, Object>> getAllProfit(String startDate, String endDate) {
@@ -71,10 +149,14 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 
 				}
 			}
+			double loss = getLossCount(startDate,endDate);
+			double grossProfit = totalAmount-loss;
 			map.put("totalCredit", totalCredit);
 			map.put("groupName", g.getName());
 			map.put("totalDebit", totalDebit);
 			map .put("totalAmount", totalAmount);
+			map .put("grossProfit", grossProfit);
+
 			result.add(map);
 		}
 		return result;
