@@ -164,13 +164,17 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	}
 
 	@Override
-	public List<Map<String, Object>> getAllLoss(String startDate, String endDate) {
+	public Map<String, Object> getAllLoss(String startDate, String endDate) {
 
 		List<String>gList=Arrays.asList("Purchase Account",
 				"Indirect Incomes","Direct Expenses","Indirect Expenses");
 //		List<LedgerType> group = ledgerTypeRepository.findAll();
 		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+		Map<String,Object>res=new HashMap<>();
 		List<Map<String, Object>>result=new ArrayList<>();
+		double allPurchase=0;
+		double indirectExpenses=0;
+
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getName());
 
@@ -185,8 +189,8 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 			double totalCredit=0;
 			double totalDebit=0;
 			double totalAmount=0;
-			double allPurchase=0;
-			double indirectExpenses=0;
+//			double allPurchase=0;
+//			double indirectExpenses=0;
 			System.out.println("..."+voucherList.size());
 			for(Voucher v:voucherList) {			
 				if(v.isCreditDebit()) {
@@ -239,18 +243,36 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 			map.put("groupName", g.getName());
 			map.put("totalDebit", totalDebit);
 			map .put("totalAmount", totalAmount);
-			map .put("allPurchaseLoss", allPurchase);
-			double totalSale = totalSalesCount(startDate,endDate);
-            double grossProfit=totalSale-allPurchase;
-			map .put("totalSale", totalSale);
-			map .put("grossProfit", grossProfit);
-			map .put("indirectExpenses", indirectExpenses);
-			double nettProfit = grossProfit-indirectExpenses;
-			map .put("nettProfit", nettProfit);
+			
+			
+			
+			
+//			map .put("allPurchaseLoss", allPurchase);
+//			
+//			double totalSale = totalSalesCount(startDate,endDate);
+//            double grossProfit=totalSale-allPurchase;
+//			map .put("totalSale", totalSale);
+//			map .put("grossProfit", grossProfit);
+//			map .put("indirectExpenses", indirectExpenses);
+//			double nettProfit = grossProfit-indirectExpenses;
+//			map .put("nettProfit", nettProfit);
 
 			result.add(map);
 		}
-		return result;
+		
+		
+		res .put("allPurchaseLoss", allPurchase);
+		res .put("data", result);
+
+		double totalSale = totalSalesCount(startDate,endDate);
+        double grossProfit=totalSale-allPurchase;
+        res .put("totalSale", totalSale);
+        res .put("grossProfit", grossProfit);
+        res .put("indirectExpenses", indirectExpenses);
+		double nettProfit = grossProfit-indirectExpenses;
+		res .put("nettProfit", nettProfit);
+
+		return res;
 	
 	}
 	

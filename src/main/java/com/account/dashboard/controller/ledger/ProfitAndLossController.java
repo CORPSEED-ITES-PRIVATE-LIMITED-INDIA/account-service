@@ -24,8 +24,8 @@ public class ProfitAndLossController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_LOSS)
-	public List<Map<String,Object>> getAllLoss(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
-		List<Map<String,Object>> res=profitAndLossService.getAllLoss(startDate,endDate);	
+	public Map<String, Object> getAllLoss(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		Map<String, Object> res=profitAndLossService.getAllLoss(startDate,endDate);	
 		return res;
 	}
 	
