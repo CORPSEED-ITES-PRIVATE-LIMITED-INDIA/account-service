@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 public interface ProfitAndLossService {
 
 
-	List<Map<String, Object>> getAllProfit(String startDate, String endDate);
+	Map<String, Object> getAllProfit(String startDate, String endDate);
 
 	Map<String, Object> getAllLoss(String startDate, String endDate);
 

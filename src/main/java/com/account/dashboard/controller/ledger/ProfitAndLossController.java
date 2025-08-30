@@ -18,8 +18,8 @@ public class ProfitAndLossController {
 	ProfitAndLossService profitAndLossService;
 	
 	@GetMapping(UrlsMapping.GET_ALL_PROFIT)
-	public List<Map<String,Object>> getAllProfit(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
-		List<Map<String,Object>> res=profitAndLossService.getAllProfit(startDate,endDate);	
+	public Map<String, Object> getAllProfit(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		Map<String, Object> res=profitAndLossService.getAllProfit(startDate,endDate);	
 		return res;
 	}
 	

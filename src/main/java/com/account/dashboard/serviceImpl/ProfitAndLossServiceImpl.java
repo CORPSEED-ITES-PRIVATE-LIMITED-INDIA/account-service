@@ -107,7 +107,7 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	}
 
 	@Override
-	public List<Map<String, Object>> getAllProfit(String startDate, String endDate) {
+	public Map<String, Object> getAllProfit(String startDate, String endDate) {
 
 		List<String>gList=Arrays.asList("Sales Account",
 				"Direct Incomes");
@@ -165,7 +165,7 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 		res .put("totalSum", totalSum);
 		res .put("data", result);
 		res .put("grossProfit", grossProfit);
-		return result;
+		return res;
 	
 	}
 
