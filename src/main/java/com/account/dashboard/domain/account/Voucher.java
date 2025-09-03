@@ -26,6 +26,8 @@ public class Voucher {
 	@ManyToOne
 	Ledger ledger;
 	
+	String impact;  // direct or indirect
+	
 	@ManyToOne
 	LedgerType ledgerType;
 	
@@ -286,5 +288,14 @@ public class Voucher {
 		this.sgst = sgst;
 	}
 
+	public String getImpact() {
+		return impact;
+	}
+
+	public void setImpact(String impact) {
+		this.impact = impact;
+	}
+
+	
 	
 }
