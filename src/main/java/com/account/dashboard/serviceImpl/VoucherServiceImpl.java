@@ -310,7 +310,7 @@ public class VoucherServiceImpl implements VoucherService{
 		return flag;
 	}
 	
-	public Boolean createVoucherV2(CreateVoucherDto createVoucherDto) {
+	public Boolean createVoucherV2Old(CreateVoucherDto createVoucherDto) {
 
 		Boolean flag=false;
 		
@@ -339,10 +339,7 @@ public class VoucherServiceImpl implements VoucherService{
 	                v.setCgstDebitVoucher(cgstDedit);
 
 	            }
-//				Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
-//				Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
-//				v.setCgstCreditVoucher(cgstCredit);
-//	            v.setCgstDebitVoucher(cgstDedit);
+ 
 	            if(createVoucherDto.getSgstCreditAmount()>0) {
 	    			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"credit");
 	                v.setSgstCreditVoucher(sgstCredit);
@@ -409,10 +406,7 @@ public class VoucherServiceImpl implements VoucherService{
 	                v.setCgstDebitVoucher(cgstDedit);
 
 	            }
-//				Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
-//				Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
-//				v.setCgstCreditVoucher(cgstCredit);
-//	            v.setCgstDebitVoucher(cgstDedit);
+
 	            if(createVoucherDto.getSgstCreditAmount()>0) {
 	    			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"credit");
 	                v.setSgstCreditVoucher(sgstCredit);
@@ -538,7 +532,366 @@ public class VoucherServiceImpl implements VoucherService{
 	}
 
 
-	
+	public Boolean createVoucherV2(CreateVoucherDto createVoucherDto) {
+
+		Boolean flag=false;
+		
+		long voucherTypeId = createVoucherDto.getVoucherTypeId();
+		Optional<VoucherType> voucherTypeOp = voucherTypeRepo.findById(createVoucherDto.getVoucherTypeId());
+		VoucherType voucherType=null;
+		if(voucherTypeOp!=null &&voucherTypeOp.isPresent() && voucherTypeOp.get()!=null) {
+			voucherType=voucherTypeOp.get();
+		}
+		String voucherTypeName = voucherType!=null?voucherType.getName():"NA";
+		if("Sales Voucher".equals(voucherTypeName)) {
+			
+			// sales entry
+			Voucher v = new Voucher();
+			v.setCompanyName(createVoucherDto.getCompanyName());
+
+			if(createVoucherDto.getCreditAmount() !=0 ) {
+				v.setCreditDebit(true);
+				v.setCreditAmount(createVoucherDto.getCreditAmount());			
+				v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
+	            if(createVoucherDto.getCgstCreditAmount()>0) {
+	    			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
+	    			v.setCgstCreditVoucher(cgstCredit);
+	            }
+	            if(createVoucherDto.getCgstDebitAmount()>0) {
+	    			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
+	                v.setCgstDebitVoucher(cgstDedit);
+	            }
+	            if(createVoucherDto.getSgstCreditAmount()>0) {
+	    			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"credit");
+	                v.setSgstCreditVoucher(sgstCredit);
+	            }
+	            if(createVoucherDto.getSgstDebitAmount()>0) {
+	                Voucher sgstDebit = createSgstCredit(createVoucherDto,createVoucherDto.getSgstDebitAmount(),"debit");
+	                v.setSgstDebitVoucher(sgstDebit);
+	            }
+				v.setIgstPresent(createVoucherDto.isIgstPresent());
+				if(createVoucherDto.getIgstCreditAmount()>0) {
+					Voucher igstCreditAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstCreditAmount(),"credit");
+					v.setIgstCreditVoucher(igstCreditAmount);
+				}					
+				if(createVoucherDto.getIgstDebitAmount()>0) {
+					Voucher igstDebitAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstDebitAmount(),"debit");
+					v.setIgstDebitVoucher(igstDebitAmount);
+				}
+			}
+
+			if(createVoucherDto.getDebitAmount()!=0 ) {
+				v.setCreditDebit(true);
+				v.setDebitAmount(createVoucherDto.getDebitAmount());
+			}
+			v.setCreateDate(new Date());
+			Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+			if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+				v.setLedger(ledger.get());
+				v.setLedgerType(ledger.get().getLedgerType());
+			}        
+			v.setPaymentType(createVoucherDto.getPaymentType());
+
+			v.setVoucherType(voucherType);
+
+
+			Optional<Ledger> product = ledgerRepository.findById(createVoucherDto.getProductId());
+			if(product!=null && product.isPresent()&&product.get()!=null) {
+				v.setProduct (product.get());
+			}    
+	         v.setTotalAmount(createVoucherDto.getTotalAmount());
+			voucherRepository.save(v);
+			flag=true;
+			
+			
+			
+
+			
+			// sales entry
+			Voucher v2 = new Voucher();
+			v2.setCompanyName(createVoucherDto.getCompanyName());
+
+			if(createVoucherDto.getCreditAmount() !=0 ) {
+				v2.setCreditDebit(true);
+				v2.setDebitAmount(createVoucherDto.getCreditAmount());			
+				v2.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
+	            if(createVoucherDto.getCgstCreditAmount()>0) {
+	    			Voucher cgstCredit2 = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"debit");
+	    			v2.setCgstDebitVoucher(cgstCredit2);
+	            }
+	            if(createVoucherDto.getCgstDebitAmount()>0) {
+	    			Voucher cgstDedit2 = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"credit");
+	    			v2.setCgstDebitVoucher(cgstDedit2);
+	            }
+	            if(createVoucherDto.getSgstCreditAmount()>0) {
+	    			Voucher sgstCredit2= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"debit");
+	                v2.setSgstDebitVoucher(sgstCredit2);
+	            }
+	            if(createVoucherDto.getSgstDebitAmount()>0) {
+	                Voucher sgstDebit2 = createSgstCredit(createVoucherDto,createVoucherDto.getSgstDebitAmount(),"credit");
+	                v2.setSgstCreditVoucher(sgstDebit2);
+	            }
+				v2.setIgstPresent(createVoucherDto.isIgstPresent());
+				if(createVoucherDto.getIgstCreditAmount()>0) {
+					Voucher igstCreditAmount2 = createIgstCredit(createVoucherDto, createVoucherDto.getIgstCreditAmount(),"debit");
+					v2.setIgstDebitVoucher(igstCreditAmount2);
+				}					
+				if(createVoucherDto.getIgstDebitAmount()>0) {
+					Voucher igstDebitAmount2 = createIgstCredit(createVoucherDto, createVoucherDto.getIgstDebitAmount(),"credit");
+					v2.setIgstCreditVoucher(igstDebitAmount2);
+				}
+			}
+
+			if(createVoucherDto.getDebitAmount()!=0 ) {
+				v2.setCreditDebit(true);
+				v2.setCreditAmount(createVoucherDto.getDebitAmount());
+			}
+			v2.setCreateDate(new Date());
+			Optional<Ledger> ledger2 = ledgerRepository.findById(createVoucherDto.getProductId());
+			if(ledger2!=null && ledger2.isPresent()&&ledger2.get()!=null) {
+				v2.setLedger(ledger2.get());
+				v2.setLedgerType(ledger2.get().getLedgerType());
+			}        
+			v2.setPaymentType(createVoucherDto.getPaymentType());
+
+			v2.setVoucherType(voucherType);
+
+
+			Optional<Ledger> product2 = ledgerRepository.findById(createVoucherDto.getLedgerId());
+			if(product2!=null && product2.isPresent()&&product2.get()!=null) {
+				v2.setProduct (product2.get());
+			}    
+	         v2.setTotalAmount(createVoucherDto.getTotalAmount());
+	         v2.setImpact("indirect");
+			voucherRepository.save(v2);
+			flag=true;
+
+		
+			
+			
+			
+			
+			
+			
+			
+			
+			
+
+		}else if("Recipt Voucher".equals(voucherTypeName)){
+			
+            //  Recipt Forward
+			Voucher v = new Voucher();
+			v.setCompanyName(createVoucherDto.getCompanyName());
+
+			if(createVoucherDto.getCreditAmount() !=0 ) {
+				v.setCreditDebit(true);
+				v.setCreditAmount(createVoucherDto.getCreditAmount());
+				
+				v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
+	            if(createVoucherDto.getCgstCreditAmount()>0) {
+	    			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
+	    			v.setCgstCreditVoucher(cgstCredit);
+	            }
+	            if(createVoucherDto.getCgstDebitAmount()>0) {
+	    			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
+	                v.setCgstDebitVoucher(cgstDedit);
+
+	            }
+
+	            if(createVoucherDto.getSgstCreditAmount()>0) {
+	    			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"credit");
+	                v.setSgstCreditVoucher(sgstCredit);
+	            }
+	            if(createVoucherDto.getSgstDebitAmount()>0) {
+	                Voucher sgstDebit = createSgstCredit(createVoucherDto,createVoucherDto.getSgstDebitAmount(),"debit");
+	                v.setSgstDebitVoucher(sgstDebit);
+	            }
+
+
+				v.setIgstPresent(createVoucherDto.isIgstPresent());
+				if(createVoucherDto.getIgstCreditAmount()>0) {
+					Voucher igstCreditAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstCreditAmount(),"credit");
+					v.setIgstCreditVoucher(igstCreditAmount);
+
+				}
+					
+				if(createVoucherDto.getIgstDebitAmount()>0) {
+					Voucher igstDebitAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstDebitAmount(),"debit");
+					v.setIgstDebitVoucher(igstDebitAmount);
+				}
+
+			}
+
+			if(createVoucherDto.getDebitAmount()!=0 ) {
+				v.setCreditDebit(true);
+				v.setDebitAmount(createVoucherDto.getDebitAmount());
+			}
+			v.setCreateDate(new Date());
+			Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+			if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+				v.setLedger(ledger.get());
+				v.setLedgerType(ledger.get().getLedgerType());
+			}        
+			v.setPaymentType(createVoucherDto.getPaymentType());
+
+			v.setVoucherType(voucherType);
+
+
+			Optional<Ledger> product = ledgerRepository.findById(createVoucherDto.getProductId());
+			if(product!=null && product.isPresent()&&product.get()!=null) {
+				v.setProduct (product.get());
+			}    
+	         v.setTotalAmount(createVoucherDto.getTotalAmount());
+			voucherRepository.save(v);
+			flag=true;
+			
+			
+			
+            //  Recipt backword
+			Voucher v2 = new Voucher();
+			v2.setCompanyName(createVoucherDto.getCompanyName());
+
+			if(createVoucherDto.getCreditAmount() !=0 ) {
+				v2.setCreditDebit(true);
+				v2.setDebitAmount(createVoucherDto.getCreditAmount());
+				
+				v2.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
+	            if(createVoucherDto.getCgstCreditAmount()>0) {
+	    			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"debit");
+	    			v2.setCgstDebitVoucher(cgstCredit);
+	            }
+	            if(createVoucherDto.getCgstDebitAmount()>0) {
+	    			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"credit");
+	                v2.setCgstCreditVoucher(cgstDedit);
+
+	            }
+
+	            if(createVoucherDto.getSgstCreditAmount()>0) {
+	    			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"debit");
+	                v2.setSgstDebitVoucher(sgstCredit);
+	            }
+	            if(createVoucherDto.getSgstDebitAmount()>0) {
+	                Voucher sgstDebit = createSgstCredit(createVoucherDto,createVoucherDto.getSgstDebitAmount(),"credit");
+	                v2.setSgstCreditVoucher(sgstDebit);
+	            }
+
+
+				v2.setIgstPresent(createVoucherDto.isIgstPresent());
+				if(createVoucherDto.getIgstCreditAmount()>0) {
+					Voucher igstCreditAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstCreditAmount(),"debit");
+					v2.setIgstDebitVoucher(igstCreditAmount);
+
+				}
+					
+				if(createVoucherDto.getIgstDebitAmount()>0) {
+					Voucher igstDebitAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstDebitAmount(),"credit");
+					v2.setIgstCreditVoucher(igstDebitAmount);
+				}
+
+			}
+
+			if(createVoucherDto.getDebitAmount()!=0 ) {
+				v2.setCreditDebit(true);
+				v2.setCreditAmount(createVoucherDto.getDebitAmount());
+			}
+			v2.setCreateDate(new Date());
+			Optional<Ledger> ledger2 = ledgerRepository.findById(createVoucherDto.getProductId());
+			if(ledger2!=null && ledger2.isPresent()&&ledger2.get()!=null) {
+				v2.setLedger(ledger2.get());
+				v2.setLedgerType(ledger2.get().getLedgerType());
+			}        
+			v2.setPaymentType(createVoucherDto.getPaymentType());
+
+			v2.setVoucherType(voucherType);
+
+
+			Optional<Ledger> product2 = ledgerRepository.findById(createVoucherDto.getLedgerId());
+			if(product2!=null && product2.isPresent()&&product2.get()!=null) {
+				v2.setProduct (product.get());
+			}    
+	         v2.setTotalAmount(createVoucherDto.getTotalAmount());
+			voucherRepository.save(v2);
+			flag=true;
+			
+
+		
+		}else {
+
+			Voucher v = new Voucher();
+			v.setCompanyName(createVoucherDto.getCompanyName());
+
+			if(createVoucherDto.getCreditAmount() !=0 ) {
+				v.setCreditDebit(true);
+				v.setCreditAmount(createVoucherDto.getCreditAmount());
+				
+				v.setCgstSgstPresent(createVoucherDto.isCgstIgstPresent());
+	            if(createVoucherDto.getCgstCreditAmount()>0) {
+	    			Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
+	    			v.setCgstCreditVoucher(cgstCredit);
+	            }
+	            if(createVoucherDto.getCgstDebitAmount()>0) {
+	    			Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
+	                v.setCgstDebitVoucher(cgstDedit);
+
+	            }
+//				Voucher cgstCredit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstCreditAmount(),"credit");
+//				Voucher cgstDedit = createCgstCredit(createVoucherDto,createVoucherDto.getCgstDebitAmount(),"debit");
+//				v.setCgstCreditVoucher(cgstCredit);
+//	            v.setCgstDebitVoucher(cgstDedit);
+	            if(createVoucherDto.getSgstCreditAmount()>0) {
+	    			Voucher sgstCredit= createSgstCredit(createVoucherDto,createVoucherDto.getSgstCreditAmount(),"credit");
+	                v.setSgstCreditVoucher(sgstCredit);
+	            }
+	            if(createVoucherDto.getSgstDebitAmount()>0) {
+	                Voucher sgstDebit = createSgstCredit(createVoucherDto,createVoucherDto.getSgstDebitAmount(),"debit");
+	                v.setSgstDebitVoucher(sgstDebit);
+	            }
+
+
+				v.setIgstPresent(createVoucherDto.isIgstPresent());
+				if(createVoucherDto.getIgstCreditAmount()>0) {
+					Voucher igstCreditAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstCreditAmount(),"credit");
+					v.setIgstCreditVoucher(igstCreditAmount);
+
+				}
+					
+				if(createVoucherDto.getIgstDebitAmount()>0) {
+					Voucher igstDebitAmount = createIgstCredit(createVoucherDto, createVoucherDto.getIgstDebitAmount(),"debit");
+					v.setIgstDebitVoucher(igstDebitAmount);
+				}
+
+			}
+
+			if(createVoucherDto.getDebitAmount()!=0 ) {
+				v.setCreditDebit(true);
+				v.setDebitAmount(createVoucherDto.getDebitAmount());
+			}
+			v.setCreateDate(new Date());
+			Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getLedgerId());
+			if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
+				v.setLedger(ledger.get());
+				v.setLedgerType(ledger.get().getLedgerType());
+			}        
+			v.setPaymentType(createVoucherDto.getPaymentType());
+
+			v.setVoucherType(voucherType);
+
+
+			Optional<Ledger> product = ledgerRepository.findById(createVoucherDto.getProductId());
+			if(product!=null && product.isPresent()&&product.get()!=null) {
+				v.setProduct (product.get());
+			}    
+	         v.setTotalAmount(createVoucherDto.getTotalAmount());
+			voucherRepository.save(v);
+			flag=true;
+
+		
+		}
+		
+		return flag;
+	}
+
+
 	
 	@Override
 	public List<Voucher>  getAllVoucher() {
