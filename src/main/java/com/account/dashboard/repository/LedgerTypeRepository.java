@@ -21,5 +21,15 @@ public interface LedgerTypeRepository extends JpaRepository<LedgerType, Long> {
 	
 	@Query(value = "SELECT * FROM ledger_type l WHERE l.name LIKE %:searchTerm%", nativeQuery = true)
 	List<LedgerType> findByNameGlobal(String searchTerm);
-
+	
+	@Query(value = "SELECT * FROM ledger_type l WHERE l.name in(:name)", nativeQuery = true)
+	List<Long> findIdByNameIn(List<String> name);
+	
+	@Query(value = "SELECT l.id FROM ledger_type l WHERE l.name in(:name)", nativeQuery = true)
+	List<Long> findIdByledgerTypeId(List<String> name);
+	
+	@Query(value = "SELECT l.id FROM ledger_type l WHERE l.ledger_type_id in(:id)", nativeQuery = true)
+	List<Long> findIdByParentIdIn(List<Long> id);
+	@Query(value = "SELECT * FROM ledger_type l WHERE l.id in(:list)", nativeQuery = true)
+	List<LedgerType> findAllByIdIn(List<Long> list);
 }

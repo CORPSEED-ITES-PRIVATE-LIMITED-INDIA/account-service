@@ -180,5 +180,6 @@ public interface UrlsMapping {
 		public static final String GET_ALL_BALANCE_SHEET_ASSETS=PREFIX+ "/balanceSheet/getAllBalanceSheetAssets";
 		public static final String GET_ALL_BALANCE_SHEET_LIABILITIES_FOR_EXPORT=PREFIX+ "/balanceSheet/getAllBalanceSheetLiabilitiesForExport";
 		public static final String GET_ALL_BALANCE_SHEET_ASSETS_FOR_EXPORT=PREFIX+ "/balanceSheet/getAllBalanceSheetAssetsForExport";
+		public static final String GET_ALL_GROUP_BY_PARENT_GROUP_ID=PREFIX+ "/balanceSheet/getAllGroupByParentGroupId";
 
 }

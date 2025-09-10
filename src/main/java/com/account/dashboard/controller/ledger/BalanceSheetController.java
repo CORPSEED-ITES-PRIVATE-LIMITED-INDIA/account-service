@@ -41,5 +41,11 @@ public class BalanceSheetController {
 		List<Map<String,Object>> res=balanceSheetService.getAllBalanceSheetAssets(startDate,endDate);	
 		return res;
 	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_GROUP_BY_PARENT_GROUP_ID)
+	public List<Map<String,Object>> getAllGroupByParentGroupId(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>> res=balanceSheetService.getAllGroupByParentGroupId(startDate,endDate);	
+		return res;
+	}
 
 }
