@@ -31,9 +31,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	@Override
 	public List<Map<String, Object>> getAllBalanceSheetLiabilities(String startDate, String endDate) {
 
-		List<String>gList=Arrays.asList("Loans",
-				"Branch / Divisions","Suspense Account","Salary Payable");
-		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+		List<Long>list=getAllLiabilitiesChildHierarchy();
+		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
@@ -184,10 +183,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	@Override
 	public List<Map<String, Object>> getAllBalanceSheetAssetsForExport(String startDate, String endDate) {
 
-		List<String>gList=Arrays.asList("Capital Account",
-				"Current Liabilities","	Fixed Assets","Current Assets");
-//		List<LedgerType> group = ledgerTypeRepository.findAll();
-		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+		List<Long>list=getAllAssetsChildHierarchy();
+		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
@@ -235,7 +232,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 
 	@Override
 	public List<Map<String, Object>> getAllGroupByParentGroupId(String startDate, String endDate) {
-		List<Long>list=getAllChildHierarchy();
+		List<Long>list=getAllAssetsChildHierarchy();
 		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
@@ -301,8 +298,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	
 	public List<Long>getAllLiabilitiesChildHierarchy(){
 		List<Long>result=new ArrayList<>();
-		List<String>gList=Arrays.asList("Capital Account",
-				"Current Liabilities","Fixed Assets","Current Assets");
+		List<String>gList=Arrays.asList("Loans",
+				"Branch / Divisions","Suspense Account","Salary Payable");
 		List<Long> ledgerType = ledgerTypeRepository.findIdByNameIn(gList);
 		result.addAll(ledgerType);
 		List<Long> childLedgerType = ledgerTypeRepository.findIdByParentIdIn(ledgerType);
