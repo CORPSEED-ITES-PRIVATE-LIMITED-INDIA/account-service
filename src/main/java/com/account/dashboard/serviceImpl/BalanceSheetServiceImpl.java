@@ -29,18 +29,20 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	VoucherRepository voucherRepository;
 
 	@Override
-	public List<Map<String, Object>> getAllBalanceSheetLiabilities(String startDate, String endDate) {
+	public Map<String,Object> getAllBalanceSheetLiabilities(String startDate, String endDate) {
 
 		List<Long>list=getAllLiabilitiesChildHierarchy();
 		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
+		Map<String, Object>res = new HashMap<>();
 		List<Map<String, Object>>result=new ArrayList<>();
+		double tAmount=0;
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
 
 			Map<String,Object>map=new HashMap<>();
 			List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
 			System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
-
+                
 			List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
 
 			double totalCredit=0;
@@ -67,24 +69,29 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 
 				}
 			}
+			tAmount=tAmount+totalAmount;
 			map.put("totalCredit", totalCredit);
 			map.put("groupName", g.getName());
 			map.put("totalDebit", totalDebit);
 			map .put("totalAmount", totalAmount);
 			result.add(map);
 		}
-		return result;
+		res.put("data", result);
+		res.put("totalPrice", tAmount);
+		return res;
 	
 	
 	}
 
 	@Override
-	public List<Map<String, Object>> getAllBalanceSheetAssets(String startDate, String endDate) {
+	public Map<String, Object> getAllBalanceSheetAssets(String startDate, String endDate) {
 
 		List<String>gList=Arrays.asList("Capital Account",
 				"Current Liabilities","	Fixed Assets","Current Assets");
 //		List<LedgerType> group = ledgerTypeRepository.findAll();
 		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+		Map<String, Object>res = new HashMap<>();
+		double tAmount=0;
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
@@ -121,13 +128,18 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 
 				}
 			}
+			tAmount=tAmount+totalAmount;
+
 			map.put("totalCredit", totalCredit);
 			map.put("groupName", g.getName());
 			map.put("totalDebit", totalDebit);
 			map .put("totalAmount", totalAmount);
 			result.add(map);
 		}
-		return result;
+		res.put("data", result);
+		res.put("totalPrice", tAmount);
+
+		return res;
 	}
 	@Override
 	public List<Map<String, Object>> getAllBalanceSheetLiabilitiesForExport(String startDate, String endDate) {

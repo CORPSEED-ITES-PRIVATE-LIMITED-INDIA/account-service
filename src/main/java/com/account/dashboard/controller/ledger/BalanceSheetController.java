@@ -18,27 +18,27 @@ public class BalanceSheetController {
 	BalanceSheetService balanceSheetService;
 	
 	@GetMapping(UrlsMapping.GET_ALL_BALANCE_SHEET_LIABILITIES)
-	public List<Map<String,Object>> getAllBalanceSheetLiabilities(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
-		List<Map<String,Object>> res=balanceSheetService.getAllBalanceSheetLiabilities(startDate,endDate);	
+	public Map<String,Object> getAllBalanceSheetLiabilities(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		Map<String,Object> res=balanceSheetService.getAllBalanceSheetLiabilities(startDate,endDate);	
 		return res;
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_BALANCE_SHEET_ASSETS)
-	public List<Map<String,Object>> getAllBalanceSheetAssets(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
-		List<Map<String,Object>> res=balanceSheetService.getAllBalanceSheetAssets(startDate,endDate);	
+	public Map<String,Object> getAllBalanceSheetAssets(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		Map<String,Object> res=balanceSheetService.getAllBalanceSheetAssets(startDate,endDate);	
 		return res;
 	}
 	
 	
 	@GetMapping(UrlsMapping.GET_ALL_BALANCE_SHEET_LIABILITIES_FOR_EXPORT)
 	public List<Map<String,Object>> getAllBalanceSheetLiabilitiesForExport(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
-		List<Map<String,Object>> res=balanceSheetService.getAllBalanceSheetLiabilities(startDate,endDate);	
+		List<Map<String,Object>> res=balanceSheetService.getAllBalanceSheetLiabilitiesForExport(startDate,endDate);	
 		return res;
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_BALANCE_SHEET_ASSETS_FOR_EXPORT)
 	public List<Map<String,Object>> getAllBalanceSheetAssetsForExport(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
-		List<Map<String,Object>> res=balanceSheetService.getAllBalanceSheetAssets(startDate,endDate);	
+		List<Map<String,Object>> res=balanceSheetService.getAllBalanceSheetAssetsForExport(startDate,endDate);	
 		return res;
 	}
 	
