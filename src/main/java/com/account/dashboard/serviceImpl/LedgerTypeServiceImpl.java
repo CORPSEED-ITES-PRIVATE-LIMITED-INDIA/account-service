@@ -53,11 +53,11 @@ public class LedgerTypeServiceImpl implements LedgerTypeService{
 	@Override
 	public Boolean updateLedgerType(UpdateLedgerTypeDto updateLedgerTypeDto) {
 		Boolean flag=false;
-		LedgerType ledgerType = ledgerTypeRepository.findById(updateLedgerTypeDto.getId()).get();
+		LedgerType ledgerType = ledgerTypeRepository.findById(updateLedgerTypeDto.getSubLedgerId()).get();
 		ledgerType.setName(updateLedgerTypeDto.getName());
 		ledgerType.setDebitCredit(updateLedgerTypeDto.isDebitCredit());
 		ledgerType.setSubLeadger(updateLedgerTypeDto.isSubLeadger());
-        if(updateLedgerTypeDto.isSubLeadger()) {
+        if(updateLedgerTypeDto.isSubLeadger() && (!updateLedgerTypeDto.getSubLedgerId().equals(updateLedgerTypeDto.getId()))) {
     		ledgerType.setSubLeadger(updateLedgerTypeDto.isSubLeadger());
     		LedgerType lType = ledgerTypeRepository.findById(updateLedgerTypeDto.getId()).get();
     		ledgerType.setLedgerType(lType);
