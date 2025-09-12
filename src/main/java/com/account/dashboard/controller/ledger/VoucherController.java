@@ -82,4 +82,10 @@ public class VoucherController {
 		Map<String,Object> res=voucherService.getVoucheById(id);	
 		return res;
 	}
+	
+	@GetMapping(UrlsMapping.DELETE_VOUCHER_BY_ID)
+	public Map<String,Object> deleteVoucherById(@RequestParam Long id){
+		Map<String,Object> res=voucherService.deleteVoucherById(id);	
+		return res;
+	}
 }

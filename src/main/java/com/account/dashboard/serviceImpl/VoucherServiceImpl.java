@@ -1686,4 +1686,10 @@ public class VoucherServiceImpl implements VoucherService{
 	
 	
 	}
+
+	@Override
+	public Map<String, Object> deleteVoucherById(Long id) {
+// 
+		return null;
+	}
 }

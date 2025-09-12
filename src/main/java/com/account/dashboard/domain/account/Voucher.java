@@ -3,6 +3,7 @@ package com.account.dashboard.domain.account;
 import java.util.Date;
 
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -23,24 +24,24 @@ public class Voucher {
 	
 	Long estimateId;
 	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Ledger ledger;
 	
 	String impact;  // direct or indirect
 	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	LedgerType ledgerType;
 	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	VoucherType voucherType;
 	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Ledger product;
 	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Voucher igstCreditVoucher;
 	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Voucher igstDebitVoucher;
 	
 	boolean isCreditDebit;	
@@ -56,14 +57,14 @@ public class Voucher {
 	String igst;
 
 	boolean cgstSgstPresent;
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Voucher cgstCreditVoucher;	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Voucher sgstCreditVoucher;
 	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Voucher cgstDebitVoucher;	
-	@ManyToOne
+	@ManyToOne(fetch = FetchType.LAZY)
 	Voucher sgstDebitVoucher;
 	
 	
