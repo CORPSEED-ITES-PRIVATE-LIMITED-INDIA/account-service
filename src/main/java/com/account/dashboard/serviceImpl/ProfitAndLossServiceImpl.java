@@ -108,12 +108,16 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 
 	@Override
 	public Map<String, Object> getAllProfit(String startDate, String endDate) {
-
-		List<String>gList=Arrays.asList("Sales Account",
-				"Direct Incomes");
-//		List<LedgerType> group = ledgerTypeRepository.findAll();
+		
+		List<Long>list=getAllProfit();
+		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
 		Map<String, Object>res=new HashMap<>();
-		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+
+
+//		List<String>gList=Arrays.asList("Sales Account",
+//				"Direct Incomes");
+//		List<LedgerType> group = ledgerTypeRepository.findAll();
+//		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 		List<Map<String, Object>>result=new ArrayList<>();
 		double totalSum=0;
 
@@ -284,11 +288,14 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	
 	public double totalSalesCount(String startDate, String endDate) {
 
+		List<Long>list=getAllLoss();
+		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
+//
+//		List<String>gList=Arrays.asList("Sales Account",
+//				"Direct Incomes");
+//		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 
-		List<String>gList=Arrays.asList("Sales Account",
-				"Direct Incomes");
 		double totalAmount=0;
-		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
 		List<Map<String, Object>>result=new ArrayList<>();
 		for(LedgerType g:group) {
 			System.out.println("Group name .."+g.getId());
@@ -330,6 +337,39 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 		
 	}
 
+	public List<Long>getAllProfit(){
+		List<Long>result=new ArrayList<>();
+		List<String>gList=Arrays.asList("Sales Account",
+				"Direct Incomes");
+		List<Long> ledgerType = ledgerTypeRepository.findIdByNameIn(gList);
+		result.addAll(ledgerType);
+		List<Long> childLedgerType = ledgerTypeRepository.findIdByParentIdIn(ledgerType);
+		result.addAll(childLedgerType);
+		List<Long> childLedgerType2 = ledgerTypeRepository.findIdByParentIdIn(childLedgerType);
+		result.addAll(childLedgerType2);
 
+		List<Long> childLedgerType3 = ledgerTypeRepository.findIdByParentIdIn(childLedgerType2);
+		result.addAll(childLedgerType3);
+
+		return result;
+
+	}
+	public List<Long>getAllLoss(){
+		List<Long>result=new ArrayList<>();
+		List<String>gList=Arrays.asList("Purchase Account",
+				"Indirect Incomes","Direct Expenses","Indirect Expenses");
+		List<Long> ledgerType = ledgerTypeRepository.findIdByNameIn(gList);
+		result.addAll(ledgerType);
+		List<Long> childLedgerType = ledgerTypeRepository.findIdByParentIdIn(ledgerType);
+		result.addAll(childLedgerType);
+		List<Long> childLedgerType2 = ledgerTypeRepository.findIdByParentIdIn(childLedgerType);
+		result.addAll(childLedgerType2);
+
+		List<Long> childLedgerType3 = ledgerTypeRepository.findIdByParentIdIn(childLedgerType2);
+		result.addAll(childLedgerType3);
+
+		return result;
+
+	}
 
 }
