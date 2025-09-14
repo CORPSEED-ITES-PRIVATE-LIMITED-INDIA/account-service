@@ -1,5 +1,6 @@
 package com.account.dashboard.domain.account;
 
+import java.io.Serializable;
 import java.util.Date;
 
 import jakarta.persistence.Entity;
@@ -14,7 +15,7 @@ import lombok.Data;
 @Table
 @Entity
 //@Data
-public class Voucher {
+public class Voucher implements Serializable {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)	
@@ -29,19 +30,19 @@ public class Voucher {
 	
 	String impact;  // direct or indirect
 	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	LedgerType ledgerType;
 	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	VoucherType voucherType;
 	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	Ledger product;
 	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	Voucher igstCreditVoucher;
 	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	Voucher igstDebitVoucher;
 	
 	boolean isCreditDebit;	
@@ -57,14 +58,14 @@ public class Voucher {
 	String igst;
 
 	boolean cgstSgstPresent;
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	Voucher cgstCreditVoucher;	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	Voucher sgstCreditVoucher;
 	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	Voucher cgstDebitVoucher;	
-	@ManyToOne(fetch = FetchType.LAZY)
+	@ManyToOne
 	Voucher sgstDebitVoucher;
 	
 	

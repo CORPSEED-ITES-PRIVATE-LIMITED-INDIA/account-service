@@ -32,12 +32,14 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	public Map<String,Object> getAllBalanceSheetLiabilities(String startDate, String endDate) {
 
 		List<Long>list=getAllLiabilitiesChildHierarchy();
+		System.out.println("Group list name .."+list);
+
 		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
 		Map<String, Object>res = new HashMap<>();
 		List<Map<String, Object>>result=new ArrayList<>();
 		double tAmount=0;
 		for(LedgerType g:group) {
-			System.out.println("Group name .."+g.getId());
+			System.out.println("Group name .."+g.getName());
 
 			Map<String,Object>map=new HashMap<>();
 			List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
@@ -86,10 +88,13 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	@Override
 	public Map<String, Object> getAllBalanceSheetAssets(String startDate, String endDate) {
 
-		List<String>gList=Arrays.asList("Capital Account",
-				"Current Liabilities","	Fixed Assets","Current Assets");
-//		List<LedgerType> group = ledgerTypeRepository.findAll();
-		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+//		List<String>gList=Arrays.asList("Capital Account",
+//				"Current Liabilities","	Fixed Assets","Current Assets");
+////		List<LedgerType> group = ledgerTypeRepository.findAll();
+//		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
+		List<Long>list=getAllAssetsChildHierarchy();
+		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
+
 		Map<String, Object>res = new HashMap<>();
 		double tAmount=0;
 		List<Map<String, Object>>result=new ArrayList<>();
@@ -101,8 +106,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 			System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
 
 //	         LedgerType ledgerType = ledgerTypeRepository.findById(g.getId()).get();
-//			List<Voucher>voucherList=voucherRepository.findAllByLedgerIdIn(ledgerList);
-			List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
+			List<Voucher>voucherList=voucherRepository.findAllByLedgerIdIn(ledgerList);
+//			List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
 
 			double totalCredit=0;
 			double totalDebit=0;
@@ -292,7 +297,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	}
 	public List<Long>getAllAssetsChildHierarchy(){
 		List<Long>result=new ArrayList<>();
-		List<String>gList=Arrays.asList("Capital Account","Asset","Capital",
+		List<String>gList=Arrays.asList("Capital Account","Asset","Assets","Capital",
 				"Current Liabilities","Fixed Assets","Current Assets");
 		List<Long> ledgerType = ledgerTypeRepository.findIdByNameIn(gList);
 		result.addAll(ledgerType);
@@ -310,7 +315,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	
 	public List<Long>getAllLiabilitiesChildHierarchy(){
 		List<Long>result=new ArrayList<>();
-		List<String>gList=Arrays.asList("Loans","Liability",
+		List<String>gList=Arrays.asList("Loans","Liability","Liabilities",
 				"Branch / Divisions","Suspense Account","Salary Payable");
 		List<Long> ledgerType = ledgerTypeRepository.findIdByNameIn(gList);
 		result.addAll(ledgerType);
