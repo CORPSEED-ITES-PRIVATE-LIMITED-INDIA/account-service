@@ -23,6 +23,8 @@ import com.account.dashboard.repository.VoucherTypeRepo;
 import com.account.dashboard.service.VoucherService;
 import com.account.dashboard.util.CalendarUtil;
 
+import jakarta.persistence.EntityNotFoundException;
+
 @Service
 public class VoucherServiceImpl implements VoucherService{
 
@@ -1690,6 +1692,25 @@ public class VoucherServiceImpl implements VoucherService{
 	@Override
 	public Map<String, Object> deleteVoucherById(Long id) {
 // 
-		return null;
+		 Voucher voucher = voucherRepository.findById(id)
+			        .orElseThrow(() -> new EntityNotFoundException("Voucher not found with id " + id));
+
+			    // Collect all linked vouchers
+			    List<Voucher> linked = new ArrayList<>();
+			    if (voucher.getIgstCreditVoucher() != null) linked.add(voucher.getIgstCreditVoucher());
+			    if (voucher.getIgstDebitVoucher() != null) linked.add(voucher.getIgstDebitVoucher());
+			    if (voucher.getCgstCreditVoucher() != null) linked.add(voucher.getCgstCreditVoucher());
+			    if (voucher.getSgstCreditVoucher() != null) linked.add(voucher.getSgstCreditVoucher());
+			    if (voucher.getCgstDebitVoucher() != null) linked.add(voucher.getCgstDebitVoucher());
+			    if (voucher.getSgstDebitVoucher() != null) linked.add(voucher.getSgstDebitVoucher());
+
+			    // Delete current voucher
+			    voucherRepository.delete(voucher);
+
+			    // Recursively delete linked vouchers
+			    for (Voucher v : linked) {
+			    	deleteVoucherById(v.getId());
+			    }
+			    return null;
 	}
 }
