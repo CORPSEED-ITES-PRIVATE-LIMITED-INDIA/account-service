@@ -595,7 +595,7 @@ public class VoucherServiceImpl implements VoucherService{
 			v.setPaymentType(createVoucherDto.getPaymentType());
 
 			v.setVoucherType(voucherType);
-
+            v.setImpact("direct");
 
 			Optional<Ledger> product = ledgerRepository.findById(createVoucherDto.getProductId());
 			if(product!=null && product.isPresent()&&product.get()!=null) {
@@ -683,8 +683,8 @@ public class VoucherServiceImpl implements VoucherService{
 			
             //  Recipt Forward
 			Voucher v = new Voucher();
+			v.setImpact("indirect");
 			v.setCompanyName(createVoucherDto.getCompanyName());
-
 			if(createVoucherDto.getCreditAmount() !=0 ) {
 				v.setCreditDebit(true);
 				v.setCreditAmount(createVoucherDto.getCreditAmount());
@@ -803,6 +803,7 @@ public class VoucherServiceImpl implements VoucherService{
 				v2.setLedgerType(ledger2.get().getLedgerType());
 			}        
 			v2.setPaymentType(createVoucherDto.getPaymentType());
+            v2.setImpact("direct");
 
 			v2.setVoucherType(voucherType);
 
@@ -861,6 +862,7 @@ public class VoucherServiceImpl implements VoucherService{
 			}
 			v.setCreateDate(new Date());
 			Optional<Ledger> ledger = ledgerRepository.findById(createVoucherDto.getProductId());
+			v.setImpact("direct");
 			if(ledger!=null && ledger.isPresent()&&ledger.get()!=null) {
 				v.setLedger(ledger.get());
 				v.setLedgerType(ledger.get().getLedgerType());
@@ -916,6 +918,7 @@ public class VoucherServiceImpl implements VoucherService{
 					v2.setIgstCreditVoucher(igstDebitAmount2);
 				}
 			}
+			v2.setImpact("indirect");
 
 			if(createVoucherDto.getDebitAmount()!=0 ) {
 				v2.setCreditDebit(true);
@@ -990,7 +993,7 @@ public class VoucherServiceImpl implements VoucherService{
 				v.setLedgerType(ledger.get().getLedgerType());
 			}        
 			v.setPaymentType(createVoucherDto.getPaymentType());
-
+            v.setImpact("direct");
 			v.setVoucherType(voucherType);
 
 
@@ -1054,7 +1057,7 @@ public class VoucherServiceImpl implements VoucherService{
 			v2.setPaymentType(createVoucherDto.getPaymentType());
 
 			v2.setVoucherType(voucherType);
-
+            v2.setImpact("indirect");
 
 			Optional<Ledger> product2 = ledgerRepository.findById(createVoucherDto.getLedgerId());
 			if(product2!=null && product2.isPresent()&&product2.get()!=null) {
