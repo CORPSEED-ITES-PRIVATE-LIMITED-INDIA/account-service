@@ -1690,8 +1690,8 @@ public class VoucherServiceImpl implements VoucherService{
 	}
 
 	@Override
-	public Map<String, Object> deleteVoucherById(Long id) {
-// 
+	public Boolean deleteVoucherById(Long id) {
+          Boolean flag=true;
 		 Voucher voucher = voucherRepository.findById(id)
 			        .orElseThrow(() -> new EntityNotFoundException("Voucher not found with id " + id));
 
@@ -1704,13 +1704,14 @@ public class VoucherServiceImpl implements VoucherService{
 			    if (voucher.getCgstDebitVoucher() != null) linked.add(voucher.getCgstDebitVoucher());
 			    if (voucher.getSgstDebitVoucher() != null) linked.add(voucher.getSgstDebitVoucher());
 
-			    // Delete current voucher
+			    // Delete current voucher̥
 			    voucherRepository.delete(voucher);
 
 			    // Recursively delete linked vouchers
 			    for (Voucher v : linked) {
 			    	deleteVoucherById(v.getId());
 			    }
-			    return null;
+			    flag=true;
+			    return flag;
 	}
 }

@@ -32,6 +32,6 @@ public interface VoucherService {
 
 	List<Map<String, Object>> getAllVoucherForExport();
 
-	Map<String, Object> deleteVoucherById(Long id);
+	Boolean deleteVoucherById(Long id);
 
 }
