@@ -63,5 +63,7 @@ public interface PaymentRegisterService {
 
 	long getAllInvoiceCount(Long userId);
 
+	Boolean getRemainingAmount(Long id);
+
 
 }

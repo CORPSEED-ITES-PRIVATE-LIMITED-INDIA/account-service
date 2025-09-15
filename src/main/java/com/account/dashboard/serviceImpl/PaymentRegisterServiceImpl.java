@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import com.account.dashboard.config.GetAllCompanyDto;
 import com.account.dashboard.config.LeadFeignClient;
 import com.account.dashboard.config.OpenAPIConfig;
+import com.account.dashboard.domain.GstDetails;
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.Organization;
 import com.account.dashboard.domain.PaymentRegister;
@@ -34,16 +35,7 @@ import com.account.dashboard.dto.CreatePurchaseOrderDto;
 import com.account.dashboard.dto.CreateTdsDto;
 import com.account.dashboard.dto.UnbilledDTO;
 import com.account.dashboard.dto.UpdatePaymentDto;
-import com.account.dashboard.repository.InvoiceDataRepository;
-import com.account.dashboard.repository.LedgerRepository;
-import com.account.dashboard.repository.LedgerTypeRepository;
-import com.account.dashboard.repository.OrganizationRepository;
-import com.account.dashboard.repository.PaymentRegisterRepository;
-import com.account.dashboard.repository.TdsDetailRepository;
-import com.account.dashboard.repository.UnbilledRepository;
-import com.account.dashboard.repository.UserRepository;
-import com.account.dashboard.repository.VoucherRepository;
-import com.account.dashboard.repository.VoucherTypeRepo;
+import com.account.dashboard.repository.*;
 import com.account.dashboard.service.PaymentRegisterService;
 
 import jakarta.transaction.Transactional;
@@ -51,6 +43,8 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
+
+    private final GstDetailsRepository gstDetailsRepository;
 
 	private final OpenAPIConfig openAPIConfig;
 
@@ -102,8 +96,9 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	TdsDetailRepository tdsDetailRepository;
 
 
-	PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig) {
+	PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig, GstDetailsRepository gstDetailsRepository) {
 		this.openAPIConfig = openAPIConfig;
+		this.gstDetailsRepository = gstDetailsRepository;
 	}
 
 
@@ -2453,6 +2448,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			}
 		}
 		return totalAmount;
+	}
+
+
+	@Override
+	public Boolean getRemainingAmount(Long id) {
+		Map<String, Object> estimate = leadFeignClient.getEstimateById(id);
+         
+		
+		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(id);
+		for(PaymentRegister pr:paymentRegister) {
+               			
+		}
+		return null;
 	}
 
 }

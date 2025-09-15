@@ -19,7 +19,7 @@ public interface LeadFeignClient {
 
 	@GetMapping("/master/business-activity/test")
 	public String test();
-	
+	̥
 	@PostMapping("/leadService/api/v1/leadEstimate/getEstimateById")
 	public Map<String, Object> getEstimateById(@RequestBody Long estimateId);
 	

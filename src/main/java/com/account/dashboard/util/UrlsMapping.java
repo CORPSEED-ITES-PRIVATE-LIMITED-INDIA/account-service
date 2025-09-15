@@ -119,6 +119,7 @@ public interface UrlsMapping {
 		public static final String PAYMENT_APPROVE_V3=PREFIX+ "/paymentRegister/paymentApproveV3";
 		public static final String GET_ALL_INVOICE=PREFIX+ "/paymentRegister/getAllInvoice";
 		public static final String GET_ALL_INVOICE_COUNT=PREFIX+ "/paymentRegister/getAllInvoiceCount";
+		public static final String GET_REMAINING_AMOUNT=PREFIX+ "/paymentRegister/getRemainingAmount";
 
 		public static final String GET_ALL_INVOICE_ACCORDING_TO_USER=PREFIX+ "/paymentRegister/getAllInvoiceAccordingToUser";
 

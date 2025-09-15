@@ -202,4 +202,12 @@ public class PaymentRegisterController {
 		return res;
 		
 	}
+	
+	@GetMapping(UrlsMapping.GET_REMAINING_AMOUNT)
+	public Boolean getRemainingAmount(@RequestParam Long id){
+		Boolean res=paymentRegisterService.getRemainingAmount(id);
+
+		return res;
+		
+	}
 }
