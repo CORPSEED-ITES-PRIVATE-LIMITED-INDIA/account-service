@@ -2460,6 +2460,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		double proFees=0;
 		double profGst=0;
 		double govFees=0;
+		double otherFees=0;
+		double serviceCharge=0;
 		double totalAmount=0;
 		String paymentType="NA";
 		for(PaymentRegister pr:paymentRegister) {
@@ -2468,10 +2470,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			govFees=pr.getGovermentfees();
 			paymentType=pr.getPaymentType();
 			totalAmount=pr.getTotalAmount();
+			otherFees=pr.getOtherFees();
+			serviceCharge=pr.getServiceCharge();
 		}
 		double totAmount = Double.parseDouble(estimate.get("totalAmount").toString());
 		double profees = Double.parseDouble(estimate.get("professionalFees").toString());
 		double govfees = Double.parseDouble(estimate.get("govermentFees").toString());
+		double serviceFees = Double.parseDouble(estimate.get("serviceCharge").toString());
+		double otherCharge = Double.parseDouble(estimate.get("otherFees").toString());
 
 		totAmount=totAmount-totalAmount;
 		result.put("totalAmount", totAmount);
@@ -2481,9 +2487,11 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			result.put("primary", false);
 		}else{
 			result.put("primary", true);
-
 		}
 		result.put("paymentType", paymentType);
+		result.put("otherFees", otherCharge-otherFees);
+		result.put("serviceCharge", serviceFees-serviceCharge);
+
 		return result;
 		
 	}
