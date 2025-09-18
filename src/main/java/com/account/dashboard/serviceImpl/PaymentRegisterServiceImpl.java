@@ -2461,12 +2461,12 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		double profGst=0;
 		double govFees=0;
 		double totalAmount=0;
-		
+		String paymentType="NA";
 		for(PaymentRegister pr:paymentRegister) {
 			proFees=proFees+pr.getProfessionalFees();
 			profGst=pr.getProfessionalGstAmount();   
 			govFees=pr.getGovermentfees();
-
+			paymentType=pr.getPaymentType();
 			totalAmount=pr.getTotalAmount();
 		}
 		double totAmount = Double.parseDouble(estimate.get("totalAmount").toString());
@@ -2477,18 +2477,15 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		result.put("totalAmount", totAmount);
 		result.put("proffees", profees-proFees);
 		result.put("govfees", govfees-govfees);
+		if(proFees>0) {
+			result.put("primary", false);
+		}else{
+			result.put("primary", true);
 
-
+		}
+		result.put("paymentType", paymentType);
 		return result;
 		
-//		Map<String, Object> estimate = leadFeignClient.getEstimateById(id);
-//         
-//		
-//		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(id);
-//		for(PaymentRegister pr:paymentRegister) {
-//               			
-//		}
-//		return null;
 	}
 
 }
