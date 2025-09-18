@@ -204,8 +204,8 @@ public class PaymentRegisterController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_REMAINING_AMOUNT)
-	public Boolean getRemainingAmount(@RequestParam Long id){
-		Boolean res=paymentRegisterService.getRemainingAmount(id);
+	public Map<String, Object> getRemainingAmount(@RequestParam Long id){
+		Map<String, Object> res=paymentRegisterService.getRemainingAmount(id);
 
 		return res;
 		

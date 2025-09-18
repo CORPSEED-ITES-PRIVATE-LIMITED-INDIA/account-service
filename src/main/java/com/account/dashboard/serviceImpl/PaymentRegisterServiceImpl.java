@@ -2452,15 +2452,43 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 
 	@Override
-	public Boolean getRemainingAmount(Long id) {
+	public Map<String, Object> getRemainingAmount(Long id) {
+		Map<String,Object>result=new HashMap<>();
 		Map<String, Object> estimate = leadFeignClient.getEstimateById(id);
-         
 		
 		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(id);
+		double proFees=0;
+		double profGst=0;
+		double govFees=0;
+		double totalAmount=0;
+		
 		for(PaymentRegister pr:paymentRegister) {
-               			
+			proFees=proFees+pr.getProfessionalFees();
+			profGst=pr.getProfessionalGstAmount();   
+			govFees=pr.getGovermentfees();
+
+			totalAmount=pr.getTotalAmount();
 		}
-		return null;
+		double totAmount = Double.parseDouble(estimate.get("totalAmount").toString());
+		double profees = Double.parseDouble(estimate.get("professionalFees").toString());
+		double govfees = Double.parseDouble(estimate.get("govermentFees").toString());
+
+		totAmount=totAmount-totalAmount;
+		result.put("totalAmount", totAmount);
+		result.put("proffees", profees-proFees);
+		result.put("govfees", govfees-govfees);
+
+
+		return result;
+		
+//		Map<String, Object> estimate = leadFeignClient.getEstimateById(id);
+//         
+//		
+//		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(id);
+//		for(PaymentRegister pr:paymentRegister) {
+//               			
+//		}
+//		return null;
 	}
 
 }
