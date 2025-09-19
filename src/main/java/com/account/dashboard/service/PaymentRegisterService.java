@@ -65,5 +65,7 @@ public interface PaymentRegisterService {
 
 	Map<String, Object> getRemainingAmount(Long id);
 
+	List<PaymentRegister> searchPaymentRegister(String searchParam, String name,String fromDate,String toDate);
+
 
 }

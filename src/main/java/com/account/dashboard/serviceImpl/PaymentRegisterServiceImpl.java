@@ -2497,4 +2497,22 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		
 	}
 
+
+	@Override
+	public List<PaymentRegister> searchPaymentRegister(String searchParam, String name,String fromDate,String toDate) {
+		List<PaymentRegister>result=new ArrayList<>();
+		if(searchParam.equals("clientName")) {
+			result=paymentRegisterRepository.findByName(name);
+		}else if(searchParam.equals("companyName")){
+			result=paymentRegisterRepository.findBycompanyName(name);
+
+		}else if(searchParam.equals("invoiceNo")){
+//			result=paymentRegisterRepository.findByInvoiceNo(name);
+		}else {
+			result=paymentRegisterRepository.findByInBetweenDate(fromDate,toDate);
+		}
+		
+		return result;
+	}
+
 }

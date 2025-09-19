@@ -6,6 +6,10 @@ import java.util.List;
 public class CreateAmountDto {
 	
 
+	String name;
+	String emails;
+	String contactNo;
+	String whatsappNo;
 
 	private Long leadId;
 	private Long estimateId;
@@ -319,6 +323,38 @@ public class CreateAmountDto {
 
 	public void setProfesionalGstFee(double profesionalGstFee) {
 		this.profesionalGstFee = profesionalGstFee;
+	}
+
+	public String getName() {
+		return name;
+	}
+
+	public void setName(String name) {
+		this.name = name;
+	}
+
+	public String getEmails() {
+		return emails;
+	}
+
+	public void setEmails(String emails) {
+		this.emails = emails;
+	}
+
+	public String getContactNo() {
+		return contactNo;
+	}
+
+	public void setContactNo(String contactNo) {
+		this.contactNo = contactNo;
+	}
+
+	public String getWhatsappNo() {
+		return whatsappNo;
+	}
+
+	public void setWhatsappNo(String whatsappNo) {
+		this.whatsappNo = whatsappNo;
 	}
 
      

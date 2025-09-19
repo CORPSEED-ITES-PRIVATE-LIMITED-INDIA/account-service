@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -209,5 +211,18 @@ public class PaymentRegisterController {
 
 		return res;
 		
+	}
+	@GetMapping(UrlsMapping.SEARCH_PAYMENT_REGISTER)
+	public ResponseEntity<List<PaymentRegister>> searchPaymentRegister(@RequestParam String searchParam,@RequestParam String name,String fromDate,String toDate) {
+
+		try {
+			List<PaymentRegister> leads = paymentRegisterService.searchPaymentRegister(searchParam,name, fromDate, toDate);
+			if (leads.isEmpty()) {
+				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+			}
+			return new ResponseEntity<>(leads, HttpStatus.OK);
+		} catch (Exception e) {
+			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+		}
 	}
 }

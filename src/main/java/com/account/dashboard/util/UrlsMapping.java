@@ -132,6 +132,7 @@ public interface UrlsMapping {
 		public static final String GET_ALL_PAYMENT_REGISTER_COUNT=PREFIX+ "/paymentRegister/getAllPaymentRegisterCount";
 		public static final String GET_ALL_PAYMENT_REGISTER_BY_USER=PREFIX+ "/paymentRegister/getAllPaymentRegisterByUser";
 
+		public static final String SEARCH_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/searchPaymentRegister";
 
 	
 	//====================================  BankStatements ===========================================
