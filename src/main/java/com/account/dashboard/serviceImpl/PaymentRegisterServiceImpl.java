@@ -131,7 +131,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}else {
 			paymentRegister.setProfessionalFees(createAmountDto.getProfessionalFees());
 		}
-
+		paymentRegister.setLeadId(createAmountDto.getLeadId());
 		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
 
 		double profesionalGst = createAmountDto.getProfesionalGst();
@@ -180,6 +180,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		//		paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
 		//		paymentRegister.setCertificatePersent(createAmountDto.getCertificatePersent());
 		paymentRegisterRepository.save(paymentRegister);
+		
 		return paymentRegister;
 	}
 
