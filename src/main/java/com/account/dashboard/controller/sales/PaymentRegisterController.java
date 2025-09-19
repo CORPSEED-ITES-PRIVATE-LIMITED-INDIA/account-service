@@ -39,8 +39,8 @@ public class PaymentRegisterController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_PAYMENT_REGISTER)
-	public List<PaymentRegister> getAllPaymentRegister(@RequestParam(required = false) String status){
-		List<PaymentRegister> res=paymentRegisterService.getAllPaymentRegister(status);	
+	public List<Map<String,Object>> getAllPaymentRegister(@RequestParam(required = false) String status){
+		List<Map<String,Object>> res=paymentRegisterService.getAllPaymentRegister(status);	
 		return res;
 		
 	}
@@ -213,10 +213,10 @@ public class PaymentRegisterController {
 		
 	}
 	@GetMapping(UrlsMapping.SEARCH_PAYMENT_REGISTER)
-	public ResponseEntity<List<PaymentRegister>> searchPaymentRegister(@RequestParam String searchParam,@RequestParam String name,String fromDate,String toDate) {
+	public ResponseEntity<List<Map<String,Object>>> searchPaymentRegister(@RequestParam String searchParam,@RequestParam String name,String fromDate,String toDate) {
 
 		try {
-			List<PaymentRegister> leads = paymentRegisterService.searchPaymentRegister(searchParam,name, fromDate, toDate);
+			List<Map<String,Object>> leads = paymentRegisterService.searchPaymentRegister(searchParam,name, fromDate, toDate);
 			if (leads.isEmpty()) {
 				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
 			}

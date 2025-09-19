@@ -17,7 +17,7 @@ public interface PaymentRegisterService {
 
 	PaymentRegister createPaymentRegister(CreateAmountDto createAmountDto);
 
-	List<PaymentRegister> getAllPaymentRegister(String status);
+	List<Map<String,Object>> getAllPaymentRegister(String status);
 
 	Boolean updatePaymentRegister(UpdatePaymentDto updatePaymentDto);
 
@@ -65,7 +65,7 @@ public interface PaymentRegisterService {
 
 	Map<String, Object> getRemainingAmount(Long id);
 
-	List<PaymentRegister> searchPaymentRegister(String searchParam, String name,String fromDate,String toDate);
+	List<Map<String,Object>> searchPaymentRegister(String searchParam, String name,String fromDate,String toDate);
 
 
 }
