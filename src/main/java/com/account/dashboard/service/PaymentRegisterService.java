@@ -53,7 +53,7 @@ public interface PaymentRegisterService {
 
 	List<Map<String, Object>> getAllPaymentRegisterWithCompany(Long userId);
 
-	List<PaymentRegister> getAllPaymentRegisterWithPage(int page, int size, String status);
+	List<Map<String,Object>> getAllPaymentRegisterWithPage(int page, int size, String status);
 
 	Long getAllPaymentRegisterCount(String status);
 
