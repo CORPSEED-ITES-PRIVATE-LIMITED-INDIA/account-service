@@ -2312,10 +2312,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		// For descending order, use:
 		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
-		if(status!=null && (!status.equals("all"))) {
-			statusList.add(status);
+		if(status.equals("all")) {
+			statusList=Arrays.asList("initiated","approved","hold","disapproved");
 		}else {
-			statusList=Arrays.asList("initiated","approved");
+			statusList.add(status);
 		}
 		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageableDesc,statusList);
 
@@ -2327,10 +2327,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	public Long getAllPaymentRegisterCount(String status) {
 
 		List<String>statusList=new ArrayList<>();
-		if(statusList!=null && (!statusList.equals("all"))) {
-			statusList.add(status);
+		if(status.equals("all")) {
+			statusList=Arrays.asList("initiated","approved","hold","disapproved");
 		}else {
-			statusList=Arrays.asList("initiated","approved");
+			statusList.add(status);
 		}
 		long paymentRegisterList = paymentRegisterRepository.findCountByStatus(statusList);
 		return paymentRegisterList;
@@ -2345,10 +2345,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
 		Optional<User> user = userRepository.findById(userId);
 		List<String>statusList=new ArrayList<>();
-		if(status!=null && (!status.equals("all"))) {
-			statusList.add(status);
+		if(status.equals("all")) {
+			statusList=Arrays.asList("initiated","approved","hold","disapproved");
 		}else {
-			statusList=Arrays.asList("initiated","approved");
+			statusList.add(status);
 		}
 		List<PaymentRegister> paymentRegisterList =new ArrayList<>();
 		if(user.get()!=null &&user.get().getRole().contains("ADMIN")) {
