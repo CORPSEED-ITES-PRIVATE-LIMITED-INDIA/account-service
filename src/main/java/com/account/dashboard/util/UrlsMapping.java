@@ -110,7 +110,7 @@ public interface UrlsMapping {
 		public static final String PAYMENT_APPROVE_V2=PREFIX+ "/paymentRegister/paymentApproveV2";
 		public static final String PAYMENT_APPROVE=PREFIX+ "/paymentRegister/paymentApprove";
 		public static final String PAYMENT_APPROVE_MANUAL=PREFIX+ "/paymentRegister/paymentApproveManual";
-̥
+
 		public static final String GET_PAYMENT_REGISTER_BY_ID=PREFIX+ "/paymentRegister/getPaymentRegisterById";
 		public static final String GET_PAYMENT_REGISTER_BY_ESTIMATE_ID=PREFIX+ "/paymentRegister/getPaymentRegisterByEstimateId";
 		public static final String CREATE_INVOICE=PREFIX+ "/paymentRegister/createInvoice";
