@@ -22,7 +22,7 @@ public class UnbilledServiceImpl implements UnbilledService{
     private UnbilledDTO toDTO(Unbilled entity) {
         UnbilledDTO dto = new UnbilledDTO();
         dto.setDate(entity.getDate());
-        dto.setProject(entity.getProject());
+//        dto.setProject(entity.getProject());
         dto.setEstimateId(entity.getEstimateId());
         
         dto.setClient(entity.getClient());
@@ -39,7 +39,7 @@ public class UnbilledServiceImpl implements UnbilledService{
     private Unbilled toEntity(UnbilledDTO dto) {
         Unbilled entity = new Unbilled();
         entity.setDate(dto.getDate());
-        entity.setProject(dto.getProject());
+//        entity.setProject(dto.getProject());
         entity.setEstimateId(dto.getEstimateId());
         entity.setClient(dto.getClient());
         entity.setCompany(dto.getCompany());
@@ -77,7 +77,7 @@ public class UnbilledServiceImpl implements UnbilledService{
     public UnbilledDTO update(Long id, UnbilledDTO dto) {
         return unbilledRepository.findById(id).map(existing -> {
             existing.setDate(dto.getDate());
-            existing.setProject(dto.getProject());
+//            existing.setProject(dto.getProject());
             existing.setEstimateId(dto.getEstimateId());
             existing.setClient(dto.getClient());
             existing.setCompany(dto.getCompany());

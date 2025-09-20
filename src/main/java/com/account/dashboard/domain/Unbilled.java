@@ -15,7 +15,7 @@ public class Unbilled {
     @Temporal(TemporalType.DATE)
     private Date date;
 
-    private Long project;
+    private String project;
 
     private Long estimateId;
 
@@ -44,10 +44,21 @@ public class Unbilled {
     public Date getDate() { return date; }
     public void setDate(Date date) { this.date = date; }
 
-    public Long getProject() { return project; }
-    public void setProject(Long project) { this.project = project; }
 
-    public Long getEstimateId() { return estimateId; }
+
+    public String getProject() {
+		return project;
+	}
+	public void setProject(String project) {
+		this.project = project;
+	}
+	public List<InvoiceData> getInvoiced() {
+		return invoiced;
+	}
+	public void setInvoiced(List<InvoiceData> invoiced) {
+		this.invoiced = invoiced;
+	}
+	public Long getEstimateId() { return estimateId; }
     public void setEstimateId(Long estimateId) { this.estimateId = estimateId; }
 
 

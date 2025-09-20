@@ -2587,6 +2587,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	public Boolean createUnbilled(PaymentRegister paymentRegister){
 		Boolean flag=false;
 		Map<String, Object>estimate=leadFeignClient.getEstimateById(paymentRegister.getEstimateId());
+		String projectName = estimate.get("productName")!=null?estimate.get("productName").toString():"NA";
 		Unbilled unbilled=unbilledRepository.findByEstimateId(paymentRegister.getEstimateId());
 		if(unbilled!=null) {
 			double totalAmount = paymentRegister.getTotalAmount();
@@ -2599,6 +2600,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			unbilled.setPaidAmount(paidAmount);
 			unbilled.setDueAmount(dueAmount);
 			unbilled.setDate(approveDate);
+			unbilled.setProject(projectName);
 			unbilledRepository.save(unbilled);
 			flag=true;
 		}else {
@@ -2609,6 +2611,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			double totalPaidAmount = paymentRegister.getTotalAmount();			   
 			unbilled.setPaidAmount(totalPaidAmount);
+			unbilled.setProject(projectName);
 
 			double totalAmount = objectToDouble(estimate.get("totalAmount"));
 			unbilled.setOrderAmount(totalAmount);
@@ -2784,8 +2787,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		if(paymentApproveDto.getStatus().equals("approved")) {
 			Boolean invoice = createInvoice(paymentRegister.getEstimateId());
 			Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
-			createUnbilled(paymentRegister);
-			leadFeignClient.createProject(paymentRegister.getEstimateId());
+//			createUnbilled(paymentRegister);
+			Long project = leadFeignClient.createProject(paymentRegister.getEstimateId());
+			Boolean unbilled = createUnbilled(paymentRegister);
+
 			if(invoice && payment) {
 				flag=true;
 				paymentRegister.setStatus("approved");
