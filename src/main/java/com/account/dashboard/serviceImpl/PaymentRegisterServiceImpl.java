@@ -221,6 +221,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		result.put("estimateDate", estimateDate);
 		result.put("paymentType", paymentType);
 		result.put("serviceCharge", serviceFees-serviceCharge);
+		result.put("paidAmount", proFees);
 
 		return result;
 		
