@@ -10,6 +10,7 @@ import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.PaymentRegister;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreatePurchaseOrderDto;
+import com.account.dashboard.dto.PaymentApproveDto;
 import com.account.dashboard.dto.UpdatePaymentDto;
 
 @Service
@@ -66,6 +67,8 @@ public interface PaymentRegisterService {
 	Map<String, Object> getRemainingAmount(Long id);
 
 	List<Map<String,Object>> searchPaymentRegister(String searchParam, String name,String fromDate,String toDate);
+
+	Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto);
 
 
 }

@@ -33,6 +33,7 @@ import com.account.dashboard.dto.CreateAccountData;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreatePurchaseOrderDto;
 import com.account.dashboard.dto.CreateTdsDto;
+import com.account.dashboard.dto.PaymentApproveDto;
 import com.account.dashboard.dto.UnbilledDTO;
 import com.account.dashboard.dto.UpdatePaymentDto;
 import com.account.dashboard.repository.*;
@@ -2772,6 +2773,36 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		}
 		return res;
+	}
+
+
+	@Override
+	public Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto) {
+
+		Boolean flag=true;
+		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentApproveDto.getEstimateId()).get();
+		if(paymentApproveDto.getStatus().equals("approved")) {
+			Boolean invoice = createInvoice(paymentRegister.getEstimateId());
+			Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
+			createUnbilled(paymentRegister);
+			leadFeignClient.createProject(paymentRegister.getEstimateId());
+			if(invoice && payment) {
+				flag=true;
+				paymentRegister.setStatus("approved");
+				paymentRegister.setComment(paymentApproveDto.getComment());
+				paymentRegisterRepository.save(paymentRegister);
+				
+			}
+		}else {
+			paymentRegister.setStatus("approved");
+			paymentRegister.setComment(paymentApproveDto.getComment());
+
+			paymentRegisterRepository.save(paymentRegister);
+			flag=true;
+
+		}
+		return flag;
+
 	}
 
 }

@@ -20,6 +20,7 @@ import com.account.dashboard.domain.account.Voucher;
 import com.account.dashboard.dto.CreateAccountData;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreatePurchaseOrderDto;
+import com.account.dashboard.dto.PaymentApproveDto;
 import com.account.dashboard.dto.UpdatePaymentDto;
 import com.account.dashboard.service.PaymentRegisterService;
 import com.account.dashboard.util.UrlsMapping;
@@ -68,6 +69,7 @@ public class PaymentRegisterController {
 		return res;
 		
 	}
+	
 	
 	@PutMapping(UrlsMapping.PAYMENT_DISSAPPROVE)
 	public Boolean paymentDisapproved(@RequestParam Long id){
@@ -224,5 +226,15 @@ public class PaymentRegisterController {
 		} catch (Exception e) {
 			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
 		}
+	}
+	
+	
+	
+	@GetMapping(UrlsMapping.PAYMENT_APPROVE_MANUAL)
+	public Boolean paymentApproveAndDisapprovedManual(@RequestBody PaymentApproveDto paymentApproveDto){
+		Boolean res=paymentRegisterService.paymentApproveAndDisapprovedManual(paymentApproveDto);
+
+		return null;
+		
 	}
 }
