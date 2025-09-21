@@ -1,13 +1,20 @@
 package com.account.dashboard.serviceImpl;
 
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
+import com.account.dashboard.config.LeadFeignClient;
 import com.account.dashboard.domain.Unbilled;
 import com.account.dashboard.dto.UnbilledDTO;
 import com.account.dashboard.repository.UnbilledRepository;
@@ -17,6 +24,9 @@ public class UnbilledServiceImpl implements UnbilledService{
 
 	@Autowired
     private UnbilledRepository unbilledRepository;
+	
+	@Autowired
+	LeadFeignClient leadFeignClient;
 
     // Convert Entity to DTO
     private UnbilledDTO toDTO(Unbilled entity) {
@@ -113,6 +123,47 @@ public class UnbilledServiceImpl implements UnbilledService{
 		res.put("dueAmount", dueAmount);
 
 		return res;
+	}
+//
+//	private Date date;
+//	private Long project;
+//	private Long estimateId;
+//	private List<Long> invoiced;
+//	private String client;
+//	private String company;
+//	private double txnAmount;
+//	private double orderAmount;
+//	private double dueAmount;
+//	private double paidAmount;
+//	private String status;
+	
+	@Override
+	public List<Map<String,Object>>getAllUnbilled(int page, int size) {
+		
+		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		 List<Unbilled> unbilledList = unbilledRepository.findAll(pageableDesc).getContent();
+
+		 List<Map<String,Object>>result=new ArrayList<>();
+		 for(Unbilled ub:unbilledList) {
+			Map<String, Object> estimate = leadFeignClient.getEstimateById(ub.getEstimateId());
+
+			 Map<String,Object>map=new HashMap<>();
+			 map.put("id", ub.getId());
+			 map.put("date", ub.getDate());
+			 map.put("company", ub.getCompany());
+			 map.put("txnAmount", ub.getTxnAmount());
+			 map.put("productName", estimate.get("productName"));
+			 map.put("invoicedNumber", null);
+			 map.put("assigneeName", estimate.get("assigneeName"));
+			 result.add(map);
+		 }
+        return result;
+
+	}
+
+	@Override
+	public int getAllUnbilledCount() {
+		return unbilledRepository.findAll().size();
 	}
 
 	

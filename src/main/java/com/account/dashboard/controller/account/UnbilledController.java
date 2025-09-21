@@ -17,9 +17,15 @@ public class UnbilledController {
     @Autowired
     private UnbilledService unbilledService;
 
-    @GetMapping(UrlsMapping.GET_ALL_UNBILLED)
+//    @GetMapping(UrlsMapping.GET_ALL_UNBILLED)
     public List<UnbilledDTO> getAllUnbilled() {
         return unbilledService.getAllUnbilled();
+    }
+    
+    @GetMapping(UrlsMapping.GET_ALL_UNBILLED)
+    public List<Map<String,Object>> getAllUnbilledWithPagination(@RequestParam(value = "page", defaultValue = "1") int page,
+			@RequestParam(value = "size", defaultValue = "10") int size) {
+        return unbilledService.getAllUnbilled(page-1,size);
     }
 
     @GetMapping(UrlsMapping.GET_UNBILLED_BY_ID)
@@ -41,5 +47,9 @@ public class UnbilledController {
         return unbilledService.getAllUnbilledAmount();
     }
 
+    @GetMapping(UrlsMapping.GET_ALL_UNBILLED_COUNT)
+    public int getAllUnbilledCount() {
+        return unbilledService.getAllUnbilledCount();
+    }
   
 }

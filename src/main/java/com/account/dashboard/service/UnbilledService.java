@@ -22,4 +22,8 @@ public interface UnbilledService {
 
 	Map<String, Object> getAllUnbilledAmount();
 
+	List<Map<String,Object>> getAllUnbilled(int page, int size);
+
+	int getAllUnbilledCount();
+
 }
