@@ -98,5 +98,11 @@ public class UserController {
 		User createdUser = userService.createUserByEmail(newSignupRequest.getUserName(),newSignupRequest.getEmail(),newSignupRequest.getRole(),newSignupRequest.getId(),newSignupRequest.getDesignation());
 		return createdUser;
 	}
+	
+	@PostMapping(UrlsMapping.CREATE_USER_BY_LEAD_SERVICES)
+	public Boolean createUserByLeadServices() {
+		Boolean createdUser = userService.createUserByLeadServices();
+		return createdUser;
+	}
 }
 

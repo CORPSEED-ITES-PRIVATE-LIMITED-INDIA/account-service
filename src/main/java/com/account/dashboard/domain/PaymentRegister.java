@@ -15,11 +15,15 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 
+/**
+ * 
+ */
 @Table
 @Entity
 //@Getter
@@ -104,7 +108,8 @@ public class PaymentRegister {
 	String purchaseAttach;
 	String paymentTerm;
 	String comment;
-	
+	@ManyToOne
+	User createdByUser;
 	
 	public Long getId() {
 		return id;
@@ -408,6 +413,12 @@ public class PaymentRegister {
 	}
 	public void setWhatsappNo(String whatsappNo) {
 		this.whatsappNo = whatsappNo;
+	}
+	public User getCreatedByUser() {
+		return createdByUser;
+	}
+	public void setCreatedByUser(User createdByUser) {
+		this.createdByUser = createdByUser;
 	}
 	
 	

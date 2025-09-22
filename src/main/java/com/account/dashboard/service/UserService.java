@@ -26,4 +26,6 @@ public interface UserService {
 
 	User createUserByLead(UserDto user);
 
+	Boolean createUserByLeadServices();
+
 }

@@ -1,5 +1,7 @@
 package com.account.dashboard.serviceImpl;
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -307,8 +309,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			Object estimateCreateDate = remAmount.get("estimateDate");
 
 			map.put("dueAmount", dueAmount);
-			map.put("txnAmount", txnAmount);
-			map.put("orderAmount", p.getTotalAmount());
+			map.put("txnAmount", p.getTotalAmount());
+			map.put("orderAmount", txnAmount);
 			map.put("estimateCreateDate", estimateCreateDate);
 			result.add(map);
 
@@ -703,13 +705,13 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		invoiceData.setProductName(feignLeadClient.get("productName").toString());
 		invoiceData.setEstimateId(estimateId);
-
+		
 		String assignee = feignLeadClient.get("assigneeIds").toString();
 		Long assigneeId=Long.parseLong(assignee);
 
 		if(assigneeId!=null) {
-//						User user = userRepository.findById(assigneeId).get();
-//						invoiceData.setAssignee(user);
+						User user = userRepository.findById(assigneeId).get();
+						invoiceData.setAssignee(user);
 		}
 
 		String lead = feignLeadClient.get("leadId")!=null?feignLeadClient.get("leadId").toString():null;
@@ -1708,15 +1710,27 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			paymentRegister.setPurchaseAttach(createPurchaseOrderDto.getPurchaseAttach().get(0));
 
 		}
+		paymentRegister.setEstimateNo(createPurchaseOrderDto.getEstimateNo());
 		paymentRegister.setStatus("initiated");
 		paymentRegister.setPaymentTerm(createPurchaseOrderDto.getPaymentTerm());
 		paymentRegister.setComment(createPurchaseOrderDto.getComment());
 		paymentRegister.setUpdateDate(new Date().toString());
 		paymentRegister.setCreatedById(createPurchaseOrderDto.getCreatedById());
+		paymentRegister.setPurchaseDate(new Date());
+		if(createPurchaseOrderDto.getCreatedById()!=null) {
+			User user = userRepository.findById(createPurchaseOrderDto.getCreatedById()).get();
+			paymentRegister.setCreatedByUser(user);
+			paymentRegister.setCreatedById(createPurchaseOrderDto.getCreatedById());
+
+        }
+		paymentRegister.setPurchaseDate(new Date());
 		paymentRegister.setEstimateId(createPurchaseOrderDto.getEstimateId());
 		paymentRegister.setLeadId(createPurchaseOrderDto.getLeadId());
 		paymentRegister.setServiceName(createPurchaseOrderDto.getServiceName());
+		paymentRegister.setCompanyId(createPurchaseOrderDto.getCompanyId());
+		paymentRegister.setCompanyName(createPurchaseOrderDto.getCompanyName());
 		paymentRegisterRepository.save(paymentRegister);
+		
 		return paymentRegister;
 	}
 
@@ -1738,8 +1752,12 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("CreatedById", p.getCreatedById());
 			map.put("estimateId", p.getEstimateId());
 			map.put("leadId", p.getLeadId());
+			
 			map.put("serviceName", p.getServiceName());
-			map.put("serviceName", p.getServiceName());
+			map.put("assigneeId", p.getCreatedByUser()!=null?p.getCreatedByUser().getId():null);
+			map.put("assigneeName", p.getCreatedByUser()!=null?p.getCreatedByUser().getFullName():null);
+			map.put("assigneeEmail", p.getCreatedByUser()!=null?p.getCreatedByUser().getEmail():null);
+
 			map.put("status", p.getStatus());
 
 			list.add(map);
@@ -2505,6 +2523,12 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("txnAmount", txnAmount);
 			map.put("orderAmount", p.getTotalAmount());
 			map.put("estimateCreateDate", estimateCreateDate);
+			
+			map.put("assigneeId", p.getCreatedByUser()!=null?p.getCreatedByUser().getId():null);
+			map.put("assigneeName", p.getCreatedByUser()!=null?p.getCreatedByUser().getFullName():null);
+			map.put("assigneeEmail", p.getCreatedByUser()!=null?p.getCreatedByUser().getEmail():null);
+
+			map.put("status", p.getStatus());
 			result.add(map);
 
 		}
@@ -2559,6 +2583,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		Optional<User> user = userRepository.findById(userId);
 
 		List<InvoiceData>invoice=invoiceDataRepository.findAll(pageableDesc).getContent();
+		
 
 
 		return invoice;
@@ -2799,7 +2824,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				
 			}
 		}else {
-			paymentRegister.setStatus("approved");
+			paymentRegister.setStatus(paymentApproveDto.getStatus());
 			paymentRegister.setComment(paymentApproveDto.getComment());
 
 			paymentRegisterRepository.save(paymentRegister);
@@ -2809,5 +2834,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		return flag;
 
 	}
+
 
 }

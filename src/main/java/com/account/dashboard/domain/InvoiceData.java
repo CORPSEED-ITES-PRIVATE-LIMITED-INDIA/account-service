@@ -11,7 +11,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Data;
-@Data
+//@Data
 @Table
 @Entity
 public class InvoiceData {
@@ -42,9 +42,9 @@ public class InvoiceData {
 	String secondaryWhatsappNo;
 	String secondaryContactDesignation;
 	
-	Date estimateData;
+	Date estimateDate;
 	Date createDate;
-	
+	String estimateNo;
 	
 	/* --------------- company detail -------------------------------- */
 	Boolean isPresent;
@@ -176,9 +176,7 @@ public class InvoiceData {
 	public String getSecondaryContactDesignation() {
 		return secondaryContactDesignation;
 	}
-	public Date getEstimateData() {
-		return estimateData;
-	}
+
 	public Date getCreateDate() {
 		return createDate;
 	}
@@ -392,9 +390,7 @@ public class InvoiceData {
 	public void setSecondaryContactDesignation(String secondaryContactDesignation) {
 		this.secondaryContactDesignation = secondaryContactDesignation;
 	}
-	public void setEstimateData(Date estimateData) {
-		this.estimateData = estimateData;
-	}
+
 	public void setCreateDate(Date createDate) {
 		this.createDate = createDate;
 	}
@@ -562,6 +558,30 @@ public class InvoiceData {
 	}
 	public void setTotalAmount(String totalAmount) {
 		this.totalAmount = totalAmount;
+	}
+	public Date getEstimateDate() {
+		return estimateDate;
+	}
+	public void setEstimateDate(Date estimateDate) {
+		this.estimateDate = estimateDate;
+	}
+	public String getEstimateNo() {
+		return estimateNo;
+	}
+	public void setEstimateNo(String estimateNo) {
+		this.estimateNo = estimateNo;
+	}
+	public String getPaidAmount() {
+		return paidAmount;
+	}
+	public void setPaidAmount(String paidAmount) {
+		this.paidAmount = paidAmount;
+	}
+	public Unbilled getUnbilled() {
+		return unbilled;
+	}
+	public void setUnbilled(Unbilled unbilled) {
+		this.unbilled = unbilled;
 	}
     
 	

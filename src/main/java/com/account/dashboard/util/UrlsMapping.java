@@ -19,7 +19,8 @@ public interface UrlsMapping {
 	public static final String UPDATE_USER=PREFIX+ "/users/updateUser";
 	public static final String DELETE_USER=PREFIX+ "/users/deleteUser";
 	public static final String CREATE_USER_BY_EMAIL=PREFIX+ "/users/createUserByEmail";
-	
+	public static final String CREATE_USER_BY_LEAD_SERVICES=PREFIX+ "/users/createUserByLeadServices";
+
 	//======================== ROLE =================================
 	public static final String CREATE_ROLE=PREFIX+ "/roles/createRole";
 	public static final String GET_ALL_ROLE=PREFIX+ "/roles/getAllRole";

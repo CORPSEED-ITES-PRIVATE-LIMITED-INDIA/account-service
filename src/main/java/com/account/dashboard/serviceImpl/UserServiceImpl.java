@@ -3,6 +3,7 @@ package com.account.dashboard.serviceImpl;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 
@@ -10,6 +11,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.context.Context;
 
+import com.account.dashboard.config.LeadFeignClient;
 import com.account.dashboard.domain.Role;
 import com.account.dashboard.domain.User;
 import com.account.dashboard.dto.UpdateUser;
@@ -28,6 +30,9 @@ public class UserServiceImpl implements UserService {
 	
 	@Autowired
 	RoleRepository roleRepository;
+	
+	@Autowired
+	LeadFeignClient leadFeignClient;
 
 	@Override
 	public User createUser(UserDto user) {
@@ -164,7 +169,7 @@ public class UserServiceImpl implements UserService {
 
 	@Override
 	public User createUserByLead(UserDto userDto) {
-		User user = new User();
+     	User user = new User();
 		user.setId(userDto.getId());
 		user.setEmail(userDto.getEmail());
 		user.setFullName(userDto.getUsername());
@@ -177,4 +182,25 @@ public class UserServiceImpl implements UserService {
 		return user;
 		
 	}
+	
+	public Boolean createUserByLeadServices() {
+		Boolean flag=false;
+		List<Map<String,Object>> feignUser=leadFeignClient.getAllUserForAccount();
+		for(Map<String,Object> u:feignUser) {
+			User user = new User();
+			user.setId(Long.parseLong((u.get("id").toString())));
+			user.setEmail(u.get("email").toString());
+			user.setFullName(u.get("fullName").toString());
+			List<String>role=new ArrayList<>();
+			role.add("USER");
+			List<Role> roleList = roleRepository.findAllByNameIn(user.getRole());
+			user.setUserRole(roleList);
+			user.setDepartment(u.get("department").toString());
+			user.setDesignation(u.get("designation").toString());
+			userRepo.save(user);
+			flag=true;
+		}
+		return flag;
+	}
+
 }

@@ -18,7 +18,9 @@ public class CreatePurchaseOrderDto {
 	private Long estimateId;
 	private Long createdById;
 	private String serviceName;
-
+	private String estimateNo;
+	private Long companyId;
+	private String companyName;
 	public String getRegisterType() {
 		return registerType;
 	}
@@ -98,6 +100,24 @@ public class CreatePurchaseOrderDto {
 	}
 	public void setPurchaseAttach(List<String> purchaseAttach) {
 		this.purchaseAttach = purchaseAttach;
+	}
+	public String getEstimateNo() {
+		return estimateNo;
+	}
+	public void setEstimateNo(String estimateNo) {
+		this.estimateNo = estimateNo;
+	}
+	public Long getCompanyId() {
+		return companyId;
+	}
+	public void setCompanyId(Long companyId) {
+		this.companyId = companyId;
+	}
+	public String getCompanyName() {
+		return companyName;
+	}
+	public void setCompanyName(String companyName) {
+		this.companyName = companyName;
 	}
 	
 	
