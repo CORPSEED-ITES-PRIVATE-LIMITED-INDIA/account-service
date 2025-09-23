@@ -26,4 +26,6 @@ public interface UnbilledService {
 
 	int getAllUnbilledCount();
 
+	List<Map<String, Object>> searchUnbilled(String name,String searchBy);
+
 }
