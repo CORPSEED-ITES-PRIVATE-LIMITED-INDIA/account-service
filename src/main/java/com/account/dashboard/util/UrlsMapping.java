@@ -167,6 +167,7 @@ public interface UrlsMapping {
 		public static final String GET_ALL_UNBILLED=PREFIX+ "/ledgerType/getAllUnbilled";
 		public static final String GET_ALL_UNBILLED_AMOUNT=PREFIX+ "/ledgerType/getAllUnbilledAmount";
 		public static final String GET_ALL_UNBILLED_COUNT=PREFIX+ "/ledgerType/getAllUnbilledCount";
+		public static final String SEARCH_UNBILLED=PREFIX+ "/ledgerType/searchUnbilled";
 
         // get all trial balance
 		

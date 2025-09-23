@@ -52,4 +52,8 @@ public class UnbilledController {
         return unbilledService.getAllUnbilledCount();
     }
   
+    @GetMapping(UrlsMapping.SEARCH_UNBILLED)
+    public List<Map<String,Object>> searchUnbilled(String name,String searchBy) {
+        return unbilledService.searchUnbilled(name,searchBy);
+    }
 }
