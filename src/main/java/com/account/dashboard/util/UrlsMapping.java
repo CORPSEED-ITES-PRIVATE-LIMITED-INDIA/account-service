@@ -160,9 +160,9 @@ public interface UrlsMapping {
 		public static final String GET_IMAGE_TO_FILE=PREFIX+"/upload/getImageToFileSystem";
 		
 	// =  == ================================== Tds Api creation =======================================
-		public static final String CREATE_GST=PREFIX+ "/tds/createGst";
-		public static final String GET_ALL_GST=PREFIX+ "/tds/getAllGst";
-		public static final String GET_GST_BY_ID=PREFIX+ "/tds/getGstById";
+		public static final String CREATE_GST=PREFIX+ "/gst/createGst";
+		public static final String GET_ALL_GST=PREFIX+ "/gst/getAllGst";
+		public static final String GET_GST_BY_ID=PREFIX+ "/gst/getGstById";
 		
 		
 		
@@ -198,6 +198,20 @@ public interface UrlsMapping {
 		
 		// dashboard
 		public static final String GET_SALES_DASHBOARD_REVENUE_MONTHLY=PREFIX+ "/balanceSheet/getSalesDashboardRevenueMonthly";
+
+		
+		//sales Report
+		public static final String GET_ALL_SALES_REPORT=PREFIX+ "/salesReport/getAllSalesReport";
+		
+		//TdsReport
+		
+		public static final String GET_ALL_TDS_REPORT=PREFIX+ "/salesReport/getAllTdsReport";
+		
+		
+		//Gst Report
+		
+		public static final String GET_ALL_GST_REPORT=PREFIX+ "/gst/getAllGstReport";
+
 
 		
 
