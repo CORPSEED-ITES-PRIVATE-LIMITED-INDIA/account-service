@@ -3,14 +3,11 @@ package com.account.dashboard.dto;
 import java.util.Date;
 import java.util.List;
 
-public class CreateAmountDto {
-	
-
+public class CreateVendorAmountDto {
 	String name;
 	String emails;
 	String contactNo;
 	String whatsappNo;
-    String providerType;
 	private Long leadId;
 	private Long estimateId;
 
@@ -38,12 +35,6 @@ public class CreateAmountDto {
 	private double otherFees;
 	private double otherGst;
 	private int otherGstPercent;
-
-	int docPersent;
-	int filingPersent;
-	int liasoningPersent;
-	int certificatePersent;
-
 
 	private String UploadReceipt;
 	private double totalAmount;
@@ -136,21 +127,6 @@ public class CreateAmountDto {
 		return otherGstPercent;
 	}
 
-	public int getDocPersent() {
-		return docPersent;
-	}
-
-	public int getFilingPersent() {
-		return filingPersent;
-	}
-
-	public int getLiasoningPersent() {
-		return liasoningPersent;
-	}
-
-	public int getCertificatePersent() {
-		return certificatePersent;
-	}
 
 	public String getUploadReceipt() {
 		return UploadReceipt;
@@ -257,22 +233,6 @@ public class CreateAmountDto {
 		this.otherGstPercent = otherGstPercent;
 	}
 
-	public void setDocPersent(int docPersent) {
-		this.docPersent = docPersent;
-	}
-
-	public void setFilingPersent(int filingPersent) {
-		this.filingPersent = filingPersent;
-	}
-
-	public void setLiasoningPersent(int liasoningPersent) {
-		this.liasoningPersent = liasoningPersent;
-	}
-
-	public void setCertificatePersent(int certificatePersent) {
-		this.certificatePersent = certificatePersent;
-	}
-
 	public void setUploadReceipt(String uploadReceipt) {
 		UploadReceipt = uploadReceipt;
 	}
@@ -360,4 +320,5 @@ public class CreateAmountDto {
      
     
 	
+
 }
