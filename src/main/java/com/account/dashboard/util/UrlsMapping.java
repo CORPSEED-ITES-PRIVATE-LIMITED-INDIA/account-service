@@ -213,6 +213,9 @@ public interface UrlsMapping {
 		public static final String GET_ALL_GST_REPORT=PREFIX+ "/gst/getAllGstReport";
 
 
+		// Invoice =====
 		
+		public static final String GET_INVOICE_BY_ID=PREFIX+ "/invoice/getInvoiceById";
+
 
 }
