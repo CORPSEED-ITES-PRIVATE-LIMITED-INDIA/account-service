@@ -116,8 +116,8 @@ public class PaymentRegisterController {
 	
 	
 	@PutMapping(UrlsMapping.GET_INVOICE)
-	public InvoiceData getInvoice(@RequestParam Long id){
-		InvoiceData res=paymentRegisterService.getInvoice(id);	
+	public Map<String,Object> getInvoice(@RequestParam Long id){
+		Map<String,Object> res=paymentRegisterService.getInvoice(id);	
 		return res;
 		
 	}
@@ -152,9 +152,9 @@ public class PaymentRegisterController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_INVOICE)
-	public List<InvoiceData> getAllInvoice(@RequestParam Long userId,@RequestParam(value = "page", defaultValue = "1") int page,
+	public List<Map<String,Object>> getAllInvoice(@RequestParam Long userId,@RequestParam(value = "page", defaultValue = "1") int page,
 			@RequestParam(value = "size", defaultValue = "10") int size){
-		List<InvoiceData> res=paymentRegisterService.getAllInvoice(userId,page-1,size);	
+		List<Map<String,Object>>res=paymentRegisterService.getAllInvoice(userId,page-1,size);	
 		return res;		
 	}
 	
@@ -230,7 +230,7 @@ public class PaymentRegisterController {
 	
 	
 	
-	@GetMapping(UrlsMapping.PAYMENT_APPROVE_MANUAL)
+	@PostMapping(UrlsMapping.PAYMENT_APPROVE_MANUAL)
 	public Boolean paymentApproveAndDisapprovedManual(@RequestBody PaymentApproveDto paymentApproveDto){
 		Boolean res=paymentRegisterService.paymentApproveAndDisapprovedManual(paymentApproveDto);
 

@@ -759,7 +759,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setProfesionalGst(feignLeadClient.get("profesionalGst")!=null?feignLeadClient.get("profesionalGst").toString():null);
 
 		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
-		
+		invoiceData.setTotalAmount(feignLeadClient.get("totalAmount").toString());
 		
 		if(feignLeadClient.get("serviceCode")!=null) {
 			invoiceData.setServiceCode(feignLeadClient.get("serviceCode").toString());
@@ -1231,9 +1231,20 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 
 	@Override
-	public InvoiceData getInvoice(Long id) {
+	public Map<String,Object> getInvoice(Long id) {
 		InvoiceData invoiceData = invoiceDataRepository.findById(id).get();
-		return invoiceData;
+		
+		Map<String,Object>map=new HashMap<>();
+		map.put("id", invoiceData.getId());
+		map.put("invoiceNo", invoiceData.getId());
+		map.put("service", invoiceData.getProductName());
+		map.put("clientid", invoiceData.getPrimaryContactId());
+		map.put("clientName", invoiceData.getPrimaryContactName());
+		map.put("clientEmail", invoiceData.getPrimaryContactemails());
+		map.put("companyName", invoiceData.getCompanyName());
+		map.put("txnAmount", invoiceData.getTotalAmount());
+		map.put("addedBy", invoiceData.getAssignee());
+		return map;
 	}
 
 
@@ -2576,17 +2587,29 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 
 	@Override
-	public List<InvoiceData> getAllInvoice(Long userId, int page, int size) {
+	public List<Map<String,Object>> getAllInvoice(Long userId, int page, int size) {
 		Pageable pageable = PageRequest.of(page, size, Sort.by("id"));
 		// For descending order, use:
 		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
 		Optional<User> user = userRepository.findById(userId);
 
 		List<InvoiceData>invoice=invoiceDataRepository.findAll(pageableDesc).getContent();
-		
+	    List<Map<String,Object>>result=new ArrayList<>();
+		for(InvoiceData invoiceData:invoice){
+			Map<String,Object>map=new HashMap<>();
+			map.put("id", invoiceData.getId());
+			map.put("invoiceNo", invoiceData.getId());
+			map.put("service", invoiceData.getProductName());
+			map.put("clientid", invoiceData.getPrimaryContactId());
+			map.put("clientName", invoiceData.getPrimaryContactName());
+			map.put("clientEmail", invoiceData.getPrimaryContactemails());
+			map.put("companyName", invoiceData.getCompanyName());
+			map.put("txnAmount", invoiceData.getTotalAmount());
+			map.put("addedBy", invoiceData.getAssignee());
+			result.add(map);
+		}
 
-
-		return invoice;
+		return result;
 	}
 	//================================================================
 
@@ -2808,7 +2831,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	public Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto) {
 
 		Boolean flag=true;
-		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentApproveDto.getEstimateId()).get();
+		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentApproveDto.getPaymentRegisterId()).get();
 		if(paymentApproveDto.getStatus().equals("approved")) {
 			Boolean invoice = createInvoice(paymentRegister.getEstimateId());
 			Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());

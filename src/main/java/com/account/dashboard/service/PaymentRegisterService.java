@@ -32,7 +32,7 @@ public interface PaymentRegisterService {
 
 	Boolean createInvoice(Long id);
 
-	InvoiceData getInvoice(Long id);
+	Map<String,Object> getInvoice(Long id);
 
 	Map<String, Integer> leftAmount(Long id);
 
@@ -60,7 +60,7 @@ public interface PaymentRegisterService {
 
 	List<PaymentRegister> getAllPaymentRegisterByUser( int page, int size,Long userId, String status);
 
-	List<InvoiceData> getAllInvoice(Long userId, int page, int size);
+	List<Map<String,Object>> getAllInvoice(Long userId, int page, int size);
 
 	long getAllInvoiceCount(Long userId);
 
