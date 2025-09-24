@@ -3,11 +3,13 @@ package com.account.dashboard.serviceImpl.report;
 import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.GstDetails;
 import com.account.dashboard.repository.GstDetailsRepository;
 import com.account.dashboard.service.report.GstReportService;
 
+@Service
 public class GstReportServiceImpl implements GstReportService{
 	
 
