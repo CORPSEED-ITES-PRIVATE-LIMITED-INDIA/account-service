@@ -2604,6 +2604,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("clientName", invoiceData.getPrimaryContactName());
 			map.put("clientEmail", invoiceData.getPrimaryContactemails());
 			map.put("companyName", invoiceData.getCompanyName());
+			map.put("date", invoiceData.getCreateDate());
 			map.put("txnAmount", invoiceData.getTotalAmount());
 			map.put("addedBy", invoiceData.getAssignee());
 			result.add(map);
