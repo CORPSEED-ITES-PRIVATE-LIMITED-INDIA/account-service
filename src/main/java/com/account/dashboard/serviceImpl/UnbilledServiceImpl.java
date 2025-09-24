@@ -155,6 +155,10 @@ public class UnbilledServiceImpl implements UnbilledService{
 			 map.put("productName", estimate.get("productName"));
 			 map.put("invoicedNumber", null);
 			 map.put("assigneeName", estimate.get("assigneeName"));
+			 map.put("clientId", estimate.get("primaryContactId"));
+			 map.put("clientName", estimate.get("primaryContactName"));
+			 map.put("clientEmail", estimate.get("primaryContactEmails"));
+
 			 result.add(map);
 		 }
         return result;
