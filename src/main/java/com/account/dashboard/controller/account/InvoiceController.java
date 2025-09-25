@@ -1,5 +1,6 @@
 package com.account.dashboard.controller.account;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +30,14 @@ public class InvoiceController {
 	public List<Map<String,Object>> getAllInvoiceForExport(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
 		List<Map<String,Object>>res=invoiceService.getAllInvoiceForExport(startDate,endDate);	
 		return res;		
+	}
+	
+	@GetMapping(UrlsMapping.GET_INVOICE_BY_UNBILLED_ID)
+	public Map<String,Object> getInvoiceByUnbilledId(@RequestParam(required = false) Long unbilledId){
+		Map<String,Object> res=new HashMap<>();
+//		Map<String,Object> res=invoiceService.getInvoiceByUnbilledId(unbilledId);	
+		return res;
+		
 	}
 	
 }

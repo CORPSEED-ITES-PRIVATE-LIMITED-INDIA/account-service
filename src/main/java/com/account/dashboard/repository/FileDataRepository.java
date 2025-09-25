@@ -19,4 +19,7 @@ public interface FileDataRepository extends JpaRepository<FileData, Long> {
 	
 	@Query(value = "SELECT * FROM file_data fd WHERE fd.name =:fileName limit 1", nativeQuery = true)
 	FileData findByNameExist(String fileName);
+
+	@Query(value = "SELECT * FROM file_data fd WHERE fd.id in(:fileData)", nativeQuery = true)
+	List<FileData> findAllByIdIn(List<Long> fileData);
 }

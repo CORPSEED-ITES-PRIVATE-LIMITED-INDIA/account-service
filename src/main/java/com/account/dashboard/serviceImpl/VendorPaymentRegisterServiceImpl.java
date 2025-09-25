@@ -1,6 +1,7 @@
 package com.account.dashboard.serviceImpl;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,9 +15,15 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.FileData;
+import com.account.dashboard.domain.ProductEstimate;
+import com.account.dashboard.domain.User;
 import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.dto.CreateVendorAmountDto;
+import com.account.dashboard.dto.CreateVendorSubDto;
+import com.account.dashboard.repository.FileDataRepository;
 import com.account.dashboard.repository.PaymentRegisterRepository;
+import com.account.dashboard.repository.ProductEstimateRepository;
+import com.account.dashboard.repository.UserRepository;
 import com.account.dashboard.repository.VendorPaymentRegisterRepo;
 import com.account.dashboard.service.VendorPaymentRegisterServcie;
 
@@ -26,6 +33,15 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 	
 	@Autowired
 	VendorPaymentRegisterRepo vendorPaymentRegisterRepo;
+	
+	@Autowired
+	UserRepository userRepository;
+	
+	@Autowired
+	FileDataRepository fileDataRepository;
+	
+	@Autowired
+	ProductEstimateRepository productEstimateRepository;
 
 	@Override
 	public VendorPaymentRegister createVendorPaymentRegister(CreateVendorAmountDto createVendorAmountDto) {
@@ -33,39 +49,53 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 
 		vendorPaymentRegister.setStatus("initiated");
 		vendorPaymentRegister.setEstimateId(createVendorAmountDto.getEstimateId());
-		vendorPaymentRegister.setBillingQuantity(createVendorAmountDto.getBillingQuantity());
-		vendorPaymentRegister.setPaymentType(createVendorAmountDto.getPaymentType());
-		vendorPaymentRegister.setCreatedById(createVendorAmountDto.getCreatedById());
-		vendorPaymentRegister.setTransactionId(createVendorAmountDto.getTransactionId());
-		vendorPaymentRegister.setServiceName(createVendorAmountDto.getServiceName());
-		vendorPaymentRegister.setGovermentfees(createVendorAmountDto.getGovermentfees());
-		vendorPaymentRegister.setGovermentGst(createVendorAmountDto.getGovermentGst());
-
-		vendorPaymentRegister.setGovermentGstPercent(createVendorAmountDto.getGovermentGstPercent());
-		vendorPaymentRegister.setLeadId(createVendorAmountDto.getLeadId());
-		vendorPaymentRegister.setProfesionalGst(createVendorAmountDto.getProfesionalGst());
-
-		double profesionalGst = createVendorAmountDto.getProfesionalGst();
-
-		System.out.println("Professional  fees ...."+createVendorAmountDto.getProfessionalFees());
-		System.out.println("Professional gst  ...."+profesionalGst);
-
-		double gstAmount = ((createVendorAmountDto.getProfessionalFees()/100)*profesionalGst);
-		System.out.println("Professional gst amount ...."+gstAmount);
-
-		vendorPaymentRegister.setProfessionalGstAmount(gstAmount);
-
-		vendorPaymentRegister.setServiceCharge(createVendorAmountDto.getServiceCharge());		
-
-		vendorPaymentRegister.setOtherFees(createVendorAmountDto.getOtherFees());
-		vendorPaymentRegister.setOtherGstPercent(createVendorAmountDto.getOtherGstPercent());
-		vendorPaymentRegister.setTotalAmount(createVendorAmountDto.getTotalAmount());
-		vendorPaymentRegister.setRemark(createVendorAmountDto.getRemark());
-		vendorPaymentRegister.setPaymentDate(createVendorAmountDto.getPaymentDate());
-		vendorPaymentRegister.setEstimateNo(createVendorAmountDto.getEstimateNo());
-		vendorPaymentRegister.setRegisterBy(createVendorAmountDto.getRegisterBy());
 		
+		if(createVendorAmountDto.getCreatedById()!=null) {
+			User user = userRepository.findById(createVendorAmountDto.getCreatedById()).get();
+			vendorPaymentRegister.setCreatedBy(user);
+			vendorPaymentRegister.setCreateDate(new Date());
+		}
+		vendorPaymentRegister.setServiceName(createVendorAmountDto.getServiceName());
+		List<ProductEstimate>estimateList=new ArrayList<>();
+		if(createVendorAmountDto.getCreateVendorSubDto()!=null &&createVendorAmountDto.getCreateVendorSubDto().size()>0) {
+			for(CreateVendorSubDto v:createVendorAmountDto.getCreateVendorSubDto()) {
+				ProductEstimate productEstimate=new ProductEstimate();
+				productEstimate.setName(v.getName());
+				System.out.println("test......"+v.getName());
+				productEstimate.setQuantity(v.getQuantity());
+				productEstimate.setServiceFees(v.getServiceFees());
+				double gstAmount = ((v.getServiceFees()/100)*v.getServiceGstPercent());
 
+				productEstimate.setServiceGstAmount(gstAmount);
+				productEstimate.setServiceGstPercent(v.getServiceGstPercent());
+				productEstimate.setTotalPrice(v.getTotalPrice());
+				productEstimateRepository.save(productEstimate);
+				estimateList.add(productEstimate);
+			}
+			
+
+		}
+		vendorPaymentRegister.setProductEstimate(estimateList);     
+		vendorPaymentRegister.setLeadId(createVendorAmountDto.getLeadId());
+
+		vendorPaymentRegister.setRemarkByVendor(createVendorAmountDto.getRemarkByVendor());
+		vendorPaymentRegister.setCreateDate(new Date());
+		
+		vendorPaymentRegister.getVendorCompanyName();
+		vendorPaymentRegister.setAddress(createVendorAmountDto.getAddress());
+		vendorPaymentRegister.setCity(createVendorAmountDto.getCity());
+		vendorPaymentRegister.setState(createVendorAmountDto.getState());
+		vendorPaymentRegister.setCountry(createVendorAmountDto.getCountry());
+		vendorPaymentRegister.setPinCode(createVendorAmountDto.getPinCode());
+		
+		vendorPaymentRegister.setGstType(createVendorAmountDto.getGstType());
+		vendorPaymentRegister.setGstNo(createVendorAmountDto.getGstNo());
+		vendorPaymentRegister.setRemarkByVendor(createVendorAmountDto.getRemarkByVendor());
+		if(createVendorAmountDto.getFileData()!=null) {
+			List<FileData>fileData=fileDataRepository.findAllByIdIn(createVendorAmountDto.getFileData());
+			vendorPaymentRegister.setFileData(fileData);
+		}
+        
 		vendorPaymentRegisterRepo.save(vendorPaymentRegister);
 		
 		return vendorPaymentRegister;
@@ -82,53 +112,42 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			map.put("id", v.getId());
 		    map.put("leadId", v.getLeadId());
 		    map.put("estimateId", v.getEstimateId());
-		    map.put("billingQuantity", v.getBillingQuantity());   // partial, full, milestone
-		    map.put("paymentType", v.getPaymentType());           // e.g. Sales
+		    map.put("paymentType", v.getPaymentType());  
 
 		    // Contact info (if accessible)
 		    map.put("name", v.getName());
 		    map.put("emails", v.getEmails());
 		    map.put("contactNo", v.getContactNo());
 		    map.put("whatsappNo", v.getWhatsappNo());
-		    map.put("registerBy", v.getRegisterBy());
 
 		    // Payment details
-		    map.put("transactionId", v.getTransactionId());
+		    
 		    map.put("serviceName", v.getServiceName());
-		    map.put("govermentFees", v.getGovermentfees());
-		    map.put("govermentGst", v.getGovermentGst());
-		    map.put("govermentGstPercent", v.getGovermentGstPercent());
-		    map.put("professionalFees", v.getProfessionalFees());
-		    map.put("professionalGst", v.getProfesionalGst());
-		    map.put("professionalGstPercent", v.getProfessionalGstPercent());
-		    map.put("professionalGstAmount", v.getProfessionalGstAmount());
-		    map.put("tdsPresent", v.isTdsPresent());
-		    map.put("tdsAmount", v.getTdsAmount());
-		    map.put("tdsPercent", v.getTdsPercent());
-		    map.put("serviceCharge", v.getServiceCharge());
-		    map.put("serviceGst", v.getServiceGst());
-		    map.put("serviceGstPercent", v.getServiceGstPercent());
-		    map.put("otherFees", v.getOtherFees());
-		    map.put("otherGst", v.getOtherGst());
-		    map.put("otherGstPercent", v.getOtherGstPercent());
-		    map.put("totalAmount", v.getTotalAmount());
+		    List<ProductEstimate> productEstimate = v.getProductEstimate();
+		    List<Map<String,Object>>arr=new ArrayList<>();
+		    for(ProductEstimate pe:productEstimate) {
+		    	Map<String,Object>m=new HashMap<>();
+		      
+			    m.put("service", pe.getName());
+			    m.put("type", pe.getType());
+			    m.put("serviceFees", pe.getServiceFees());
+			    m.put("serviceGstAmount", pe.getServiceGstAmount());
+			    m.put("serviceGstPercent", pe.getServiceGstPercent());
+			    m.put("quantity", pe.getQuantity());
+			    m.put("totalPrice", pe.getTotalPrice());
+			    arr.add(map);
+		    }
+		    map.put("productEstimate", arr);
+
 		    map.put("remark", v.getRemark());
 		    map.put("paymentDate", v.getPaymentDate());
 		    map.put("estimateNo", v.getEstimateNo());
 		    map.put("status", v.getStatus());
-
-		    map.put("companyName", v.getCompanyName());
-		    map.put("companyId", v.getCompanyId());
 		    map.put("updateDate", v.getUpdateDate());
-		    map.put("approvedById", v.getApprovedById());
+		    map.put("approvedById", v.getApprovedBy());
 		    map.put("approveDate", v.getApproveDate());
 
 		    // Register Type: payment or purchase order
-		    map.put("registerType", v.getRegisterType());
-		    map.put("purchaseNumber", v.getPurchaseNumber());
-		    map.put("purchaseDate", v.getPurchaseDate());
-		    map.put("purchaseAttach", v.getPurchaseAttach());
-		    map.put("paymentTerm", v.getPaymentTerm());
 		    map.put("comment", v.getComment());
 
 		    // Created by user info

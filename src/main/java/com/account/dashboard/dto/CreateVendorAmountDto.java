@@ -3,286 +3,99 @@ package com.account.dashboard.dto;
 import java.util.Date;
 import java.util.List;
 
+import com.account.dashboard.domain.FileData;
+import com.account.dashboard.domain.User;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+
 public class CreateVendorAmountDto {
+	
+	private String serviceName;
+	private Long leadId;
+	private Long estimateId;
+	private String quantity;	
 	String name;
 	String emails;
 	String contactNo;
 	String whatsappNo;
-	private Long leadId;
-	private Long estimateId;
 
-	private String billingQuantity;
-	private String paymentType;// full , prtial and milestone
+	
+    Long createdById;
+	Date createDate;
+	
+	Long approvedBy;
+	Date approveDate;
+	
+	String remarkByVendor;
+	
+//	private double serviceFees;
+//	private double serviceGstAmount;
+//	private int serviceGstPercent;
+//	
+//	boolean tdsPresent;
+//	private double tdsAmount;
+//	private int tdsPercent;
+
     
-	private String registerBy;
-
-	private Long createdById;
-	private String transactionId;
-	private String serviceName;
-
-	private double  govermentfees;
-	private double govermentGst;
-	private int govermentGstPercent;
+//	private double totalAmount;
 	
-	private double professionalFees;
-	private double profesionalGst;
-	private double profesionalGstFee;
-
-	private double serviceCharge;
-	private double serviceGst;
-	private int serviceGstPercent;
-
-	private double otherFees;
-	private double otherGst;
-	private int otherGstPercent;
-
-	private String UploadReceipt;
-	private double totalAmount;
+	List<CreateVendorSubDto> CreateVendorSubDto;
 	private String remark;
-	private Date paymentDate;
 	private String estimateNo;
-	private List<String>doc;
-
-	String companyName;
 	
-	boolean tdsPresent;
-	int tdsPercent;
+	String status; //initiate , approve , disapproved ,On hold
+	
+	String vendorCompanyName;
+	String address;
+	String city;
+	String state;
+	String country;
+	String pinCode;
+	
+	String gstType;
+	String gstNo;
+	
+	// add  attachment by Vendor team
+	List<Long>fileData;
 	
 	
 
-	public Long getLeadId() {
-		return leadId;
-	}
-
-	public Long getEstimateId() {
-		return estimateId;
-	}
-
-	public String getBillingQuantity() {
-		return billingQuantity;
-	}
-
-	public String getPaymentType() {
-		return paymentType;
-	}
-
-	public String getRegisterBy() {
-		return registerBy;
-	}
-
-	public Long getCreatedById() {
-		return createdById;
-	}
-
-	public String getTransactionId() {
-		return transactionId;
-	}
 
 	public String getServiceName() {
 		return serviceName;
-	}
-
-	public double getGovermentfees() {
-		return govermentfees;
-	}
-
-	public double getGovermentGst() {
-		return govermentGst;
-	}
-
-	public int getGovermentGstPercent() {
-		return govermentGstPercent;
-	}
-
-	public double getProfessionalFees() {
-		return professionalFees;
-	}
-
-	public double getProfesionalGst() {
-		return profesionalGst;
-	}
-
-
-	public double getServiceCharge() {
-		return serviceCharge;
-	}
-
-	public double getServiceGst() {
-		return serviceGst;
-	}
-
-	public int getServiceGstPercent() {
-		return serviceGstPercent;
-	}
-
-	public double getOtherFees() {
-		return otherFees;
-	}
-
-	public double getOtherGst() {
-		return otherGst;
-	}
-
-	public int getOtherGstPercent() {
-		return otherGstPercent;
-	}
-
-
-	public String getUploadReceipt() {
-		return UploadReceipt;
-	}
-
-	public double getTotalAmount() {
-		return totalAmount;
-	}
-
-	public String getRemark() {
-		return remark;
-	}
-
-	public Date getPaymentDate() {
-		return paymentDate;
-	}
-
-	public String getEstimateNo() {
-		return estimateNo;
-	}
-
-	public List<String> getDoc() {
-		return doc;
-	}
-
-	public String getCompanyName() {
-		return companyName;
-	}
-
-	public void setLeadId(Long leadId) {
-		this.leadId = leadId;
-	}
-
-	public void setEstimateId(Long estimateId) {
-		this.estimateId = estimateId;
-	}
-
-	public void setBillingQuantity(String billingQuantity) {
-		this.billingQuantity = billingQuantity;
-	}
-
-	public void setPaymentType(String paymentType) {
-		this.paymentType = paymentType;
-	}
-
-	public void setRegisterBy(String registerBy) {
-		this.registerBy = registerBy;
-	}
-
-	public void setCreatedById(Long createdById) {
-		this.createdById = createdById;
-	}
-
-	public void setTransactionId(String transactionId) {
-		this.transactionId = transactionId;
 	}
 
 	public void setServiceName(String serviceName) {
 		this.serviceName = serviceName;
 	}
 
-	public void setGovermentfees(double govermentfees) {
-		this.govermentfees = govermentfees;
+	public Long getLeadId() {
+		return leadId;
 	}
 
-	public void setGovermentGst(double govermentGst) {
-		this.govermentGst = govermentGst;
+	public void setLeadId(Long leadId) {
+		this.leadId = leadId;
 	}
 
-	public void setGovermentGstPercent(int govermentGstPercent) {
-		this.govermentGstPercent = govermentGstPercent;
+	public Long getEstimateId() {
+		return estimateId;
 	}
 
-	public void setProfessionalFees(double professionalFees) {
-		this.professionalFees = professionalFees;
+	public void setEstimateId(Long estimateId) {
+		this.estimateId = estimateId;
 	}
 
-	public void setProfesionalGst(double profesionalGst) {
-		this.profesionalGst = profesionalGst;
+	public String getQuantity() {
+		return quantity;
 	}
 
-
-	public void setServiceCharge(double serviceCharge) {
-		this.serviceCharge = serviceCharge;
-	}
-
-	public void setServiceGst(double serviceGst) {
-		this.serviceGst = serviceGst;
-	}
-
-	public void setServiceGstPercent(int serviceGstPercent) {
-		this.serviceGstPercent = serviceGstPercent;
-	}
-
-	public void setOtherFees(double otherFees) {
-		this.otherFees = otherFees;
-	}
-
-	public void setOtherGst(double otherGst) {
-		this.otherGst = otherGst;
-	}
-
-	public void setOtherGstPercent(int otherGstPercent) {
-		this.otherGstPercent = otherGstPercent;
-	}
-
-	public void setUploadReceipt(String uploadReceipt) {
-		UploadReceipt = uploadReceipt;
-	}
-
-	public void setTotalAmount(double totalAmount) {
-		this.totalAmount = totalAmount;
-	}
-
-	public void setRemark(String remark) {
-		this.remark = remark;
-	}
-
-	public void setPaymentDate(Date paymentDate) {
-		this.paymentDate = paymentDate;
-	}
-
-	public void setEstimateNo(String estimateNo) {
-		this.estimateNo = estimateNo;
-	}
-
-	public void setDoc(List<String> doc) {
-		this.doc = doc;
-	}
-
-	public void setCompanyName(String companyName) {
-		this.companyName = companyName;
-	}
-
-	public boolean isTdsPresent() {
-		return tdsPresent;
-	}
-
-	public void setTdsPresent(boolean tdsPresent) {
-		this.tdsPresent = tdsPresent;
-	}
-
-	public int getTdsPercent() {
-		return tdsPercent;
-	}
-
-	public void setTdsPercent(int tdsPercent) {
-		this.tdsPercent = tdsPercent;
-	}
-
-	public double getProfesionalGstFee() {
-		return profesionalGstFee;
-	}
-
-	public void setProfesionalGstFee(double profesionalGstFee) {
-		this.profesionalGstFee = profesionalGstFee;
+	public void setQuantity(String quantity) {
+		this.quantity = quantity;
 	}
 
 	public String getName() {
@@ -317,8 +130,154 @@ public class CreateVendorAmountDto {
 		this.whatsappNo = whatsappNo;
 	}
 
-     
-    
 	
 
+	public Long getCreatedById() {
+		return createdById;
+	}
+
+	public void setCreatedById(Long createdById) {
+		this.createdById = createdById;
+	}
+
+	public Date getCreateDate() {
+		return createDate;
+	}
+
+	public void setCreateDate(Date createDate) {
+		this.createDate = createDate;
+	}
+
+	
+	public Date getApproveDate() {
+		return approveDate;
+	}
+
+	public void setApproveDate(Date approveDate) {
+		this.approveDate = approveDate;
+	}
+
+	public String getRemarkByVendor() {
+		return remarkByVendor;
+	}
+
+	public void setRemarkByVendor(String remarkByVendor) {
+		this.remarkByVendor = remarkByVendor;
+	}
+
+	public String getRemark() {
+		return remark;
+	}
+
+	public void setRemark(String remark) {
+		this.remark = remark;
+	}
+
+	public String getEstimateNo() {
+		return estimateNo;
+	}
+
+	public void setEstimateNo(String estimateNo) {
+		this.estimateNo = estimateNo;
+	}
+
+	public String getStatus() {
+		return status;
+	}
+
+	public void setStatus(String status) {
+		this.status = status;
+	}
+
+	public String getVendorCompanyName() {
+		return vendorCompanyName;
+	}
+
+	public void setVendorCompanyName(String vendorCompanyName) {
+		this.vendorCompanyName = vendorCompanyName;
+	}
+
+	public String getAddress() {
+		return address;
+	}
+
+	public void setAddress(String address) {
+		this.address = address;
+	}
+
+	public String getCity() {
+		return city;
+	}
+
+	public void setCity(String city) {
+		this.city = city;
+	}
+
+	public String getState() {
+		return state;
+	}
+
+	public void setState(String state) {
+		this.state = state;
+	}
+
+	public String getCountry() {
+		return country;
+	}
+
+	public void setCountry(String country) {
+		this.country = country;
+	}
+
+	public String getPinCode() {
+		return pinCode;
+	}
+
+	public void setPinCode(String pinCode) {
+		this.pinCode = pinCode;
+	}
+
+	public String getGstNo() {
+		return gstNo;
+	}
+
+	public void setGstNo(String gstNo) {
+		this.gstNo = gstNo;
+	}
+
+	public String getGstType() {
+		return gstType;
+	}
+
+	public void setGstType(String gstType) {
+		this.gstType = gstType;
+	}
+
+	public List<Long> getFileData() {
+		return fileData;
+	}
+
+	public void setFileData(List<Long> fileData) {
+		this.fileData = fileData;
+	}
+
+	public Long getApprovedBy() {
+		return approvedBy;
+	}
+
+	public void setApprovedBy(Long approvedBy) {
+		this.approvedBy = approvedBy;
+	}
+
+	public List<CreateVendorSubDto> getCreateVendorSubDto() {
+		return CreateVendorSubDto;
+	}
+
+	public void setCreateVendorSubDto(List<CreateVendorSubDto> createVendorSubDto) {
+		CreateVendorSubDto = createVendorSubDto;
+	}
+	
+	
+
+	
 }

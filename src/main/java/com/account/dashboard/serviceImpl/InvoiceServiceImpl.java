@@ -36,22 +36,12 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("estimateId", invoice.getEstimateId());
 
 	        // Primary contact information
-	        res.put("primaryContactId", invoice.getPrimaryContactId());
-	        res.put("primaryContactTitle", invoice.getPrimaryContactTitle());
-	        res.put("primaryContactName", invoice.getPrimaryContactName());
+
 	        res.put("primaryContactemails", invoice.getPrimaryContactemails());
-	        res.put("primaryContactNo", invoice.getPrimaryContactNo());
-	        res.put("primaryWhatsappNo", invoice.getPrimaryWhatsappNo());
-	        res.put("primaryContactDesignation", invoice.getPrimaryContactDesignation());
 
 	        // Secondary contact information
-	        res.put("secondaryContactId", invoice.getSecondaryContactId());
-	        res.put("secondaryContactTitle", invoice.getSecondaryContactTitle());
-	        res.put("secondaryContactName", invoice.getSecondaryContactName());
 	        res.put("secondaryContactemails", invoice.getSecondaryContactemails());
-	        res.put("secondaryContactNo", invoice.getSecondaryContactNo());
-	        res.put("secondaryWhatsappNo", invoice.getSecondaryWhatsappNo());
-	        res.put("secondaryContactDesignation", invoice.getSecondaryContactDesignation());
+
 
 	        // Dates and Estimate Number
 	        res.put("estimateDate", invoice.getEstimateDate());
@@ -110,15 +100,15 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("documents", invoice.getDocuments());
 
 	        // Fees and Amounts
-	        res.put("govermentfees", invoice.getGovermentfees());
-	        res.put("govermentCode", invoice.getGovermentCode());
-	        res.put("govermentGst", invoice.getGovermentGst());
+//	        res.put("govermentfees", invoice.getGovermentfees());
+//	        res.put("govermentCode", invoice.getGovermentCode());
+//	        res.put("govermentGst", invoice.getGovermentGst());
 	        res.put("professionalFees", invoice.getProfessionalFees());
 	        res.put("professionalCode", invoice.getProfessionalCode());
 	        res.put("profesionalGst", invoice.getProfesionalGst());
-	        res.put("serviceCharge", invoice.getServiceCharge());
-	        res.put("serviceCode", invoice.getServiceCode());
-	        res.put("serviceGst", invoice.getServiceGst());
+//	        res.put("serviceCharge", invoice.getServiceCharge());
+//	        res.put("serviceCode", invoice.getServiceCode());
+//	        res.put("serviceGst", invoice.getServiceGst());
 	        res.put("otherFees", invoice.getOtherFees());
 	        res.put("otherCode", invoice.getOtherCode());
 	        res.put("otherGst", invoice.getOtherGst());

@@ -218,7 +218,8 @@ public interface UrlsMapping {
 		// Invoice =====
         
        public static final String GET_INVOICE_BY_ID=PREFIX+ "/invoice/getInvoiceById";
-		
+       public static final String GET_INVOICE_BY_UNBILLED_ID=PREFIX+ "/invoice/getInvoiceByUnbilledId";
+
        public static final String GET_ALL_INVOICE_FOR_EXPORT=PREFIX+ "/invoice/getAllInvoiceForExport";
 
 }
