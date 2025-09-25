@@ -195,6 +195,35 @@ public class UnbilledServiceImpl implements UnbilledService{
        return result;
 	}
 
+	@Override
+	public List<Map<String, Object>> getAllUnbilledForExport() {
+
+		
+		 List<Unbilled> unbilledList = unbilledRepository.findAll();
+
+		 List<Map<String,Object>>result=new ArrayList<>();
+		 for(Unbilled ub:unbilledList) {
+			Map<String, Object> estimate = leadFeignClient.getEstimateById(ub.getEstimateId());
+
+			 Map<String,Object>map=new HashMap<>();
+			 map.put("id", ub.getId());
+			 map.put("date", ub.getDate());
+			 map.put("company", ub.getCompany());
+			 map.put("txnAmount", ub.getTxnAmount());
+			 map.put("productName", estimate.get("productName"));
+			 map.put("invoicedNumber", null);
+			 map.put("assigneeName", estimate.get("assigneeName"));
+			 map.put("clientId", estimate.get("primaryContactId"));
+			 map.put("clientName", estimate.get("primaryContactName"));
+			 map.put("clientEmail", estimate.get("primaryContactEmails"));
+
+			 result.add(map);
+		 }
+        return result;
+
+	
+	}
+
 	
 
 }

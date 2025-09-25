@@ -56,4 +56,10 @@ public class UnbilledController {
     public List<Map<String,Object>> searchUnbilled(String name,String searchBy) {
         return unbilledService.searchUnbilled(name,searchBy);
     }
+    
+    @GetMapping(UrlsMapping.GET_ALL_UNBILLED_FOR_EXPORT)
+    public List<Map<String,Object>> getAllUnbilledForExport() {
+        return unbilledService.getAllUnbilledForExport();
+    }
+    
 }

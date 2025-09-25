@@ -174,6 +174,8 @@ public interface UrlsMapping {
 		public static final String GET_ALL_UNBILLED_AMOUNT=PREFIX+ "/ledgerType/getAllUnbilledAmount";
 		public static final String GET_ALL_UNBILLED_COUNT=PREFIX+ "/ledgerType/getAllUnbilledCount";
 		public static final String SEARCH_UNBILLED=PREFIX+ "/ledgerType/searchUnbilled";
+		public static final String GET_ALL_UNBILLED_FOR_EXPORT=PREFIX+ "/ledgerType/getAllUnbilledForExport";
+
 
         // get all trial balance
 		
@@ -214,8 +216,9 @@ public interface UrlsMapping {
 
 
 		// Invoice =====
+        
+       public static final String GET_INVOICE_BY_ID=PREFIX+ "/invoice/getInvoiceById";
 		
-		public static final String GET_INVOICE_BY_ID=PREFIX+ "/invoice/getInvoiceById";
-
+       public static final String GET_ALL_INVOICE_FOR_EXPORT=PREFIX+ "/invoice/getAllInvoiceForExport";
 
 }

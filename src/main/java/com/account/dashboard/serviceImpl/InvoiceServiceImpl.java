@@ -1,12 +1,19 @@
 package com.account.dashboard.serviceImpl;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.InvoiceData;
+import com.account.dashboard.domain.User;
 import com.account.dashboard.repository.InvoiceDataRepository;
 import com.account.dashboard.service.InvoiceService;
 
@@ -120,6 +127,32 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        // Unbilled information
 //	        res.put("unbilled", invoice.getUnbilled());  // Assuming U
 		return res;
+	}
+	@Override
+	public List<Map<String, Object>> getAllInvoiceForExport() {
+
+		// For descending order, use:
+
+
+		List<InvoiceData>invoice=invoiceDataRepository.findAll();
+	    List<Map<String,Object>>result=new ArrayList<>();
+		for(InvoiceData invoiceData:invoice){
+			Map<String,Object>map=new HashMap<>();
+			map.put("id", invoiceData.getId());
+			map.put("invoiceNo", invoiceData.getId());
+			map.put("service", invoiceData.getProductName());
+			map.put("clientid", invoiceData.getPrimaryContactId());
+			map.put("clientName", invoiceData.getPrimaryContactName());
+			map.put("clientEmail", invoiceData.getPrimaryContactemails());
+			map.put("companyName", invoiceData.getCompanyName());
+			map.put("date", invoiceData.getCreateDate());
+			map.put("txnAmount", invoiceData.getTotalAmount());
+			map.put("addedBy", invoiceData.getAssignee());
+			result.add(map);
+		}
+
+		return result;
+	
 	}
 
 }

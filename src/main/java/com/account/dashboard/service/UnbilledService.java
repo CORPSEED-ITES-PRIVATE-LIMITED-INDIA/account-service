@@ -28,4 +28,6 @@ public interface UnbilledService {
 
 	List<Map<String, Object>> searchUnbilled(String name,String searchBy);
 
+	List<Map<String, Object>> getAllUnbilledForExport();
+
 }

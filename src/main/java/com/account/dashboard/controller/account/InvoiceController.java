@@ -24,5 +24,10 @@ public class InvoiceController {
 		return res;
 		
 	}
+	@GetMapping(UrlsMapping.GET_ALL_INVOICE_FOR_EXPORT)
+	public List<Map<String,Object>> getAllInvoiceForExport(){
+		List<Map<String,Object>>res=invoiceService.getAllInvoiceForExport();	
+		return res;		
+	}
 	
 }
