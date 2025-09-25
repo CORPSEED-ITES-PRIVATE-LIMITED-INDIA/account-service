@@ -58,8 +58,8 @@ public class UnbilledController {
     }
     
     @GetMapping(UrlsMapping.GET_ALL_UNBILLED_FOR_EXPORT)
-    public List<Map<String,Object>> getAllUnbilledForExport() {
-        return unbilledService.getAllUnbilledForExport();
+    public List<Map<String,Object>> getAllUnbilledForExport(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate) {
+        return unbilledService.getAllUnbilledForExport(startDate,endDate);
     }
     
 }

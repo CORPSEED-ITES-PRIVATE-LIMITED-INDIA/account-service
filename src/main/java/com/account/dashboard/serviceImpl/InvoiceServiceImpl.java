@@ -11,6 +11,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.User;
@@ -129,7 +130,7 @@ public class InvoiceServiceImpl implements InvoiceService{
 		return res;
 	}
 	@Override
-	public List<Map<String, Object>> getAllInvoiceForExport() {
+	public List<Map<String, Object>> getAllInvoiceForExport(String startDate,String endDate) {
 
 		// For descending order, use:
 

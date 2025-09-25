@@ -25,8 +25,8 @@ public class InvoiceController {
 		
 	}
 	@GetMapping(UrlsMapping.GET_ALL_INVOICE_FOR_EXPORT)
-	public List<Map<String,Object>> getAllInvoiceForExport(){
-		List<Map<String,Object>>res=invoiceService.getAllInvoiceForExport();	
+	public List<Map<String,Object>> getAllInvoiceForExport(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>>res=invoiceService.getAllInvoiceForExport(startDate,endDate);	
 		return res;		
 	}
 	

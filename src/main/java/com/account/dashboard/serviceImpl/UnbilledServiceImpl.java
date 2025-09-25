@@ -196,10 +196,16 @@ public class UnbilledServiceImpl implements UnbilledService{
 	}
 
 	@Override
-	public List<Map<String, Object>> getAllUnbilledForExport() {
+	public List<Map<String, Object>> getAllUnbilledForExport(String startDate,String endDate) {
+		List<Unbilled>  unbilledList =new ArrayList<>();
+		if(startDate!=null && endDate!=null) {
+			 unbilledList = unbilledRepository.findAllByInBetweenDate(startDate,endDate);
 
-		
-		 List<Unbilled> unbilledList = unbilledRepository.findAll();
+		}else {
+			 unbilledList = unbilledRepository.findAll();
+
+		}
+//		 List<Unbilled> unbilledList = unbilledRepository.findAll();
 
 		 List<Map<String,Object>>result=new ArrayList<>();
 		 for(Unbilled ub:unbilledList) {

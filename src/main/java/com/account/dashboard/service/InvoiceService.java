@@ -7,6 +7,6 @@ public interface InvoiceService {
 
 	Map<String, Object> getInvoiceById(Long id);
 
-	List<Map<String, Object>> getAllInvoiceForExport();
+	List<Map<String, Object>> getAllInvoiceForExport(String startDate,String endDate);
 
 }

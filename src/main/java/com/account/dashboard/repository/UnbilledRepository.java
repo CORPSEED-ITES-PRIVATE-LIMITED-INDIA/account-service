@@ -19,4 +19,7 @@ public interface UnbilledRepository extends JpaRepository<Unbilled, Long> {
 
 	@Query(value = "SELECT * FROM unbilled u WHERE u.estimate_id LIKE %:name%", nativeQuery = true)
 	List<Unbilled> findByEstimateId(String name);
+
+	@Query(value = "SELECT * FROM unbilled u WHERE date BETWEEN :startDate AND :endDate", nativeQuery = true)
+	List<Unbilled> findAllByInBetweenDate(String startDate, String endDate);
 }

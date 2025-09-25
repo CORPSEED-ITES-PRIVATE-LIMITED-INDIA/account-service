@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.stereotype.Service;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import com.account.dashboard.dto.UnbilledDTO;
 
@@ -28,6 +29,6 @@ public interface UnbilledService {
 
 	List<Map<String, Object>> searchUnbilled(String name,String searchBy);
 
-	List<Map<String, Object>> getAllUnbilledForExport();
+	List<Map<String, Object>> getAllUnbilledForExport(String startDate,String endDate);
 
 }
