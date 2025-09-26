@@ -2473,6 +2473,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("id", p.getId());
 			map.put("leadId", p.getLeadId());
 			map.put("estimateId", p.getEstimateId());
+			map.put("comment", p.getComment());
 
 			map.put("billingQuantity", p.getBillingQuantity());
 			map.put("paymentType", p.getPaymentType());
