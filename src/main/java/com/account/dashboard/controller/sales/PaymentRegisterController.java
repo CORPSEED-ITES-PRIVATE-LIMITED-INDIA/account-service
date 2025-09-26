@@ -229,7 +229,7 @@ public class PaymentRegisterController {
 	}
 	
 	
-	̥
+	
 	@PostMapping(UrlsMapping.PAYMENT_APPROVE_MANUAL)
 	public Boolean paymentApproveAndDisapprovedManual(@RequestBody PaymentApproveDto paymentApproveDto){
 		Boolean res=paymentRegisterService.paymentApproveAndDisapprovedManual(paymentApproveDto);
