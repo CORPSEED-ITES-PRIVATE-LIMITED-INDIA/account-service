@@ -19,4 +19,10 @@ public interface VendorPaymentRegisterServcie {
 
 	int getAllVendorPaymentRegisterCount();
 
+	List<Map<String, Object>> getAllVendorPaymentRegisterForAccount(int page,int size,String status);
+
+	Boolean approveVendorPayment(Long currentUserId, String status, Long id);
+
+	int getAllVendorPaymentRegisterCountForAccount(String status);
+
 }

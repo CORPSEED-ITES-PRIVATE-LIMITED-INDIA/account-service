@@ -6,6 +6,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -41,6 +42,27 @@ public class VendorPaymentRegisterController {
 	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT)
 	public int getAllVendorPaymentRegisterCount(){
 		int res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterCount();	
+		return res;
+		
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_FOR_ACCOUNT)
+	public List<Map<String,Object>> getAllVendorPaymentRegisterForAccount(@RequestParam(value = "page", defaultValue = "1") int page,
+			@RequestParam(value = "size", defaultValue = "100") int size,String status){
+		List<Map<String,Object>> res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterForAccount(page-1,size,status);	
+		return res;
+		
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ACCOUNT)
+	public int getAllVendorPaymentRegisterCountForAccount(@RequestParam String status){
+		int res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterCountForAccount(status);	
+		return res;
+		
+	}
+	@PutMapping(UrlsMapping.APPROVE_VENDOR_PAYMENT)
+	public Boolean approveVendorPayment(@RequestParam Long currentUserId,@RequestParam String Status,@RequestParam Long id){
+		Boolean res=vendorPaymentRegisterServcie.approveVendorPayment(currentUserId,Status,id);	
 		return res;
 		
 	}
