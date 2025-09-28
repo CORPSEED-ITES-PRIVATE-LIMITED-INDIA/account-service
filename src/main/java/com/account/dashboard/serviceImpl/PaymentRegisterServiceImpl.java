@@ -2674,6 +2674,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 		return flag;
 	}
+	
+	
 	public double objectToDouble(Object totalAmountObj) {
 		double totalAmount = 0.0;
 
@@ -2835,7 +2837,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		Boolean flag=true;
 		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentApproveDto.getPaymentRegisterId()).get();
 		if(paymentApproveDto.getStatus().equals("approved")) {
-			Boolean invoice = createInvoice(paymentRegister.getEstimateId());
+			// Boolean invoice = createInvoice(paymentRegister.getEstimateId());
+			Boolean invoice = createInvoiceV2(paymentRegister.getEstimateId(),paymentApproveDto.getPaymentRegisterId());
 			Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
 //			createUnbilled(paymentRegister);
 			Long project = leadFeignClient.createProject(paymentRegister.getEstimateId());
@@ -2858,6 +2861,117 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 		return flag;
 
+	}
+
+	public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
+		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(estimateId);
+		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(estimateId);
+		PaymentRegister pRegister = paymentRegisterRepository.findById(paymentRegisterId).get();
+		InvoiceData invoiceData=new InvoiceData();
+		invoiceData.setCreateDate(new Date());
+
+		//		 invoiceData.setProduct(product);
+		invoiceData.setAddress(null);
+		invoiceData.setCompanyName(feignLeadClient.get("companyName")!=null?feignLeadClient.get("companyName").toString():null);
+		invoiceData.setPrimaryContactId(estimateId); //--
+
+		invoiceData.setProductName(pRegister.getServiceName());   //service name
+		invoiceData.setEstimateId(estimateId);
+		
+		String assignee = feignLeadClient.get("assigneeIds").toString();
+		Long assigneeId=Long.parseLong(assignee);
+
+		if(assigneeId!=null) {
+//						User user = userRepository.findById(assigneeId).get();
+//						invoiceData.setAssignee(user);
+		}
+
+		String lead = feignLeadClient.get("leadId")!=null?feignLeadClient.get("leadId").toString():null;
+		if(lead!=null) {
+			Long leadId=Long.parseLong(lead);
+			invoiceData.setLeadId(leadId);
+
+		}
+
+		invoiceData.setGstNo(feignLeadClient.get("gstNo")!=null?feignLeadClient.get("gstNo").toString().toString():null);
+
+		invoiceData.setGstType(feignLeadClient.get("gstType")!=null?feignLeadClient.get("gstType").toString():null);
+		invoiceData.setGstDocuments(feignLeadClient.get("gstNo")!=null?feignLeadClient.get("gstNo").toString():null);//misssing 
+
+//				invoiceData.setCompanyAge(feignLeadClient.get("companyAge").toString());
+				
+				
+		invoiceData.setGovermentfees(pRegister.getGovermentfees()+"");
+		invoiceData.setGovermentCode(feignLeadClient.get("govermentCode")!=null?feignLeadClient.get("govermentCode").toString():null);
+		invoiceData.setGovermentGst(pRegister.getGovermentGst()+"");
+
+		invoiceData.setProfessionalFees(pRegister.getProfessionalFees()+"");
+		invoiceData.setProfessionalCode(feignLeadClient.get("profesionalCode")!=null?feignLeadClient.get("profesionalCode").toString():null);
+		invoiceData.setProfesionalGst(pRegister.getProfesionalGst()+"");  //check gst percent
+
+		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
+
+		
+		
+		invoiceData.setGovermentfees(pRegister.getGovermentfees()+"");
+		invoiceData.setGovermentCode(feignLeadClient.get("govermentCode")!=null?feignLeadClient.get("govermentCode").toString():null);
+		invoiceData.setGovermentGst(feignLeadClient.get("govermentGst")!=null?feignLeadClient.get("govermentGst").toString():null);
+
+		invoiceData.setProfessionalFees(pRegister.getProfessionalFees()+"");
+		invoiceData.setProfessionalCode(feignLeadClient.get("profesionalCode")!=null?feignLeadClient.get("profesionalCode").toString():null);
+		invoiceData.setProfesionalGst(pRegister.getProfesionalGst()+"");
+
+		invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
+		invoiceData.setTotalAmount(pRegister.getTotalAmount()+"");
+		
+		if(feignLeadClient.get("serviceCode")!=null) {
+			invoiceData.setServiceCode(feignLeadClient.get("serviceCode").toString());
+		}
+		if(feignLeadClient.get("serviceGst")!=null) {
+			invoiceData.setServiceGst(feignLeadClient.get("serviceGst").toString());
+
+		}
+
+//
+//		invoiceData.setOtherFees(feignLeadClient.get("otherFees").toString());
+//		invoiceData.setOtherCode(feignLeadClient.get("otherCode")!=null?feignLeadClient.get("otherCode").toString():null);
+//		invoiceData.setOtherGst(feignLeadClient.get("otherGst")!=null?feignLeadClient.get("otherGst").toString():null);
+
+		invoiceData.setAddress(feignLeadClient.get("address").toString());
+		invoiceData.setCity(feignLeadClient.get("city").toString());
+		invoiceData.setPrimaryPinCode(feignLeadClient.get("primaryPinCode").toString());
+		invoiceData.setState(feignLeadClient.get("state").toString());
+		invoiceData.setCountry(feignLeadClient.get("country").toString());
+
+		invoiceData.setSecondaryAddress(feignLeadClient.get("secondaryAddress")!=null?feignLeadClient.get("secondaryAddress").toString():null);
+		invoiceData.setSecondaryCity(feignLeadClient.get("secondaryCity")!=null?feignLeadClient.get("secondaryCity").toString():null); 
+		invoiceData.setSecondaryPinCode(feignLeadClient.get("secondaryPinCode")!=null?feignLeadClient.get("secondaryPinCode").toString():null);
+		invoiceData.setSecondaryState(feignLeadClient.get("secondaryState")!=null?feignLeadClient.get("secondaryState").toString():null);
+		invoiceData.setSecondaryCountry(feignLeadClient.get("secondaryCountry")!=null?feignLeadClient.get("secondaryCountry").toString():null);
+
+		invoiceData.setInvoiceNote(feignLeadClient.get("invoiceNote").toString());
+		invoiceData.setOrderNumber(feignLeadClient.get("orderNumber").toString());
+		invoiceData.setPurchaseDate(feignLeadClient.get("purchaseDate").toString());//CURRENT DATE 
+		//		invoiceData.setEstimateData((Date)feignLeadClient.get("estimateDate"));
+		invoiceData.setRemarksForOption(feignLeadClient.get("address").toString());
+		invoiceData.setCc((List<String>)feignLeadClient.get("ccMail"));
+		if(feignLeadClient.get("primaryContactId")!=null) {
+
+			invoiceData.setPrimaryContactId(Long.parseLong(feignLeadClient.get("primaryContactId").toString()));
+			invoiceData.setPrimaryContactTitle(feignLeadClient.get("primaryContactTitle")!=null?feignLeadClient.get("primaryContactTitle").toString():null);
+			invoiceData.setPrimaryContactName(feignLeadClient.get("primaryContactName")!=null?feignLeadClient.get("primaryContactName").toString():null);
+			invoiceData.setPrimaryContactemails(feignLeadClient.get("primaryContactEmails")!=null?feignLeadClient.get("primaryContactEmails").toString():null);
+			invoiceData.setPrimaryContactNo(feignLeadClient.get("primaryContactContactNo")!=null?feignLeadClient.get("primaryContactContactNo").toString():null);
+		}
+		if(feignLeadClient.get("secondaryContactId")!=null) {
+			invoiceData.setSecondaryContactId(Long.parseLong(feignLeadClient.get("secondaryContactId").toString()));
+			invoiceData.setSecondaryContactTitle(feignLeadClient.get("secondaryContactTitle")!=null?feignLeadClient.get("secondaryContactTitle").toString():null);
+			invoiceData.setSecondaryContactName(feignLeadClient.get("secondaryContactName")!=null?feignLeadClient.get("secondaryContactName").toString():null);
+			invoiceData.setSecondaryContactemails(feignLeadClient.get("secondaryContactEmails")!=null?feignLeadClient.get("secondaryContactEmails").toString():null);
+			invoiceData.setSecondaryContactNo(feignLeadClient.get("secondaryContactContactNo")!=null?feignLeadClient.get("secondaryContactContactNo").toString():null);
+		}
+		invoiceDataRepository.save(invoiceData);
+		return true;
 	}
 
 
