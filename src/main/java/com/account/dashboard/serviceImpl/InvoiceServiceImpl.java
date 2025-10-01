@@ -123,6 +123,10 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("otherGst", invoice.getOtherGst());
 	        res.put("totalAmount", invoice.getTotalAmount());
 	        res.put("paidAmount", invoice.getPaidAmount());
+	        res.put("invoiceNo", "INV00000"+invoice.getId());
+	        String gstNo = invoice.getGstNo();
+	        String firstTwo = gstNo.substring(0, 2);
+	        res.put("gstCode", firstTwo);
 
 	        // Unbilled information
 //	        res.put("unbilled", invoice.getUnbilled());  // Assuming U
