@@ -32,4 +32,7 @@ public interface LedgerTypeRepository extends JpaRepository<LedgerType, Long> {
 	List<Long> findIdByParentIdIn(List<Long> id);
 	@Query(value = "SELECT * FROM ledger_type l WHERE l.id in(:list)", nativeQuery = true)
 	List<LedgerType> findAllByIdIn(List<Long> list);
+	
+	@Query(value = "SELECT l.id FROM ledger_type l WHERE l.ledger_type_id =:id", nativeQuery = true)
+	List<Long> findIdByParentId(Long id);
 }
