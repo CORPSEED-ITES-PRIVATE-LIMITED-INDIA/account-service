@@ -1244,6 +1244,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		map.put("companyName", invoiceData.getCompanyName());
 		map.put("txnAmount", invoiceData.getTotalAmount());
 		map.put("addedBy", invoiceData.getAssignee());
+		map.put("gstNo", invoiceData.getGstNo());
+		Double prof = Double.valueOf(invoiceData.getProfessionalFees());
+		Double gst =  Double.valueOf(invoiceData.getProfesionalGst());
+		if(prof!=null&& prof!=0) {
+			double gstAmount = ((gst*prof)/100);
+			
+			map.put("gstAmount", gstAmount);
+		}
+		map.put("profGst", invoiceData.getProfesionalGst());
+
+		map.put("hsnNo", invoiceData.getHsnSacDetails());
+
+
 		return map;
 	}
 
@@ -2608,6 +2621,20 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("date", invoiceData.getCreateDate());
 			map.put("txnAmount", invoiceData.getTotalAmount());
 			map.put("addedBy", invoiceData.getAssignee());
+			
+			map.put("profGst", invoiceData.getProfesionalGst());
+
+			map.put("gstNo", invoiceData.getGstNo());
+			Double prof = Double.valueOf(invoiceData.getProfessionalFees());
+			Double gst =  Double.valueOf(invoiceData.getProfesionalGst());
+			if(prof!=null&& prof!=0) {
+				double gstAmount = ((gst*prof)/100);
+				
+				map.put("gstAmount", gstAmount);
+			}
+
+			map.put("hsnNo", invoiceData.getHsnSacDetails());
+
 			result.add(map);
 		}
 
