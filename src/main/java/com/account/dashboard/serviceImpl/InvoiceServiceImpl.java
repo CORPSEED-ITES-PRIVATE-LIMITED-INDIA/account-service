@@ -41,7 +41,16 @@ public class InvoiceServiceImpl implements InvoiceService{
 
 	        // Secondary contact information
 	        res.put("secondaryContactemails", invoice.getSecondaryContactemails());
-
+			res.put("gstNo", invoice.getGstNo());
+			Double prof = Double.valueOf(invoice.getProfessionalFees());
+			Double gst =  Double.valueOf(invoice.getProfesionalGst());
+			if(prof!=null&& prof!=0) {
+				double gstAmount = ((gst*prof)/100);			
+				res.put("gstAmount", gstAmount);
+			}else {
+				res.put("gstAmount", 0);
+			}
+			res.put("profGst", invoice.getProfesionalGst());
 
 	        // Dates and Estimate Number
 	        res.put("estimateDate", invoice.getEstimateDate());
