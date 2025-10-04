@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import com.account.dashboard.config.GetAllCompanyDto;
 import com.account.dashboard.config.LeadFeignClient;
 import com.account.dashboard.config.OpenAPIConfig;
+import com.account.dashboard.controller.ledger.OrganizationController;
 import com.account.dashboard.domain.GstDetails;
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.Organization;
@@ -46,6 +47,8 @@ import jakarta.transaction.Transactional;
 
 @Service
 public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
+
+    private final OrganizationController organizationController;
 
     private final GstDetailsRepository gstDetailsRepository;
 
@@ -99,9 +102,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	TdsDetailRepository tdsDetailRepository;
 
 
-	PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig, GstDetailsRepository gstDetailsRepository) {
+	PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig, GstDetailsRepository gstDetailsRepository, OrganizationController organizationController) {
 		this.openAPIConfig = openAPIConfig;
 		this.gstDetailsRepository = gstDetailsRepository;
+		this.organizationController = organizationController;
 	}
 
 
@@ -2892,7 +2896,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 	public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(estimateId);
-		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(estimateId);
 		PaymentRegister pRegister = paymentRegisterRepository.findById(paymentRegisterId).get();
 		InvoiceData invoiceData=new InvoiceData();
 		invoiceData.setCreateDate(new Date());
