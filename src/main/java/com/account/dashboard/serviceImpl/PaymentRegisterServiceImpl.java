@@ -2486,6 +2486,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		List<Map<String,Object>>result=new ArrayList<>();
 		for(PaymentRegister p :paymentRegisterList) {
 			Map<String, Object> map = new HashMap<>();
+			Unbilled unb = unbilledRepository.findByEstimateId(p.getEstimateId());
 
 			map.put("id", p.getId());
 			map.put("leadId", p.getLeadId());
@@ -2548,8 +2549,16 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			Object txnAmount = remAmount.get("estimateAmount");
 			Object estimateCreateDate = remAmount.get("estimateDate");
 
-			map.put("dueAmount", dueAmount);
+//			map.put("dueAmount", dueAmount);
 			map.put("txnAmount", txnAmount);
+			if(unb!=null) {
+				map.put("dueAmount", unb.getDueAmount());
+				map.put("paidAmount", unb.getPaidAmount());
+
+			}else {
+				map.put("dueAmount", dueAmount);
+				map.put("paidAmount", 0);
+			}
 			map.put("orderAmount", p.getTotalAmount());
 			map.put("estimateCreateDate", estimateCreateDate);
 			
@@ -2677,7 +2686,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			double paidAmount = unbilled.getPaidAmount();
 			paidAmount=paidAmount+totalAmount;
 			double dueAmount = unbilled.getDueAmount();
-			dueAmount=dueAmount+totalAmount;
+			dueAmount=dueAmount-totalAmount;
 			unbilled.setPaidAmount(paidAmount);
 			unbilled.setDueAmount(dueAmount);
 			unbilled.setDate(approveDate);
