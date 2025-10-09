@@ -100,8 +100,6 @@ public class VendorPaymentRegister {
 	
 	@ManyToOne 
 	FileData paymentInvoice; // attachment By Account Team
-	
-
 
 	public Long getId() {
 		return id;
@@ -134,8 +132,6 @@ public class VendorPaymentRegister {
 	public void setEstimateId(Long estimateId) {
 		this.estimateId = estimateId;
 	}
-
-	
 
 	public String getPaymentType() {
 		return paymentType;
@@ -216,6 +212,15 @@ public class VendorPaymentRegister {
 	public void setRemarkByVendor(String remarkByVendor) {
 		this.remarkByVendor = remarkByVendor;
 	}
+
+	public List<ProductEstimate> getProductEstimate() {
+		return productEstimate;
+	}
+
+	public void setProductEstimate(List<ProductEstimate> productEstimate) {
+		this.productEstimate = productEstimate;
+	}
+
 	public String getRemark() {
 		return remark;
 	}
@@ -255,8 +260,6 @@ public class VendorPaymentRegister {
 	public void setVendorCompanyName(String vendorCompanyName) {
 		this.vendorCompanyName = vendorCompanyName;
 	}
-
-	
 
 	public String getAddress() {
 		return address;
@@ -298,6 +301,22 @@ public class VendorPaymentRegister {
 		this.pinCode = pinCode;
 	}
 
+	public String getGstType() {
+		return gstType;
+	}
+
+	public void setGstType(String gstType) {
+		this.gstType = gstType;
+	}
+
+	public String getGstNo() {
+		return gstNo;
+	}
+
+	public void setGstNo(String gstNo) {
+		this.gstNo = gstNo;
+	}
+
 	public String getUpdateDate() {
 		return updateDate;
 	}
@@ -305,6 +324,7 @@ public class VendorPaymentRegister {
 	public void setUpdateDate(String updateDate) {
 		this.updateDate = updateDate;
 	}
+
 	public List<FileData> getFileData() {
 		return fileData;
 	}
@@ -344,32 +364,8 @@ public class VendorPaymentRegister {
 	public void setPaymentInvoice(FileData paymentInvoice) {
 		this.paymentInvoice = paymentInvoice;
 	}
-
-	public String getGstNo() {
-		return gstNo;
-	}
-
-	public void setGstNo(String gstNo) {
-		this.gstNo = gstNo;
-	}
-
-	public String getGstType() {
-		return gstType;
-	}
-
-	public void setGstType(String gstType) {
-		this.gstType = gstType;
-	}
-
-	public List<ProductEstimate> getProductEstimate() {
-		return productEstimate;
-	}
-
-	public void setProductEstimate(List<ProductEstimate> productEstimate) {
-		this.productEstimate = productEstimate;
-	}
 	
-	
-	
+
+
 	
 }

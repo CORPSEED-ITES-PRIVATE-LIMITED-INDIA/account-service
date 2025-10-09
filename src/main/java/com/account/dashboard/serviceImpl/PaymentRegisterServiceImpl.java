@@ -143,11 +143,9 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		double profesionalGst = createAmountDto.getProfesionalGst();
 
-		System.out.println("Professional  fees ...."+createAmountDto.getProfessionalFees());
-		System.out.println("Professional gst  ...."+profesionalGst);
+
 
 		double gstAmount = ((createAmountDto.getProfessionalFees()/100)*profesionalGst);
-		System.out.println("Professional gst amount ...."+gstAmount);
 
 		paymentRegister.setProfessionalGstAmount(gstAmount);
 
@@ -193,6 +191,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 	
 	public Map<String, Object>remainingAmountAndPaidAmount(Long id) {
+
 		Map<String,Object>result=new HashMap<>();
 		Map<String, Object> estimate = leadFeignClient.getEstimateById(id);
 		
@@ -209,22 +208,29 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			profGst=pr.getProfessionalGstAmount();   
 			govFees=pr.getGovermentfees();
 			paymentType=pr.getPaymentType();
-			totalAmount=pr.getTotalAmount();
+			totalAmount=totalAmount+pr.getTotalAmount();
 			otherFees=pr.getOtherFees();
 			serviceCharge=pr.getServiceCharge();
 		}
+		double estTotalAmount = Double.parseDouble(estimate.get("totalAmount").toString());
+		double paidAmount = totalAmount;
+
 		double totAmount = Double.parseDouble(estimate.get("totalAmount").toString());
 		double profees = Double.parseDouble(estimate.get("professionalFees").toString());
 		double govfees = Double.parseDouble(estimate.get("govermentFees").toString());
 		double serviceFees = Double.parseDouble(estimate.get("serviceCharge").toString());
 		double otherCharge = Double.parseDouble(estimate.get("otherFees").toString());
 		String estimateDate = estimate.get("estimateDate").toString();
+		result.put("estimateAmount", estTotalAmount);
+		result.put("paidAmount", paidAmount);
 
 		totAmount=totAmount-totalAmount;
+		result.put("totAmount", totAmount);
+
 		result.put("totalRemainingAmount", totAmount);
 		result.put("remainingProffees", profees-proFees);
 		result.put("remainingGovfees", govfees-govfees);
-		result.put("estimateAmount", totAmount);
+//		result.put("estimateAmount", totAmount);
 		result.put("estimateDate", estimateDate);
 		result.put("paymentType", paymentType);
 		result.put("serviceCharge", serviceFees-serviceCharge);
@@ -610,7 +616,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	public PaymentRegister getPaymentRegisterById(long id) {
 		PaymentRegister paymentRegister = paymentRegisterRepository.findById(id).get();
 		Map<String, Object> estimate = LeadFeignClient.getEstimateById(paymentRegister.getEstimateId());
-		System.out.println("estimate ..  . ."+estimate);
 		return paymentRegister;
 	}
 
@@ -820,7 +825,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		//		Organization organization = organizationRepository.findByName("corpseed");
 		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(estimateId);
 		String ledgerName = (String)feignLeadClient.get("companyName");
-		System.out.println("test . . "+ledgerName);
 		List<Voucher> voucherList=voucherRepository.findByEstimateId(estimateId);
 		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentRegisterId).get();
 		VoucherType vType=voucherTypeRepo.findByName(paymentRegister.getRegisterBy());
@@ -832,7 +836,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 		if(voucherList!=null &&voucherList.size()>0) {  // Already created
 			Ledger ledger = ledgerRepository.findByName(ledgerName);
-			System.out.println("test"+voucherList.size());
 			Organization organization = organizationRepository.findByName("corpseed");
 			//			String totalEstimateAmount = feignLeadClient.get("totalAmount")!=null?(String)feignLeadClient.get("totalAmount"):null;
 			Voucher v =new Voucher();
@@ -851,7 +854,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			v.setCreateDate(new Date());
 			v.setVoucherType(vType);
-			System.out.println("test111111");
 			double totalCredit=govermentfees+professionalFees+serviceCharge+otherFees;
 
 			double totalCreditGst = govermentGst+professionalGst+getServiceGst+otherGst;
@@ -860,23 +862,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			v.setCreditAmount(totalCredit);
 			if(organization!=null && organization.getState()!=null && organization.getState().equals(org)) {
-				System.out.println("test222222");
 				double cgst=totalCreditGst/2;
 				double sgst=totalCreditGst/2;
 				v.setCgstSgstPresent(true);
 				v.setCgst(cgst+"");
 				v.setSgst(sgst+"");
 			}else {
-				System.out.println("test333333");
 				v.setIgstPresent(false);
 				v.setIgst(totalCreditGst+"");
 			}
 			Ledger product = ledgerRepository.findByName(paymentRegister.getServiceName());
 			if(product!=null) {
-				System.out.println("test4444444");
 				v.setProduct(product);
 			}else {
-				System.out.println("test5555555");
 				product= new Ledger();
 				product.setName(paymentRegister.getServiceName());
 				ledgerRepository.save(product);
@@ -887,7 +885,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			voucherRepository.save(v);
 			//tds concept
 			if(paymentRegister.isTdsPresent()) {
-				System.out.println("test666666666");
 				Voucher tdsRegister =new Voucher();
 				tdsRegister.setVoucherType(vType);
 				tdsRegister.setCreditDebit(true);
@@ -907,10 +904,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				tdsRegister.setEstimateId(estimateId);
 				Ledger productTds = ledgerRepository.findByName("TDS RECEIVABLE");
 				if(productTds!=null) {
-					System.out.println("test77777777777");
 					tdsRegister.setProduct(productTds);
 				}else{
-					System.out.println("test888888888888");
 					Ledger tdsLedger = new Ledger();
 					tdsLedger.setName("TDS RECEIVABLE");
 					ledgerRepository.save(tdsLedger);
@@ -935,7 +930,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			flag=true;
 		}else {
-			System.out.println("test99999999999999");
 
 			LedgerType group = ledgerTypeRepository.findByName(paymentRegister.getRegisterBy());
 			Organization organization = organizationRepository.findByName("corpseed");
@@ -945,7 +939,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				ledgerTypeRepository.save(group);
 			}
 			if(group!=null) { 
-				System.out.println("test111111111112222222222");
 				Ledger ledger = ledgerRepository.findByName(paymentRegister.getCompanyName());
 				double totalEstimateAmount = Double.parseDouble(feignLeadClient.get("totalAmount")!=null?feignLeadClient.get("totalAmount").toString():"0");
 				// == total amount register ==
@@ -982,10 +975,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				totalAmountRegister.setProduct(p);
 				totalAmountRegister.setCreditDebit(true);
 				voucherRepository.save(totalAmountRegister);
-				System.out.println("555555555556666666");
 
 				if(ledger!=null) {
-					System.out.println("test3333333311");
 
 					Voucher v =new Voucher();
 					v.setVoucherType(vType);
@@ -1031,7 +1022,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 
 					if(paymentRegister.isTdsPresent()) {
-						System.out.println("33333333333344444444444");
 
 						Voucher tdsRegister =new Voucher();
 						tdsRegister.setVoucherType(vType);
@@ -1068,7 +1058,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					flag=true;
 				}else {
 					Ledger l=createLedgerDataForCompany(feignLeadClient,paymentRegister);
-					System.out.println("444444444444555555");
 
 					totalEstimateAmount = Double.parseDouble(feignLeadClient.get("totalAmount")!=null?feignLeadClient.get("totalAmount").toString():"0");
 					// == total amount register ==
@@ -1093,7 +1082,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 					totalAmountRegister.setProduct(ledger);
 					totalAmountRegister.setCreditDebit(true);
 					voucherRepository.save(totalAmountRegister);
-					System.out.println("555555555556666666");
 
 					// ===== recived ammount register with gst ======
 					Voucher v =new Voucher();
@@ -1125,13 +1113,11 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 					}
 					v.setEstimateId(paymentRegister.getEstimateId());
-					System.out.println("tttttttttttttttttttttttttttt");
 
 					voucherRepository.save(v);   
 
 					// ===== Tds register ======
 					if(paymentRegister.isTdsPresent()) {
-						System.out.println("55555555555555553333333333333");
 
 						Voucher tdsRegister =new Voucher();
 						tdsRegister.setVoucherType(vType);
@@ -1164,7 +1150,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 						createTdsDto.setTdsType("receivable");
 						createTdsDto.setTotalPaymentAmount(paymentRegister.getProfessionalFees()+paymentRegister.getTdsAmount());
 						tdsServiceImpl.createTds(createTdsDto);
-						System.out.println("tnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn");
 
 					}
 
@@ -1307,7 +1292,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		Boolean flag=false;
 		Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(estimateId);
 		String ledgerName = (String)feignLeadClient.get("companyName");
-		System.out.println("test . . "+ledgerName);
 		List<Voucher> voucherList=voucherRepository.findByEstimateId(estimateId);
 		PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentRegisterId).get();
 		//Group
@@ -1320,9 +1304,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 		// Voucher Exist
 		if(voucherList!=null &&voucherList.size()>0) {  // Already created
-			System.out.println("Voucher Exist");
 
-			System.out.println("ledgerName . . .. "+ledgerName);
 			Ledger ledger = ledgerRepository.findByName(ledgerName);
 
 			if(ledger==null) {
@@ -1331,7 +1313,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				ledgerRepository.save(ledger);
 			}
 
-			System.out.println("test"+voucherList.size());
 			Organization organization = organizationRepository.findByName("corpseed");
 
 			Voucher v =new Voucher();
@@ -2545,14 +2526,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("approveDate", p.getApproveDate());
 			Map<String, Object>remAmount= remainingAmountAndPaidAmount(p.getEstimateId());
 			Object dueAmount = remAmount.get("totalRemainingAmount");
-			Object txnAmount = remAmount.get("estimateAmount");
+			Object orderAmount = remAmount.get("estimateAmount");
 			Object estimateCreateDate = remAmount.get("estimateDate");
+			Object totAmount = remAmount.get("totAmount");
+			Object paidAmount = remAmount.get("paidAmount");
 
+//paidAmount
 			map.put("dueAmount", dueAmount);
-			map.put("txnAmount", txnAmount);
-			map.put("orderAmount", p.getTotalAmount());
+			map.put("txnAmount", p.getTotalAmount());
+			map.put("orderAmount", orderAmount);
 			map.put("estimateCreateDate", estimateCreateDate);
-			
+			map.put("dueAmount", dueAmount);
+			map.put("paidAmount", paidAmount);
+
 			map.put("assigneeId", p.getCreatedByUser()!=null?p.getCreatedByUser().getId():null);
 			map.put("assigneeName", p.getCreatedByUser()!=null?p.getCreatedByUser().getFullName():null);
 			map.put("assigneeEmail", p.getCreatedByUser()!=null?p.getCreatedByUser().getEmail():null);
