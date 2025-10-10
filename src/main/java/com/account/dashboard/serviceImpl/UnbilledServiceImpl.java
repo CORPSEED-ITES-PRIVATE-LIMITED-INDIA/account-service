@@ -151,7 +151,7 @@ public class UnbilledServiceImpl implements UnbilledService{
 			 map.put("id", ub.getId());
 			 map.put("date", ub.getDate());
 			 map.put("company", ub.getCompany());
-			 map.put("txnAmount", ub.getTxnAmount());
+			 map.put("txnAmount", ub.getPaidAmount());
 			 map.put("productName", estimate.get("productName"));
 			 map.put("invoicedNumber", null);
 			 map.put("assigneeName", estimate.get("assigneeName"));

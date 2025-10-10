@@ -2663,10 +2663,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			double paidAmount = unbilled.getPaidAmount();
 			paidAmount=paidAmount+totalAmount;
 			double dueAmount = unbilled.getDueAmount();
-			dueAmount=dueAmount+totalAmount;
+			dueAmount=dueAmount-totalAmount;
 			unbilled.setPaidAmount(paidAmount);
 			unbilled.setDueAmount(dueAmount);
-			unbilled.setDate(approveDate);
+			unbilled.setDate(new Date());
 			unbilled.setProject(projectName);
 			unbilledRepository.save(unbilled);
 			flag=true;
@@ -2679,6 +2679,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			double totalPaidAmount = paymentRegister.getTotalAmount();			   
 			unbilled.setPaidAmount(totalPaidAmount);
 			unbilled.setProject(projectName);
+			unbilled.setDate(new Date());
 
 			double totalAmount = objectToDouble(estimate.get("totalAmount"));
 			unbilled.setOrderAmount(totalAmount);
@@ -2945,6 +2946,12 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 		if(feignLeadClient.get("serviceGst")!=null) {
 			invoiceData.setServiceGst(feignLeadClient.get("serviceGst").toString());
+
+		}
+		String leadId = feignLeadClient.get("leadId")!=null?feignLeadClient.get("leadId").toString():null;
+		if(leadId!=null) {
+			long lId = Long.parseLong(leadId);
+			invoiceData.setLeadId(lId);
 
 		}
 

@@ -25,6 +25,7 @@ public class TdsServiceImpl implements TdsService{
 		tdsDetail.setPaymentRegisterId(createTdsDto.getPaymentRegisterId());
 		tdsDetail.setProjectId(createTdsDto.getProjectId());
 		tdsDetail.setTdsAmount(createTdsDto.getTdsAmount());
+		tdsDetail.setTdsType("Receivable");
 		tdsDetail.setTdsPrecent(createTdsDto.getTdsPrecent());
 		tdsDetailRepository.save(tdsDetail);
 		return tdsDetail;
