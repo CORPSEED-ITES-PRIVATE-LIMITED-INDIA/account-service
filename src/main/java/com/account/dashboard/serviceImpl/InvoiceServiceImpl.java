@@ -107,6 +107,7 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("invoiceNote", invoice.getInvoiceNote());
 	        res.put("remarksForOption", invoice.getRemarksForOption());
 	        res.put("documents", invoice.getDocuments());
+	        res.put("termOfDelivery", invoice.getTermOfDelivery());
 
 	        // Fees and Amounts
 //	        res.put("govermentfees", invoice.getGovermentfees());
@@ -151,10 +152,12 @@ public class InvoiceServiceImpl implements InvoiceService{
 			map.put("companyName", invoiceData.getCompanyName());
 			map.put("date", invoiceData.getCreateDate());
 			map.put("txnAmount", invoiceData.getTotalAmount());
+			map.put("termOfDelivery", invoiceData.getTermOfDelivery());
+
 			map.put("addedBy", invoiceData.getAssignee());
 			result.add(map);
 		}
-
+̥
 		return result;
 	
 	}

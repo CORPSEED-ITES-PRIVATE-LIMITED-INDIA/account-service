@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Data;
@@ -123,6 +124,9 @@ public class InvoiceData {
     @JoinColumn(name = "unbilled_id")
     private Unbilled unbilled;
     
+    @Lob
+	String termOfDelivery;
+
     boolean isDeleted;
     
 	public Long getId() {
@@ -582,6 +586,12 @@ public class InvoiceData {
 	}
 	public void setUnbilled(Unbilled unbilled) {
 		this.unbilled = unbilled;
+	}
+	public String getTermOfDelivery() {
+		return termOfDelivery;
+	}
+	public void setTermOfDelivery(String termOfDelivery) {
+		this.termOfDelivery = termOfDelivery;
 	}
     
 	

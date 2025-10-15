@@ -2610,7 +2610,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("date", invoiceData.getCreateDate());
 			map.put("txnAmount", invoiceData.getTotalAmount());
 			map.put("addedBy", invoiceData.getAssignee());
-			
+			map.put("termOfDelivery", invoiceData.getTermOfDelivery());
+
 			map.put("profGst", invoiceData.getProfesionalGst());
 
 			map.put("gstNo", invoiceData.getGstNo());
@@ -2890,7 +2891,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		invoiceData.setAddress(null);
 		invoiceData.setCompanyName(feignLeadClient.get("companyName")!=null?feignLeadClient.get("companyName").toString():null);
 		invoiceData.setPrimaryContactId(estimateId); //--
-
+		invoiceData.setTermOfDelivery(pRegister.getTermOfDelivery());
 		invoiceData.setProductName(pRegister.getServiceName());   //service name
 		invoiceData.setEstimateId(estimateId);
 		
