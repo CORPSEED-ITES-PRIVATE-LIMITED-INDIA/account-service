@@ -14,6 +14,7 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
+import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -110,6 +111,9 @@ public class PaymentRegister {
 	String comment;
 	@ManyToOne
 	User createdByUser;
+	
+	@Lob
+	String termOfDelivery;
 	
 	public Long getId() {
 		return id;
@@ -419,6 +423,12 @@ public class PaymentRegister {
 	}
 	public void setCreatedByUser(User createdByUser) {
 		this.createdByUser = createdByUser;
+	}
+	public String getTermOfDelivery() {
+		return termOfDelivery;
+	}
+	public void setTermOfDelivery(String termOfDelivery) {
+		this.termOfDelivery = termOfDelivery;
 	}
 	
 	

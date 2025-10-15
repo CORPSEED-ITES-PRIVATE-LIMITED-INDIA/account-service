@@ -3,6 +3,8 @@ package com.account.dashboard.dto;
 import java.util.Date;
 import java.util.List;
 
+import jakarta.persistence.Lob;
+
 public class CreateAmountDto {
 	
 
@@ -57,6 +59,9 @@ public class CreateAmountDto {
 	
 	boolean tdsPresent;
 	int tdsPercent;
+	
+	
+	String termOfDelivery;
 	
 	
 
@@ -364,6 +369,14 @@ public class CreateAmountDto {
 
 	public void setCompanyId(Long companyId) {
 		this.companyId = companyId;
+	}
+
+	public String getTermOfDelivery() {
+		return termOfDelivery;
+	}
+
+	public void setTermOfDelivery(String termOfDelivery) {
+		this.termOfDelivery = termOfDelivery;
 	}
     
      

@@ -141,7 +141,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setLeadId(createAmountDto.getLeadId());
 		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
  		double profesionalGst = createAmountDto.getProfesionalGst();
-
+ 		paymentRegister.setTermOfDelivery(createAmountDto.getTermOfDelivery());
 
 
 		double gstAmount = ((createAmountDto.getProfessionalFees()/100)*profesionalGst);
