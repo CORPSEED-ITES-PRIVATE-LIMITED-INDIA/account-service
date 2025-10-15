@@ -62,7 +62,8 @@ public class CreateAmountDto {
 	
 	
 	String termOfDelivery;
-	
+	String productType;
+
 	
 
 	public Long getLeadId() {
@@ -377,6 +378,22 @@ public class CreateAmountDto {
 
 	public void setTermOfDelivery(String termOfDelivery) {
 		this.termOfDelivery = termOfDelivery;
+	}
+
+	public String getProviderType() {
+		return providerType;
+	}
+
+	public void setProviderType(String providerType) {
+		this.providerType = providerType;
+	}
+
+	public String getProductType() {
+		return productType;
+	}
+
+	public void setProductType(String productType) {
+		this.productType = productType;
 	}
     
      

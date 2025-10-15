@@ -122,7 +122,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setServiceName(createAmountDto.getServiceName());
 		paymentRegister.setGovermentfees(createAmountDto.getGovermentfees());
 		paymentRegister.setGovermentGst(createAmountDto.getGovermentGst());
-
+		paymentRegister.setProductType(createAmountDto.getProductType());
 		paymentRegister.setGovermentGstPercent(createAmountDto.getGovermentGstPercent());
 		if(createAmountDto.isTdsPresent()) {
 			double tdsPercent = createAmountDto.getTdsPercent();
@@ -225,7 +225,6 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		totAmount=totAmount-totalAmount;
 		result.put("totAmount", totAmount);
-
 		result.put("totalRemainingAmount", totAmount);
 		result.put("remainingProffees", profees-proFees);
 		result.put("remainingGovfees", govfees-govfees);
@@ -273,6 +272,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("createdById", p.getCreatedById());
 			map.put("transactionId", p.getTransactionId());
 			map.put("serviceName", p.getServiceName());
+			map.put("productType", p.getProductType());
 
 			map.put("govermentfees", p.getGovermentfees());
 			map.put("govermentGst", p.getGovermentGst());

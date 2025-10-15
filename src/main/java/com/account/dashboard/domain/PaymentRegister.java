@@ -114,7 +114,8 @@ public class PaymentRegister {
 	
 	@Lob
 	String termOfDelivery;
-	
+	String productType;
+
 	public Long getId() {
 		return id;
 	}
@@ -429,6 +430,12 @@ public class PaymentRegister {
 	}
 	public void setTermOfDelivery(String termOfDelivery) {
 		this.termOfDelivery = termOfDelivery;
+	}
+	public String getProductType() {
+		return productType;
+	}
+	public void setProductType(String productType) {
+		this.productType = productType;
 	}
 	
 	
