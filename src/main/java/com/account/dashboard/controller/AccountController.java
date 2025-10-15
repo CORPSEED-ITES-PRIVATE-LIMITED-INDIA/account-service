@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.account.dashboard.domain.BankAccount;
 import com.account.dashboard.domain.ManageSales;
 import com.account.dashboard.dto.CreateAccountData;
 import com.account.dashboard.dto.UpdateAccountData;
@@ -66,4 +67,12 @@ public class AccountController {
 		return account;		 
 
 	}	
+	
+	@GetMapping(UrlsMapping.GET_COMPANY_ACCOUNT_DATA)
+	public BankAccount getCompanyAccountData()
+	{
+		BankAccount account=accountService.getCompanyAccountData();
+		return account;		 
+
+	}
 }

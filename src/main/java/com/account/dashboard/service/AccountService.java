@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Service;
 
+import com.account.dashboard.domain.BankAccount;
 import com.account.dashboard.domain.ManageSales;
 import com.account.dashboard.dto.CreateAccountData;
 import com.account.dashboard.dto.UpdateAccountData;
@@ -20,5 +21,7 @@ public interface AccountService {
 	ManageSales createAccountData(CreateAccountData createAccountData);
 
 	ManageSales updateAccountData(UpdateAccountData updateAccountData);
+
+	BankAccount getCompanyAccountData();
 
 }

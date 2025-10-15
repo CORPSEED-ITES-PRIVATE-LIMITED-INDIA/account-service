@@ -8,12 +8,15 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.Amount;
+import com.account.dashboard.domain.BankAccount;
 import com.account.dashboard.domain.ManageSales;
+import com.account.dashboard.domain.Organization;
 import com.account.dashboard.domain.User;
 import com.account.dashboard.dto.CreateAccountData;
 import com.account.dashboard.dto.UpdateAccountData;
 import com.account.dashboard.repository.AccountRepository;
 import com.account.dashboard.repository.AmountRepository;
+import com.account.dashboard.repository.OrganizationRepository;
 import com.account.dashboard.repository.UserRepository;
 import com.account.dashboard.service.AccountService;
 
@@ -22,6 +25,9 @@ public class AccountServiceImpl implements AccountService{
 
 	@Autowired
 	AccountRepository accountRepository;
+	
+	@Autowired
+	OrganizationRepository  organizationRepository;
 	
 	@Autowired
 	AmountRepository amountRepository;
@@ -100,6 +106,14 @@ public class AccountServiceImpl implements AccountService{
 	public ManageSales updateAccountData(UpdateAccountData updateAccountData) {
 		
 		return null;
+	}
+
+	@Override
+	public BankAccount getCompanyAccountData() {
+		Organization org = organizationRepository.findCompanyData();
+		List<BankAccount> accountData = org.getOrganizationBankAccount();
+		BankAccount bankAccount=accountData.stream().findFirst().get();
+		return bankAccount;
 	}
 
 }

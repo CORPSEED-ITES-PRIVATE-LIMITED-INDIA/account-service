@@ -32,7 +32,8 @@ public interface UrlsMapping {
 	public static final String GET_ALL_ACCOUNT_DATA=PREFIX+ "/account/getAllAccountData";	
 	public static final String UPDATE_ACCOUNT_DATA=PREFIX+ "/account/updateAccountData";	
 	public static final String DELETE_ACCOUNT_DATA=PREFIX+ "/account/deleteAccountData";
-	
+	public static final String GET_COMPANY_ACCOUNT_DATA=PREFIX+ "/account/getCompanyAccountData";	
+
 	///===============================  Ledger	Type  =================================
 	public static final String CREATE_LEDGER_TYPE=PREFIX+ "/ledgerType/createLedgerType";
 	public static final String UPDATE_LEDGER_TYPE=PREFIX+ "/ledgerType/updateLedgerType";

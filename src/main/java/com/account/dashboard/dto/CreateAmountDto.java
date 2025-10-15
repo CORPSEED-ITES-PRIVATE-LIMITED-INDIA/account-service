@@ -16,6 +16,7 @@ public class CreateAmountDto {
 
 	private String billingQuantity;
 	private String paymentType;// full , prtial and milestone
+	private Long companyId;
     
 	private String registerBy;
 
@@ -357,6 +358,14 @@ public class CreateAmountDto {
 		this.whatsappNo = whatsappNo;
 	}
 
+	public Long getCompanyId() {
+		return companyId;
+	}
+
+	public void setCompanyId(Long companyId) {
+		this.companyId = companyId;
+	}
+    
      
     
 	

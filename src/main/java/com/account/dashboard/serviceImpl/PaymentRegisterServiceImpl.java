@@ -140,8 +140,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 		paymentRegister.setLeadId(createAmountDto.getLeadId());
 		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
-
-		double profesionalGst = createAmountDto.getProfesionalGst();
+ 		double profesionalGst = createAmountDto.getProfesionalGst();
 
 
 

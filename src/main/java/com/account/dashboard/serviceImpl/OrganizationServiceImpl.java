@@ -108,6 +108,7 @@ public class OrganizationServiceImpl implements OrganizationService{
 		bankAccount.setBranch(bankAccountDto.getBranch());
 		bankAccount.setIfscCode(bankAccountDto.getIfscCode());
 		bankAccount.setSwiftCode(bankAccountDto.getSwiftCode());
+		bankAccount.setBankName(bankAccountDto.getBankName());
 		bankAccountRepository.save(bankAccount);
 		
 		List<BankAccount>list = organization.getOrganizationBankAccount();
