@@ -34,7 +34,7 @@ public class VendorPaymentRegisterController {
 	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER)
 	public List<Map<String,Object>> getAllVendorPaymentRegister(@RequestParam(value = "page", defaultValue = "1") int page,
 			@RequestParam(value = "size", defaultValue = "10") int size){
-		List<Map<String,Object>> res=vendorPaymentRegisterServcie.getAllVendorPaymentRegister(page,size);	
+		List<Map<String,Object>> res=vendorPaymentRegisterServcie.getAllVendorPaymentRegister(page-1,size);	
 		return res;
 		
 	}

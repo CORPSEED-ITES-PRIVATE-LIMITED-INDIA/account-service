@@ -49,6 +49,7 @@ public class VendorPaymentRegister {
 	
 	String remarkByVendor;
     @ManyToMany(fetch = FetchType.EAGER,cascade = CascadeType.ALL)
+    @JsonIgnore
 	@JoinTable(name="vendor_payment_product_estimate",joinColumns = {@JoinColumn(name="vendor_payment_id",referencedColumnName="id",nullable=true)},
 			inverseJoinColumns = {@JoinColumn(name="vendor_payment_product_estimate_id"
 					+ "",referencedColumnName = "id",nullable=true,unique=false)})

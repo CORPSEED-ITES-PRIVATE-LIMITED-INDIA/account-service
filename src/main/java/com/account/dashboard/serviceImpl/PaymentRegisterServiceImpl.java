@@ -2520,6 +2520,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("companyName", p.getCompanyName());
 			map.put("companyId", p.getCompanyId());
 			map.put("updateDate", p.getUpdateDate());
+			map.put("productType", p.getProductType());
 
 			map.put("approvedById", p.getApprovedById());
 			map.put("approveDate", p.getApproveDate());
@@ -2728,6 +2729,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		double serviceCharge=0;
 		double totalAmount=0;
 		String paymentType="NA";
+		String productType=estimate.get("productType")!=null?estimate.get("productType").toString():"NA";
+
 		for(PaymentRegister pr:paymentRegister) {
 			proFees=proFees+pr.getProfessionalFees();
 			profGst=pr.getProfessionalGstAmount();   
@@ -2737,7 +2740,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			otherFees=pr.getOtherFees();
 			serviceCharge=pr.getServiceCharge();
 		}
-		double totAmount = Double.parseDouble(estimate.get("totalAmount").toString());
+//		String productType=estimate.get("productType")!=null?estimate.get("productType").toString():"NA";
+		double totAmount =0;
+		if("Product".equalsIgnoreCase(productType)) {
+			 totAmount = Double.parseDouble(estimate.get("totalPrice").toString());
+			
+		}else {
+			 totAmount = Double.parseDouble(estimate.get("totalAmount").toString());
+		}
 		double profees = Double.parseDouble(estimate.get("professionalFees").toString());
 		double govfees = Double.parseDouble(estimate.get("govermentFees").toString());
 		double serviceFees = Double.parseDouble(estimate.get("serviceCharge").toString());
@@ -2745,6 +2755,16 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 		totAmount=totAmount-totalAmount;
 		result.put("totalAmount", totAmount);
+		String quantity = estimate.get("quantity")!=null?estimate.get("quantity").toString():"NA";
+		 Object productGst = estimate.get("gstAmount");
+		 Object actualPrice = estimate.get("actualPrice");
+
+		String gst = estimate.get("gst")!=null?estimate.get("gst").toString():"NA";
+		result.put("gst", gst);
+		result.put("actualPrice", actualPrice);
+
+		result.put("quantity", quantity);
+		result.put("gstAmount", productGst);
 		result.put("proffees", profees-proFees);
 		result.put("govfees", govfees-govfees);
 		if(proFees>0) {
@@ -2752,6 +2772,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}else{
 			result.put("primary", true);
 		}
+		result.put("productType", productType);
+
 		result.put("paymentType", paymentType);
 		result.put("otherFees", otherCharge-otherFees);
 		result.put("serviceCharge", serviceFees-serviceCharge);

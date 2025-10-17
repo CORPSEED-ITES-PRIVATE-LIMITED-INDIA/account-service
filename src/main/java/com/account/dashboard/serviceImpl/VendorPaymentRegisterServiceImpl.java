@@ -110,6 +110,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 	public List<Map<String, Object>> getAllVendorPaymentRegister(int page, int size) {
 		Pageable pageable = PageRequest.of(page, size, Sort.by("id"));
 		 List<VendorPaymentRegister> vendorPaymentRegister = vendorPaymentRegisterRepo.findAll(pageable).getContent();
+		 System.out.println("Vendor Size  . . "+vendorPaymentRegister.size());
 		 List<Map<String, Object>>result=new ArrayList<>();
 		 for(VendorPaymentRegister v:vendorPaymentRegister) {
 			Map<String,Object> map=new HashMap<>();
@@ -127,21 +128,21 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    // Payment details
 		    
 		    map.put("serviceName", v.getServiceName());
-		    List<ProductEstimate> productEstimate = v.getProductEstimate();
-		    List<Map<String,Object>>arr=new ArrayList<>();
-		    for(ProductEstimate pe:productEstimate) {
-		    	Map<String,Object>m=new HashMap<>();
-		      
-			    m.put("service", pe.getName());
-			    m.put("type", pe.getType());
-			    m.put("serviceFees", pe.getServiceFees());
-			    m.put("serviceGstAmount", pe.getServiceGstAmount());
-			    m.put("serviceGstPercent", pe.getServiceGstPercent());
-			    m.put("quantity", pe.getQuantity());
-			    m.put("totalPrice", pe.getTotalPrice());
-			    arr.add(map);
-		    }
-		    map.put("productEstimate", arr);
+//		    List<ProductEstimate> productEstimate = v.getProductEstimate();
+//		    List<Map<String,Object>>arr=new ArrayList<>();
+//		    for(ProductEstimate pe:productEstimate) {
+//		    	Map<String,Object>m=new HashMap<>();
+//		      
+//			    m.put("service", pe.getName());
+//			    m.put("type", pe.getType());
+//			    m.put("serviceFees", pe.getServiceFees());
+//			    m.put("serviceGstAmount", pe.getServiceGstAmount());
+//			    m.put("serviceGstPercent", pe.getServiceGstPercent());
+//			    m.put("quantity", pe.getQuantity());
+//			    m.put("totalPrice", pe.getTotalPrice());
+//			    arr.add(map);
+//		    }
+//		    map.put("productEstimate", arr);
 
 		    map.put("remark", v.getRemark());
 		    map.put("paymentDate", v.getPaymentDate());
@@ -164,18 +165,18 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    }
 
 		    // fileData list (if you want to add files as list of maps)
-		    if (v.getFileData() != null && !v.getFileData().isEmpty()) {
-		        List<Map<String, Object>> filesList = new ArrayList<>();
-		        for (FileData file : v.getFileData()) {
-		            Map<String, Object> fileMap = new HashMap<>();
-		            fileMap.put("id", file.getId());
-		            fileMap.put("fileName", file.getName());
-		            fileMap.put("fileUrl", file.getFilePath());
-		            // add other file fields as needed
-		            filesList.add(fileMap);
-		        }
-		        map.put("fileData", filesList);
-		    }
+//		    if (v.getFileData() != null && !v.getFileData().isEmpty()) {
+//		        List<Map<String, Object>> filesList = new ArrayList<>();
+//		        for (FileData file : v.getFileData()) {
+//		            Map<String, Object> fileMap = new HashMap<>();
+//		            fileMap.put("id", file.getId());
+//		            fileMap.put("fileName", file.getName());
+//		            fileMap.put("fileUrl", file.getFilePath());
+//		            // add other file fields as needed
+//		            filesList.add(fileMap);
+//		        }
+//		        map.put("fileData", filesList);
+//		    }
 		    
 		    result.add(map);
 
