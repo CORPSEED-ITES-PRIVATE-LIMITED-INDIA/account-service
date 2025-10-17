@@ -138,6 +138,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}else {
 			paymentRegister.setProfessionalFees(createAmountDto.getProfessionalFees());
 		}
+		paymentRegister.setCompanyId(createAmountDto.getCompanyId());
 		paymentRegister.setLeadId(createAmountDto.getLeadId());
 		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
  		double profesionalGst = createAmountDto.getProfesionalGst();
@@ -2744,8 +2745,17 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		double totAmount =0;
 		if("Product".equalsIgnoreCase(productType)) {
 			 totAmount = Double.parseDouble(estimate.get("totalPrice").toString());
-			
+				if(totalAmount>0) {
+					result.put("primary", false);
+				}else{
+					result.put("primary", true);
+				}
 		}else {
+			if(proFees>0) {
+				result.put("primary", false);
+			}else{
+				result.put("primary", true);
+			}
 			 totAmount = Double.parseDouble(estimate.get("totalAmount").toString());
 		}
 		double profees = Double.parseDouble(estimate.get("professionalFees").toString());
@@ -2767,12 +2777,12 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		result.put("gstAmount", productGst);
 		result.put("proffees", profees-proFees);
 		result.put("govfees", govfees-govfees);
-		if(proFees>0) {
-			result.put("primary", false);
-		}else{
-			result.put("primary", true);
-		}
-		result.put("productType", productType);
+//		if(proFees>0) {
+//			result.put("primary", false);
+//		}else{
+//			result.put("primary", true);
+//		}
+		result.put("productType", paymentType);
 
 		result.put("paymentType", paymentType);
 		result.put("otherFees", otherCharge-otherFees);
