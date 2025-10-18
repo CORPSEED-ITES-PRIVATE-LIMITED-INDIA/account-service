@@ -16,6 +16,7 @@ public class ProductEstimate {
 	@Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)	
 	Long id;	
+	Long productSubCategoryId;
 	String name;
 	String type;
 	
@@ -96,6 +97,12 @@ public class ProductEstimate {
 	}
 	public void setTdsPercent(int tdsPercent) {
 		this.tdsPercent = tdsPercent;
+	}
+	public Long getProductSubCategoryId() {
+		return productSubCategoryId;
+	}
+	public void setProductSubCategoryId(Long productSubCategoryId) {
+		this.productSubCategoryId = productSubCategoryId;
 	}
     
 	

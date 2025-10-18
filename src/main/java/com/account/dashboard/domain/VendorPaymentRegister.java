@@ -4,6 +4,8 @@ import java.util.Date;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.lead.dashboard.domain.BusinessArrangment;
+import com.lead.dashboard.domain.ProductCategory;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
@@ -46,6 +48,11 @@ public class VendorPaymentRegister {
 	@ManyToOne
 	User approvedBy;
 	Date approveDate;
+	
+    
+    Long businessArrangmentId;
+    
+    Long productCategoryId;
 	
 	String remarkByVendor;
     @ManyToMany(fetch = FetchType.EAGER,cascade = CascadeType.ALL)
@@ -364,6 +371,22 @@ public class VendorPaymentRegister {
 
 	public void setPaymentInvoice(FileData paymentInvoice) {
 		this.paymentInvoice = paymentInvoice;
+	}
+
+	public Long getBusinessArrangmentId() {
+		return businessArrangmentId;
+	}
+
+	public void setBusinessArrangmentId(Long businessArrangmentId) {
+		this.businessArrangmentId = businessArrangmentId;
+	}
+
+	public Long getProductCategoryId() {
+		return productCategoryId;
+	}
+
+	public void setProductCategoryId(Long productCategoryId) {
+		this.productCategoryId = productCategoryId;
 	}
 	
 

@@ -53,7 +53,9 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 
 		vendorPaymentRegister.setStatus("initiated");
 		vendorPaymentRegister.setEstimateId(createVendorAmountDto.getEstimateId());
-		
+		vendorPaymentRegister.setProductCategoryId(createVendorAmountDto.getProductCategoryId());
+		vendorPaymentRegister.setBusinessArrangmentId(createVendorAmountDto.getBusinessArrangmentId());
+
 		if(createVendorAmountDto.getCreatedById()!=null) {
 			User user = userRepository.findById(createVendorAmountDto.getCreatedById()).get();
 			vendorPaymentRegister.setCreatedBy(user);
@@ -69,7 +71,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 				productEstimate.setQuantity(v.getQuantity());
 				productEstimate.setServiceFees(v.getServiceFees());
 				double gstAmount = ((v.getServiceFees()/100)*v.getServiceGstPercent());
-
+				productEstimate.setProductSubCategoryId(v.getProductSubCategoryId());
 				productEstimate.setServiceGstAmount(gstAmount);
 				productEstimate.setServiceGstPercent(v.getServiceGstPercent());
 				productEstimate.setTotalPrice(v.getTotalPrice());
@@ -124,7 +126,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    map.put("emails", v.getEmails());
 		    map.put("contactNo", v.getContactNo());
 		    map.put("whatsappNo", v.getWhatsappNo());
-
+		    map.put("businessArrangmentId", v.getBusinessArrangmentId());
+		    map.put("productCategoryId", v.getProductCategoryId());
 		    // Payment details
 		    
 		    map.put("serviceName", v.getServiceName());
@@ -132,7 +135,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 //		    List<Map<String,Object>>arr=new ArrayList<>();
 //		    for(ProductEstimate pe:productEstimate) {
 //		    	Map<String,Object>m=new HashMap<>();
-//		      
+//		        m.put("productSubCategoryId", pe.getProductSubCategoryId());
+
 //			    m.put("service", pe.getName());
 //			    m.put("type", pe.getType());
 //			    m.put("serviceFees", pe.getServiceFees());
@@ -214,6 +218,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    map.put("emails", v.getEmails());
 		    map.put("contactNo", v.getContactNo());
 		    map.put("whatsappNo", v.getWhatsappNo());
+		    map.put("businessArrangmentId", v.getBusinessArrangmentId());
+		    map.put("productCategoryId", v.getProductCategoryId());
 
 		    // Payment details
 		    
@@ -222,7 +228,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    List<Map<String,Object>>arr=new ArrayList<>();
 		    for(ProductEstimate pe:productEstimate) {
 		    	Map<String,Object>m=new HashMap<>();
-		      
+			    m.put("productSubCategoryId", pe.getProductSubCategoryId());
+
 			    m.put("service", pe.getName());
 			    m.put("type", pe.getType());
 			    m.put("serviceFees", pe.getServiceFees());

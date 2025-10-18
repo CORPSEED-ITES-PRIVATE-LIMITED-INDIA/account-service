@@ -63,7 +63,10 @@ public class CreateVendorAmountDto {
 	// add  attachment by Vendor team
 	List<Long>fileData;
 	
-	
+    Long businessArrangmentId;
+    
+    Long productCategoryId;
+
 
 
 	public String getServiceName() {
@@ -276,6 +279,24 @@ public class CreateVendorAmountDto {
 	public void setCreateVendorSubDto(List<CreateVendorSubDto> createVendorSubDto) {
 		CreateVendorSubDto = createVendorSubDto;
 	}
+
+	public Long getBusinessArrangmentId() {
+		return businessArrangmentId;
+	}
+
+	public void setBusinessArrangmentId(Long businessArrangmentId) {
+		this.businessArrangmentId = businessArrangmentId;
+	}
+
+	public Long getProductCategoryId() {
+		return productCategoryId;
+	}
+
+	public void setProductCategoryId(Long productCategoryId) {
+		this.productCategoryId = productCategoryId;
+	}
+
+
 	
 	
 

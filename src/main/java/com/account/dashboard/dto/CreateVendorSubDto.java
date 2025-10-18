@@ -10,7 +10,8 @@ public class CreateVendorSubDto {
 	
     double quantity;
     double totalPrice;
-    
+	Long productSubCategoryId;
+
 	boolean tdsPresent;
 	private double tdsAmount;
 	private int tdsPercent;
@@ -73,6 +74,12 @@ public class CreateVendorSubDto {
 	}
 	public void setTdsPercent(int tdsPercent) {
 		this.tdsPercent = tdsPercent;
+	}
+	public Long getProductSubCategoryId() {
+		return productSubCategoryId;
+	}
+	public void setProductSubCategoryId(Long productSubCategoryId) {
+		this.productSubCategoryId = productSubCategoryId;
 	}
 	
 	
