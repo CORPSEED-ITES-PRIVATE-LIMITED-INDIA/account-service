@@ -189,6 +189,48 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		return paymentRegister;
 	}
 
+	public Map<String, Object>remainingAmountAndPaidAmountProduct(Long id) {
+
+		Map<String,Object>result=new HashMap<>();
+		Map<String, Object> estimate = leadFeignClient.getEstimateById(id);
+		
+		List<PaymentRegister> paymentRegister = paymentRegisterRepository.findAllByEstimateId(id);
+		double totalFees=0;
+		double totalGst=0;
+		double totalAmount=0;
+		String paymentType="NA";
+		for(PaymentRegister pr:paymentRegister) {
+			totalFees=totalFees+pr.getTotalAmount();
+//			proFees=proFees+pr.getProfessionalFees();	
+//			profGst=pr.getProfessionalGstAmount();   
+//			govFees=pr.getGovermentfees();
+//			paymentType=pr.getPaymentType();
+//			totalAmount=totalAmount+pr.getTotalAmount();
+//			otherFees=pr.getOtherFees();
+//			serviceCharge=pr.getServiceCharge();
+		}
+		double estTotalAmount = Double.parseDouble(estimate.get("totalPrice").toString());
+//		double paidAmount = totalAmount;
+
+		double totAmount = Double.parseDouble(estimate.get("totalPrice").toString());
+
+		String estimateDate = estimate.get("estimateDate").toString();
+		result.put("estimateAmount", estTotalAmount);
+		result.put("paidAmount", totalFees);
+
+		totAmount=totAmount-totalAmount;
+		result.put("totAmount", totAmount);
+		result.put("totalRemainingAmount", totAmount);
+		result.put("remainingProffees", totAmount-totalFees);
+//		result.put("estimateAmount", totAmount);
+		result.put("estimateDate", estimateDate);
+		result.put("paymentType", paymentType);
+		result.put("paidAmount", totalFees);
+
+		return result;
+		
+	}
+
 	
 	public Map<String, Object>remainingAmountAndPaidAmount(Long id) {
 
@@ -2525,20 +2567,41 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 			map.put("approvedById", p.getApprovedById());
 			map.put("approveDate", p.getApproveDate());
-			Map<String, Object>remAmount= remainingAmountAndPaidAmount(p.getEstimateId());
-			Object dueAmount = remAmount.get("totalRemainingAmount");
-			Object orderAmount = remAmount.get("estimateAmount");
-			Object estimateCreateDate = remAmount.get("estimateDate");
-			Object totAmount = remAmount.get("totAmount");
-			Object paidAmount = remAmount.get("paidAmount");
+			
+//			Map<String, Object>remAmount= remainingAmountAndPaidAmount(p.getEstimateId());
+			if("Product".equals(p.getProductType())) {
+				Map<String, Object>remAmount= remainingAmountAndPaidAmountProduct(p.getEstimateId());
 
-//paidAmount
-			map.put("dueAmount", dueAmount);
-			map.put("txnAmount", p.getTotalAmount());
-			map.put("orderAmount", orderAmount);
-			map.put("estimateCreateDate", estimateCreateDate);
-			map.put("dueAmount", dueAmount);
-			map.put("paidAmount", paidAmount);
+				Object dueAmount = remAmount.get("totalRemainingAmount");
+				Object orderAmount = remAmount.get("estimateAmount");
+				Object estimateCreateDate = remAmount.get("estimateDate");
+				Object totAmount = remAmount.get("totAmount");
+				Object paidAmount = remAmount.get("paidAmount");
+
+	//paidAmount
+				map.put("dueAmount", dueAmount);
+				map.put("txnAmount", p.getTotalAmount());
+				map.put("orderAmount", orderAmount);
+				map.put("estimateCreateDate", estimateCreateDate);
+				map.put("dueAmount", dueAmount);
+				map.put("paidAmount", paidAmount);
+			}else {
+				Map<String, Object>remAmount= remainingAmountAndPaidAmount(p.getEstimateId());
+
+				Object dueAmount = remAmount.get("totalRemainingAmount");
+				Object orderAmount = remAmount.get("estimateAmount");
+				Object estimateCreateDate = remAmount.get("estimateDate");
+				Object totAmount = remAmount.get("totAmount");
+				Object paidAmount = remAmount.get("paidAmount");
+
+	//paidAmount
+				map.put("dueAmount", dueAmount);
+				map.put("txnAmount", p.getTotalAmount());
+				map.put("orderAmount", orderAmount);
+				map.put("estimateCreateDate", estimateCreateDate);
+				map.put("dueAmount", dueAmount);
+				map.put("paidAmount", paidAmount);
+			}
 
 			map.put("assigneeId", p.getCreatedByUser()!=null?p.getCreatedByUser().getId():null);
 			map.put("assigneeName", p.getCreatedByUser()!=null?p.getCreatedByUser().getFullName():null);
