@@ -22,6 +22,7 @@ import com.account.dashboard.config.GetAllCompanyDto;
 import com.account.dashboard.config.LeadFeignClient;
 import com.account.dashboard.config.OpenAPIConfig;
 import com.account.dashboard.controller.ledger.OrganizationController;
+import com.account.dashboard.domain.FileData;
 import com.account.dashboard.domain.GstDetails;
 import com.account.dashboard.domain.InvoiceData;
 import com.account.dashboard.domain.Organization;
@@ -60,6 +61,9 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 	@Autowired
 	private UnbilledRepository unbilledRepository;
+	
+	@Autowired
+	FileDataRepository fileDataRepository;
 
 
 	@Autowired
@@ -124,6 +128,20 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setGovermentGst(createAmountDto.getGovermentGst());
 		paymentRegister.setProductType(createAmountDto.getProductType());
 		paymentRegister.setGovermentGstPercent(createAmountDto.getGovermentGstPercent());
+		
+		if(createAmountDto.getDoc()!=null && createAmountDto.getDoc().size()!=0) {
+			List<FileData>list=new ArrayList<>();
+			for(String s:createAmountDto.getDoc()) {
+				FileData fileData=new FileData(); 
+				fileData.setFilePath(s);
+				fileDataRepository.save(fileData);
+				list.add(fileData);
+			}
+			
+			paymentRegister.setFileData(list);
+		}
+
+		
 		if(createAmountDto.isTdsPresent()) {
 			double tdsPercent = createAmountDto.getTdsPercent();
 			double totalProfessional = createAmountDto.getProfessionalFees();
@@ -2564,6 +2582,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			map.put("companyId", p.getCompanyId());
 			map.put("updateDate", p.getUpdateDate());
 			map.put("productType", p.getProductType());
+			map.put("doc", p.getFileData());
 
 			map.put("approvedById", p.getApprovedById());
 			map.put("approveDate", p.getApproveDate());

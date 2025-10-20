@@ -98,7 +98,7 @@ public class PaymentRegister {
 	
 	@ManyToMany(fetch = FetchType.EAGER)
 	@JsonIgnore
-	@JoinTable(name="payment_register_document_id",joinColumns = {@JoinColumn(name="payment_register_id",referencedColumnName="id",nullable=true)},
+	@JoinTable(name="payment_register_document",joinColumns = {@JoinColumn(name="payment_register_id",referencedColumnName="id",nullable=true)},
 			inverseJoinColumns = {@JoinColumn(name="payment_register_document_id"
 					+ "",referencedColumnName = "id",nullable=true,unique=false)})
 	List<FileData>fileData;
