@@ -3,9 +3,12 @@ package com.account.dashboard.domain;
 import java.util.Date;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIdentityInfo;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.lead.dashboard.domain.BusinessArrangment;
-import com.lead.dashboard.domain.ProductCategory;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.ObjectIdGenerators;
 
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Entity;
@@ -19,6 +22,9 @@ import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+//@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+//@JsonIdentityInfo(generator = ObjectIdGenerators.PropertyGenerator.class, property = "id")
+
 @Table
 @Entity
 public class VendorPaymentRegister {
@@ -31,6 +37,8 @@ public class VendorPaymentRegister {
 
 	private Long leadId;
 	private Long estimateId;
+	
+	
 	
 //	private String billingQuantity;//partial ,full ,milestone
 	private String paymentType;//Sales,
@@ -55,10 +63,10 @@ public class VendorPaymentRegister {
     Long productCategoryId;
 	
 	String remarkByVendor;
-    @ManyToMany(fetch = FetchType.EAGER,cascade = CascadeType.ALL)
-    @JsonIgnore
-	@JoinTable(name="vendor_payment_product_estimate",joinColumns = {@JoinColumn(name="vendor_payment_id",referencedColumnName="id",nullable=true)},
-			inverseJoinColumns = {@JoinColumn(name="vendor_payment_product_estimate_id"
+	
+	@ManyToMany(fetch = FetchType.EAGER,cascade = CascadeType.ALL)
+	@JoinTable(name="vendor_payment_register_product_estimate",joinColumns = {@JoinColumn(name="vendor_payment_register_id",referencedColumnName="id",nullable=true)},
+			inverseJoinColumns = {@JoinColumn(name="vendor_payment_register_product_estimate_id"
 					+ "",referencedColumnName = "id",nullable=true,unique=false)})
 	List<ProductEstimate> productEstimate;
 	
@@ -91,10 +99,10 @@ public class VendorPaymentRegister {
 	String updateDate;
 	
 	// add  attachment by Vendor team
-	@ManyToMany(fetch = FetchType.EAGER)
+	@ManyToMany(fetch = FetchType.EAGER,cascade = CascadeType.ALL)
 	@JsonIgnore
-	@JoinTable(name="vendor_payment_register_document",joinColumns = {@JoinColumn(name="vendor_payment_register_id",referencedColumnName="id",nullable=true)},
-			inverseJoinColumns = {@JoinColumn(name="vendor_payment_register_document_id"
+	@JoinTable(name="vendor_payment_register_file_data",joinColumns = {@JoinColumn(name="vendor_payment_register_id",referencedColumnName="id",nullable=true)},
+			inverseJoinColumns = {@JoinColumn(name="vendor_payment_register_file_data_id"
 					+ "",referencedColumnName = "id",nullable=true,unique=false)})
 	List<FileData>fileData;
 	  
