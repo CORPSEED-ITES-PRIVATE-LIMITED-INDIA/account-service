@@ -237,7 +237,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			    m.put("serviceGstPercent", pe.getServiceGstPercent());
 			    m.put("quantity", pe.getQuantity());
 			    m.put("totalPrice", pe.getTotalPrice());
-			    arr.add(map);
+			    arr.add(m);
 		    }
 		    map.put("productEstimate", arr);
 
