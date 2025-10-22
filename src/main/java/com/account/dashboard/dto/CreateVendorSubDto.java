@@ -10,11 +10,11 @@ public class CreateVendorSubDto {
 	
     double quantity;
     double totalPrice;
+    double gstPercent;
+    double gstAmount;
+    double actualPrice;
 	Long productSubCategoryId;
 
-	boolean tdsPresent;
-	private double tdsAmount;
-	private int tdsPercent;
 	public String getName() {
 		return name;
 	}
@@ -57,29 +57,29 @@ public class CreateVendorSubDto {
 	public void setTotalPrice(double totalPrice) {
 		this.totalPrice = totalPrice;
 	}
-	public boolean isTdsPresent() {
-		return tdsPresent;
-	}
-	public void setTdsPresent(boolean tdsPresent) {
-		this.tdsPresent = tdsPresent;
-	}
-	public double getTdsAmount() {
-		return tdsAmount;
-	}
-	public void setTdsAmount(double tdsAmount) {
-		this.tdsAmount = tdsAmount;
-	}
-	public int getTdsPercent() {
-		return tdsPercent;
-	}
-	public void setTdsPercent(int tdsPercent) {
-		this.tdsPercent = tdsPercent;
-	}
 	public Long getProductSubCategoryId() {
 		return productSubCategoryId;
 	}
 	public void setProductSubCategoryId(Long productSubCategoryId) {
 		this.productSubCategoryId = productSubCategoryId;
+	}
+	public double getGstPercent() {
+		return gstPercent;
+	}
+	public void setGstPercent(double gstPercent) {
+		this.gstPercent = gstPercent;
+	}
+	public double getGstAmount() {
+		return gstAmount;
+	}
+	public void setGstAmount(double gstAmount) {
+		this.gstAmount = gstAmount;
+	}
+	public double getActualPrice() {
+		return actualPrice;
+	}
+	public void setActualPrice(double actualPrice) {
+		this.actualPrice = actualPrice;
 	}
 	
 	

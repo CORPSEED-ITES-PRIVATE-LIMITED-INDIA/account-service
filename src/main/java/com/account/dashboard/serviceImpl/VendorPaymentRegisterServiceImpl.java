@@ -67,14 +67,20 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			for(CreateVendorSubDto v:createVendorAmountDto.getCreateVendorSubDto()) {
 				ProductEstimate productEstimate=new ProductEstimate();
 				productEstimate.setName(v.getName());
-				System.out.println("test......"+v.getName());
-				productEstimate.setQuantity(v.getQuantity());
+
+				
 				productEstimate.setServiceFees(v.getServiceFees());
 				double gstAmount = ((v.getServiceFees()/100)*v.getServiceGstPercent());
 				productEstimate.setProductSubCategoryId(v.getProductSubCategoryId());
 				productEstimate.setServiceGstAmount(gstAmount);
 				productEstimate.setServiceGstPercent(v.getServiceGstPercent());
+				
+				
+				productEstimate.setQuantity(v.getQuantity());
 				productEstimate.setTotalPrice(v.getTotalPrice());
+				productEstimate.setGstAmount(v.getGstAmount());
+				productEstimate.setGstPercent(v.getGstPercent());
+				productEstimate.setActualPrice(v.getActualPrice());
 				productEstimateRepository.save(productEstimate);
 				estimateList.add(productEstimate);
 			}
@@ -143,6 +149,11 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			    m.put("serviceGstAmount", pe.getServiceGstAmount());
 			    m.put("serviceGstPercent", pe.getServiceGstPercent());
 			    m.put("quantity", pe.getQuantity());
+
+			    m.put("gstPercent", pe.getGstPercent());  
+			    m.put("actualPrice", pe.getActualPrice());
+			    m.put("gstAmount", pe.getGstAmount());
+
 			    m.put("totalPrice", pe.getTotalPrice());
 			    arr.add(m);
 		    }
@@ -237,6 +248,10 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			    m.put("serviceGstPercent", pe.getServiceGstPercent());
 			    m.put("quantity", pe.getQuantity());
 			    m.put("totalPrice", pe.getTotalPrice());
+			    
+			    m.put("gstPercent", pe.getGstPercent());  
+			    m.put("actualPrice", pe.getActualPrice());
+			    m.put("gstAmount", pe.getGstAmount());
 			    arr.add(m);
 		    }
 		    map.put("productEstimate", arr);

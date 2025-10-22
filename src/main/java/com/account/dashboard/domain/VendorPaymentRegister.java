@@ -77,7 +77,9 @@ public class VendorPaymentRegister {
 
 
     
-//	private double totalAmount;
+	private double totalDueAmount;
+	private double totalPaidAmount;
+	private double totalAmount;
 	private String remark;
 	private Date paymentDate;
 	private String estimateNo;
@@ -395,6 +397,22 @@ public class VendorPaymentRegister {
 
 	public void setProductCategoryId(Long productCategoryId) {
 		this.productCategoryId = productCategoryId;
+	}
+
+	public double getTotalDueAmount() {
+		return totalDueAmount;
+	}
+
+	public void setTotalDueAmount(double totalDueAmount) {
+		this.totalDueAmount = totalDueAmount;
+	}
+
+	public double getTotalPaidAmount() {
+		return totalPaidAmount;
+	}
+
+	public void setTotalPaidAmount(double totalPaidAmount) {
+		this.totalPaidAmount = totalPaidAmount;
 	}
 	
 
