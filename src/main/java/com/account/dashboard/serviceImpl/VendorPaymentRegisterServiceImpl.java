@@ -19,13 +19,16 @@ import org.springframework.web.bind.annotation.RequestParam;
 import com.account.dashboard.domain.FileData;
 import com.account.dashboard.domain.ProductEstimate;
 import com.account.dashboard.domain.User;
+import com.account.dashboard.domain.VendorPaymentHistory;
 import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.dto.CreateVendorAmountDto;
 import com.account.dashboard.dto.CreateVendorSubDto;
+import com.account.dashboard.dto.VendorPaymentAddDto;
 import com.account.dashboard.repository.FileDataRepository;
 import com.account.dashboard.repository.PaymentRegisterRepository;
 import com.account.dashboard.repository.ProductEstimateRepository;
 import com.account.dashboard.repository.UserRepository;
+import com.account.dashboard.repository.VendorPaymentHistoryRepository;
 import com.account.dashboard.repository.VendorPaymentRegisterRepo;
 import com.account.dashboard.service.VendorPaymentRegisterServcie;
 
@@ -44,6 +47,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 	
 	@Autowired
 	ProductEstimateRepository productEstimateRepository;
+	@Autowired
+	VendorPaymentHistoryRepository vendorPaymentHistoryRepository;
 	
 	
 
@@ -63,6 +68,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		}
 		vendorPaymentRegister.setServiceName(createVendorAmountDto.getServiceName());
 		List<ProductEstimate>estimateList=new ArrayList<>();
+		double  totalAmount=0;
 		if(createVendorAmountDto.getCreateVendorSubDto()!=null &&createVendorAmountDto.getCreateVendorSubDto().size()>0) {
 			for(CreateVendorSubDto v:createVendorAmountDto.getCreateVendorSubDto()) {
 				ProductEstimate productEstimate=new ProductEstimate();
@@ -75,6 +81,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 				productEstimate.setServiceGstAmount(gstAmount);
 				productEstimate.setServiceGstPercent(v.getServiceGstPercent());
 				
+				totalAmount=totalAmount+v.getTotalPrice();
 				
 				productEstimate.setQuantity(v.getQuantity());
 				productEstimate.setTotalPrice(v.getTotalPrice());
@@ -87,11 +94,17 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			
 
 		}
+		
+		vendorPaymentRegister.setTotalDueAmount(totalAmount);
+		vendorPaymentRegister.setTotalPaidAmount(0);
+		vendorPaymentRegister.setTotalAmount(totalAmount);
+		
 		vendorPaymentRegister.setProductEstimate(estimateList);     
 		vendorPaymentRegister.setLeadId(createVendorAmountDto.getLeadId());
-
 		vendorPaymentRegister.setRemarkByVendor(createVendorAmountDto.getRemarkByVendor());
 		vendorPaymentRegister.setCreateDate(new Date());
+		
+		
 		
 		vendorPaymentRegister.getVendorCompanyName();
 		vendorPaymentRegister.setAddress(createVendorAmountDto.getAddress());
@@ -106,10 +119,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		if(createVendorAmountDto.getFileData()!=null) {
 			List<FileData>fileData=fileDataRepository.findAllByIdIn(createVendorAmountDto.getFileData());
 			vendorPaymentRegister.setFileData(fileData);
-		}
-        
-		vendorPaymentRegisterRepo.save(vendorPaymentRegister);
-		
+		}    
+		vendorPaymentRegisterRepo.save(vendorPaymentRegister);	
 		return vendorPaymentRegister;
 	
 	}
@@ -158,6 +169,11 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			    arr.add(m);
 		    }
 		    map.put("productEstimate", arr);
+		    
+		    map.put("totalDueAmount", v.getTotalDueAmount());
+		    map.put("totalAmount", v.getTotalAmount());
+		    map.put("totalPaidAmount", v.getTotalPaidAmount());
+
 
 		    map.put("remark", v.getRemark());
 		    map.put("paymentDate", v.getPaymentDate());
@@ -255,7 +271,10 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			    arr.add(m);
 		    }
 		    map.put("productEstimate", arr);
-
+		    map.put("totalDueAmount", v.getTotalDueAmount());
+		    map.put("totalAmount", v.getTotalAmount());
+		    map.put("totalPaidAmount", v.getTotalPaidAmount());
+		    
 		    map.put("remark", v.getRemark());
 		    map.put("paymentDate", v.getPaymentDate());
 		    map.put("estimateNo", v.getEstimateNo());
@@ -321,6 +340,73 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			vendorPaymentRegister = vendorPaymentRegisterRepo.findAllByStatus(status);
 		}
 		return vendorPaymentRegister.size();
+	}
+
+	@Override
+	public Boolean addAmountByAccountTeam(VendorPaymentAddDto vendorPaymentAddDto) {
+		VendorPaymentRegister vendor = vendorPaymentRegisterRepo.findById(vendorPaymentAddDto.getVendorPaymentId()).get();
+		double totalAmount = vendorPaymentAddDto.getTotalAmount();
+		double dueAmount = vendor.getTotalDueAmount();
+		dueAmount=dueAmount-totalAmount;
+		vendor.setTotalDueAmount(dueAmount);
+		
+		double paidAmount = vendor.getTotalPaidAmount();
+		paidAmount=paidAmount+totalAmount;
+		vendor.setTotalPaidAmount(paidAmount);
+		vendorPaymentRegisterHistory( vendorPaymentAddDto);
+		vendorPaymentRegisterRepo.save(vendor);
+		return null;
+	}
+	public Boolean vendorPaymentRegisterHistory(VendorPaymentAddDto vendorPaymentAddDto) {
+		Boolean flag=false;
+		VendorPaymentHistory vendorPaymentHistory=new VendorPaymentHistory();
+		
+		vendorPaymentHistory.setLeadId(vendorPaymentAddDto.getLeadId());
+		vendorPaymentHistory.setServiceName(vendorPaymentAddDto.getServiceName());
+		vendorPaymentHistory.setTotalAmount(vendorPaymentAddDto.getTotalAmount());
+		vendorPaymentHistory.setVendorPaymentRegisterId(vendorPaymentAddDto.getVendorPaymentId());
+		vendorPaymentHistory.setActualAmount(vendorPaymentAddDto.getActualAmount());
+		Optional<User> createdBy = userRepository.findById(vendorPaymentAddDto.getCreateBy());
+		vendorPaymentHistory.setCreateBy(createdBy!=null?createdBy.get():null);
+		vendorPaymentHistory.setCreateDate(new Date());
+		vendorPaymentHistory.setDocument(vendorPaymentAddDto.getDocument());
+		vendorPaymentHistory.setEstimateId(vendorPaymentAddDto.getEstimateId());
+		vendorPaymentHistory.setGst(vendorPaymentAddDto.getGst());
+		vendorPaymentHistory.setGstAmount(vendorPaymentAddDto.getGstAmount());
+		vendorPaymentHistoryRepository.save(vendorPaymentHistory);
+		flag=true;
+		return flag;
+	}
+
+	@Override
+	public List<Map<String, Object>> getAllVendorPaymentRegisterHistoryById(Long id) {
+		List<VendorPaymentHistory> vendorPaymentHistory = vendorPaymentHistoryRepository.findAllByVendorPaymentRegisterId(id);
+		List<Map<String, Object>>result=new ArrayList<>();
+		for (VendorPaymentHistory history : vendorPaymentHistory) {
+		    Map<String, Object> map = new HashMap<>();
+
+		    map.put("id", history.getId());
+		    map.put("serviceName", history.getServiceName());
+		    map.put("vendorPaymentRegisterId", history.getVendorPaymentRegisterId());
+		    map.put("leadId", history.getLeadId());
+		    map.put("estimateId", history.getEstimateId());
+		    map.put("actualAmount", history.getActualAmount());
+		    map.put("gst", history.getGst());
+		    map.put("gstAmount", history.getGstAmount());
+		    map.put("tdsAmount", history.getTdsAmount());
+		    map.put("tdsPercent", history.getTdsPercent());
+		    map.put("totalAmount", history.getTotalAmount());
+		    map.put("createDate", history.getCreateDate());
+		    map.put("createById", history.getCreateBy()!=null?history.getCreateBy().getId():null); // possibly extract ID or username if needed
+		    map.put("createByName", history.getCreateBy()!=null?history.getCreateBy().getFullName():null); // possibly extract ID or username if needed
+		    map.put("createByEmail", history.getCreateBy()!=null?history.getCreateBy().getEmail():null); // possibly extract ID or username if needed
+
+		    map.put("document", history.getDocument());
+
+		    // Add map to a list if needed
+		    result.add(map); // Assuming resultList is defined somewhere
+		}
+		return result;
 	}
 
 }

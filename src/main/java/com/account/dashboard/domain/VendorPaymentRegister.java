@@ -80,6 +80,7 @@ public class VendorPaymentRegister {
 	private double totalDueAmount;
 	private double totalPaidAmount;
 	private double totalAmount;
+	
 	private String remark;
 	private Date paymentDate;
 	private String estimateNo;
@@ -413,6 +414,14 @@ public class VendorPaymentRegister {
 
 	public void setTotalPaidAmount(double totalPaidAmount) {
 		this.totalPaidAmount = totalPaidAmount;
+	}
+
+	public double getTotalAmount() {
+		return totalAmount;
+	}
+
+	public void setTotalAmount(double totalAmount) {
+		this.totalAmount = totalAmount;
 	}
 	
 

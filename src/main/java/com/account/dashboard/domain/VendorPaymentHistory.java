@@ -1,9 +1,12 @@
 package com.account.dashboard.domain;
 
+import java.util.Date;
+
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 @Table
@@ -14,15 +17,24 @@ public class VendorPaymentHistory {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)	
 	Long id;
 	private String serviceName;
+	
+	Long vendorPaymentRegisterId;
 
 	private Long leadId;
 	private Long estimateId;
-	double amount;
+	double actualAmount;
+	
 	double gst;
 	double gstAmount;
     double tdsAmount;
     double tdsPercent;	
 	double totalAmount;
+	Date createDate;
+	@ManyToOne
+	User createBy;
+    
+	String document;
+	
 	public Long getId() {
 		return id;
 	}
@@ -47,12 +59,7 @@ public class VendorPaymentHistory {
 	public void setEstimateId(Long estimateId) {
 		this.estimateId = estimateId;
 	}
-	public double getAmount() {
-		return amount;
-	}
-	public void setAmount(double amount) {
-		this.amount = amount;
-	}
+
 	public double getGst() {
 		return gst;
 	}
@@ -83,6 +90,38 @@ public class VendorPaymentHistory {
 	public void setTotalAmount(double totalAmount) {
 		this.totalAmount = totalAmount;
 	}
+	public double getActualAmount() {
+		return actualAmount;
+	}
+	public void setActualAmount(double actualAmount) {
+		this.actualAmount = actualAmount;
+	}
+	public User getCreateBy() {
+		return createBy;
+	}
+	public void setCreateBy(User createBy) {
+		this.createBy = createBy;
+	}
+	public Date getCreateDate() {
+		return createDate;
+	}
+	public void setCreateDate(Date createDate) {
+		this.createDate = createDate;
+	}
+	public Long getVendorPaymentRegisterId() {
+		return vendorPaymentRegisterId;
+	}
+	public void setVendorPaymentRegisterId(Long vendorPaymentRegisterId) {
+		this.vendorPaymentRegisterId = vendorPaymentRegisterId;
+	}
+	public String getDocument() {
+		return document;
+	}
+	public void setDocument(String document) {
+		this.document = document;
+	}
+
+	
 	
 	
 	

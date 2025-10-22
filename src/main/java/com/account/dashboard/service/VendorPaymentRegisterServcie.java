@@ -9,6 +9,7 @@ import com.account.dashboard.domain.PaymentRegister;
 import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreateVendorAmountDto;
+import com.account.dashboard.dto.VendorPaymentAddDto;
 
 @Service
 public interface VendorPaymentRegisterServcie {
@@ -24,5 +25,9 @@ public interface VendorPaymentRegisterServcie {
 	Boolean approveVendorPayment(Long currentUserId, String status, Long id);
 
 	int getAllVendorPaymentRegisterCountForAccount(String status);
+
+	Boolean addAmountByAccountTeam(VendorPaymentAddDto vendorPaymentAddDto);
+
+	List<Map<String, Object>> getAllVendorPaymentRegisterHistoryById(Long id);
 
 }

@@ -15,6 +15,7 @@ import com.account.dashboard.domain.PaymentRegister;
 import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreateVendorAmountDto;
+import com.account.dashboard.dto.VendorPaymentAddDto;
 import com.account.dashboard.service.VendorPaymentRegisterServcie;
 import com.account.dashboard.util.UrlsMapping;
 
@@ -63,6 +64,18 @@ public class VendorPaymentRegisterController {
 	@PutMapping(UrlsMapping.APPROVE_VENDOR_PAYMENT)
 	public Boolean approveVendorPayment(@RequestParam Long currentUserId,@RequestParam String Status,@RequestParam Long id){
 		Boolean res=vendorPaymentRegisterServcie.approveVendorPayment(currentUserId,Status,id);	
+		return res;
+		
+	}
+	@PutMapping(UrlsMapping.ADD_AMOUNT_BY_ACCOUNT_TEAM)
+	public Boolean addAmountByAccountTeam(@RequestBody VendorPaymentAddDto  vendorPaymentAddDto){
+		Boolean res=vendorPaymentRegisterServcie.addAmountByAccountTeam(vendorPaymentAddDto);	
+		return res;
+		
+	}
+	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_HISTORY_BY_ID)
+	public List<Map<String,Object>> getAllVendorPaymentRegisterHistoryById(@RequestParam Long id){
+		List<Map<String,Object>> res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterHistoryById(id);	
 		return res;
 		
 	}
