@@ -294,6 +294,11 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		result.put("paymentType", paymentType);
 		result.put("serviceCharge", serviceFees-serviceCharge);
 		result.put("paidAmount", proFees);
+		
+		// client Detail
+		result.put("contactName", estimate.get("primaryContactName"));
+		result.put("contactEmails", estimate.get("contactEmails"));
+		result.put("contactNo", estimate.get("contactNo"));
 
 		return result;
 		
@@ -2514,7 +2519,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	public List<Map<String,Object>> getAllPaymentRegisterWithPage(int page, int size, String status) {
 		List<Map<String,Object>>res=new ArrayList<>();
 		Pageable pageable = PageRequest.of(page, size, Sort.by("id"));
-		List<String>statusList=new ArrayList<>();
+		List<String>statusList=new ArrayList<>();̥
 
 		// For descending order, use:
 		Pageable pageableDesc = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
@@ -2604,6 +2609,11 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				map.put("estimateCreateDate", estimateCreateDate);
 				map.put("dueAmount", dueAmount);
 				map.put("paidAmount", paidAmount);
+				
+				map.put("contactName", remAmount.get("contactName"));
+				map.put("contactEmails",  remAmount.get("contactName"));
+				map.put("contactNo",  remAmount.get("contactNo"));
+				
 			}else {
 				Map<String, Object>remAmount= remainingAmountAndPaidAmount(p.getEstimateId());
 
@@ -2620,6 +2630,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 				map.put("estimateCreateDate", estimateCreateDate);
 				map.put("dueAmount", dueAmount);
 				map.put("paidAmount", paidAmount);
+				
+				map.put("contactName", remAmount.get("contactName"));
+				map.put("contactEmails",  remAmount.get("contactName"));
+				map.put("contactNo",  remAmount.get("contactNo"));
 			}
 
 			map.put("assigneeId", p.getCreatedByUser()!=null?p.getCreatedByUser().getId():null);
