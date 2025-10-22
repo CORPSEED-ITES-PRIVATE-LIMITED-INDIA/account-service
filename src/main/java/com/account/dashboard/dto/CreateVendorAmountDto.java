@@ -61,7 +61,7 @@ public class CreateVendorAmountDto {
 	String gstNo;
 	
 	// add  attachment by Vendor team
-	List<Long>fileData;
+	List<String>fileData;
 	
     Long businessArrangmentId;
     
@@ -256,14 +256,6 @@ public class CreateVendorAmountDto {
 		this.gstType = gstType;
 	}
 
-	public List<Long> getFileData() {
-		return fileData;
-	}
-
-	public void setFileData(List<Long> fileData) {
-		this.fileData = fileData;
-	}
-
 	public Long getApprovedBy() {
 		return approvedBy;
 	}
@@ -294,6 +286,14 @@ public class CreateVendorAmountDto {
 
 	public void setProductCategoryId(Long productCategoryId) {
 		this.productCategoryId = productCategoryId;
+	}
+
+	public List<String> getFileData() {
+		return fileData;
+	}
+
+	public void setFileData(List<String> fileData) {
+		this.fileData = fileData;
 	}
 
 

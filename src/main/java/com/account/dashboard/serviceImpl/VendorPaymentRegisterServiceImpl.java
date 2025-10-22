@@ -117,8 +117,14 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		vendorPaymentRegister.setGstNo(createVendorAmountDto.getGstNo());
 		vendorPaymentRegister.setRemarkByVendor(createVendorAmountDto.getRemarkByVendor());
 		if(createVendorAmountDto.getFileData()!=null) {
-			List<FileData>fileData=fileDataRepository.findAllByIdIn(createVendorAmountDto.getFileData());
-			vendorPaymentRegister.setFileData(fileData);
+			List<FileData>fileList=new ArrayList<>();
+			for(String file:createVendorAmountDto.getFileData()){
+				FileData fileData = new FileData();
+				fileData.setFilePath(file);
+				fileDataRepository.save(fileData);
+				fileList.add(fileData);
+			}
+			vendorPaymentRegister.setFileData(fileList);
 		}    
 		vendorPaymentRegisterRepo.save(vendorPaymentRegister);	
 		return vendorPaymentRegister;
