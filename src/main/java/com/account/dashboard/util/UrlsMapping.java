@@ -138,6 +138,9 @@ public interface UrlsMapping {
 
 		public static final String SEARCH_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/searchPaymentRegister";
 		
+		public static final String GET_PAYMENT_REGISTER_WITH_ESTIMATE_BY_ID=PREFIX+ "/paymentRegister/getPaymentRegisterWithEstimateById";
+
+		
 		//==================================== Vendor Payment Register ================================================
 
 		public static final String CREATE_VENDOR_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/createVendorPaymentRegister";

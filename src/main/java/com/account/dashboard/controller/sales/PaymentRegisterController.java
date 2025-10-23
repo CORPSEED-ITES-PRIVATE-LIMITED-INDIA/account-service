@@ -233,8 +233,14 @@ public class PaymentRegisterController {
 	@PostMapping(UrlsMapping.PAYMENT_APPROVE_MANUAL)
 	public Boolean paymentApproveAndDisapprovedManual(@RequestBody PaymentApproveDto paymentApproveDto){
 		Boolean res=paymentRegisterService.paymentApproveAndDisapprovedManual(paymentApproveDto);
-
 		return res;
 		
+	}
+	
+	
+	@GetMapping(UrlsMapping.GET_PAYMENT_REGISTER_WITH_ESTIMATE_BY_ID)
+	public Map<String, Object> getPaymentRegisterWithEstimateById(@RequestParam Long id){
+		Map<String, Object> res=paymentRegisterService.getPaymentRegisterWithEstimateById(id);
+		return res;	
 	}
 }

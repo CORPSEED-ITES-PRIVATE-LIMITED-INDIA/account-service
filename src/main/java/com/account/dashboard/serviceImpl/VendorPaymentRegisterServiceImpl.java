@@ -159,6 +159,13 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    for(ProductEstimate pe:productEstimate) {
 		    	Map<String,Object>m=new HashMap<>();
 		        m.put("productSubCategoryId", pe.getProductSubCategoryId());
+		        
+			    map.put("companyName", v.getVendorCompanyName());
+			    map.put("address", v.getAddress());
+			    map.put("state", v.getState());
+			    map.put("city", v.getCity());
+			    map.put("country", v.getCountry());
+			    map.put("pinCode", v.getPinCode());
 
 			    m.put("service", pe.getName());
 			    m.put("type", pe.getType());
@@ -183,7 +190,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 
 		    map.put("remark", v.getRemark());
 		    map.put("paymentDate", v.getPaymentDate());
-		    map.put("estimateNo", v.getEstimateNo());
+		    map.put("estimateNo", v.getEstimateNo()!=null?v.getEstimateNo():"EST000"+v.getEstimateId());
 		    map.put("status", v.getStatus());
 		    map.put("updateDate", v.getUpdateDate());
 		    map.put("approvedById", v.getApprovedBy());
@@ -281,9 +288,16 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    map.put("totalAmount", v.getTotalAmount());
 		    map.put("totalPaidAmount", v.getTotalPaidAmount());
 		    
+		    map.put("companyName", v.getVendorCompanyName());
+		    map.put("address", v.getAddress());
+		    map.put("state", v.getState());
+		    map.put("city", v.getCity());
+		    map.put("country", v.getCountry());
+		    map.put("pinCode", v.getPinCode());
+
 		    map.put("remark", v.getRemark());
 		    map.put("paymentDate", v.getPaymentDate());
-		    map.put("estimateNo", v.getEstimateNo());
+		    map.put("estimateNo", v.getEstimateNo()!=null?v.getEstimateNo():"EST000"+v.getEstimateId());
 		    map.put("status", v.getStatus());
 		    map.put("updateDate", v.getUpdateDate());
 		    map.put("approvedById", v.getApprovedBy());
@@ -462,6 +476,13 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			    m.put("gstAmount", pe.getGstAmount());
 			    arr.add(m);
 		    }
+		    
+		    map.put("companyName", v.getVendorCompanyName());
+		    map.put("address", v.getAddress());
+		    map.put("state", v.getState());
+		    map.put("city", v.getCity());
+		    map.put("country", v.getCountry());
+		    map.put("pinCode", v.getPinCode());
 		    map.put("productEstimate", arr);
 		    map.put("totalDueAmount", v.getTotalDueAmount());
 		    map.put("totalAmount", v.getTotalAmount());
@@ -469,7 +490,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		    
 		    map.put("remark", v.getRemark());
 		    map.put("paymentDate", v.getPaymentDate());
-		    map.put("estimateNo", v.getEstimateNo());
+		    map.put("estimateNo", v.getEstimateNo()!=null?v.getEstimateNo():"EST000"+v.getEstimateId());
 		    map.put("status", v.getStatus());
 		    map.put("updateDate", v.getUpdateDate());
 		    map.put("approvedById", v.getApprovedBy());

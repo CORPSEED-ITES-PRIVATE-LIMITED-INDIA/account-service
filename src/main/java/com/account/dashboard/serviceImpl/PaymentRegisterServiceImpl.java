@@ -2573,7 +2573,7 @@ public List<Map<String,Object>> getAllPaymentRegisterWithPage(int page, int size
 		map.put("totalAmount", p.getTotalAmount());
 		map.put("remark", p.getRemark());
 		map.put("paymentDate", p.getPaymentDate());
-		map.put("estimateNo", p.getEstimateNo());
+		map.put("estimateNo", p.getEstimateNo()!=null?p.getEstimateNo():"EST00"+p.getEstimateId());
 		map.put("status", p.getStatus());
 
 		map.put("docPersent", p.getDocPersent());
@@ -3128,6 +3128,138 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 	}
 	invoiceDataRepository.save(invoiceData);
 	return true;
+}
+
+
+@Override
+public Map<String, Object> getPaymentRegisterWithEstimateById(Long id) {
+	PaymentRegister paymentRegister = paymentRegisterRepository.findById(id).get();
+	Map<String, Object> estimate = LeadFeignClient.getEstimateById(paymentRegister.getEstimateId());
+	Map<String,Object>map = new HashMap<>();
+	map.put("id", estimate.get("id"));
+	map.put("productName", estimate.get("productName"));
+	map.put("address", estimate.get("address"));
+	map.put("city", estimate.get("city"));
+	map.put("companyAge",estimate.get("companyAge"));
+	map.put("company", estimate.get("company"));
+	map.put("companyName", estimate.get("companyName"));
+	map.put("consultingSales", estimate.get("consultingSales"));
+	map.put("country", estimate.get("id"));
+	map.put("documents", estimate.get("documents"));
+	map.put("purchaseDate", estimate.get("purchaseDate"));
+	map.put("performaInvoice", estimate.get("performaInvoice"));
+	map.put("productType", estimate.get("productType"));
+
+	map.put("govermentCode", estimate.get("govermentCode"));
+	map.put("govermentFees", estimate.get("govermentFees"));
+	map.put("govermentGst", estimate.get("govermentGst"));
+	map.put("gstDocuments",estimate.get("gstDocuments"));
+
+	map.put("gstNo", estimate.get("gstNo"));
+	map.put("gstType", estimate.get("gstType"));
+	map.put("invoiceNote", estimate.get("invoiceNote"));
+	map.put("isPrimaryAddress",estimate.get("isPrimaryAddress"));
+	map.put("isSecondaryAddress", estimate.get("isSecondaryAddress"));
+	map.put("leadId", estimate.get("leadId"));
+	map.put("orderNumber", estimate.get("orderNumber"));
+
+	map.put("otherCode", estimate.get("otherCode"));
+	map.put("otherGst", estimate.get("otherGst"));
+	map.put("otherFees", estimate.get("otherFees"));
+
+	map.put("panNo", estimate.get("panNo"));
+	map.put("primaryPinCode",estimate.get("primaryPinCode"));
+	map.put("primaryTitle", estimate.get("primaryTitle"));
+
+	map.put("serviceCode", estimate.get("serviceCode"));
+	map.put("serviceGst", estimate.get("serviceGst"));
+	map.put("serviceCharge", estimate.get("serviceCharge"));
+
+	map.put("state", estimate.get("state"));
+	map.put("status", estimate.get("status"));
+	map.put("unitId", estimate.get("unitName"));
+	map.put("unitName", estimate.get("id"));
+	map.put("assigneeId",estimate.get("assigneeId"));
+	map.put("assigneeIds",estimate.get("assigneeIds"));
+
+	map.put("ccMail", estimate.get("ccMail"));
+	map.put("createDate", estimate.get("createDate"));
+	map.put("estimateDate", estimate.get("estimateDate"));
+	map.put("profesionalGst", estimate.get("profesionalGst"));
+	map.put("profesionalCode", estimate.get("profesionalCode"));
+	map.put("professionalFees", estimate.get("professionalFees"));
+
+	map.put("primaryContact", estimate.get("primaryContact"));
+	map.put("primaryContactId",estimate.get("primaryContactId"));
+	map.put("primaryContactTitle", estimate.get("primaryContactTitle"));
+	map.put("primaryContactName", estimate.get("primaryContactName"));
+	map.put("primaryContactEmails", estimate.get("primaryContactDesignation"));
+	map.put("primaryContactDesignation", estimate.get("id"));
+	map.put("primaryContactContactNo", estimate.get("primaryContactContactNo"));
+
+	map.put("secondaryContactId", estimate.get("secondaryContactId"));
+	map.put("secondaryContactTitle", estimate.get("secondaryContactTitle"));
+	map.put("secondaryContactName", estimate.get("secondaryContactName"));
+	map.put("secondaryContactEmails", estimate.get("secondaryContactDesignation"));
+	map.put("secondaryContactDesignation", estimate.get("id"));
+	map.put("secondaryContactContactNo", estimate.get("secondaryContactContactNo"));
+
+	map.put("primaryPinCode", estimate.get("primaryPinCode"));
+	map.put("primaryContact", estimate.get("primaryContact"));
+
+	map.put("secondaryAddress", estimate.get("secondaryAddress"));
+	map.put("secondaryCity", estimate.get("secondaryCity"));
+	map.put("secondaryPinCode", estimate.get("secondaryPinCode"));
+	map.put("secondaryState", estimate.get("secondaryState"));
+	map.put("secondaryCountry", estimate.get("secondaryCountry"));
+	map.put("remarkForOperation", estimate.get("remarkForOperation"));
+
+	map.put("isUnit", estimate.get("isUnit"));
+	map.put("secondaryContact", estimate.get("secondaryContact"));
+	map.put("isSecondary", estimate.get("isSecondary"));
+	int gst =paymentRegister.getProfessionalGstPercent();
+//	int gst = s.getProfesionalGst() != null ? Integer.valueOf(s.getProfesionalGst()) : 0;
+	double totalAmount = paymentRegister.getGovermentfees() + paymentRegister.getProfessionalFees() + paymentRegister.getOtherFees();
+
+//	double totalAmount = s.getGovermentfees() + s.getProfessionalFees() + s.getOtherFees();
+	Double proGst = findGstAmount(paymentRegister.getProfesionalGst(), paymentRegister.getProfessionalFees());
+	map.put("totalAmount", totalAmount + proGst);
+	map.put("gstAmount", proGst);
+	map.put("gst", estimate.get("gst"));
+	map.put("estimateProduct",estimate.get("estimateProduct"));
+
+	map.put("productType", estimate.get("productType"));
+	map.put("actualPrice", estimate.get("actualPrice"));
+	map.put("quantity", estimate.get("quantity"));
+	String productType = estimate.get("productType")!=null?estimate.get("productType").toString():"NA";
+	if ("Product".equalsIgnoreCase(productType)) {
+	    map.put("totalPrice", paymentRegister.getTotalAmount());
+	    map.put("gst", estimate.get("gst"));
+	    map.put("gstCode", estimate.get("gstCode"));
+
+	    map.put("gstAmount", estimate.get("gstCode"));
+	}
+
+	map.put("gst", estimate.get("gst"));
+	map.put("gstCode", estimate.get("gstCode"));
+	map.put("consultantByCompany",estimate.get("consultantByCompany"));
+	
+	return map;
+}
+
+public 	Double findGstAmount(double gstPercent, double amount) {
+
+	Double gst=gstPercent;
+	if(gst!=0 && amount!=0) {
+		double a=amount;
+		Double totalAmount = (a*gst)/100;
+		System.out.println(totalAmount);
+		return totalAmount;
+	}
+	else {
+		return 0.0;
+	}
+
 }
 
 

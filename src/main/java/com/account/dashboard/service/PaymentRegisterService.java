@@ -70,5 +70,7 @@ public interface PaymentRegisterService {
 
 	Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto);
 
+	Map<String, Object> getPaymentRegisterWithEstimateById(Long id);
+
 
 }
