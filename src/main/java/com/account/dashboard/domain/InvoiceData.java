@@ -23,7 +23,7 @@ public class InvoiceData {
 	
     Long estimateId;
     
-    
+    String invoiceNo;
 
 //   primary contact	̥
     Long   primaryContactId;
@@ -592,6 +592,12 @@ public class InvoiceData {
 	}
 	public void setTermOfDelivery(String termOfDelivery) {
 		this.termOfDelivery = termOfDelivery;
+	}
+	public String getInvoiceNo() {
+		return invoiceNo;
+	}
+	public void setInvoiceNo(String invoiceNo) {
+		this.invoiceNo = invoiceNo;
 	}
     
 	

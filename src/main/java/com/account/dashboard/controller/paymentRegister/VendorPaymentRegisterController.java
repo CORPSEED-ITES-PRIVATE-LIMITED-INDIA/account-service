@@ -64,7 +64,7 @@ public class VendorPaymentRegisterController {
 		
 	}
 	
-	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ADMIN)
+	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ACCOUNT)
 	public int getAllVendorPaymentRegisterCountForAccount(@RequestParam String status){
 		int res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterCountForAccount(status);	
 		return res;

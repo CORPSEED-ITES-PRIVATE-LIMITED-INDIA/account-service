@@ -1,5 +1,6 @@
 package com.account.dashboard.serviceImpl;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -2695,7 +2696,7 @@ public List<Map<String,Object>> getAllInvoice(Long userId, int page, int size) {
 	for(InvoiceData invoiceData:invoice){
 		Map<String,Object>map=new HashMap<>();
 		map.put("id", invoiceData.getId());
-		map.put("invoiceNo", invoiceData.getId());
+		map.put("invoiceNo", invoiceData.getInvoiceNo());
 		map.put("service", invoiceData.getProductName());
 		map.put("clientid", invoiceData.getPrimaryContactId());
 		map.put("clientName", invoiceData.getPrimaryContactName());
@@ -3026,7 +3027,14 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 		//						User user = userRepository.findById(assigneeId).get();
 		//						invoiceData.setAssignee(user);
 	}
+	
 
+    // Format: YYYYMMDD
+	LocalDate today = LocalDate.now();
+    String formattedDate = today.format(DateTimeFormatter.BASIC_ISO_DATE);    
+    long count = invoiceDataRepository.count()+1;
+    String invoiceNo="INV00"+formattedDate+count;
+    invoiceData.setInvoiceNo(invoiceNo);
 	String lead = feignLeadClient.get("leadId")!=null?feignLeadClient.get("leadId").toString():null;
 	if(lead!=null) {
 		Long leadId=Long.parseLong(lead);
