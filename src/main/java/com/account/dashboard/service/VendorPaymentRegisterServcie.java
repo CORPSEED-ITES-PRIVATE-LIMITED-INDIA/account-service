@@ -30,4 +30,8 @@ public interface VendorPaymentRegisterServcie {
 
 	List<Map<String, Object>> getAllVendorPaymentRegisterHistoryById(Long id);
 
+	List<Map<String, Object>> getAllVendorPaymentRegisterForAdmin(int page, int size, String status);
+
+	int getAllVendorPaymentRegisterCountForAdmin(String status);
+
 }

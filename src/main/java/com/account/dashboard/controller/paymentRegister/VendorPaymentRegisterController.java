@@ -55,9 +55,24 @@ public class VendorPaymentRegisterController {
 		
 	}
 	
-	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ACCOUNT)
+	
+	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_FOR_ADMIN)
+	public List<Map<String,Object>> getAllVendorPaymentRegisterForAdmin(@RequestParam(value = "page", defaultValue = "1") int page,
+			@RequestParam(value = "size", defaultValue = "100") int size,String status){
+		List<Map<String,Object>> res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterForAdmin(page-1,size,status);	
+		return res;
+		
+	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ADMIN)
 	public int getAllVendorPaymentRegisterCountForAccount(@RequestParam String status){
 		int res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterCountForAccount(status);	
+		return res;
+		
+	}
+	@GetMapping(UrlsMapping.GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ADMIN)
+	public int getAllVendorPaymentRegisterCountForAdmin(@RequestParam String status){
+		int res=vendorPaymentRegisterServcie.getAllVendorPaymentRegisterCountForAdmin(status);	
 		return res;
 		
 	}

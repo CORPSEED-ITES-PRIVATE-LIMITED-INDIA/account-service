@@ -414,5 +414,111 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		}
 		return result;
 	}
+	
+	public List<Map<String, Object>> getAllVendorPaymentRegisterForAdmin(int page,int size,String status) {
+		List<VendorPaymentRegister> vendorPaymentRegister = new ArrayList<>();
+		Pageable pageable = PageRequest.of(page, size, Sort.by("id"));
+		if("all".equals(status)) {
+			 vendorPaymentRegister = vendorPaymentRegisterRepo.findAll(pageable).getContent();
 
+		}else {
+			vendorPaymentRegister = vendorPaymentRegisterRepo.findAllByStatus(status,pageable).getContent();
+		}
+		 List<Map<String, Object>>result=new ArrayList<>();
+		 for(VendorPaymentRegister v:vendorPaymentRegister) {
+			Map<String,Object> map=new HashMap<>();
+			map.put("id", v.getId());
+		    map.put("leadId", v.getLeadId());
+		    map.put("estimateId", v.getEstimateId());
+		    map.put("paymentType", v.getPaymentType());  
+
+		    // Contact info (if accessible)
+		    map.put("name", v.getName());
+		    map.put("emails", v.getEmails());
+		    map.put("contactNo", v.getContactNo());
+		    map.put("whatsappNo", v.getWhatsappNo());
+		    map.put("businessArrangmentId", v.getBusinessArrangmentId());
+		    map.put("productCategoryId", v.getProductCategoryId());
+
+		    // Payment details
+		    
+		    map.put("serviceName", v.getServiceName());
+		    List<ProductEstimate> productEstimate = v.getProductEstimate();
+		    List<Map<String,Object>>arr=new ArrayList<>();
+		    for(ProductEstimate pe:productEstimate) {
+		    	Map<String,Object>m=new HashMap<>();
+			    m.put("productSubCategoryId", pe.getProductSubCategoryId());
+
+			    m.put("service", pe.getName());
+			    m.put("type", pe.getType());
+			    m.put("serviceFees", pe.getServiceFees());
+			    m.put("serviceGstAmount", pe.getServiceGstAmount());
+			    m.put("serviceGstPercent", pe.getServiceGstPercent());
+			    m.put("quantity", pe.getQuantity());
+			    m.put("totalPrice", pe.getTotalPrice());
+			    
+			    m.put("gstPercent", pe.getGstPercent());  
+			    m.put("actualPrice", pe.getActualPrice());
+			    m.put("gstAmount", pe.getGstAmount());
+			    arr.add(m);
+		    }
+		    map.put("productEstimate", arr);
+		    map.put("totalDueAmount", v.getTotalDueAmount());
+		    map.put("totalAmount", v.getTotalAmount());
+		    map.put("totalPaidAmount", v.getTotalPaidAmount());
+		    
+		    map.put("remark", v.getRemark());
+		    map.put("paymentDate", v.getPaymentDate());
+		    map.put("estimateNo", v.getEstimateNo());
+		    map.put("status", v.getStatus());
+		    map.put("updateDate", v.getUpdateDate());
+		    map.put("approvedById", v.getApprovedBy());
+		    map.put("approveDate", v.getApproveDate());
+
+		    // Register Type: payment or purchase order
+		    map.put("comment", v.getComment());
+
+		    // Created by user info
+		    if (v.getCreatedByUser() != null) {
+		        Map<String, Object> createdByUserMap = new HashMap<>();
+		        createdByUserMap.put("id", v.getCreatedByUser().getId());
+		        createdByUserMap.put("name", v.getCreatedByUser().getFullName());
+		        // add other user fields as needed
+		        map.put("createdByUser", createdByUserMap);
+		    }
+
+		    // fileData list (if you want to add files as list of maps)
+		    if (v.getFileData() != null && !v.getFileData().isEmpty()) {
+		        List<Map<String, Object>> filesList = new ArrayList<>();
+		        for (FileData file : v.getFileData()) {
+		            Map<String, Object> fileMap = new HashMap<>();
+		            fileMap.put("id", file.getId());
+		            fileMap.put("fileName", file.getName());
+		            fileMap.put("fileUrl", file.getFilePath());
+		            // add other file fields as needed
+		            filesList.add(fileMap);
+		        }
+		        map.put("fileData", filesList);
+		    }
+		    
+		    result.add(map);
+
+
+		 }
+		return result;
+	
+	}
+
+	@Override
+	public int getAllVendorPaymentRegisterCountForAdmin(String status) {
+		List<VendorPaymentRegister> vendorPaymentRegister = new ArrayList<>();
+
+		if("all".equals(status)) {
+			 vendorPaymentRegister = vendorPaymentRegisterRepo.findAll();
+
+		}else {
+			vendorPaymentRegister = vendorPaymentRegisterRepo.findAllByStatus(status);
+		}
+		return vendorPaymentRegister.size();
+	}
 }

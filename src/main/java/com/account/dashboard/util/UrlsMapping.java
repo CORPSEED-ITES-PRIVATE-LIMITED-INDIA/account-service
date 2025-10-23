@@ -147,6 +147,8 @@ public interface UrlsMapping {
 		public static final String GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ACCOUNT=PREFIX+ "/paymentRegister/getAllVendorPaymentRegisterCountForAccount";
 
 		public static final String GET_ALL_VENDOR_PAYMENT_REGISTER_FOR_ACCOUNT=PREFIX+ "/paymentRegister/getAllVendorPaymentRegisterForAccount";
+		public static final String GET_ALL_VENDOR_PAYMENT_REGISTER_FOR_ADMIN=PREFIX+ "/paymentRegister/getAllVendorPaymentRegisterForAdmin";
+		public static final String GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT_FOR_ADMIN=PREFIX+ "/paymentRegister/getAllVendorPaymentRegisterCountForAdmin";
 
 		public static final String APPROVE_VENDOR_PAYMENT=PREFIX+ "/paymentRegister/approveVendorPayment";
 		public static final String ADD_AMOUNT_BY_ACCOUNT_TEAM=PREFIX+ "/paymentRegister/addAmountByAccountTeam";
