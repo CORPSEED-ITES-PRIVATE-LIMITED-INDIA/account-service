@@ -120,6 +120,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		PaymentRegister paymentRegister= new PaymentRegister();
 		paymentRegister.setStatus("initiated");
 		paymentRegister.setEstimateId(createAmountDto.getEstimateId());
+		paymentRegister.setEstimateNo("EST00"+createAmountDto.getEstimateId());
 		paymentRegister.setBillingQuantity(createAmountDto.getBillingQuantity());
 		paymentRegister.setPaymentType(createAmountDto.getPaymentType());
 		paymentRegister.setCreatedById(createAmountDto.getCreatedById());
@@ -179,7 +180,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setTotalAmount(createAmountDto.getTotalAmount());
 		paymentRegister.setRemark(createAmountDto.getRemark());
 		paymentRegister.setPaymentDate(createAmountDto.getPaymentDate());
-		paymentRegister.setEstimateNo(createAmountDto.getEstimateNo());
+//		paymentRegister.setEstimateNo(createAmountDto.getEstimateNo());
 		//		paymentRegister.setDoc(createAmountDto.getDoc());
 		paymentRegister.setCompanyName(createAmountDto.getCompanyName());
 		paymentRegister.setRegisterBy(createAmountDto.getRegisterBy());
