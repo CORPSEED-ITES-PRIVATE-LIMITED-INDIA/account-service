@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import com.account.dashboard.domain.FileData;
 import com.account.dashboard.domain.ProductEstimate;
+import com.account.dashboard.domain.TdsDetail;
 import com.account.dashboard.domain.User;
 import com.account.dashboard.domain.VendorPaymentHistory;
 import com.account.dashboard.domain.VendorPaymentRegister;
@@ -27,6 +28,7 @@ import com.account.dashboard.dto.VendorPaymentAddDto;
 import com.account.dashboard.repository.FileDataRepository;
 import com.account.dashboard.repository.PaymentRegisterRepository;
 import com.account.dashboard.repository.ProductEstimateRepository;
+import com.account.dashboard.repository.TdsDetailRepository;
 import com.account.dashboard.repository.UserRepository;
 import com.account.dashboard.repository.VendorPaymentHistoryRepository;
 import com.account.dashboard.repository.VendorPaymentRegisterRepo;
@@ -49,6 +51,9 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 	ProductEstimateRepository productEstimateRepository;
 	@Autowired
 	VendorPaymentHistoryRepository vendorPaymentHistoryRepository;
+	
+	@Autowired
+	TdsDetailRepository tdsDetailRepository;
 	
 	
 
@@ -104,8 +109,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		vendorPaymentRegister.setRemarkByVendor(createVendorAmountDto.getRemarkByVendor());
 		vendorPaymentRegister.setCreateDate(new Date());
 		
-		
-		
+		vendorPaymentRegister.setName(createVendorAmountDto.getName());
+		vendorPaymentRegister.setVendorCompanyName(createVendorAmountDto.getVendorCompanyName());
 		vendorPaymentRegister.getVendorCompanyName();
 		vendorPaymentRegister.setAddress(createVendorAmountDto.getAddress());
 		vendorPaymentRegister.setCity(createVendorAmountDto.getCity());
@@ -364,6 +369,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 
 	@Override
 	public Boolean addAmountByAccountTeam(VendorPaymentAddDto vendorPaymentAddDto) {
+		Boolean flag=false;
 		VendorPaymentRegister vendor = vendorPaymentRegisterRepo.findById(vendorPaymentAddDto.getVendorPaymentId()).get();
 		double totalAmount = vendorPaymentAddDto.getTotalAmount();
 		double dueAmount = vendor.getTotalDueAmount();
@@ -375,7 +381,17 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		vendor.setTotalPaidAmount(paidAmount);
 		vendorPaymentRegisterHistory( vendorPaymentAddDto);
 		vendorPaymentRegisterRepo.save(vendor);
-		return null;
+		if(vendorPaymentAddDto.getTdsPercent()!=0 && vendorPaymentAddDto.getTdsAmount()!=0) {
+			TdsDetail tdsDetail=new TdsDetail();
+			tdsDetail.setTdsAmount(vendorPaymentAddDto.getTdsAmount());
+			tdsDetail.setOrganization(vendor.getVendorCompanyName());
+			tdsDetail.setTdsPrecent(vendorPaymentAddDto.getTdsPercent());			
+			tdsDetail.setTdsType("Payable");
+			tdsDetail.setTotalPaymentAmount(vendorPaymentAddDto.getTotalAmount());
+			tdsDetailRepository.save(tdsDetail);
+			flag=true;
+		}
+		return flag;
 	}
 	public Boolean vendorPaymentRegisterHistory(VendorPaymentAddDto vendorPaymentAddDto) {
 		Boolean flag=false;

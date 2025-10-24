@@ -19,6 +19,7 @@ public class TdsDetail {
 	Long projectId;
 	String paymentRegisterId;
 	double tdsAmount;
+	String tdsDeductBy; // Sales , Vendor
 	
 	public Long getId() {
 		return id;
@@ -71,6 +72,15 @@ public class TdsDetail {
 	public void setTdsAmount(double tdsAmount) {
 		this.tdsAmount = tdsAmount;
 	}
+	public String getTdsDeductBy() {
+		return tdsDeductBy;
+	}
+	public void setTdsDeductBy(String tdsDeductBy) {
+		this.tdsDeductBy = tdsDeductBy;
+	}
+
+	
+	
      
 	
 	

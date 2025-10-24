@@ -20,7 +20,7 @@ public class VendorPaymentAddDto {
 	double gstAmount;
 	
     double tdsAmount;
-    double tdsPercent;	
+    int tdsPercent;	
     
 	double totalAmount;
 
@@ -71,12 +71,7 @@ public class VendorPaymentAddDto {
 	public void setTdsAmount(double tdsAmount) {
 		this.tdsAmount = tdsAmount;
 	}
-	public double getTdsPercent() {
-		return tdsPercent;
-	}
-	public void setTdsPercent(double tdsPercent) {
-		this.tdsPercent = tdsPercent;
-	}
+
 	public double getTotalAmount() {
 		return totalAmount;
 	}
@@ -106,6 +101,12 @@ public class VendorPaymentAddDto {
 	}
 	public void setVendorPaymentId(Long vendorPaymentId) {
 		this.vendorPaymentId = vendorPaymentId;
+	}
+	public int getTdsPercent() {
+		return tdsPercent;
+	}
+	public void setTdsPercent(int tdsPercent) {
+		this.tdsPercent = tdsPercent;
 	}
 	
 	
