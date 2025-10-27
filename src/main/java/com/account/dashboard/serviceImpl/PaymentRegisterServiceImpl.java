@@ -155,6 +155,8 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			paymentRegister.setTdsPresent(true);
 			paymentRegister.setTdsPercent(createAmountDto.getTdsPercent());
 			paymentRegister.setTdsAmount(tdsAmount);
+			
+			
 		}else {
 			paymentRegister.setProfessionalFees(createAmountDto.getProfessionalFees());
 		}

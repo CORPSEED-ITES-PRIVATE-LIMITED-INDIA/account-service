@@ -12,5 +12,9 @@ public interface SalesDashboardService {
 
 	List<Map<String, Object>> getAllLeadMonthWiseV2(GraphDateFilter graphDateFilter);
 
+	List<Map<String, Object>> getSalesDashboardRevenueByCompany(GraphDateFilter graphDateFilter);
+
+	List<Map<String, Object>> getSalesDashboardRevenueByUser(GraphDateFilter graphDateFilter);
+
 	
 }

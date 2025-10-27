@@ -47,10 +47,17 @@ public interface PaymentRegisterRepository  extends JpaRepository<PaymentRegiste
 	
     @Query(value = "SELECT pr.id,pr.total_amount,pr.payment_date FROM payment_register pr WHERE pr.payment_date BETWEEN :d1 AND :d2", nativeQuery = true)
 	List<Object[]> findIdAndNameAndCreateDateByInBetweenDate(String d1, String d2);
-
-
-//	List<PaymentRegister> findByInvoiceNo(String name);
 	
 	
+    @Query(value = "SELECT * FROM payment_register pr WHERE pr.payment_date BETWEEN :d1 AND :d2 and pr.created_by_user_id =:userId", nativeQuery = true)
+	List<PaymentRegister> findAllByInBetweenDateAndAssignee(String d1, String d2, Long userId);
+
+    @Query(value = "SELECT * FROM payment_register pr WHERE pr.payment_date BETWEEN :d1 AND :d2", nativeQuery = true)
+	List<PaymentRegister> findAllByInBetweenDate(String d1, String d2);
+	
+    @Query(value = "SELECT * FROM payment_register pr WHERE pr.payment_date BETWEEN :d1 AND :d2 and pr.created_by_user_id =:userId", nativeQuery = true)
+	List<PaymentRegister> findIdAllByInBetweenDateAndAssignee(String d1, String d2, Long userId);
+   
+
 
 }

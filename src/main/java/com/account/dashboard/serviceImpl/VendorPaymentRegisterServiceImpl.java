@@ -65,7 +65,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		vendorPaymentRegister.setEstimateId(createVendorAmountDto.getEstimateId());
 		vendorPaymentRegister.setProductCategoryId(createVendorAmountDto.getProductCategoryId());
 		vendorPaymentRegister.setBusinessArrangmentId(createVendorAmountDto.getBusinessArrangmentId());
-
+		vendorPaymentRegister.setPaymentDate(new Date());
 		if(createVendorAmountDto.getCreatedById()!=null) {
 //			User user = userRepository.findById(createVendorAmountDto.getCreatedById()).get();
 //			vendorPaymentRegister.setCreatedBy(user);
@@ -130,7 +130,9 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 				fileList.add(fileData);
 			}
 			vendorPaymentRegister.setFileData(fileList);
-		}    
+		}
+		vendorPaymentRegister.setStatus("initiated");
+
 		vendorPaymentRegisterRepo.save(vendorPaymentRegister);	
 		return vendorPaymentRegister;
 	
@@ -347,6 +349,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		Boolean flag=false;
 		VendorPaymentRegister vendorPayment = vendorPaymentRegisterRepo.findById(id).get();
 		vendorPayment.setStatus(status);
+		vendorPayment.setApproveDate(new Date());
 		User user = userRepository.findById(currentUserId).get();
 		vendorPayment.setApprovedBy(user);
 		vendorPaymentRegisterRepo.save(vendorPayment);
@@ -409,6 +412,9 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		vendorPaymentHistory.setEstimateId(vendorPaymentAddDto.getEstimateId());
 		vendorPaymentHistory.setGst(vendorPaymentAddDto.getGst());
 		vendorPaymentHistory.setGstAmount(vendorPaymentAddDto.getGstAmount());
+		vendorPaymentHistory.setTdsAmount(vendorPaymentAddDto.getTdsAmount());
+		vendorPaymentHistory.setTdsPercent(vendorPaymentAddDto.getTdsPercent());
+
 		vendorPaymentHistoryRepository.save(vendorPaymentHistory);
 		flag=true;
 		return flag;
