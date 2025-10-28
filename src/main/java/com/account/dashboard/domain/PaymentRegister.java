@@ -115,6 +115,10 @@ public class PaymentRegister {
 	@Lob
 	String termOfDelivery;
 	String productType;
+	
+	private double amount;
+	private double gstPercent;
+    private double gstAmount;
 
 	public Long getId() {
 		return id;
@@ -436,6 +440,24 @@ public class PaymentRegister {
 	}
 	public void setProductType(String productType) {
 		this.productType = productType;
+	}
+	public double getAmount() {
+		return amount;
+	}
+	public void setAmount(double amount) {
+		this.amount = amount;
+	}
+	public double getGstPercent() {
+		return gstPercent;
+	}
+	public void setGstPercent(double gstPercent) {
+		this.gstPercent = gstPercent;
+	}
+	public double getGstAmount() {
+		return gstAmount;
+	}
+	public void setGstAmount(double gstAmount) {
+		this.gstAmount = gstAmount;
 	}
 	
 	

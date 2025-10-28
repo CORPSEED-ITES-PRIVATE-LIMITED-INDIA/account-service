@@ -160,6 +160,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}else {
 			paymentRegister.setProfessionalFees(createAmountDto.getProfessionalFees());
 		}
+		if("Product".equals(paymentRegister.getProductType())) {
+
+			double amount = createAmountDto.getAmount();
+			double per = amount/100;
+			if(createAmountDto.isTdsPresent()) {
+				double tdsAmount = per*createAmountDto.getTdsPercent();
+				paymentRegister.setTdsAmount(tdsAmount);
+			}
+			double gstAmount = per*createAmountDto.getGstPercent();
+		    paymentRegister.setAmount(createAmountDto.getAmount());
+		    paymentRegister.setGstPercent(createAmountDto.getGstPercent());
+		    paymentRegister.setGstAmount(gstAmount);
+		}
 		paymentRegister.setCompanyId(createAmountDto.getCompanyId());
 		paymentRegister.setLeadId(createAmountDto.getLeadId());
 		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
@@ -3075,6 +3088,10 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 
 	invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
 	invoiceData.setTotalAmount(pRegister.getTotalAmount()+"");
+	
+	invoiceData.setAmount(pRegister.getAmount());
+	invoiceData.setGstPercent(pRegister.getGstPercent());
+	invoiceData.setGstAmount(pRegister.getGstAmount());
 
 	if(feignLeadClient.get("serviceCode")!=null) {
 		invoiceData.setServiceCode(feignLeadClient.get("serviceCode").toString());

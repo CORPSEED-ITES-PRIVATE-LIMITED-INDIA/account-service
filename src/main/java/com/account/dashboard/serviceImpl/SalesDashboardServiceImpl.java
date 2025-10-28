@@ -268,4 +268,81 @@ public class SalesDashboardServiceImpl implements SalesDashboardService {
 
 	}
 
+	@Override
+	public List<Map<String, Object>> getSalesDashboardRevenueByService(GraphDateFilter graphDateFilter) {
+
+		List<Object[]> projects=new ArrayList<>();
+
+		String toDate=graphDateFilter.getToDate();
+		String fromDate=graphDateFilter.getFromDate();
+		String startDate = toDate;
+		String endDate = fromDate;
+		List<PaymentRegister> leads=new ArrayList<>();
+		
+		
+		User user = userRepository.findById(graphDateFilter.getCurrentUserId()).get();
+		List<String> role =user.getUserRole().stream().map(i->i.getName()).collect(Collectors.toList());
+		if(true) {
+
+			if(graphDateFilter.getUserId()!=null) {
+				leads=paymentRegisterRepository.findAllByInBetweenDateAndAssignee(startDate, endDate,graphDateFilter.getUserId());
+
+
+			}else{
+				leads=paymentRegisterRepository.findAllByInBetweenDate(startDate, endDate);
+			}
+
+		}else{
+			
+			List<Long> uList = new ArrayList<>();
+//			List<Long> uList = userRepository.findUserIdByMangerId(graphDateFilter.getCurrentUserId());
+			if(uList!=null && uList.size()>0) {
+				if(graphDateFilter.getUserId()==null) {
+					leads=paymentRegisterRepository.findAllByInBetweenDateAndAssignee(startDate, endDate,graphDateFilter.getCurrentUserId());
+
+				}else {
+					leads=paymentRegisterRepository.findAllByInBetweenDateAndAssignee(startDate, endDate,graphDateFilter.getUserId());
+
+				}
+			}else {
+				leads=paymentRegisterRepository.findAllByInBetweenDateAndAssignee(startDate, endDate,graphDateFilter.getCurrentUserId());
+
+			}
+		}
+
+
+
+//		Map<String,Map<String,Object>>map=new LinkedHashMap();
+		Map<String,Double>res=new LinkedHashMap();
+
+		for(PaymentRegister l:leads) {
+			String email = l.getCreatedByUser()!=null?l.getCreatedByUser().getEmail():"NA";	
+			Double totalAmount=l.getTotalAmount();
+			
+			
+			if(res.containsKey(email)) {
+				
+				 Double c = res.get(email);
+                 c=c+totalAmount;
+                 res.put(email, c);
+
+			}else {
+				res.put(email, totalAmount);
+			}
+		}
+
+		List<Map<String,Object>>result = new ArrayList<>();
+		for(Entry<String,Double> entry:res.entrySet()) {
+			Map<String,Object>m=new HashMap<>();
+			m.put("name", entry.getKey());
+			m.put("value", entry.getValue());
+			result.add(m);
+		}		
+		result=result.stream().sorted(Comparator.comparing(i->(Double)i.get("value"))) .collect(Collectors.toList());	
+
+		return result;
+
+	
+	}
+
 }

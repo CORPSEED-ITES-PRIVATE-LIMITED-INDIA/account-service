@@ -216,6 +216,7 @@ public interface UrlsMapping {
 		public static final String GET_SALES_DASHBOARD_REVENUE_MONTHLY=PREFIX+ "/balanceSheet/getSalesDashboardRevenueMonthly";
 		public static final String GET_SALES_DASHBOARD_REVENUE_BY_USER=PREFIX+ "/balanceSheet/getSalesDashboardRevenueByUser";
 		public static final String GET_SALES_DASHBOARD_REVENUE_BY_COMPANY=PREFIX+ "/balanceSheet/getSalesDashboardRevenueByCompany";
+		public static final String GET_SALES_DASHBOARD_REVENUE_BY_SERVICE=PREFIX+ "/balanceSheet/getSalesDashboardRevenueByService";
 
 		
 		//sales Report

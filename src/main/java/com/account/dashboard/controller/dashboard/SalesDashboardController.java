@@ -41,5 +41,12 @@ public class SalesDashboardController {
 		List<Map<String,Object>> alllead= salesDashboardService.getSalesDashboardRevenueByCompany(graphDateFilter);
 		return alllead;
 	}
+	
+	@PostMapping(UrlsMapping.GET_SALES_DASHBOARD_REVENUE_BY_SERVICE)
+	public List<Map<String,Object>> getSalesDashboardRevenueByService(@RequestBody GraphDateFilter graphDateFilter)
+	{
+		List<Map<String,Object>> alllead= salesDashboardService.getSalesDashboardRevenueByService(graphDateFilter);
+		return alllead;
+	}
 
 }

@@ -50,6 +50,9 @@ public class CreateAmountDto {
 
 	private String UploadReceipt;
 	private double totalAmount;
+	private double amount;
+	private double gstPercent;
+    private double gstAmount;
 	private String remark;
 	private Date paymentDate;
 	private String estimateNo;
@@ -394,6 +397,30 @@ public class CreateAmountDto {
 
 	public void setProductType(String productType) {
 		this.productType = productType;
+	}
+
+	public double getAmount() {
+		return amount;
+	}
+
+	public void setAmount(double amount) {
+		this.amount = amount;
+	}
+
+	public double getGstPercent() {
+		return gstPercent;
+	}
+
+	public void setGstPercent(double gstPercent) {
+		this.gstPercent = gstPercent;
+	}
+
+	public double getGstAmount() {
+		return gstAmount;
+	}
+
+	public void setGstAmount(double gstAmount) {
+		this.gstAmount = gstAmount;
 	}
     
      

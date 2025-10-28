@@ -120,6 +120,10 @@ public class InvoiceData {
     String totalAmount;
     String paidAmount;
     
+	private double amount;
+	private double gstPercent;
+    private double gstAmount;
+    
     @ManyToOne
     @JoinColumn(name = "unbilled_id")
     private Unbilled unbilled;
@@ -598,6 +602,24 @@ public class InvoiceData {
 	}
 	public void setInvoiceNo(String invoiceNo) {
 		this.invoiceNo = invoiceNo;
+	}
+	public double getAmount() {
+		return amount;
+	}
+	public void setAmount(double amount) {
+		this.amount = amount;
+	}
+	public double getGstPercent() {
+		return gstPercent;
+	}
+	public void setGstPercent(double gstPercent) {
+		this.gstPercent = gstPercent;
+	}
+	public double getGstAmount() {
+		return gstAmount;
+	}
+	public void setGstAmount(double gstAmount) {
+		this.gstAmount = gstAmount;
 	}
     
 	

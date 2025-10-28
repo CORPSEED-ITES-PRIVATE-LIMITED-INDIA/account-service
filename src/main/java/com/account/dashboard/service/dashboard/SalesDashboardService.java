@@ -16,5 +16,7 @@ public interface SalesDashboardService {
 
 	List<Map<String, Object>> getSalesDashboardRevenueByUser(GraphDateFilter graphDateFilter);
 
+	List<Map<String, Object>> getSalesDashboardRevenueByService(GraphDateFilter graphDateFilter);
+
 	
 }
