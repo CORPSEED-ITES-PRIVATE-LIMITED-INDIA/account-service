@@ -337,7 +337,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	public Map<Long,List<Long>>getAllLiabilitiesChildHierarchyV2(){
 //		List<Long>result=new ArrayList<>();
 		List<String>gList=Arrays.asList("Liabilities",
-				"Branch / Divisions","Suspense Account","Salary Payable");
+				"Branch / Divisions","Suspense Account","Salary Payable","Capital Account","Capital");
 		List<Long> ledgerType = ledgerTypeRepository.findIdByNameIn(gList);
 
 		Map<Long,List<Long>>result =new HashMap<>();
@@ -351,7 +351,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	
 	public Map<Long,List<Long>>getAllAssetsChildHierarchyV2(){
 //		List<Long>result=new ArrayList<>();
-		List<String>gList=Arrays.asList("Capital Account","Asset","Assets","Capital",
+		List<String>gList=Arrays.asList("Asset","Assets",
 //				"Current Liabilities",
 				"Fixed Assets","Current Assets");
 		List<Long> ledgerType = ledgerTypeRepository.findIdByNameIn(gList);
