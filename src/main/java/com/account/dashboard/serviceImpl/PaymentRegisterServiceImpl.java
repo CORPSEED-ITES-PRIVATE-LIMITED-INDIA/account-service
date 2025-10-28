@@ -147,7 +147,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		if(createAmountDto.isTdsPresent()) {
 			double tdsPercent = createAmountDto.getTdsPercent();
 			double totalProfessional = createAmountDto.getProfessionalFees();
-			double actualProfPercetage = 100-tdsPercent;
+			double actualProfPercetage = 100;
 			double onePercent = totalProfessional/100;
 			double tdsAmount = onePercent*tdsPercent;
 			double profFees=onePercent*actualProfPercetage;
@@ -162,14 +162,16 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		}
 		if("Product".equals(paymentRegister.getProductType())) {
 
-			double amount = createAmountDto.getAmount();
-			double per = amount/100;
+			double totalAmount = createAmountDto.getTotalAmount();
+			double sumPercent = createAmountDto.getGstPercent()+100;
+			double per = totalAmount/sumPercent;
 			if(createAmountDto.isTdsPresent()) {
 				double tdsAmount = per*createAmountDto.getTdsPercent();
 				paymentRegister.setTdsAmount(tdsAmount);
 			}
+			double amount=per*100;
 			double gstAmount = per*createAmountDto.getGstPercent();
-		    paymentRegister.setAmount(createAmountDto.getAmount());
+		    paymentRegister.setAmount(amount);
 		    paymentRegister.setGstPercent(createAmountDto.getGstPercent());
 		    paymentRegister.setGstAmount(gstAmount);
 		}
