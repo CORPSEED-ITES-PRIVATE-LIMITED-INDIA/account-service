@@ -308,7 +308,6 @@ public Map<String, Object>remainingAmountAndPaidAmount(Long id) {
 	result.put("estimateDate", estimateDate);
 	result.put("paymentType", paymentType);
 	result.put("serviceCharge", serviceFees-serviceCharge);
-	result.put("paidAmount", proFees);
 
 	// client Detail
 	result.put("contactName", estimate.get("primaryContactName"));
