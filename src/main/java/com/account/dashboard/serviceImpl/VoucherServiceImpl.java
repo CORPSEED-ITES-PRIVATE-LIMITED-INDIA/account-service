@@ -1445,7 +1445,7 @@ public class VoucherServiceImpl implements VoucherService{
 		}        
 		// Convert the Date object to a string
 		String dateString = dateFormat.format(date);
-		List<Voucher>voucherList=voucherRepository.findByIdInBetween(startDate,dateString);
+		List<Voucher>voucherList=voucherRepository.findByIdInBetweenAndImpact(startDate,dateString,"direct");
 
 		double totalCredit=0;
 		double totalDebit=0;
@@ -1518,7 +1518,7 @@ public class VoucherServiceImpl implements VoucherService{
 						double sgstCreditVoucher = v.getSgstCreditVoucher()!=null?v.getSgstCreditVoucher().getCreditAmount():0;
 						 cgstSgstCreditAmount = cgstCreditVoucher+sgstCreditVoucher;
 					}else {
-					   igstCreditAmount = v.getIgstCreditVoucher().getCreditAmount();
+					   igstCreditAmount = v.getIgstCreditVoucher()!=null?v.getIgstCreditVoucher().getCreditAmount():0;
 					}
 
 				}
@@ -1536,9 +1536,11 @@ public class VoucherServiceImpl implements VoucherService{
 				double cgstSgstDebitAmount=0;
 				double debitAmount =v.getDebitAmount();
 				if(v.isCgstSgstPresent()) {
-					 cgstSgstDebitAmount = v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount();
+					double cgstDebitAmount = v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0;
+					double sgstDebitAmount = v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0;
+					cgstSgstDebitAmount = cgstDebitAmount+sgstDebitAmount;
 				}else {
-				   igstDebitAmount = v.getIgstDebitVoucher().getDebitAmount();
+				   igstDebitAmount = v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0;
 				}
 				totalDebit=totalDebit+debitAmount+igstDebitAmount+cgstSgstDebitAmount;
 				totalAmount=totalAmount-totalDebit;
