@@ -3077,7 +3077,7 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 
 	invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
 
-
+	invoiceData.setProductType(pRegister.getProductType());
 
 	invoiceData.setGovermentfees(pRegister.getGovermentfees()+"");
 	invoiceData.setGovermentCode(feignLeadClient.get("govermentCode")!=null?feignLeadClient.get("govermentCode").toString():null);
@@ -3089,7 +3089,8 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 
 	invoiceData.setServiceCharge(feignLeadClient.get("serviceCharge").toString());
 	invoiceData.setTotalAmount(pRegister.getTotalAmount()+"");
-	
+	invoiceData.setProductType(pRegister.getProductType());
+
 	invoiceData.setAmount(pRegister.getAmount());
 	invoiceData.setGstPercent(pRegister.getGstPercent());
 	invoiceData.setGstAmount(pRegister.getGstAmount());
@@ -3124,6 +3125,7 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 	invoiceData.setSecondaryPinCode(feignLeadClient.get("secondaryPinCode")!=null?feignLeadClient.get("secondaryPinCode").toString():null);
 	invoiceData.setSecondaryState(feignLeadClient.get("secondaryState")!=null?feignLeadClient.get("secondaryState").toString():null);
 	invoiceData.setSecondaryCountry(feignLeadClient.get("secondaryCountry")!=null?feignLeadClient.get("secondaryCountry").toString():null);
+	invoiceData.setProductType(pRegister.getProductType());
 
 	invoiceData.setInvoiceNote(feignLeadClient.get("invoiceNote").toString());
 	invoiceData.setOrderNumber(feignLeadClient.get("orderNumber").toString());
