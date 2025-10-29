@@ -130,6 +130,19 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setGovermentGst(createAmountDto.getGovermentGst());
 		paymentRegister.setProductType(createAmountDto.getProductType());
 		paymentRegister.setGovermentGstPercent(createAmountDto.getGovermentGstPercent());
+		
+		//====
+//		String modeOfPayment;
+//		Date referenceDate;
+//		String otherReference;
+//		String buyerOrderNo;
+//		double cgst;
+//		double sgst;
+//		double igst;
+		paymentRegister.setModeOfPayment(createAmountDto.getModeOfPayment());
+		paymentRegister.setReferenceDate(createAmountDto.getReferenceDate());
+		paymentRegister.setOtherReference(createAmountDto.getOtherReference());
+		paymentRegister.setBuyerOrderNo(createAmountDto.getBuyerOrderNo());
 
 		if(createAmountDto.getDoc()!=null && createAmountDto.getDoc().size()!=0) {
 			List<FileData>list=new ArrayList<>();

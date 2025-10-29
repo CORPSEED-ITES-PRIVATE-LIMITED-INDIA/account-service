@@ -3,17 +3,8 @@ package com.account.dashboard.dto;
 import java.util.Date;
 import java.util.List;
 
-import com.account.dashboard.domain.FileData;
-import com.account.dashboard.domain.User;
-import com.fasterxml.jackson.annotation.JsonIgnore;
+public class CreateVendorAmountManualDto {
 
-import jakarta.persistence.FetchType;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
-import jakarta.persistence.ManyToOne;
-
-public class CreateVendorAmountDto {
 	
 	private String serviceName;
 	private Long leadId;
@@ -33,20 +24,11 @@ public class CreateVendorAmountDto {
 	
 	String remarkByVendor;
 	
-//	private double serviceFees;
-//	private double serviceGstAmount;
-//	private int serviceGstPercent;
-//	
-//	boolean tdsPresent;
-//	private double tdsAmount;
-//	private int tdsPercent;
-
-    
-//	private double totalAmount;
-	
 	List<CreateVendorSubDto> CreateVendorSubDto;
 	private String remark;
 	private String estimateNo;
+	
+	String type;  //Service Product,Other
 	
 	String status; //initiate , approve , disapproved ,On hold
 	
@@ -299,9 +281,18 @@ public class CreateVendorAmountDto {
 		this.fileData = fileData;
 	}
 
+	public String getType() {
+		return type;
+	}
+
+	public void setType(String type) {
+		this.type = type;
+	}
+
+     
+	
+	
 
 	
-	
 
-	
 }

@@ -94,4 +94,11 @@ public class VendorPaymentRegisterController {
 		return res;
 		
 	}
+	
+	@PostMapping(UrlsMapping.CREATE_VENDOR_PAYMENT_REGISTER_MANUAL)
+	public VendorPaymentRegister createVendorPaymentRegisterManual(@RequestBody CreateVendorAmountDto createVendorAmountDto){
+		VendorPaymentRegister res=vendorPaymentRegisterServcie.createVendorPaymentRegisterManual(createVendorAmountDto);	
+		return res;
+		
+	}
 }

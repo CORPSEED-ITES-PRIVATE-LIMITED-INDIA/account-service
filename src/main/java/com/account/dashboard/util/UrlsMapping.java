@@ -107,6 +107,7 @@ public interface UrlsMapping {
 
 	//==================================== Payment Register ========================================
 		public static final String CREATE_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/createPaymentRegister";
+		
 		public static final String GET_ALL_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/getAllPaymentRegister";
 		public static final String UPDATE_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/updatePaymentRegister";
 		public static final String PAYMENT_APPROVE_V2=PREFIX+ "/paymentRegister/paymentApproveV2";
@@ -144,6 +145,8 @@ public interface UrlsMapping {
 		//==================================== Vendor Payment Register ================================================
 
 		public static final String CREATE_VENDOR_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/createVendorPaymentRegister";
+		public static final String CREATE_VENDOR_PAYMENT_REGISTER_MANUAL=PREFIX+ "/paymentRegister/createVendorPaymentRegisterManual";
+
 		public static final String GET_ALL_VENDOR_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/getAllVendorPaymentRegister";
 
 		public static final String GET_ALL_VENDOR_PAYMENT_REGISTER_COUNT=PREFIX+ "/paymentRegister/getAllVendorPaymentRegisterCount";

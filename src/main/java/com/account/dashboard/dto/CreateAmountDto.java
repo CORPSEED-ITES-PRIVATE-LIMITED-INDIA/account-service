@@ -66,6 +66,15 @@ public class CreateAmountDto {
 	
 	String termOfDelivery;
 	String productType;
+	
+	//
+	String modeOfPayment;
+	Date referenceDate;
+	String otherReference;
+	String buyerOrderNo;
+	double cgst;
+	double sgst;
+	double igst;
 
 	
 
@@ -421,6 +430,62 @@ public class CreateAmountDto {
 
 	public void setGstAmount(double gstAmount) {
 		this.gstAmount = gstAmount;
+	}
+
+	public String getModeOfPayment() {
+		return modeOfPayment;
+	}
+
+	public void setModeOfPayment(String modeOfPayment) {
+		this.modeOfPayment = modeOfPayment;
+	}
+
+	public Date getReferenceDate() {
+		return referenceDate;
+	}
+
+	public void setReferenceDate(Date referenceDate) {
+		this.referenceDate = referenceDate;
+	}
+
+	public String getOtherReference() {
+		return otherReference;
+	}
+
+	public void setOtherReference(String otherReference) {
+		this.otherReference = otherReference;
+	}
+
+	public String getBuyerOrderNo() {
+		return buyerOrderNo;
+	}
+
+	public void setBuyerOrderNo(String buyerOrderNo) {
+		this.buyerOrderNo = buyerOrderNo;
+	}
+
+	public double getCgst() {
+		return cgst;
+	}
+
+	public void setCgst(double cgst) {
+		this.cgst = cgst;
+	}
+
+	public double getSgst() {
+		return sgst;
+	}
+
+	public void setSgst(double sgst) {
+		this.sgst = sgst;
+	}
+
+	public double getIgst() {
+		return igst;
+	}
+
+	public void setIgst(double igst) {
+		this.igst = igst;
 	}
     
      

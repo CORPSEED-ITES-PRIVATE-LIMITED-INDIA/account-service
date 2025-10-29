@@ -1428,6 +1428,113 @@ public class VoucherServiceImpl implements VoucherService{
 	}
 
 
+	
+	public Map<String, Object> getAllVoucherInBetweenv1(String startDate, String endDate) {
+		//		List<Voucher>voucherList=voucherRepository.findByIdInBetween(startDate,endDate);
+		Map<String,Object>result = new HashMap<>();
+		List<Map<String, Object>>res= new ArrayList<>();
+		Date date =new Date();
+		SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+		try {
+			date = dateFormat.parse(endDate);
+			date= CalendarUtil.addDayInDate(date);
+
+		} catch (ParseException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}        
+		// Convert the Date object to a string
+		String dateString = dateFormat.format(date);
+		List<Voucher>voucherList=voucherRepository.findByIdInBetweenAndImpact(startDate,dateString,"direct");
+
+		double totalCredit=0;
+		double totalDebit=0;
+		double totalAmount=0;
+		for(Voucher v:voucherList) {
+			System.out.println("test1");
+
+			Map<String,Object>map = new HashMap<>();
+			map.put("id", v.getId());
+			map.put("companyName", v.getCompanyName());
+			map.put("paymentType", v.getPaymentType());
+			map.put("createDate", v.getCreateDate());
+			map.put("professionalGstAmount", v.getProfessionalGstAmount());
+			map.put("totalAmount", v.getTotalAmount());
+			if( v.getLedger()!=null) {
+				map.put("ledgerId", v.getLedger()!=null?v.getLedger().getId():0);
+				map.put("ledgerName", v.getLedger().getName());
+				map.put("ledgerType", v.getLedger().getLedgerType());
+				map.put("isDebitCredit", v.isCreditDebit());
+			}
+
+			map.put("ledgerType", v.getLedgerType());
+			map.put("voucherType", v.getVoucherType());
+			map.put("creditAmount", v.getCreditAmount());
+			map.put("debitAmount", v.getDebitAmount());
+			res.add(map);
+			
+			if(v.isCreditDebit()) {
+				
+				double debitAmount =0;
+				double igstDebitAmount =0;
+				System.out.println("test1");
+				double cgstSgstDebitAmount=0;
+				if(v.getDebitAmount()!=0) {
+					System.out.println("test2");
+					debitAmount =v.getDebitAmount();
+					if(v.isCgstSgstPresent()) {
+						 cgstSgstDebitAmount = v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount();
+					}else {
+					   igstDebitAmount = v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0;
+					}
+				}
+				System.out.println("cgstSgstDebitAmount..... lead "+cgstSgstDebitAmount);
+				System.out.println("igstDebitAmount..... lead "+igstDebitAmount);
+
+				double creditAmount =0;
+				double cgstSgstCreditAmount =0;
+				double igstCreditAmount =0;
+				if(v.getCreditAmount()!=0) {
+					System.out.println("test3"+v.isCgstSgstPresent());
+
+					creditAmount =v.getCreditAmount();
+					if(!v.isCgstSgstPresent()) {
+						double cgstCreditVoucher = v.getCgstCreditVoucher()!=null?v.getCgstCreditVoucher().getCreditAmount():0;
+						double sgstCreditVoucher = v.getSgstCreditVoucher()!=null?v.getSgstCreditVoucher().getCreditAmount():0;
+						 cgstSgstCreditAmount = cgstCreditVoucher+sgstCreditVoucher;
+					}else {
+					   igstCreditAmount = v.getIgstCreditVoucher()!=null?v.getIgstCreditVoucher().getCreditAmount():0;
+					}
+
+				}
+				totalCredit=totalCredit+creditAmount+cgstSgstCreditAmount+igstCreditAmount;
+				totalDebit=totalDebit+debitAmount+igstDebitAmount+cgstSgstDebitAmount;
+
+				totalAmount=totalAmount-totalDebit+totalCredit;
+			}else {
+				System.out.println("test4");
+				double igstDebitAmount =0;
+				double cgstSgstDebitAmount=0;
+				double debitAmount =v.getDebitAmount();
+				if(v.isCgstSgstPresent()) {
+					double cgstDebitAmount = v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0;
+					double sgstDebitAmount = v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0;
+					cgstSgstDebitAmount = cgstDebitAmount+sgstDebitAmount;
+				}else {
+				   igstDebitAmount = v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0;
+				}
+				totalDebit=totalDebit+debitAmount+igstDebitAmount+cgstSgstDebitAmount;
+				totalAmount=totalAmount-totalDebit;
+
+			}
+		}
+		result.put("result", res);
+		result.put("totalCredit", totalCredit);
+		result.put("totalDebit", totalDebit);
+		result .put("totalAmount", totalAmount);
+		return result;
+	}
+
 	@Override
 	public Map<String, Object> getAllVoucherInBetween(String startDate, String endDate) {
 		//		List<Voucher>voucherList=voucherRepository.findByIdInBetween(startDate,endDate);
@@ -1450,7 +1557,11 @@ public class VoucherServiceImpl implements VoucherService{
 		double totalCredit=0;
 		double totalDebit=0;
 		double totalAmount=0;
+		System.out.println("Voucher Size ..    ..."+voucherList.size());
+
 		for(Voucher v:voucherList) {
+			System.out.println("test1    ..."+v.getId());
+
 			Map<String,Object>map = new HashMap<>();
 			map.put("id", v.getId());
 			map.put("companyName", v.getCompanyName());
@@ -1470,32 +1581,10 @@ public class VoucherServiceImpl implements VoucherService{
 			map.put("creditAmount", v.getCreditAmount());
 			map.put("debitAmount", v.getDebitAmount());
 			res.add(map);
-
-//			if(v.isCreditDebit()) {
-//				double debitAmount =0;
-//				if(v.getDebitAmount()!=null && (!v.getDebitAmount().equals(""))) {
-//					debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
-//				}
-//				double creditAmount =0;
-//				if(v.getCreditAmount()!=null && (!v.getCreditAmount().equals(""))) {
-//					creditAmount =Double.valueOf(v.getCreditAmount()!=null?v.getCreditAmount():"0");
-//
-//				}
-//				totalCredit=totalCredit+creditAmount;
-//				totalDebit=totalDebit+debitAmount;
-//
-//				totalAmount=totalAmount-debitAmount+creditAmount;
-//			}else {
-//				double debitAmount =Double.valueOf(v.getDebitAmount()!=null?v.getDebitAmount():"0");
-//				totalDebit=totalDebit+debitAmount;
-//				totalAmount=totalAmount-debitAmount;
-//
-//			}
 			
 			if(v.isCreditDebit()) {
 				double debitAmount =0;
 				double igstDebitAmount =0;
-				System.out.println("test1");
 				double cgstSgstDebitAmount=0;
 				if(v.getDebitAmount()!=0) {
 					System.out.println("test2");
@@ -1506,6 +1595,10 @@ public class VoucherServiceImpl implements VoucherService{
 					   igstDebitAmount = v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0;
 					}
 				}
+				totalDebit=debitAmount+cgstSgstDebitAmount+igstDebitAmount;
+				
+				System.out.println("totalDebit ..............."+totalDebit);
+
 				double creditAmount =0;
 				double cgstSgstCreditAmount =0;
 				double igstCreditAmount =0;
@@ -1522,33 +1615,51 @@ public class VoucherServiceImpl implements VoucherService{
 					}
 
 				}
-				totalCredit=totalCredit+creditAmount+cgstSgstCreditAmount+igstCreditAmount;
-				totalDebit=totalDebit+debitAmount+igstDebitAmount+cgstSgstDebitAmount;
-
-				totalAmount=totalAmount-totalDebit+totalCredit;
-//				map.put("totalCredit", totalCredit);
-//				map.put("totalDebit", totalDebit);
-//				map.put("totalAmount", totalAmount);
+				totalCredit=creditAmount+cgstSgstCreditAmount+igstCreditAmount;
+				System.out.println("TOTAL Credit  ...."+totalCredit);
 
 			}else {
-				System.out.println("test4");
+				System.out.println("totalDebit ..............."+totalDebit);
+
+				double debitAmount =0;
 				double igstDebitAmount =0;
 				double cgstSgstDebitAmount=0;
-				double debitAmount =v.getDebitAmount();
-				if(v.isCgstSgstPresent()) {
-					double cgstDebitAmount = v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0;
-					double sgstDebitAmount = v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0;
-					cgstSgstDebitAmount = cgstDebitAmount+sgstDebitAmount;
-				}else {
-				   igstDebitAmount = v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0;
+				if(v.getDebitAmount()!=0) {
+					System.out.println("test2");
+					debitAmount =v.getDebitAmount();
+					if(v.isCgstSgstPresent()) {
+						 cgstSgstDebitAmount = v.getCgstDebitVoucher().getDebitAmount()+v.getSgstDebitVoucher().getDebitAmount();
+					}else {
+					   igstDebitAmount = v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0;
+					}
 				}
-				totalDebit=totalDebit+debitAmount+igstDebitAmount+cgstSgstDebitAmount;
-				totalAmount=totalAmount-totalDebit;
-//				map.put("totalCredit", totalCredit);
-//				map.put("totalDebit", totalDebit);
-//				map.put("totalAmount", totalAmount);
+				totalDebit=debitAmount+cgstSgstDebitAmount+igstDebitAmount;
+				
+				System.out.println("totalDebit ..............."+totalDebit);
 
+				double creditAmount =0;
+				double cgstSgstCreditAmount =0;
+				double igstCreditAmount =0;
+				if(v.getCreditAmount()!=0) {
+					System.out.println("test3"+v.isCgstSgstPresent());
+
+					creditAmount =v.getCreditAmount();
+					if(!v.isCgstSgstPresent()) {
+						double cgstCreditVoucher = v.getCgstCreditVoucher()!=null?v.getCgstCreditVoucher().getCreditAmount():0;
+						double sgstCreditVoucher = v.getSgstCreditVoucher()!=null?v.getSgstCreditVoucher().getCreditAmount():0;
+						 cgstSgstCreditAmount = cgstCreditVoucher+sgstCreditVoucher;
+					}else {
+					   igstCreditAmount = v.getIgstCreditVoucher()!=null?v.getIgstCreditVoucher().getCreditAmount():0;
+					}
+
+				}
+				totalCredit=creditAmount+cgstSgstCreditAmount+igstCreditAmount;
+				System.out.println("TOTAL Credit 2  ...."+totalDebit);
+
+//				totalAmount=totalAmount-totalDebit;
 			}
+			totalAmount=totalCredit-totalDebit;
+			System.out.println("TOTAL Amount ...."+totalAmount);
 		}
 		result.put("result", res);
 		result.put("totalCredit", totalCredit);
@@ -1556,7 +1667,6 @@ public class VoucherServiceImpl implements VoucherService{
 		result .put("totalAmount", totalAmount);
 		return result;
 	}
-
 	@Override
 	public Map<String, Object> getAllVoucherByGroup(Long id) {
 		List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(id);
@@ -1712,7 +1822,7 @@ public class VoucherServiceImpl implements VoucherService{
 			    // Delete current voucher̥
 			    voucherRepository.delete(voucher);
 
-			    // Recursively delete linked vouchers
+			    // Recursively delete linked vouchers̥
 			    for (Voucher v : linked) {
 			    	deleteVoucherById(v.getId());
 			    }

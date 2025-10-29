@@ -34,4 +34,6 @@ public interface VendorPaymentRegisterServcie {
 
 	int getAllVendorPaymentRegisterCountForAdmin(String status);
 
+	VendorPaymentRegister createVendorPaymentRegisterManual(CreateVendorAmountDto createVendorAmountDto);
+
 }
