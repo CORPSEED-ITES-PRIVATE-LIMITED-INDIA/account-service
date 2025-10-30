@@ -1,6 +1,8 @@
 package com.account.dashboard.serviceImpl;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -93,9 +95,49 @@ public class LedgerTypeServiceImpl implements LedgerTypeService{
 
 
 	@Override
-	public LedgerType getAllLedgerTypeById(Long id) {
-		LedgerType ledgerType = ledgerTypeRepository.findById(id).get();
-		return ledgerType;
+	public Map<String,Object> getAllLedgerTypeById(Long id) {
+		
+		LedgerType ledgerType = ledgerTypeRepository.findById(id).orElse(null);
+		// Create a map to store LedgerType and Ledger-related information
+		Map<String, Object> map = new HashMap<>();
+
+		if (ledgerType != null) {
+		    // Put LedgerType fields into the map
+		    map.put("id", ledgerType.getId());
+		    map.put("name", ledgerType.getName());
+		    map.put("isSubLeadger", ledgerType.isSubLeadger());
+		    map.put("isDebitCredit", ledgerType.isDebitCredit());
+		    map.put("isUsedForCalculation", ledgerType.isUsedForCalculation());
+		    map.put("isParent", ledgerType.isParent());
+		    map.put("createDate", ledgerType.getCreateDate());
+
+		    // HSN details
+		    map.put("hsnSacPresent", ledgerType.isHsnSacPresent());
+		    map.put("hsnSacDetails", ledgerType.getHsnSacDetails());
+		    map.put("classification", ledgerType.getClassification());
+		    map.put("hsnSacData", ledgerType.getHsnSacData());
+		    map.put("hsnDescription", ledgerType.getHsnDescription());
+		    map.put("ledgerTypeId", ledgerType.getLedgerType()!=null?ledgerType.getLedgerType():null);
+
+		    // GST rate details
+		    map.put("gstRateDetailPresent", ledgerType.isGstRateDetailPresent());
+		    map.put("gstRateDetails", ledgerType.getGstRateDetails());
+		    map.put("taxabilityType", ledgerType.getTaxabilityType());
+		    map.put("gstRatesData", ledgerType.getGstRatesData());
+
+		    // Bank details
+		    map.put("bankAccountPresent", ledgerType.isBankAccountPresent());
+		    map.put("accountHolderName", ledgerType.getAccountHolderName());
+		    map.put("accountNo", ledgerType.getAccountNo());
+		    map.put("ifscCode", ledgerType.getIfscCode());
+		    map.put("swiftCode", ledgerType.getSwiftCode());
+		    map.put("bankName", ledgerType.getBankName());
+		    map.put("branch", ledgerType.getBranch());
+
+		    // Common flag
+		    map.put("isDeleted", ledgerType.isDeleted());
+		}
+		return map;
 	}
 
 

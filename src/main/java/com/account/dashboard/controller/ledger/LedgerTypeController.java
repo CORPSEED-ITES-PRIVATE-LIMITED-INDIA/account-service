@@ -46,8 +46,8 @@ public class LedgerTypeController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_LEDGER_TYPE_BY_ID)
-	public LedgerType getAllLedgerTypeById(@RequestParam Long id){
-		LedgerType res=ledgerService.getAllLedgerTypeById(id);	
+	public Map<String,Object>  getAllLedgerTypeById(@RequestParam Long id){
+		Map<String,Object>  res=ledgerService.getAllLedgerTypeById(id);	
 		return res;
 	}
 	

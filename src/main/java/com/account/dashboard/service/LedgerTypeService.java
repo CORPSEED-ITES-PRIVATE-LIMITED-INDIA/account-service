@@ -1,6 +1,7 @@
 package com.account.dashboard.service;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
@@ -20,7 +21,7 @@ public interface LedgerTypeService {
 
 	Boolean deleteLedgerType(Long id);
 
-	LedgerType getAllLedgerTypeById(Long id);
+	Map<String,Object>  getAllLedgerTypeById(Long id);
 
 
 	List<LedgerType> groupSearchApi(String name);
