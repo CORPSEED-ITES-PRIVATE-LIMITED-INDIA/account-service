@@ -131,6 +131,14 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("gstPercent", invoice.getGstPercent());
 	        res.put("gstAmount", invoice.getGstAmount());
 	        res.put("amount", invoice.getAmount());
+	        res.put("modeOfPayment", invoice.getModeOfPayment());
+	        res.put("referenceDate", invoice.getReferenceDate());
+	        res.put("otherReference", invoice.getOtherReference());
+	        res.put("buyerOrderNo", invoice.getBuyerOrderNo());
+	         
+	        res.put("cgst", invoice.getCgst());
+	        res.put("sgst", invoice.getSgst());
+	        res.put("igst", invoice.getIgst());
 
 
 	        // Unbilled information

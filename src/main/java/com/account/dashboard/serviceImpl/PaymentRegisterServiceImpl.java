@@ -3037,6 +3037,7 @@ public Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentAppro
 }
 
 public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
+	Organization organization = organizationRepository.findById(1l).get();
 	Map<String, Object> feignLeadClient = LeadFeignClient.getEstimateById(estimateId);
 	PaymentRegister pRegister = paymentRegisterRepository.findById(paymentRegisterId).get();
 	InvoiceData invoiceData=new InvoiceData();
@@ -3044,6 +3045,7 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 
 	//		 invoiceData.setProduct(product);
 	invoiceData.setAddress(null);
+	
 	invoiceData.setCompanyName(feignLeadClient.get("companyName")!=null?feignLeadClient.get("companyName").toString():null);
 	invoiceData.setPrimaryContactId(estimateId); //--
 	invoiceData.setTermOfDelivery(pRegister.getTermOfDelivery());
@@ -3052,6 +3054,29 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 
 	String assignee = feignLeadClient.get("assigneeIds").toString();
 	Long assigneeId=Long.parseLong(assignee);
+	String state=feignLeadClient.get("state")!=null?feignLeadClient.get("state").toString():"NA";
+	invoiceData.setModeOfPayment(pRegister.getModeOfPayment());
+	invoiceData.setReferenceDate(pRegister.getReferenceDate());
+	invoiceData.setOtherReference(pRegister.getOtherReference());
+	invoiceData.setBuyerOrderNo(pRegister.getBuyerOrderNo());
+    if(organization.getState().equals(state)) {
+    	if("Product".equals(pRegister.getProductType())) {
+    		invoiceData.setCgst(pRegister.getGstPercent()/2);
+        	invoiceData.setSgst(pRegister.getGstPercent()/2);
+    	}else {
+    	   	invoiceData.setCgst(pRegister.getProfesionalGst()/2);
+        	invoiceData.setSgst(pRegister.getProfesionalGst()/2);
+    	}
+
+    }else {
+    	invoiceData.setIgst(pRegister.getIgst());
+    	if("Product".equals(pRegister.getProductType())) {
+        	invoiceData.setIgst(pRegister.getIgst());
+    	}else {
+        	invoiceData.setIgst(pRegister.getProfesionalGst());
+    	}
+
+    }
 
 	if(assigneeId!=null) {
 		//						User user = userRepository.findById(assigneeId).get();
