@@ -132,18 +132,15 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 		paymentRegister.setGovermentGstPercent(createAmountDto.getGovermentGstPercent());
 		
 		//====
-//		String modeOfPayment;
-//		Date referenceDate;
-//		String otherReference;
-//		String buyerOrderNo;
-//		double cgst;
-//		double sgst;
-//		double igst;
+	    double quantity;
+        double actualAmount;
 		paymentRegister.setModeOfPayment(createAmountDto.getModeOfPayment());
 		paymentRegister.setReferenceDate(createAmountDto.getReferenceDate());
 		paymentRegister.setOtherReference(createAmountDto.getOtherReference());
 		paymentRegister.setBuyerOrderNo(createAmountDto.getBuyerOrderNo());
-
+		paymentRegister.setQuantity(createAmountDto.getQuantity());
+		paymentRegister.setActualAmount(createAmountDto.getActualAmount());
+		
 		if(createAmountDto.getDoc()!=null && createAmountDto.getDoc().size()!=0) {
 			List<FileData>list=new ArrayList<>();
 			for(String s:createAmountDto.getDoc()) {
@@ -3059,6 +3056,8 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 	invoiceData.setReferenceDate(pRegister.getReferenceDate());
 	invoiceData.setOtherReference(pRegister.getOtherReference());
 	invoiceData.setBuyerOrderNo(pRegister.getBuyerOrderNo());
+	invoiceData.setActualAmount(pRegister.getActualAmount());
+	invoiceData.setQuantity(pRegister.getQuantity());
     if(organization.getState().equals(state)) {
     	if("Product".equals(pRegister.getProductType())) {
     		invoiceData.setCgst(pRegister.getGstPercent()/2);

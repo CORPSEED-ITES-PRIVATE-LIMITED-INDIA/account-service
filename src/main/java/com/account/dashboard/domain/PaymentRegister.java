@@ -119,6 +119,8 @@ public class PaymentRegister {
 	private double amount;
 	private double gstPercent;
     private double gstAmount;
+    double quantity;
+    double actualAmount;
     
 	String modeOfPayment;
 	Date referenceDate;
@@ -508,6 +510,18 @@ public class PaymentRegister {
 	}
 	public void setIgst(double igst) {
 		this.igst = igst;
+	}
+	public double getQuantity() {
+		return quantity;
+	}
+	public void setQuantity(double quantity) {
+		this.quantity = quantity;
+	}
+	public double getActualAmount() {
+		return actualAmount;
+	}
+	public void setActualAmount(double actualAmount) {
+		this.actualAmount = actualAmount;
 	}
 	
 	

@@ -3,7 +3,8 @@ package com.account.dashboard.dto;
 import java.util.Date;
 
 public class CreateBankStatementDto {
-   
+	
+    Long bankAccountId;
     String transactionId;
 	
 	double totalAmount;
@@ -52,6 +53,14 @@ public class CreateBankStatementDto {
 
 	public void setPaymentDate(Date paymentDate) {
 		this.paymentDate = paymentDate;
+	}
+
+	public Long getBankAccountId() {
+		return bankAccountId;
+	}
+
+	public void setBankAccountId(Long bankAccountId) {
+		this.bankAccountId = bankAccountId;
 	}
 	
 	

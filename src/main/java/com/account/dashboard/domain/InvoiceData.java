@@ -138,6 +138,9 @@ public class InvoiceData {
 	double cgst;
 	double sgst;
 	double igst;
+	
+    double quantity;
+    double actualAmount;
 
     boolean isDeleted;
     
@@ -670,6 +673,18 @@ public class InvoiceData {
 	}
 	public void setIgst(double igst) {
 		this.igst = igst;
+	}
+	public double getQuantity() {
+		return quantity;
+	}
+	public void setQuantity(double quantity) {
+		this.quantity = quantity;
+	}
+	public double getActualAmount() {
+		return actualAmount;
+	}
+	public void setActualAmount(double actualAmount) {
+		this.actualAmount = actualAmount;
 	}
     
 	
