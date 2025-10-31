@@ -564,4 +564,10 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		}
 		return vendorPaymentRegister.size();
 	}
+
+	@Override
+	public VendorPaymentRegister createVendorPaymentRegisterManual(CreateVendorAmountDto createVendorAmountDto) {
+		// TODO Auto-generated method stub
+		return null;
+	}
 }

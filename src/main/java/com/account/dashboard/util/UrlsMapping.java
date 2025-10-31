@@ -242,4 +242,7 @@ public interface UrlsMapping {
 
        public static final String GET_ALL_INVOICE_FOR_EXPORT=PREFIX+ "/invoice/getAllInvoiceForExport";
 
+       //==================== Gst Crm =======================
+		public static final String GET_ALL_GST_DATA_CRM=PREFIX+ "/gstData/getAllGstDataCrm";
+
 }
