@@ -38,7 +38,7 @@ public class GstDataCrmController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_GST_DATA_CRM_COUNT)
-	public Long getAllGstDataCrmCount(){
+	public Long getAllGstDataCrmCount(@RequestParam String startDate,@RequestParam String endDate){
 		Long res=gstDataCrmService.getAllGstDataCrmCount();	
 		return res;
 		
