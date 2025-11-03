@@ -4,6 +4,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -23,6 +26,8 @@ public class GstDataCrmController {
 	@GetMapping(UrlsMapping.GET_ALL_GST_DATA_CRM)
 	public List<Map<String,Object>> getAllGstDataCrm(@RequestParam(value = "page", defaultValue = "1") int page,
 			@RequestParam(value = "size", defaultValue = "10") int size){
+		Pageable pageable = PageRequest.of(page, size);
+
 		List<Map<String,Object>> res=gstDataCrmService.getAllGstDataCrm(page-1,size);	
 		return res;
 		
