@@ -43,4 +43,11 @@ public class GstDataCrmController {
 		return res;
 		
 	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_GST_DATA_CRM_FOR_EXPORT)
+	public List<Map<String,Object>> getAllGstDataCrmForExport(@RequestParam String startDate,@RequestParam String endDate){
+		List<Map<String,Object>> res=gstDataCrmService.getAllGstDataCrmForExport(startDate,endDate);	
+		return res;
+		
+	}
 }

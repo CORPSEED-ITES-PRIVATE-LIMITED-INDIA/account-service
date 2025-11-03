@@ -16,4 +16,6 @@ public interface GstDataCrmService {
 
 	Long getAllGstDataCrmCount();
 
+	List<Map<String, Object>> getAllGstDataCrmForExport(String startDate, String endDate);
+
 }

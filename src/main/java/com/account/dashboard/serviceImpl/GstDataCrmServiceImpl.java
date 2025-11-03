@@ -69,4 +69,22 @@ public class GstDataCrmServiceImpl implements GstDataCrmService{
 		return gstData!=null?gstData.size():0l;
 	}
 
+	@Override
+	public List<Map<String, Object>> getAllGstDataCrmForExport(String startDate, String endDate) {
+		List<GstDataFromCrm> gstData = gstDataFromCrmRepository.findAll();
+		List<Map<String, Object>> list = gstData.stream().map(m -> {
+		    Map<String, Object> map = new HashMap<>();
+		    map.put("id", m.getId());
+		    map.put("paymentRegister", m.getPaymentRegister());
+		    map.put("gst", m.getGst());
+		    map.put("gstAmount", m.getGstAmount());
+		    map.put("company", m.getCompany());
+		    map.put("type", m.getType());
+		    map.put("status", m.getStatus());
+		    map.put("document", m.getDocument());
+		    return map;
+		}).collect(Collectors.toList());
+		return list;
+	}
+
 }
