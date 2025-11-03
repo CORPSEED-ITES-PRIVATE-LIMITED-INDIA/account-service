@@ -7,6 +7,8 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.GstDataFromCrm;
@@ -25,8 +27,9 @@ public class GstDataCrmServiceImpl implements GstDataCrmService{
 	PaymentRegisterRepository paymentRegisterRepository;
 
 	@Override
-	public List<Map<String, Object>> getAllGstDataCrm(int i, int size) {
-		List<GstDataFromCrm> gstData = gstDataFromCrmRepository.findAll();
+	public List<Map<String, Object>> getAllGstDataCrm(int page, int size) {
+		Pageable pageable = PageRequest.of(page, size);
+		 List<GstDataFromCrm> gstData = gstDataFromCrmRepository.findAll(pageable).getContent();
 		List<Map<String, Object>> list = gstData.stream().map(m -> {
 		    Map<String, Object> map = new HashMap<>();
 		    map.put("id", m.getId());
