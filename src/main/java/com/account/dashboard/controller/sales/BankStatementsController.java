@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.account.dashboard.domain.BankAccount;
 import com.account.dashboard.domain.BankStatement;
 import com.account.dashboard.domain.PaymentRegister;
 import com.account.dashboard.dto.CreateAmountDto;
@@ -50,7 +51,11 @@ public class BankStatementsController {
 		Boolean res=bankStatementService.addRegisterAmountInBankStatement(bankstatementId,registerAmountId);	
 		return res;
 		
+	}	
+	@GetMapping(UrlsMapping.GET_ALL_BANK_ACCOUNTS)
+	public List<BankAccount> getAllBankAccounts(){
+		List<BankAccount> res=bankStatementService.getAllBankAccounts();	
+		return res;
+		
 	}
-	
-	
 }

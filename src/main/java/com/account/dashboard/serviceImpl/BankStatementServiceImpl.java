@@ -115,5 +115,10 @@ public class BankStatementServiceImpl implements BankStatementService{
 		}
 		return result;
 	}
+	@Override
+	public List<BankAccount> getAllBankAccounts() {
+		List<BankAccount> bankAccount = bankAccountRepository.findAll();
+		return bankAccount;
+	}
 
 }

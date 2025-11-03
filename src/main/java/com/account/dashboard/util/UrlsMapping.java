@@ -166,7 +166,11 @@ public interface UrlsMapping {
 		public static final String GET_UNUSED_BANK_STATEMENTS=PREFIX+ "/bankStatements/getUnusedBankStatement";
 		public static final String GET_ALL_BANK_STATEMENTS=PREFIX+ "/bankStatements/getAllBankStatements";
 		public static final String ADD_REGISTER_AMOUNT_IN_BANK_STATEMENTS =PREFIX+ "/bankStatements/addRegisterAmountInBankStatement";
-// =  == ================================== Tds Api creation =======================================
+
+		public static final String GET_ALL_BANK_ACCOUNTS=PREFIX+ "/bankStatements/getAllBankAccounts";
+
+		
+		// =  == ================================== Tds Api creation =======================================
 		public static final String CREATE_TDS=PREFIX+ "/tds/createTds";
 		public static final String GET_ALL_TDS=PREFIX+ "/tds/getAllTds";
 		public static final String GET_ALL_TDS_COUNT=PREFIX+ "/tds/getAllTdsCount";

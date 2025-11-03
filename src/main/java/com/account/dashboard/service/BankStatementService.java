@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
+import com.account.dashboard.domain.BankAccount;
 import com.account.dashboard.domain.BankStatement;
 import com.account.dashboard.dto.CreateBankStatementDto;
 
@@ -18,5 +19,7 @@ public interface BankStatementService {
 	Boolean addRegisterAmountInBankStatement(Long bankstatementId, Long registerAmountId) throws Exception;
 
 	List<Map<String, Object>> getAllBankStatements();
+
+	List<BankAccount> getAllBankAccounts();
 
 }
