@@ -10,9 +10,11 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.account.dashboard.domain.BankAccount;
 import com.account.dashboard.domain.BankStatement;
 import com.account.dashboard.domain.PaymentRegister;
 import com.account.dashboard.dto.CreateBankStatementDto;
+import com.account.dashboard.repository.BankAccountRepository;
 import com.account.dashboard.repository.BankStatementRepository;
 import com.account.dashboard.repository.PaymentRegisterRepository;
 import com.account.dashboard.service.BankStatementService;
@@ -22,6 +24,9 @@ public class BankStatementServiceImpl implements BankStatementService{
 
 	@Autowired
 	BankStatementRepository bankStatementRepository;
+	
+	@Autowired
+	BankAccountRepository bankAccountRepository;
 
 	@Autowired
 	PaymentRegisterRepository paymentRegisterRepository;
@@ -32,7 +37,9 @@ public class BankStatementServiceImpl implements BankStatementService{
 		bankStatement.setPaymentDate(createBankStatementDto.getPaymentDate());
 		bankStatement.setTotalAmount(createBankStatementDto.getTotalAmount());
 		bankStatement.setLeftAmount(createBankStatementDto.getTotalAmount());
+		BankAccount bankAccount = bankAccountRepository.findById(createBankStatementDto.getBankAccountId()).get();
 		bankStatement.setCreateDate(new Date());
+		bankStatement.setBankAccount(bankAccount);
 		bankStatement.setTransactionId(createBankStatementDto.getTransactionId());
 		bankStatement.setTotalAmount(createBankStatementDto.getTotalAmount());
 		bankStatement.setUpdateDate(new Date());
@@ -52,6 +59,7 @@ public class BankStatementServiceImpl implements BankStatementService{
 			map.put("createDate", b.getCreateDate());
 			map.put("leftAmount", b.getLeftAmount());
 			map.put("totalAmount", b.getTotalAmount());
+			map.put("bankAccount", b.getBankAccount());
 
 			map.put("paymentDate", b.getPaymentDate());
 			map.put("updateDate", b.getUpdateDate());
@@ -97,6 +105,7 @@ public class BankStatementServiceImpl implements BankStatementService{
 			map.put("createDate", b.getCreateDate());
 			map.put("leftAmount", b.getLeftAmount());
 			map.put("totalAmount", b.getTotalAmount());
+			map.put("bankAccount", b.getBankAccount());
 
 			map.put("paymentDate", b.getPaymentDate());
 			map.put("updateDate", b.getUpdateDate());
