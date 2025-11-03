@@ -34,6 +34,7 @@ import com.account.dashboard.domain.account.Ledger;
 import com.account.dashboard.domain.account.LedgerType;
 import com.account.dashboard.domain.account.Voucher;
 import com.account.dashboard.domain.account.VoucherType;
+import com.account.dashboard.dto.AddGstDto;
 import com.account.dashboard.dto.CreateAccountData;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreatePurchaseOrderDto;
@@ -42,8 +43,10 @@ import com.account.dashboard.dto.PaymentApproveDto;
 import com.account.dashboard.dto.UnbilledDTO;
 import com.account.dashboard.dto.UpdatePaymentDto;
 import com.account.dashboard.repository.*;
+import com.account.dashboard.service.GstDataCrmService;
 import com.account.dashboard.service.PaymentRegisterService;
 
+import io.swagger.v3.oas.annotations.parameters.RequestBody;
 import jakarta.transaction.Transactional;
 
 
@@ -52,9 +55,14 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 	private final OrganizationController organizationController;
 
+	@Autowired
 	private final GstDetailsRepository gstDetailsRepository;
 
+	@Autowired
 	private final OpenAPIConfig openAPIConfig;
+	
+	@Autowired
+	GstDataCrmService gstDataCrmService;
 
 
 	@Autowired
@@ -3140,6 +3148,23 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 
 	}
 	String leadId = feignLeadClient.get("leadId")!=null?feignLeadClient.get("leadId").toString():null;
+	//Gst Data Store
+	AddGstDto addGstDto=new AddGstDto();
+	addGstDto.setCompany(feignLeadClient.get("companyName")!=null?feignLeadClient.get("companyName").toString():null);
+	addGstDto.setGst(pRegister.getGstPercent());
+	if("Product".equals(pRegister.getProductType())) {
+		addGstDto.setGst(pRegister.getGstPercent());
+		addGstDto.setGstAmount(pRegister.getGstAmount());
+	}else {
+		addGstDto.setGst(pRegister.getProfesionalGst());
+		addGstDto.setGstAmount(pRegister.getProfessionalGstAmount());
+
+	}
+	addGstDto.setPaymentRegisterId(paymentRegisterId);
+	addGstDto.setStatus("initiated");
+	addGstDto.setType("payable");
+	gstDataCrmService.addGstDataCrm(addGstDto);
+	System.out.println("Payment Data has been apprioved");
 	if(leadId!=null) {
 		long lId = Long.parseLong(leadId);
 		invoiceData.setLeadId(lId);

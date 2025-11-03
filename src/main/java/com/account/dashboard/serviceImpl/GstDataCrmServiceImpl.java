@@ -54,7 +54,7 @@ public class GstDataCrmServiceImpl implements GstDataCrmService{
 		gstDataFromCrm.setGst(addGstDto.getGst());
 		gstDataFromCrm.setGstAmount(addGstDto.getGstAmount());
 		PaymentRegister paymentRegister = paymentRegisterRepository.findById(addGstDto.getPaymentRegisterId()).get();
-//		gstDataFromCrm.setPaymentRegister(addGstDto.getPaymentRegisterId());
+		gstDataFromCrm.setPaymentRegister(paymentRegister);
 		gstDataFromCrm.setStatus(addGstDto.getStatus());
 		gstDataFromCrm.setType(addGstDto.getType());
 		gstDataFromCrmRepository.save(gstDataFromCrm);
