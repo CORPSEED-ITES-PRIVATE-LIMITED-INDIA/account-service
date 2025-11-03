@@ -33,4 +33,11 @@ public class GstDataCrmController {
 		return res;
 		
 	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_GST_DATA_CRM_COUNT)
+	public Long getAllGstDataCrmCount(){
+		Long res=gstDataCrmService.getAllGstDataCrmCount();	
+		return res;
+		
+	}
 }

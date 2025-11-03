@@ -14,4 +14,6 @@ public interface GstDataCrmService {
 
 	Boolean addGstDataCrm(AddGstDto addGstDto);
 
+	Long getAllGstDataCrmCount();
+
 }

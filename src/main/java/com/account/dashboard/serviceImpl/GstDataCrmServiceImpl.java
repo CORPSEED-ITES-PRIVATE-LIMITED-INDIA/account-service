@@ -59,4 +59,11 @@ public class GstDataCrmServiceImpl implements GstDataCrmService{
 		return flag;
 	}
 
+	@Override
+	public Long getAllGstDataCrmCount() {
+		List<GstDataFromCrm> gstData = gstDataFromCrmRepository.findAll();
+
+		return gstData!=null?gstData.size():0l;
+	}
+
 }
