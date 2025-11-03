@@ -5,9 +5,13 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
+import com.account.dashboard.dto.AddGstDto;
+
 @Service
 public interface GstDataCrmService {
 
 	List<Map<String, Object>> getAllGstDataCrm(int i, int size);
+
+	Boolean addGstDataCrm(AddGstDto addGstDto);
 
 }
