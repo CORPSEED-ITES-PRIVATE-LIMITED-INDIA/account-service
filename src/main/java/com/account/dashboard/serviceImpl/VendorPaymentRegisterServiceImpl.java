@@ -23,6 +23,7 @@ import com.account.dashboard.domain.User;
 import com.account.dashboard.domain.VendorPaymentHistory;
 import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.dto.CreateVendorAmountDto;
+import com.account.dashboard.dto.CreateVendorAmountManualDto;
 import com.account.dashboard.dto.CreateVendorSubDto;
 import com.account.dashboard.dto.VendorPaymentAddDto;
 import com.account.dashboard.repository.FileDataRepository;
@@ -566,8 +567,48 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 	}
 
 	@Override
-	public VendorPaymentRegister createVendorPaymentRegisterManual(CreateVendorAmountDto createVendorAmountDto) {
-		// TODO Auto-generated method stub
-		return null;
+	public VendorPaymentRegister createVendorPaymentRegisterManual(CreateVendorAmountManualDto createVendorAmountDto) {
+		Boolean flag=false;
+		VendorPaymentRegister vendorPaymentRegister = new VendorPaymentRegister();
+		vendorPaymentRegister.setServiceName(createVendorAmountDto.getServiceName());
+		vendorPaymentRegister.setEstimateId(createVendorAmountDto.getEstimateId());
+		vendorPaymentRegister.setLeadId(createVendorAmountDto.getLeadId());
+		vendorPaymentRegister.setQuantity(createVendorAmountDto.getQuantity());//
+		
+		vendorPaymentRegister.setName(createVendorAmountDto.getName());
+		vendorPaymentRegister.setEmails(createVendorAmountDto.getEmails());
+		vendorPaymentRegister.setContactNo(createVendorAmountDto.getContactNo());
+		vendorPaymentRegister.setWhatsappNo(createVendorAmountDto.getWhatsappNo());
+		
+		vendorPaymentRegister.setVendorCompanyName(createVendorAmountDto.getVendorCompanyName());
+		
+		vendorPaymentRegister.setCreateDate(new Date());
+		vendorPaymentRegister.setStatus("initiated");
+		vendorPaymentRegister.setType(createVendorAmountDto.getType());
+		
+		Long createdById = createVendorAmountDto.getCreatedById();
+		 Optional<User> user = userRepository.findById(createdById);
+		vendorPaymentRegister.setCreatedBy(user!=null?user.get():null);
+		
+		vendorPaymentRegister.setRemark(createVendorAmountDto.getRemark());
+		vendorPaymentRegister.setRemarkByVendor(createVendorAmountDto.getRemarkByVendor());
+		
+		vendorPaymentRegister.setAddress(createVendorAmountDto.getAddress());
+		vendorPaymentRegister.setCity(createVendorAmountDto.getCity());
+		vendorPaymentRegister.setState(createVendorAmountDto.getState());
+		vendorPaymentRegister.setCountry(createVendorAmountDto.getCountry());
+		vendorPaymentRegister.setPinCode(createVendorAmountDto.getPinCode());
+		vendorPaymentRegister.setGstType(createVendorAmountDto.getGstType());
+		vendorPaymentRegister.setGstNo(createVendorAmountDto.getGstNo());
+		
+		vendorPaymentRegister.setPrice(createVendorAmountDto.getPrice());
+		vendorPaymentRegister.setGstPercent(createVendorAmountDto.getGstPercent());
+		vendorPaymentRegister.setGstAmount(createVendorAmountDto.getGstAmount());
+		vendorPaymentRegister.setTotalAmount(createVendorAmountDto.getTotalAmount());
+		vendorPaymentRegister.setTotalDueAmount(createVendorAmountDto.getTotalAmount());
+		vendorPaymentRegister.setTotalPaidAmount(0);
+		vendorPaymentRegisterRepo.save(vendorPaymentRegister);
+		flag=true;
+		return vendorPaymentRegister;
 	}
 }

@@ -44,7 +44,7 @@ public class VendorPaymentRegister {
 	private String paymentType;//Sales,
 	
 	
-	String name;
+	String name;//CLIENT NAME
 	String emails;
 	String contactNo;
 	String whatsappNo;
@@ -81,11 +81,18 @@ public class VendorPaymentRegister {
 	private double totalPaidAmount;
 	private double totalAmount;
 	
+	//Vendor Payment
+	double price;
+	double gstPercent;
+	double gstAmount;
+	
+	
+	Long quantity;
 	private String remark;
 	private Date paymentDate;
 	private String estimateNo;
 	String status; //initiate , approve , disapproved ,On hold
-	
+	String type;
 
 
 	String vendorCompanyName;
@@ -423,8 +430,48 @@ public class VendorPaymentRegister {
 	public void setTotalAmount(double totalAmount) {
 		this.totalAmount = totalAmount;
 	}
-	
 
+	public Long getQuantity() {
+		return quantity;
+	}
+
+	public void setQuantity(Long quantity) {
+		this.quantity = quantity;
+	}
+
+	public double getPrice() {
+		return price;
+	}
+
+	public void setPrice(double price) {
+		this.price = price;
+	}
+
+	public double getGstPercent() {
+		return gstPercent;
+	}
+
+	public void setGstPercent(double gstPercent) {
+		this.gstPercent = gstPercent;
+	}
+
+	public double getGstAmount() {
+		return gstAmount;
+	}
+
+	public void setGstAmount(double gstAmount) {
+		this.gstAmount = gstAmount;
+	}
+
+	public String getType() {
+		return type;
+	}
+
+	public void setType(String type) {
+		this.type = type;
+	}
+	
+      
 
 	
 }

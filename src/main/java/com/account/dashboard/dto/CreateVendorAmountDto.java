@@ -18,7 +18,7 @@ public class CreateVendorAmountDto {
 	private String serviceName;
 	private Long leadId;
 	private Long estimateId;
-	private String quantity;	
+	private Long quantity;	
 	String name;
 	String emails;
 	String contactNo;
@@ -94,14 +94,6 @@ public class CreateVendorAmountDto {
 
 	public void setEstimateId(Long estimateId) {
 		this.estimateId = estimateId;
-	}
-
-	public String getQuantity() {
-		return quantity;
-	}
-
-	public void setQuantity(String quantity) {
-		this.quantity = quantity;
 	}
 
 	public String getName() {
@@ -297,6 +289,14 @@ public class CreateVendorAmountDto {
 
 	public void setFileData(List<String> fileData) {
 		this.fileData = fileData;
+	}
+
+	public Long getQuantity() {
+		return quantity;
+	}
+
+	public void setQuantity(Long quantity) {
+		this.quantity = quantity;
 	}
 
 

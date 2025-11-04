@@ -9,7 +9,8 @@ public class CreateVendorAmountManualDto {
 	private String serviceName;
 	private Long leadId;
 	private Long estimateId;
-	private String quantity;	
+	private Long quantity;	
+	
 	String name;
 	String emails;
 	String contactNo;
@@ -24,7 +25,7 @@ public class CreateVendorAmountManualDto {
 	
 	String remarkByVendor;
 	
-	List<CreateVendorSubDto> CreateVendorSubDto;
+
 	private String remark;
 	private String estimateNo;
 	
@@ -42,13 +43,14 @@ public class CreateVendorAmountManualDto {
 	String gstType;
 	String gstNo;
 	
+	double price;
+	double gstPercent;
+	double gstAmount;
+	double totalAmount;
+	
 	// add  attachment by Vendor team
 	List<String>fileData;
-	
-    Long businessArrangmentId;
-    
-    Long productCategoryId;
-    
+
     
     
 
@@ -76,14 +78,6 @@ public class CreateVendorAmountManualDto {
 
 	public void setEstimateId(Long estimateId) {
 		this.estimateId = estimateId;
-	}
-
-	public String getQuantity() {
-		return quantity;
-	}
-
-	public void setQuantity(String quantity) {
-		this.quantity = quantity;
 	}
 
 	public String getName() {
@@ -249,28 +243,38 @@ public class CreateVendorAmountManualDto {
 		this.approvedBy = approvedBy;
 	}
 
-	public List<CreateVendorSubDto> getCreateVendorSubDto() {
-		return CreateVendorSubDto;
+	 
+
+	public double getPrice() {
+		return price;
 	}
 
-	public void setCreateVendorSubDto(List<CreateVendorSubDto> createVendorSubDto) {
-		CreateVendorSubDto = createVendorSubDto;
+	public void setPrice(double price) {
+		this.price = price;
 	}
 
-	public Long getBusinessArrangmentId() {
-		return businessArrangmentId;
+	public double getGstPercent() {
+		return gstPercent;
 	}
 
-	public void setBusinessArrangmentId(Long businessArrangmentId) {
-		this.businessArrangmentId = businessArrangmentId;
+	public void setGstPercent(double gstPercent) {
+		this.gstPercent = gstPercent;
 	}
 
-	public Long getProductCategoryId() {
-		return productCategoryId;
+	public double getGstAmount() {
+		return gstAmount;
 	}
 
-	public void setProductCategoryId(Long productCategoryId) {
-		this.productCategoryId = productCategoryId;
+	public void setGstAmount(double gstAmount) {
+		this.gstAmount = gstAmount;
+	}
+
+	public double getTotalAmount() {
+		return totalAmount;
+	}
+
+	public void setTotalAmount(double totalAmount) {
+		this.totalAmount = totalAmount;
 	}
 
 	public List<String> getFileData() {
@@ -287,6 +291,14 @@ public class CreateVendorAmountManualDto {
 
 	public void setType(String type) {
 		this.type = type;
+	}
+
+	public Long getQuantity() {
+		return quantity;
+	}
+
+	public void setQuantity(Long quantity) {
+		this.quantity = quantity;
 	}
 
      

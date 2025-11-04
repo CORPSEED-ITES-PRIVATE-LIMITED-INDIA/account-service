@@ -9,6 +9,7 @@ import com.account.dashboard.domain.PaymentRegister;
 import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreateVendorAmountDto;
+import com.account.dashboard.dto.CreateVendorAmountManualDto;
 import com.account.dashboard.dto.VendorPaymentAddDto;
 
 @Service
@@ -34,6 +35,7 @@ public interface VendorPaymentRegisterServcie {
 
 	int getAllVendorPaymentRegisterCountForAdmin(String status);
 
-	VendorPaymentRegister createVendorPaymentRegisterManual(CreateVendorAmountDto createVendorAmountDto);
+
+	VendorPaymentRegister createVendorPaymentRegisterManual(CreateVendorAmountManualDto createVendorAmountManualDto);
 
 }

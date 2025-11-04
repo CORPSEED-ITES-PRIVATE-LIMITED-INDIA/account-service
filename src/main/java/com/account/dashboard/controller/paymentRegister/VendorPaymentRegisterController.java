@@ -15,6 +15,7 @@ import com.account.dashboard.domain.PaymentRegister;
 import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.dto.CreateAmountDto;
 import com.account.dashboard.dto.CreateVendorAmountDto;
+import com.account.dashboard.dto.CreateVendorAmountManualDto;
 import com.account.dashboard.dto.VendorPaymentAddDto;
 import com.account.dashboard.service.VendorPaymentRegisterServcie;
 import com.account.dashboard.util.UrlsMapping;
@@ -96,8 +97,8 @@ public class VendorPaymentRegisterController {
 	}
 	
 	@PostMapping(UrlsMapping.CREATE_VENDOR_PAYMENT_REGISTER_MANUAL)
-	public VendorPaymentRegister createVendorPaymentRegisterManual(@RequestBody CreateVendorAmountDto createVendorAmountDto){
-		VendorPaymentRegister res=vendorPaymentRegisterServcie.createVendorPaymentRegisterManual(createVendorAmountDto);	
+	public VendorPaymentRegister createVendorPaymentRegisterManual(@RequestBody CreateVendorAmountManualDto createVendorAmountManualDto){
+		VendorPaymentRegister res=vendorPaymentRegisterServcie.createVendorPaymentRegisterManual(createVendorAmountManualDto);	
 		return res;
 		
 	}
