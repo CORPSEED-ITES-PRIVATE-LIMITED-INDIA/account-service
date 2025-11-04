@@ -10,11 +10,11 @@ import com.account.dashboard.dto.AddGstDto;
 @Service
 public interface GstDataCrmService {
 
-	List<Map<String, Object>> getAllGstDataCrm(int i, int size);
+	List<Map<String, Object>> getAllGstDataCrm(int page, int size,String startDate, String endDate);
 
 	Boolean addGstDataCrm(AddGstDto addGstDto);
 
-	Long getAllGstDataCrmCount();
+	Long getAllGstDataCrmCount(String startDate, String endDate);
 
 	List<Map<String, Object>> getAllGstDataCrmForExport(String startDate, String endDate);
 

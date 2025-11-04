@@ -1,5 +1,7 @@
 package com.account.dashboard.domain;
 
+import java.util.Date;
+
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -25,6 +27,8 @@ public class GstDataFromCrm {
 	String status;
 
 	String document;
+	
+	Date createDate;
 
 	public Long getId() {
 		return id;
@@ -88,6 +92,14 @@ public class GstDataFromCrm {
 
 	public void setDocument(String document) {
 		this.document = document;
+	}
+
+	public Date getCreateDate() {
+		return createDate;
+	}
+
+	public void setCreateDate(Date createDate) {
+		this.createDate = createDate;
 	}
 	
 	

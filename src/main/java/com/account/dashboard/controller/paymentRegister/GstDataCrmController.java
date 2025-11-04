@@ -26,7 +26,7 @@ public class GstDataCrmController {
 	@GetMapping(UrlsMapping.GET_ALL_GST_DATA_CRM)
 	public List<Map<String,Object>> getAllGstDataCrm(@RequestParam(value = "page", defaultValue = "1") int page,
 			@RequestParam(value = "size", defaultValue = "10") int size,@RequestParam String startDate,@RequestParam String endDate){
-		List<Map<String,Object>> res=gstDataCrmService.getAllGstDataCrm(page-1,size);	
+		List<Map<String,Object>> res=gstDataCrmService.getAllGstDataCrm(page-1,size,startDate,endDate);	
 		return res;
 		
 	}
@@ -39,7 +39,7 @@ public class GstDataCrmController {
 	
 	@GetMapping(UrlsMapping.GET_ALL_GST_DATA_CRM_COUNT)
 	public Long getAllGstDataCrmCount(@RequestParam String startDate,@RequestParam String endDate){
-		Long res=gstDataCrmService.getAllGstDataCrmCount();	
+		Long res=gstDataCrmService.getAllGstDataCrmCount(startDate,endDate);	
 		return res;
 		
 	}
