@@ -47,5 +47,16 @@ public class BalanceSheetController {
 		List<Map<String,Object>> res=balanceSheetService.getAllGroupByParentGroupId(startDate,endDate);	
 		return res;
 	}
-
+//	getLiabilitiesSubGroupByGroup
+	@GetMapping(UrlsMapping.GET_LIABILITIES_SUBGROUP_BY_GROUP)
+	public Map<String,Object> getLiabilitiesSubGroupByGroup(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate,@RequestParam String name){
+		Map<String,Object> res=balanceSheetService.getLiabilitiesSubGroupByGroup(startDate,endDate,name);	
+		return res;
+	}
+	
+	@GetMapping(UrlsMapping.GET_ASSETS_SUBGROUP_BY_GROUP)
+	public Map<String,Object> getAssetsSubGroupByGroup(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate,@RequestParam String name){
+		Map<String,Object> res=balanceSheetService.getAssetsSubGroupByGroup(startDate,endDate,name);	
+		return res;
+	}
 }

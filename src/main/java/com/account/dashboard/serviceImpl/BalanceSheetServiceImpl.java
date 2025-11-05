@@ -533,6 +533,179 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 		res.put("totalPrice", tAmount);
          return res;
 	}
+	public Map<Long,List<Long>>getAllChildHierarchy(String name){
+
+		Long ledgerTypeId = ledgerTypeRepository.findIdByName(name);
+		List<Long> childLedgerTypeIds = ledgerTypeRepository.findIdByParentId(ledgerTypeId);
+		childLedgerTypeIds.add(ledgerTypeId);
+		Map<Long,List<Long>>result =new HashMap<>();
+		for(Long s:childLedgerTypeIds) {
+			List<Long> childLedgerType = ledgerTypeRepository.findIdByParentId(s);
+			childLedgerType.add(s);
+			result.put(s, childLedgerType);
+		}
+		System.out.println("Group Result name .    ."+result);
+
+		return result;
+	}
+	
+	public Map<String,Object> getLiabilitiesSubGroupByGroup(String startDate, String endDate,String name) {
+		Map<Long,List<Long>>mapData=getAllChildHierarchy(name);
+		Map<String, Object>res = new HashMap<>();
+		double tAmount=0;
+		List<Map<String, Object>>result=new ArrayList<>();
+		for(Map.Entry<Long,List<Long>>m:mapData.entrySet()) {
+			//			List<Map<String, Object>>result=new ArrayList<>();
+			LedgerType ledgerType = ledgerTypeRepository.findById(m.getKey()).get();
+			List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(m.getValue());
+			double totalCredit=0;
+			double totalDebit=0;
+			double totalAmount=0;
+			Map<String,Object>map=new HashMap<>();
+			Set<Voucher>voucherResult=new HashSet<>();
+			for(LedgerType g:group) {
+				List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());	                
+				List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
+				voucherResult.addAll(voucherList);
+			}
+			for(Voucher v:voucherResult) {			
+				if(v.isCreditDebit()) {
+					double debitAmount =0;
+					double creditAmount =0;
+					if(v!=null && v.getDebitAmount()!=0) {
+						debitAmount =v.getDebitAmount();
+					}
+					if(v!=null && v.getCreditAmount()!=0) {
+						creditAmount =v.getCreditAmount();
+					}
+					totalCredit=totalCredit+creditAmount;
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount+creditAmount;
+				}else {
+					double debitAmount =v.getDebitAmount();
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount;
+				}
+			}
+			map.put("totalCredit", totalCredit);
+			map.put("groupName", ledgerType.getName());
+			map.put("totalDebit", totalDebit);
+			map .put("totalAmount", totalAmount);
+			result.add(map);
+			tAmount=tAmount+totalAmount;
+		}
+		res.put("data",result);
+		res.put("totalPrice", tAmount);
+
+		return res;
+	}
+
+	public Map<String, Object> getAllAssetsBySubAssets(String startDate, String endDate,String name) {
+
+		
+		Map<Long,List<Long>>mapData=getAllChildHierarchy(name);
+		Map<String, Object>res = new HashMap<>();
+		double tAmount=0;
+		List<Map<String, Object>>result=new ArrayList<>();
+		for(Map.Entry<Long,List<Long>>m:mapData.entrySet()) {
+			LedgerType ledgerType = ledgerTypeRepository.findById(m.getKey()).get();
+			List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(m.getValue());
+			double totalCredit=0;
+			double totalDebit=0;
+			double totalAmount=0;
+			Map<String,Object>map=new HashMap<>();
+			Set<Voucher>voucherResult=new HashSet<>();
+			for(LedgerType g:group) {
+				List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
+				List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
+				voucherResult.addAll(voucherList);
+			}
+			for(Voucher v:voucherResult) {			
+				if(v.isCreditDebit()) {
+					double debitAmount =0;
+					double creditAmount =0;
+					if(v!=null && v.getDebitAmount()!=0) {
+						debitAmount =v.getDebitAmount();
+					}
+					if(v!=null && v.getCreditAmount()!=0) {
+						creditAmount =v.getCreditAmount();
+					}
+					totalCredit=totalCredit+creditAmount;
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount+creditAmount;
+				}else {
+					double debitAmount =v.getDebitAmount();
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount;
+
+				}
+			}
+			tAmount=tAmount+totalAmount;
+			
+			map.put("totalCredit", totalCredit);
+			map.put("groupName", ledgerType.getName());
+			map.put("totalDebit", totalDebit);
+			map .put("totalAmount", totalAmount);
+			result.add(map);
+		}
+		res.put("data",result);
+		res.put("totalPrice", tAmount);
+         return res;
+	}
+
+	@Override
+	public Map<String, Object> getAssetsSubGroupByGroup(String startDate, String endDate, String name) {
 
 
+		
+		Map<Long,List<Long>>mapData=getAllChildHierarchy(name);
+		Map<String, Object>res = new HashMap<>();
+		double tAmount=0;
+		List<Map<String, Object>>result=new ArrayList<>();
+		for(Map.Entry<Long,List<Long>>m:mapData.entrySet()) {
+			LedgerType ledgerType = ledgerTypeRepository.findById(m.getKey()).get();
+			List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(m.getValue());
+			double totalCredit=0;
+			double totalDebit=0;
+			double totalAmount=0;
+			Map<String,Object>map=new HashMap<>();
+			Set<Voucher>voucherResult=new HashSet<>();
+			for(LedgerType g:group) {
+				List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
+				List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
+				voucherResult.addAll(voucherList);
+			}
+			for(Voucher v:voucherResult) {			
+				if(v.isCreditDebit()) {
+					double debitAmount =0;
+					double creditAmount =0;
+					if(v!=null && v.getDebitAmount()!=0) {
+						debitAmount =v.getDebitAmount();
+					}
+					if(v!=null && v.getCreditAmount()!=0) {
+						creditAmount =v.getCreditAmount();
+					}
+					totalCredit=totalCredit+creditAmount;
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount+creditAmount;
+				}else {
+					double debitAmount =v.getDebitAmount();
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount;
+
+				}
+			}
+			tAmount=tAmount+totalAmount;
+			
+			map.put("totalCredit", totalCredit);
+			map.put("groupName", ledgerType.getName());
+			map.put("totalDebit", totalDebit);
+			map .put("totalAmount", totalAmount);
+			result.add(map);
+		}
+		res.put("data",result);
+		res.put("totalPrice", tAmount);
+         return res;
+	
+	}
 }

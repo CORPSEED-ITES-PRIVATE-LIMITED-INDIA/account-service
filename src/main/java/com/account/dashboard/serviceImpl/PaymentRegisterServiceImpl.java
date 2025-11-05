@@ -313,7 +313,7 @@ public Map<String, Object>remainingAmountAndPaidAmount(Long id) {
 	double govfees = Double.parseDouble(estimate.get("govermentFees").toString());
 	double serviceFees = Double.parseDouble(estimate.get("serviceCharge").toString());
 	double otherCharge = Double.parseDouble(estimate.get("otherFees").toString());
-	String estimateDate = estimate.get("estimateDate").toString();
+	String estimateDate = estimate.get("estimateDate")!=null?estimate.get("estimateDate").toString():null;
 	result.put("estimateAmount", estTotalAmount);
 	result.put("paidAmount", paidAmount);
 

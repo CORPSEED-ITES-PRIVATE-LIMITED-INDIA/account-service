@@ -18,4 +18,8 @@ public interface BalanceSheetService {
 
 	List<Map<String, Object>> getAllGroupByParentGroupId(String startDate, String endDate);
 
+	Map<String, Object> getLiabilitiesSubGroupByGroup(String startDate, String endDate, String name);
+
+	Map<String, Object> getAssetsSubGroupByGroup(String startDate, String endDate, String name);
+
 }
