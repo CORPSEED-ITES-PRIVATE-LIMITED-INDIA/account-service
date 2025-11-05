@@ -133,6 +133,7 @@ public class LedgerTypeServiceImpl implements LedgerTypeService{
 		    map.put("swiftCode", ledgerType.getSwiftCode());
 		    map.put("bankName", ledgerType.getBankName());
 		    map.put("branch", ledgerType.getBranch());
+		    map.put("branch", ledgerType.getBranch());
 
 		    // Common flag
 		    map.put("isDeleted", ledgerType.isDeleted());

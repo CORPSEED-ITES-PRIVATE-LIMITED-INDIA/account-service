@@ -10,9 +10,11 @@ import com.account.dashboard.service.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -367,7 +369,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	
 	
 	
-	public Map<String,Object> getAllBalanceSheetLiabilities(String startDate, String endDate) {
+	public Map<String,Object> getAllBalanceSheetLiabilitiesV3(String startDate, String endDate) {
 
 
 		Map<Long,List<Long>>mapData=getAllLiabilitiesChildHierarchyV2();
@@ -386,12 +388,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 			Map<String,Object>map=new HashMap<>();
 
 			for(LedgerType g:group) {
-				System.out.println("Group name .."+g.getName());
-
-//				Map<String,Object>map=new HashMap<>();
-				List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
-				System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
-	                
+				List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());	                
 				List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
 
 				System.out.println("..."+voucherList.size());
@@ -416,11 +413,6 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 					}
 				}
 				tAmount=tAmount+totalAmount;
-//				map.put("totalCredit", totalCredit);
-//				map.put("groupName", g.getName());
-//				map.put("totalDebit", totalDebit);
-//				map .put("totalAmount", totalAmount);
-//				result.add(map);
 			}
 			tAmount=tAmount+totalAmount;
 			
@@ -437,6 +429,56 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 
          return res;
 	}
+	public Map<String,Object> getAllBalanceSheetLiabilities(String startDate, String endDate) {
+		Map<Long,List<Long>>mapData=getAllLiabilitiesChildHierarchyV2();
+		Map<String, Object>res = new HashMap<>();
+		double tAmount=0;
+		List<Map<String, Object>>result=new ArrayList<>();
+		for(Map.Entry<Long,List<Long>>m:mapData.entrySet()) {
+			//			List<Map<String, Object>>result=new ArrayList<>();
+			LedgerType ledgerType = ledgerTypeRepository.findById(m.getKey()).get();
+			List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(m.getValue());
+			double totalCredit=0;
+			double totalDebit=0;
+			double totalAmount=0;
+			Map<String,Object>map=new HashMap<>();
+			Set<Voucher>voucherResult=new HashSet<>();
+			for(LedgerType g:group) {
+				List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());	                
+				List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
+				voucherResult.addAll(voucherList);
+			}
+			for(Voucher v:voucherResult) {			
+				if(v.isCreditDebit()) {
+					double debitAmount =0;
+					double creditAmount =0;
+					if(v!=null && v.getDebitAmount()!=0) {
+						debitAmount =v.getDebitAmount();
+					}
+					if(v!=null && v.getCreditAmount()!=0) {
+						creditAmount =v.getCreditAmount();
+					}
+					totalCredit=totalCredit+creditAmount;
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount+creditAmount;
+				}else {
+					double debitAmount =v.getDebitAmount();
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount;
+				}
+			}
+			map.put("totalCredit", totalCredit);
+			map.put("groupName", ledgerType.getName());
+			map.put("totalDebit", totalDebit);
+			map .put("totalAmount", totalAmount);
+			result.add(map);
+			tAmount=tAmount+totalAmount;
+		}
+		res.put("data",result);
+		res.put("totalPrice", tAmount);
+
+		return res;
+	}
 	
 	
 	public Map<String, Object> getAllBalanceSheetAssets(String startDate, String endDate) {
@@ -446,53 +488,38 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 		Map<String, Object>res = new HashMap<>();
 		double tAmount=0;
 		List<Map<String, Object>>result=new ArrayList<>();
-
 		for(Map.Entry<Long,List<Long>>m:mapData.entrySet()) {
-//			List<Map<String, Object>>result=new ArrayList<>();
-
 			LedgerType ledgerType = ledgerTypeRepository.findById(m.getKey()).get();
 			List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(m.getValue());
 			double totalCredit=0;
 			double totalDebit=0;
 			double totalAmount=0;
 			Map<String,Object>map=new HashMap<>();
-
+			Set<Voucher>voucherResult=new HashSet<>();
 			for(LedgerType g:group) {
-				System.out.println("Group name .."+g.getName());
-
-//				Map<String,Object>map=new HashMap<>();
 				List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
-				System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
-	                
 				List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
-
-				System.out.println("..."+voucherList.size());
-				for(Voucher v:voucherList) {			
-					if(v.isCreditDebit()) {
-						double debitAmount =0;
-						double creditAmount =0;
-						if(v!=null && v.getDebitAmount()!=0) {
-							debitAmount =v.getDebitAmount();
-						}
-						if(v!=null && v.getCreditAmount()!=0) {
-							creditAmount =v.getCreditAmount();
-						}
-						totalCredit=totalCredit+creditAmount;
-						totalDebit=totalDebit+debitAmount;
-						totalAmount=totalAmount-debitAmount+creditAmount;
-					}else {
-						double debitAmount =v.getDebitAmount();
-						totalDebit=totalDebit+debitAmount;
-						totalAmount=totalAmount-debitAmount;
-
+				voucherResult.addAll(voucherList);
+			}
+			for(Voucher v:voucherResult) {			
+				if(v.isCreditDebit()) {
+					double debitAmount =0;
+					double creditAmount =0;
+					if(v!=null && v.getDebitAmount()!=0) {
+						debitAmount =v.getDebitAmount();
 					}
+					if(v!=null && v.getCreditAmount()!=0) {
+						creditAmount =v.getCreditAmount();
+					}
+					totalCredit=totalCredit+creditAmount;
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount+creditAmount;
+				}else {
+					double debitAmount =v.getDebitAmount();
+					totalDebit=totalDebit+debitAmount;
+					totalAmount=totalAmount-debitAmount;
+
 				}
-				tAmount=tAmount+totalAmount;
-//				map.put("totalCredit", totalCredit);
-//				map.put("groupName", g.getName());
-//				map.put("totalDebit", totalDebit);
-//				map .put("totalAmount", totalAmount);
-//				result.add(map);
 			}
 			tAmount=tAmount+totalAmount;
 			
@@ -501,73 +528,10 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 			map.put("totalDebit", totalDebit);
 			map .put("totalAmount", totalAmount);
 			result.add(map);
-			
-
 		}
 		res.put("data",result);
 		res.put("totalPrice", tAmount);
-
          return res;
-		
-//		
-//		
-////		List<String>gList=Arrays.asList("Capital Account",
-////				"Current Liabilities","	Fixed Assets","Current Assets");
-//////		List<LedgerType> group = ledgerTypeRepository.findAll();
-////		List<LedgerType> group = ledgerTypeRepository.findByNameIn(gList);
-//		List<Long>list=getAllAssetsChildHierarchy();
-//		List<LedgerType> group = ledgerTypeRepository.findAllByIdIn(list);
-//
-//		Map<String, Object>res = new HashMap<>();
-//		double tAmount=0;
-//		List<Map<String, Object>>result=new ArrayList<>();
-//		for(LedgerType g:group) {
-//			System.out.println("Group name .."+g.getId());
-//
-//			Map<String,Object>map=new HashMap<>();
-//			List<Long>ledgerList=ledgerRepository.findByLedgerTypeId(g.getId());
-//			System.out.println("ledgerList .."+ledgerList+"...."+g.getName());
-//
-////	         LedgerType ledgerType = ledgerTypeRepository.findById(g.getId()).get();
-//			List<Voucher>voucherList=voucherRepository.findAllByLedgerIdIn(ledgerList);
-////			List<Voucher>voucherList=voucherRepository.findByLedgerIdInAndInBetween(ledgerList,startDate,endDate);
-//
-//			double totalCredit=0;
-//			double totalDebit=0;
-//			double totalAmount=0;
-//			System.out.println("..."+voucherList.size());
-//			for(Voucher v:voucherList) {			
-//				if(v.isCreditDebit()) {
-//					double debitAmount =0;
-//					double creditAmount =0;
-//					if(v!=null && v.getDebitAmount()!=0) {
-//						debitAmount =v.getDebitAmount();
-//					}
-//					if(v!=null && v.getCreditAmount()!=0) {
-//						creditAmount =v.getCreditAmount();
-//					}
-//					totalCredit=totalCredit+creditAmount;
-//					totalDebit=totalDebit+debitAmount;
-//					totalAmount=totalAmount-debitAmount+creditAmount;
-//				}else {
-//					double debitAmount =v.getDebitAmount();
-//					totalDebit=totalDebit+debitAmount;
-//					totalAmount=totalAmount-debitAmount;
-//
-//				}
-//			}
-//			tAmount=tAmount+totalAmount;
-//
-//			map.put("totalCredit", totalCredit);
-//			map.put("groupName", g.getName());
-//			map.put("totalDebit", totalDebit);
-//			map .put("totalAmount", totalAmount);
-//			result.add(map);
-//		}
-//		res.put("data", result);
-//		res.put("totalPrice", tAmount);
-//
-//		return res;
 	}
 
 
