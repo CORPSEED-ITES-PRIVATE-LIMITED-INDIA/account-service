@@ -135,8 +135,10 @@ public class InvoiceData {
 	Date referenceDate;
 	String otherReference;
 	String buyerOrderNo;
+	boolean cgstSgstPresent;
 	double cgst;
 	double sgst;
+	boolean igstPresent;
 	double igst;
 	
     double quantity;
@@ -685,6 +687,18 @@ public class InvoiceData {
 	}
 	public void setActualAmount(double actualAmount) {
 		this.actualAmount = actualAmount;
+	}
+	public boolean isCgstSgstPresent() {
+		return cgstSgstPresent;
+	}
+	public void setCgstSgstPresent(boolean cgstSgstPresent) {
+		this.cgstSgstPresent = cgstSgstPresent;
+	}
+	public boolean isIgstPresent() {
+		return igstPresent;
+	}
+	public void setIgstPresent(boolean igstPresent) {
+		this.igstPresent = igstPresent;
 	}
     
 	

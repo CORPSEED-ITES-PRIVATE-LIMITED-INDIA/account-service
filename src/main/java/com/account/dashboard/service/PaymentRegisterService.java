@@ -68,7 +68,7 @@ public interface PaymentRegisterService {
 
 	List<Map<String,Object>> searchPaymentRegister(String searchParam, String name,String fromDate,String toDate);
 
-	Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto);
+	Map<String,Object> paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto);
 
 	Map<String, Object> getPaymentRegisterWithEstimateById(Long id);
 

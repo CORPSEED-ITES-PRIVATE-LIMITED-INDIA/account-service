@@ -231,8 +231,8 @@ public class PaymentRegisterController {
 	
 	
 	@PostMapping(UrlsMapping.PAYMENT_APPROVE_MANUAL)
-	public Boolean paymentApproveAndDisapprovedManual(@RequestBody PaymentApproveDto paymentApproveDto){
-		Boolean res=paymentRegisterService.paymentApproveAndDisapprovedManual(paymentApproveDto);
+	public Map<String,Object> paymentApproveAndDisapprovedManual(@RequestBody PaymentApproveDto paymentApproveDto){
+		Map<String,Object> res=paymentRegisterService.paymentApproveAndDisapprovedManual(paymentApproveDto);
 		return res;
 		
 	}

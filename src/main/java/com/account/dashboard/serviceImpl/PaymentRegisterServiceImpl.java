@@ -2781,7 +2781,7 @@ public Boolean allPaymentApprovedV3(Long id) {
 	return flag;
 }
 
-public Boolean createUnbilled(PaymentRegister paymentRegister){
+public Unbilled createUnbilled(PaymentRegister paymentRegister){
 	Boolean flag=false;
 	Map<String, Object>estimate=leadFeignClient.getEstimateById(paymentRegister.getEstimateId());
 	String projectName = estimate.get("productName")!=null?estimate.get("productName").toString():"NA";
@@ -2820,7 +2820,7 @@ public Boolean createUnbilled(PaymentRegister paymentRegister){
 		flag=true;
 
 	}
-	return flag;
+	return unbilled;
 }
 
 
@@ -3010,17 +3010,18 @@ public List<Map<String,Object>> searchPaymentRegister(String searchParam, String
 
 
 @Override
-public Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto) {
-
+public Map<String,Object> paymentApproveAndDisapprovedManual(PaymentApproveDto paymentApproveDto) {
+	Map<String,Object>res=new HashMap<>();
 	Boolean flag=true;
 	PaymentRegister paymentRegister = paymentRegisterRepository.findById(paymentApproveDto.getPaymentRegisterId()).get();
+	Unbilled unbilled =new Unbilled();
 	if(paymentApproveDto.getStatus().equals("approved")) {
 		// Boolean invoice = createInvoice(paymentRegister.getEstimateId());
 		Boolean invoice = createInvoiceV2(paymentRegister.getEstimateId(),paymentApproveDto.getPaymentRegisterId());
 		Boolean payment = paymentApproveAndDisapprovedV5(paymentRegister.getId() ,paymentRegister.getEstimateId());
 		//			createUnbilled(paymentRegister);
 		Long project = leadFeignClient.createProject(paymentRegister.getEstimateId());
-		Boolean unbilled = createUnbilled(paymentRegister);
+		unbilled = createUnbilled(paymentRegister);
 
 		if(invoice && payment) {
 			flag=true;
@@ -3037,7 +3038,11 @@ public Boolean paymentApproveAndDisapprovedManual(PaymentApproveDto paymentAppro
 		flag=true;
 
 	}
-	return flag;
+	Map<String,Object>map=new HashMap<>();
+	map.put("unbilledId", unbilled!=null?unbilled.getId():null);
+	map.put("estimateId", paymentRegister!=null?paymentRegister.getEstimateId():null);
+
+	return map;
 
 }
 
@@ -3068,9 +3073,11 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 	invoiceData.setQuantity(pRegister.getQuantity());
     if(organization.getState().equals(state)) {
     	if("Product".equals(pRegister.getProductType())) {
+    		invoiceData.setCgstSgstPresent(true);
     		invoiceData.setCgst(pRegister.getGstPercent()/2);
         	invoiceData.setSgst(pRegister.getGstPercent()/2);
     	}else {
+    		invoiceData.setIgstPresent(true);
     	   	invoiceData.setCgst(pRegister.getProfesionalGst()/2);
         	invoiceData.setSgst(pRegister.getProfesionalGst()/2);
     	}
