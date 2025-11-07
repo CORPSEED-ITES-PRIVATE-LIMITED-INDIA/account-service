@@ -1,5 +1,6 @@
 package com.account.dashboard.serviceImpl;
 
+import com.account.dashboard.domain.account.Ledger;
 import com.account.dashboard.domain.account.LedgerType;
 import com.account.dashboard.domain.account.Voucher;
 import com.account.dashboard.repository.LedgerRepository;
@@ -8,6 +9,7 @@ import com.account.dashboard.repository.VoucherRepository;
 import com.account.dashboard.service.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.Year;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -710,21 +712,374 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
          return res;
 	
 	}
+    public List<String> getAllLiabilities(){
+    	  List<String> balanceSheet = new ArrayList<>(Arrays.asList(
+    	            // I. EQUITY AND LIABILITIES
+    	            "EQUITY AND LIABILITIES",
 
+    	            // Shareholders’ Funds
+    	            "Shareholders’ Funds",
+    	            "Share Capital",
+    	            "Equity Share Capital",
+    	            "Preference Share Capital",
+    	            "Reserves and Surplus",
+    	            "Capital Reserve",
+    	            "Share Premium Account",
+    	            "Revaluation Reserve",
+    	            "General Reserve",
+    	            "Retained Earnings",
+    	            "Other Specific Reserves",
+    	            "Money received against share warrants",
+
+    	            // Share Application Money Pending Allotment
+    	            "Share Application Money Pending Allotment",
+
+    	            // Non-current Liabilities
+    	            "Non-current Liabilities",
+    	            "Long-term borrowings",
+    	            "Secured Loans",
+    	            "Unsecured Loans",
+    	            "Deferred Payment Liabilities",
+    	            "Long-term Deposits",
+    	            "Bonds / Debentures",
+    	            "Deferred tax liabilities (net)",
+    	            "Other long-term liabilities",
+    	            "Long-term payables",
+    	            "Long-term lease obligations",
+    	            "Long-term provisions",
+    	            "Provision for employee benefits",
+    	            "Provision for warranty",
+    	            "Provision for decommissioning/restoration costs",
+    	            "Other long-term provisions",
+
+    	            // Current Liabilities
+    	            "Current Liabilities",
+    	            "Short-term borrowings",
+    	            "Loans from Banks",
+    	            "Loans from Financial Institutions / NBFCs",
+    	            "Loans from Others / Unsecured Loans",
+    	            "Other Short-term Borrowings",
+    	            "Trade payables",
+    	            "Micro, Small and Medium Enterprises (MSMEs)",
+    	            "Others",
+    	            "Other current liabilities",
+    	            "Current Maturities of Long-term Borrowings",
+    	            "Statutory Dues Payable",
+    	            "Advance from Customers",
+    	            "Interest Accrued but Not Due",
+    	            "Dividends Payable",
+    	            "Other Payables / Liabilities",
+    	            "Short-term provisions",
+    	            "Provision for Employee Benefits",
+    	            "Provision for Tax",
+    	            "Provision for Warranty",
+    	            "Other Short-term Provisions"));
+    	  
+    	  return balanceSheet;
+    }
+	 
 	@Override
-	public Map<String, Object> getAllAssetsAndLiabilities() {
-		   Year currentYear = Year.now();
+	public List<Map<String, Object>> getAllAssetsAndLiabilities() {
+		// Get the current year
+		Year currentYear = Year.now();
 
-	        // Start date = January 1st of the current year
-	        LocalDate startOfYear = currentYear.atDay(1);
+		// Start of current year: January 1st, 00:00:00
+		LocalDateTime startOfYear = LocalDateTime.of(
+				currentYear.getValue(), 1, 1, 0, 0, 0);
 
-	        // End date = December 31st of the current year
-	        LocalDate endOfYear = currentYear.atMonth(12).atEndOfMonth();
+		// End of current year: December 31st, 23:59:59
+		LocalDateTime endOfYear = LocalDateTime.of(
+				currentYear.getValue(), 12, 31, 23, 59, 59);
 
-	        System.out.println("Current Year: " + currentYear);
-	        System.out.println("Start Date: " + startOfYear);
-	        System.out.println("End Date: " + endOfYear);
+		List<String> liabilitiesGroup = getAllLiabilities();
+		Map<String,List<Voucher>>map=new HashMap<>();
+		for(String s:liabilitiesGroup) {
+			LedgerType ledgerType = ledgerTypeRepository.findByName(s);
+			if(ledgerType!=null &&ledgerType.getId()!=null) {
+				List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
+				List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+				map.put(s, voucher);   
+			}
+   	  
+		}
+
+
 		
-		return null;
+		
+		
+		
+		
+		
+		
+		
+		
+		 List<Map<String, Object>> response = new ArrayList<>();
+
+	        // ======================= EQUITY AND LIABILITIES =======================
+	        Map<String, Object> equityAndLiabilities = new HashMap<>();
+	        equityAndLiabilities.put("title", "EQUITY AND LIABILITIES");
+	        equityAndLiabilities.put("total", 0);
+
+	        List<Map<String, Object>> equityList = new ArrayList<>();
+
+	        // ------------------ Shareholders’ Funds ------------------
+	        Map<String, Object> shareholdersFunds = new HashMap<>();
+	        shareholdersFunds.put("title", "Shareholders’ Funds");
+
+	        List<Map<String, Object>> shareholdersData = new ArrayList<>();
+
+	        // Share Capital
+	        Map<String, Object> shareCapital = new HashMap<>();
+	        shareCapital.put("title", "Share Capital");
+	        List<Map<String, Object>> shareCapitalList = new ArrayList<>();
+	        Map<String,Object>m1=new HashMap<>();
+	        m1.put("title", "Equity Share Capital");
+	        m1.put("price", "1000");
+
+//	        shareCapitalList.add(Map.of("title", "Equity Share Capital"));
+	        shareCapitalList.add(m1);
+	        
+	        Map<String,Object>m2=new HashMap<>();
+	        m2.put("title", "Preference Share Capital");
+	        m2.put("price", "1000");
+	        shareCapitalList.add(m2);
+
+//	        shareCapitalList.add(Map.of("title", "Preference Share Capital"));
+	        shareCapital.put("data", shareCapitalList);
+	        shareholdersData.add(shareCapital);
+
+	        // Reserves and Surplus
+	        Map<String, Object> reserves = new HashMap<>();
+	        reserves.put("title", "Reserves and Surplus");
+	        List<Map<String, Object>> reservesList = new ArrayList<>();
+	        
+	        Map<String, Object>m3=new HashMap<>();
+	        m3.put("title", "Capital Reserve");
+	        m3.put("price", "1000");
+	        reservesList.add(m3);
+	        
+//	        reservesList.add(Map.of("title", "Capital Reserve"));
+	        Map<String, Object>m4=new HashMap<>();
+	        m4.put("title", "Share Premium Account");
+	        m4.put("price", "1000");
+	        reservesList.add(m4);
+	        
+//	        reservesList.add(Map.of("title", "Share Premium Account"));
+	        Map<String, Object>m5=new HashMap<>();
+	        m5.put("title", "Revaluation Reserve");
+	        m5.put("price", "1000");
+	        reservesList.add(m5);
+	        
+//	        reservesList.add(Map.of("title", "Revaluation Reserve"));
+	        Map<String, Object>m6=new HashMap<>();
+	        m6.put("title", "General Reserve");
+	        m6.put("price", "1000");
+	        reservesList.add(m6);
+//	        reservesList.add(Map.of("title", "General Reserve"));
+	        Map<String, Object>m7=new HashMap<>();
+	        m7.put("title", "Retained Earnings");
+	        m7.put("price", "1000");
+	        reservesList.add(m7);
+	        
+//	        reservesList.add(Map.of("title", "Retained Earnings"));
+	        Map<String, Object>m8=new HashMap<>();
+	        m8.put("title", "Other Specific Reserves");
+	        m8.put("price", "1000");
+	        reservesList.add(m8);
+//	        reservesList.add(Map.of("title", "Other Specific Reserves"));
+	        reserves.put("data", reservesList);
+	        shareholdersData.add(reserves);
+
+	        Map<String, Object>m9=new HashMap<>();
+	        m9.put("title", "Money received against share warrants");
+	        m9.put("price", "1000");
+	        shareholdersData.add(m9);
+//	        shareholdersData.add(Map.of("title", "Money received against share warrants"));
+	        
+	        shareholdersFunds.put("data", shareholdersData);
+	        equityList.add(shareholdersFunds);
+
+	        // Share Application Money Pending Allotment
+	        Map<String, Object>m10=new HashMap<>();
+	        m10.put("title", "Money received against share warrants");
+	        m10.put("price", "price");
+	        equityList.add(m10);
+//	        equityList.add(Map.of("title", "Share Application Money Pending Allotment", "data", new ArrayList<>()));
+
+	        // ------------------ Non-current Liabilities ------------------
+	        Map<String, Object> nonCurrentLiabilities = new HashMap<>();
+	        nonCurrentLiabilities.put("title", "Non-current Liabilities");
+
+	        List<Map<String, Object>> nonCurrentList = new ArrayList<>();
+
+	        Map<String, Object> longTermBorrowings = new HashMap<>();
+	        longTermBorrowings.put("title", "Long-term borrowings");
+	        List<Map<String, Object>> longTermBorrowingsList = new ArrayList<>();
+	        
+	        Map<String, Object>m11=new HashMap<>();
+	        m11.put("title", "Secured Loans");
+	        m11.put("price", "1000");
+	        longTermBorrowingsList.add(m11);
+	        
+//	        longTermBorrowingsList.add(Map.of("title", "Secured Loans"));
+	        Map<String, Object>m12=new HashMap<>();
+	        m12.put("title", "Unsecured Loans");
+	        m12.put("price", "1000");
+	        longTermBorrowingsList.add(m12);
+//	        longTermBorrowingsList.add(Map.of("title", "Unsecured Loans"));
+	        
+	        Map<String, Object>m13=new HashMap<>();
+	        m13.put("title", "Deferred Payment Liabilities");
+	        m13.put("price", "1000");
+	        longTermBorrowingsList.add(m13);
+//	        longTermBorrowingsList.add(Map.of("title", "Deferred Payment Liabilities"));
+	        Map<String, Object>m14=new HashMap<>();
+	        m14.put("title", "Long-term Deposits");
+	        m14.put("price", "1000");
+	        longTermBorrowingsList.add(m14);
+//	        longTermBorrowingsList.add(Map.of("title", "Long-term Deposits"));
+	        Map<String, Object>m15=new HashMap<>();
+	        m15.put("title", "Bonds / Debentures");
+	        m15.put("price", "1000");
+	        longTermBorrowingsList.add(m15);
+//	        longTermBorrowingsList.add(Map.of("title", "Bonds / Debentures"));
+	        longTermBorrowings.put("data", longTermBorrowingsList);
+	        nonCurrentList.add(longTermBorrowings);
+
+	        nonCurrentList.add(Map.of("title", "Deferred tax liabilities (net)", "data", new ArrayList<>()));
+
+	        Map<String, Object> otherLongTermLiabilities = new HashMap<>();
+	        otherLongTermLiabilities.put("title", "Other long-term liabilities");
+	        otherLongTermLiabilities.put("data", List.of(
+	                Map.of("title", "Long-term payables","price","1000"),
+	                Map.of("title", "Long-term lease obligations","price","1000")
+	        ));
+	        
+	        nonCurrentList.add(otherLongTermLiabilities);
+
+	        Map<String, Object> longTermProvisions = new HashMap<>();
+	        longTermProvisions.put("title", "Long-term provisions");
+	        longTermProvisions.put("data", List.of(
+	                Map.of("title", "Provision for employee benefits","price","1000"),
+	                Map.of("title", "Provision for warranty","price","1000"),
+	                Map.of("title", "Provision for decommissioning/restoration costs","price","1000"),
+	                Map.of("title", "Other long-term provisions","price","1000")
+	        ));
+	        nonCurrentList.add(longTermProvisions);
+
+	        nonCurrentLiabilities.put("data", nonCurrentList);
+	        equityList.add(nonCurrentLiabilities);
+
+	        // ------------------ Current Liabilities ------------------
+	        Map<String, Object> currentLiabilities = new HashMap<>();
+	        currentLiabilities.put("title", "Current Liabilities");
+
+	        List<Map<String, Object>> currentList = new ArrayList<>();
+
+	        Map<String, Object> shortTermBorrowings = new HashMap<>();
+	        shortTermBorrowings.put("title", "Short-term borrowings");
+	        shortTermBorrowings.put("data", List.of(
+	                Map.of("title", "Loans from Banks","price","1000"),
+	                Map.of("title", "Loans from Financial Institutions / NBFCs","price","1000"),
+	                Map.of("title", "Loans from Others / Unsecured Loans","price","1000"),
+	                Map.of("title", "Other Short-term Borrowings","price","1000")
+	        ));
+	        currentList.add(shortTermBorrowings);
+
+	        currentList.add(Map.of(
+	                "title", "Trade payables",
+	                "data", List.of(
+	                        Map.of("title", "Micro, Small and Medium Enterprises (MSMEs)","price","1000"),
+	                        Map.of("title", "Others","price","1000")
+	                )
+	        ));
+
+	        currentList.add(Map.of(
+	                "title", "Other current liabilities",
+	                "data", List.of(
+	                        Map.of("title", "Current Maturities of Long-term Borrowings","price","1000"),
+	                        Map.of("title", "Statutory Dues Payable","price","1000"),
+	                        Map.of("title", "Advance from Customers","price","1000"),
+	                        Map.of("title", "Interest Accrued but Not Due","price","1000"),
+	                        Map.of("title", "Dividends Payable","price","1000"),
+	                        Map.of("title", "Other Payables / Liabilities","price","1000")
+	                )
+	        ));
+
+	        currentList.add(Map.of(
+	                "title", "Short-term provisions",
+	                "data", List.of(
+	                        Map.of("title", "Provision for Employee Benefits","price","1000"),
+	                        Map.of("title", "Provision for Tax","price","1000"),
+	                        Map.of("title", "Provision for Warranty","price","1000"),
+	                        Map.of("title", "Other Short-term Provisions","price","1000")
+	                )
+	        ));
+
+	        currentLiabilities.put("data", currentList);
+	        equityList.add(currentLiabilities);
+
+	        equityAndLiabilities.put("data", equityList);
+	        response.add(equityAndLiabilities);
+
+	        // ======================= ASSETS =======================
+	        Map<String, Object> assets = new HashMap<>();
+	        assets.put("title", "ASSETS");
+	        assets.put("total", 0);
+
+	        List<Map<String, Object>> assetsList = new ArrayList<>();
+
+	        // Non-current Assets
+	        Map<String, Object> nonCurrentAssets = new HashMap<>();
+	        nonCurrentAssets.put("title", "Non-current Assets");
+
+	        List<Map<String, Object>> nonCurrentAssetsList = new ArrayList<>();
+	        nonCurrentAssetsList.add(Map.of(
+	                "title", "Property, Plant and Equipment",
+	                "data", List.of(
+	                        Map.of("title", "Land","price","1000"),
+	                        Map.of("title", "Buildings","price","1000"),
+	                        Map.of("title", "Plant and machinery","price","1000"),
+	                        Map.of("title", "Furniture and fixtures","price","1000"),
+	                        Map.of("title", "Vehicles","price","1000"),
+	                        Map.of("title", "Office equipment","price","1000"),
+	                        Map.of("title", "Other","price","1000")
+	                )
+	        ));
+	        nonCurrentAssetsList.add(Map.of(
+	                "title", "Intangible Assets",
+	                "data", List.of(
+	                        Map.of("title", "Goodwill","price","1000"),
+	                        Map.of("title", "Other Intangible Assets","price","1000"),
+	                        Map.of("title", "Intangible Assets under Development / Work-in-Progress","price","1000")
+	                )
+	        ));
+	        nonCurrentAssetsList.add(Map.of("title", "Capital Work-in-Progress","price","1000"));
+	        nonCurrentAssetsList.add(Map.of("title", "Non-current investments","price","1000"));
+	        nonCurrentAssetsList.add(Map.of("title", "Deferred tax assets (net)","price","1000"));
+	        nonCurrentAssetsList.add(Map.of("title", "Long-term loans and advances","price","1000"));
+	        nonCurrentAssetsList.add(Map.of("title", "Other non-current assets","price","1000"));
+	        nonCurrentAssets.put("data", nonCurrentAssetsList);
+	        assetsList.add(nonCurrentAssets);
+
+	        // Current Assets
+	        assetsList.add(Map.of(
+	                "title", "Current Assets",
+	                "data", List.of(
+	                        Map.of("title", "Current investments","price","1000"),
+	                        Map.of("title", "Inventories","price","1000"),
+	                        Map.of("title", "Trade receivables","price","1000"),
+	                        Map.of("title", "Cash and cash equivalents","price","1000"),
+	                        Map.of("title", "Short-term loans and advances","price","1000"),
+	                        Map.of("title", "Other current assets","price","1000")
+	                )
+	        ));
+
+	        assets.put("data", assetsList);
+	        response.add(assets);
+
+	        return response;
+
+//		return null;
 	}
 }

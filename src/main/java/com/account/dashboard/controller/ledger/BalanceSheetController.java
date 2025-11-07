@@ -61,8 +61,8 @@ public class BalanceSheetController {
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_ASSETS_AND_LIABILITIES)
-	public Map<String,Object> getAllAssetsAndLiabilities(){
-		Map<String,Object> res=balanceSheetService.getAllAssetsAndLiabilities();	
+	public List<Map<String, Object>> getAllAssetsAndLiabilities(){
+		List<Map<String, Object>> res=balanceSheetService.getAllAssetsAndLiabilities();	
 		return res;
 	}
 }
