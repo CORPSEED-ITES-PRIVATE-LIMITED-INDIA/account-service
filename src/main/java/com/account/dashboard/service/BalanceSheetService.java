@@ -22,4 +22,6 @@ public interface BalanceSheetService {
 
 	Map<String, Object> getAssetsSubGroupByGroup(String startDate, String endDate, String name);
 
+	Map<String, Object> getAllAssetsAndLiabilities();
+
 }

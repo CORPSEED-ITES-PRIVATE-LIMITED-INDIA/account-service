@@ -7,6 +7,8 @@ import com.account.dashboard.repository.LedgerTypeRepository;
 import com.account.dashboard.repository.VoucherRepository;
 import com.account.dashboard.service.*;
 
+import java.time.LocalDate;
+import java.time.Year;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -707,5 +709,22 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 		res.put("totalPrice", tAmount);
          return res;
 	
+	}
+
+	@Override
+	public Map<String, Object> getAllAssetsAndLiabilities() {
+		   Year currentYear = Year.now();
+
+	        // Start date = January 1st of the current year
+	        LocalDate startOfYear = currentYear.atDay(1);
+
+	        // End date = December 31st of the current year
+	        LocalDate endOfYear = currentYear.atMonth(12).atEndOfMonth();
+
+	        System.out.println("Current Year: " + currentYear);
+	        System.out.println("Start Date: " + startOfYear);
+	        System.out.println("End Date: " + endOfYear);
+		
+		return null;
 	}
 }

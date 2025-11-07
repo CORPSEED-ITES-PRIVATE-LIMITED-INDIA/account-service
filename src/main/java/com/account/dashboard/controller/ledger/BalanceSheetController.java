@@ -59,4 +59,10 @@ public class BalanceSheetController {
 		Map<String,Object> res=balanceSheetService.getAssetsSubGroupByGroup(startDate,endDate,name);	
 		return res;
 	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_ASSETS_AND_LIABILITIES)
+	public Map<String,Object> getAllAssetsAndLiabilities(){
+		Map<String,Object> res=balanceSheetService.getAllAssetsAndLiabilities();	
+		return res;
+	}
 }
