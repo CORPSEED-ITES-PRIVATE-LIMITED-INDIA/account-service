@@ -3077,7 +3077,7 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
     		invoiceData.setCgst(pRegister.getGstPercent()/2);
         	invoiceData.setSgst(pRegister.getGstPercent()/2);
     	}else {
-    		invoiceData.setIgstPresent(true);
+    		invoiceData.setCgstSgstPresent(true);
     	   	invoiceData.setCgst(pRegister.getProfesionalGst()/2);
         	invoiceData.setSgst(pRegister.getProfesionalGst()/2);
     	}
@@ -3085,8 +3085,12 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
     }else {
     	invoiceData.setIgst(pRegister.getIgst());
     	if("Product".equals(pRegister.getProductType())) {
+    		invoiceData.setIgstPresent(true);
+
         	invoiceData.setIgst(pRegister.getIgst());
     	}else {
+    		invoiceData.setIgstPresent(true);
+
         	invoiceData.setIgst(pRegister.getProfesionalGst());
     	}
 
