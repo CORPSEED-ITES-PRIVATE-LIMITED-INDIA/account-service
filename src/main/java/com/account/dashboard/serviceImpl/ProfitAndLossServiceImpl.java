@@ -3,6 +3,7 @@ package com.account.dashboard.serviceImpl;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -371,5 +372,115 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 		return result;
 
 	}
+
+	@Override
+    public Map<String, Object> getAllProfitAndLoss(String startDate, String endDate) {
+        List<Map<String, Object>> dataList = new ArrayList<>();
+
+        // Revenue from Operations
+        List<Map<String, Object>> revenueOps = new ArrayList<>();
+        revenueOps.add(createItem("Sale of Products"));
+        revenueOps.add(createItem("Sale of Services"));
+        revenueOps.add(createItem("Other Operating Revenues"));
+        dataList.add(createItemWithChildren("Revenue from Operations", revenueOps));
+
+        // Other Income
+        List<Map<String, Object>> otherIncome = new ArrayList<>();
+        otherIncome.add(createItem("Interest Income"));
+        otherIncome.add(createItem("Dividend Income"));
+        otherIncome.add(createItem("Net Gain/Loss on Sale of Investments"));
+        otherIncome.add(createItem("Other Non-Operating Income"));
+        dataList.add(createItemWithChildren("Other Income", otherIncome));
+
+        // Total Revenue
+        dataList.add(createItemWithPrice("Total Revenue", "1000"));
+
+        // Expenses
+        List<Map<String, Object>> expenses = new ArrayList<>();
+        expenses.add(createItem("Cost of materials consumed"));
+        expenses.add(createItem("Purchases of stock-in-trade"));
+        expenses.add(createItem("Changes in inventories of finished goods, work-in-progress and stock-in-trade"));
+
+        // Employee benefit expenses
+        List<Map<String, Object>> empBenefits = new ArrayList<>();
+        empBenefits.add(createItem("Salaries and wages"));
+        empBenefits.add(createItem("Contribution to provident & other funds"));
+        empBenefits.add(createItem("Staff welfare expenses"));
+        expenses.add(createItemWithChildren("Employee benefit expenses", empBenefits));
+
+        // Finance costs
+        List<Map<String, Object>> financeCosts = new ArrayList<>();
+        financeCosts.add(createItem("Interest expense"));
+        financeCosts.add(createItem("Other borrowing costs"));
+        expenses.add(createItemWithChildren("Finance costs", financeCosts));
+
+        // Depreciation
+        expenses.add(createItem("Depreciation and amortisation expense"));
+
+        // Other expenses
+        List<Map<String, Object>> otherExpenses = new ArrayList<>();
+        otherExpenses.add(createItem("Power and fuel"));
+        otherExpenses.add(createItem("Rent"));
+        otherExpenses.add(createItem("Repairs and maintenance"));
+        otherExpenses.add(createItem("Advertisement"));
+        otherExpenses.add(createItem("Travelling and conveyance"));
+        otherExpenses.add(createItem("Legal & professional fees"));
+        otherExpenses.add(createItem("Bad debts written off, etc"));
+        expenses.add(createItemWithChildren("Other expenses", otherExpenses));
+
+        dataList.add(createItemWithChildren("Expenses", expenses));
+
+        // Other single-line entries
+        dataList.add(createItem("Profit before exceptional and extraordinary items and tax"));
+
+        // Exceptional items
+        List<Map<String, Object>> exceptional = new ArrayList<>();
+        exceptional.add(createItem("Impairment of assets / goodwill"));
+        exceptional.add(createItem("Loss on sale/disposal of a business segment or subsidiary"));
+        exceptional.add(createItem("Restructuring costs"));
+        exceptional.add(createItem("Write-off or write-back of major receivables or inventories"));
+        exceptional.add(createItem("Compensation or damages from legal settlements"));
+        exceptional.add(createItem("Gain/loss from natural calamities or exceptional events"));
+        dataList.add(createItemWithChildren("Exceptional Items", exceptional));
+
+        // Remaining titles
+        dataList.add(createItem("Profit before extraordinary items and tax"));
+        dataList.add(createItem("Extraordinary Items"));
+        dataList.add(createItem("Profit before tax"));
+
+        // Tax expense
+        List<Map<String, Object>> taxList = new ArrayList<>();
+        taxList.add(createItem("Current tax"));
+        taxList.add(createItem("Deferred tax"));
+        dataList.add(createItemWithChildren("Tax Expense", taxList));
+
+        dataList.add(createItem("Profit/(Loss) for the period from continuing operations"));
+        dataList.add(createItem("Profit/(Loss) from discontinuing operations"));
+        dataList.add(createItem("Tax expense of discontinuing operations"));
+        dataList.add(createItem("Profit/(Loss) from discontinuing operations"));
+        dataList.add(createItem("Profit/(Loss) for the period"));
+        dataList.add(createItem("Earnings per equity share"));
+
+        return dataList;
+    }
+
+    // Helper methods
+    private static Map<String, Object> createItem(String title) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        map.put("title", title);
+        return map;
+    }
+
+    private static Map<String, Object> createItemWithChildren(String title, List<Map<String, Object>> children) {
+        Map<String, Object> map = createItem(title);
+        map.put("data", children);
+        return map;
+    }
+
+    private static Map<String, Object> createItemWithPrice(String title, String price) {
+        Map<String, Object> map = createItem(title);
+        map.put("price", price);
+        return map;
+    }
 
 }

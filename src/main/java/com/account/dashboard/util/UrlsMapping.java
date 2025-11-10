@@ -211,6 +211,7 @@ public interface UrlsMapping {
 		
 		public static final String GET_ALL_PROFIT=PREFIX+ "/cashFlow/getAllProfit";
 		public static final String GET_ALL_LOSS=PREFIX+ "/cashFlow/getAllLoss";
+		public static final String GET_ALL_PROFIT_AND_LOSS=PREFIX+ "/cashFlow/getAllProfitAndLoss";
 		
 		// get All Balance sheet liabilities
 		public static final String GET_ALL_BALANCE_SHEET_LIABILITIES=PREFIX+ "/balanceSheet/getAllBalanceSheetLiabilities";

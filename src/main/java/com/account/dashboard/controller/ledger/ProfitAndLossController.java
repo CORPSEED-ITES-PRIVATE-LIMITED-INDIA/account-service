@@ -29,5 +29,11 @@ public class ProfitAndLossController {
 		return res;
 	}
 	
+//	GET_ALL_PROFIT_AND_LOSS
+	@GetMapping(UrlsMapping.GET_ALL_PROFIT_AND_LOSS)
+	public Map<String, Object> getAllProfitAndLoss(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		Map<String, Object> res=profitAndLossService.getAllProfitAndLoss(startDate,endDate);	
+		return res;
+	}
 
 }
