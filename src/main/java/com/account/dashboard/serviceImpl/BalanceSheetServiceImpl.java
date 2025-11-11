@@ -1322,7 +1322,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 
     	// Current Assets
     	assetsList.add(Map.of(
-    			"title", "Current Assets",̥
+    			"title", "Current Assets",
     			"data", List.of(
     					Map.of("title", "Current investments","price","1000","totalCurrentAmount",mapCountAssets.get("Current investments")!=null?mapCountAssets.get("Current investments"):0,"totalPreviousAmount",mapCountPrevAssets.get("Current investments")!=null?mapCountPrevAssets.get("Current investments"):0),
     					Map.of("title", "Inventories","price","1000","totalCurrentAmount",mapCountAssets.get("Inventories")!=null?mapCountAssets.get("Inventories"):0,"totalPreviousAmount",mapCountPrevAssets.get("Inventories")!=null?mapCountPrevAssets.get("Inventories"):0),

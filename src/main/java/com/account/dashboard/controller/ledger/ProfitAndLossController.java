@@ -31,8 +31,8 @@ public class ProfitAndLossController {
 	
 //	GET_ALL_PROFIT_AND_LOSS
 	@GetMapping(UrlsMapping.GET_ALL_PROFIT_AND_LOSS)
-	public Map<String, Object> getAllProfitAndLoss(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
-		Map<String, Object> res=profitAndLossService.getAllProfitAndLoss(startDate,endDate);	
+	public List<Map<String, Object>> getAllProfitAndLoss(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String, Object>> res=profitAndLossService.getAllProfitAndLoss(startDate,endDate);	
 		return res;
 	}
 

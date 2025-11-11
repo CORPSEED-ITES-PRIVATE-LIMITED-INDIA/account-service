@@ -13,6 +13,6 @@ public interface ProfitAndLossService {
 
 	Map<String, Object> getAllLoss(String startDate, String endDate);
 
-	Map<String, Object> getAllProfitAndLoss(String startDate, String endDate);
+	List<Map<String, Object>> getAllProfitAndLoss(String startDate, String endDate);
 
 }
