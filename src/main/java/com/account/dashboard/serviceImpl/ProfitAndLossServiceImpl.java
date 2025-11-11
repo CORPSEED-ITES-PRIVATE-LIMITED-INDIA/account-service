@@ -551,7 +551,17 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
     	List<Map<String, Object>> dataList = new ArrayList<>();
 
         // 1. Revenue from Operations
-        dataList.add(Map.of(
+    	double currSalesProduct=mapCount.get("Sale of Products")!=null?mapCount.get("Sale of Products"):0;
+    	double preSalesProduct=mapCountPrev.get("Sale of Products")!=null?mapCountPrev.get("Sale of Products"):0;
+    	double currSalesService=mapCount.get("Sale of Services")!=null?mapCount.get("Sale of Services"):0;
+    	double preSalesService=mapCountPrev.get("Sale of Services")!=null?mapCountPrev.get("Sale of Services"):0;
+    	double currOperatingRevenue = mapCount.get("Other Operating Revenues")!=null?mapCount.get("Other Operating Revenues"):0;
+    	double preOperatingRevenue = mapCountPrev.get("Other Operating Revenues")!=null?mapCountPrev.get("Other Operating Revenues"):0;
+    	
+    	double currRevenueOperations=currSalesProduct+currSalesService+currOperatingRevenue;
+    	double preRevenueOperations=preSalesProduct+preSalesService+preOperatingRevenue;
+    	
+    	dataList.add(Map.of(
                 "title", "Revenue from Operations",
                 "data", Arrays.asList(
                         Map.of("title", "Sale of Products","currentAmount",mapCount.get("Sale of Products")!=null?mapCount.get("Sale of Products"):0,"prevAmount",mapCountPrev.get("Sale of Products")!=null?mapCountPrev.get("Sale of Products"):0),
@@ -561,6 +571,17 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
         ));
 
         // 2. Other Income
+    	double currInterestIncomet=mapCount.get("Interest Income")!=null?mapCount.get("Interest Income"):0;
+    	double preInterestIncome=mapCountPrev.get("Interest Income")!=null?mapCountPrev.get("Interest Income"):0;
+    	double currDividendIncome=mapCount.get("Dividend Income")!=null?mapCount.get("Dividend Income"):0;
+    	double preDividendIncome=mapCountPrev.get("Dividend Income")!=null?mapCountPrev.get("Dividend Income"):0;
+    	double currSaleInvestments = mapCount.get("Net Gain/Loss on Sale of Investments")!=null?mapCount.get("Net Gain/Loss on Sale of Investments"):0;
+    	double preSaleInvestments = mapCountPrev.get("Net Gain/Loss on Sale of Investments")!=null?mapCountPrev.get("Net Gain/Loss on Sale of Investments"):0;
+    	double currNonOperatingIncome = mapCount.get("Other Non-Operating Income")!=null?mapCount.get("Other Non-Operating Income"):0;
+    	double preNonOperatingIncome = mapCountPrev.get("Other Non-Operating Income")!=null?mapCountPrev.get("Other Non-Operating Income"):0;
+       
+    	double currOtherIncome = currInterestIncomet+currDividendIncome+currSaleInvestments+currNonOperatingIncome;
+        double preOtherIncome = preInterestIncome+preDividendIncome+preSaleInvestments+preNonOperatingIncome;		
         dataList.add(Map.of(
                 "title", "Other Income",
                 "data", Arrays.asList(
@@ -572,16 +593,35 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
         ));
 
         // 3. Total Revenue
-        dataList.add(Map.of("title", "Total Revenue", "price", "1000","currentAmount",mapCount.get("Total Revenue")!=null?mapCount.get("Total Revenue"):0,"prevAmount",mapCountPrev.get("Total Revenue")!=null?mapCountPrev.get("Total Revenue"):0));
+          double currTotalRevenue = currRevenueOperations+currOtherIncome;
+          double preTotalRevenue = preRevenueOperations+preOtherIncome;
+        dataList.add(Map.of("title", "Total Revenue", "price", "1000","currentAmount",currTotalRevenue,"prevAmount",preTotalRevenue));
 
         // 4. Expenses
-        List<Map<String, Object>> expenses = new ArrayList<>();
+    	double currCostMaterials=mapCount.get("Cost of materia consumed")!=null?mapCount.get("Cost of materials consumed"):0;
+    	double preCostMaterials=mapCountPrev.get("Cost of materials consumed")!=null?mapCountPrev.get("Cost of materials consumed"):0;
+    	double currPurchasesStock=mapCount.get("Purchases of stock-in-trade")!=null?mapCount.get("Purchases of stock-in-trade"):0;
+    	double prePurchasesStock=mapCountPrev.get("Purchases of stock-in-trade")!=null?mapCountPrev.get("Purchases of stock-in-trade"):0;
+    	double currInventoriesGoods=mapCount.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade")!=null?mapCount.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade"):0;
+    	double preInventoriesGoods=mapCountPrev.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade")!=null?mapCountPrev.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade"):0;
+    	
+
+    	List<Map<String, Object>> expenses = new ArrayList<>();
         expenses.add(Map.of("title", "Cost of materials consumed", "price", "1000","currentAmount",mapCount.get("Cost of materials consumed")!=null?mapCount.get("Cost of materials consumed"):0,"prevAmount",mapCountPrev.get("Cost of materials consumed")!=null?mapCountPrev.get("Cost of materials consumed"):0));
         expenses.add(Map.of("title", "Purchases of stock-in-trade", "price", "1000","currentAmount",mapCount.get("Purchases of stock-in-trade")!=null?mapCount.get("Purchases of stock-in-trade"):0,"prevAmount",mapCountPrev.get("Purchases of stock-in-trade")!=null?mapCountPrev.get("Purchases of stock-in-trade"):0));
-//        expenses.add(Map.of("title", "Changes in inventories of finished goods, work-in-progress and stock-in-trade", "price", "1000","currentAmount",mapCount.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade")!=null?mapCount.get("Interest Income"):0,"prevAmount",mapCountPrev.get("Interest Income")!=null?mapCountPrev.get("Interest Income"):0));
+        expenses.add(Map.of("title", "Changes in inventories of finished goods, work-in-progress and stock-in-trade", "price", "1000","currentAmount",mapCount.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade")!=null?mapCount.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade"):0,"prevAmount",mapCountPrev.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade")!=null?mapCountPrev.get("Changes in inventories of finished goods, work-in-progress and stock-in-trade"):0));
 
         // Employee benefit expenses (nested)
-        expenses.add(Map.of(
+        
+    	double currSalaries=mapCount.get("Salaries and wages")!=null?mapCount.get("Salaries and wages"):0;
+    	double preSalaries=mapCountPrev.get("Salaries and wages")!=null?mapCountPrev.get("Salaries and wages"):0;
+    	double currContributionToProvident=mapCount.get("Contribution to provident & other funds")!=null?mapCount.get("Contribution to provident & other funds"):0;
+    	double preContributionToProvident=mapCountPrev.get("Contribution to provident & other funds")!=null?mapCountPrev.get("Contribution to provident & other funds"):0;
+    	double currStaffWelfare = mapCount.get("Staff welfare expenses")!=null?mapCount.get("Staff welfare expenses"):0;
+    	double preStaffWelfare = mapCountPrev.get("Staff welfare expenses")!=null?mapCountPrev.get("Staff welfare expenses"):0;
+    	double currEmployeeBenefitExpenses = currSalaries+currContributionToProvident+currStaffWelfare;
+    	double preEmployeeBenefitExpenses = preSalaries+preContributionToProvident+preStaffWelfare;
+    	expenses.add(Map.of(
                 "title", "Employee benefit expenses",
                 "data", Arrays.asList(
                         Map.of("title", "Salaries and wages", "price", "1000","currentAmount",mapCount.get("Salaries and wages")!=null?mapCount.get("Salaries and wages"):0,"prevAmount",mapCountPrev.get("Salaries and wages")!=null?mapCountPrev.get("Salaries and wages"):0),
@@ -591,6 +631,12 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
         ));
 
         // Finance costs (nested)
+    	double currInterestExpense=mapCount.get("Interest expense")!=null?mapCount.get("Interest expense"):0;
+    	double preInterestExpense=mapCountPrev.get("Interest expense")!=null?mapCountPrev.get("Interest expense"):0;
+    	double currOtherBorrowing=mapCount.get("Other borrowing costs")!=null?mapCount.get("Other borrowing costs"):0;
+    	double preOtherBorrowing=mapCountPrev.get("Other borrowing costs")!=null?mapCountPrev.get("Other borrowing costs"):0;
+    	double currFinanceCosts = currInterestExpense+currOtherBorrowing;
+    	double preFinanceCosts = preInterestExpense+preOtherBorrowing;
         expenses.add(Map.of(
                 "title", "Finance costs",
                 "data", Arrays.asList(
@@ -603,7 +649,24 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
         expenses.add(Map.of("title", "Depreciation and amortisation expense","currentAmount",mapCount.get("Depreciation and amortisation expense")!=null?mapCount.get("Depreciation and amortisation expense"):0,"prevAmount",mapCountPrev.get("Depreciation and amortisation expense")!=null?mapCountPrev.get("Depreciation and amortisation expense"):0));
 
         // Other expenses (nested)
-        expenses.add(Map.of(
+    	double currPowerAndFuel=mapCount.get("Power and fuel")!=null?mapCount.get("Power and fuel"):0;
+    	double prePowerAndFuel=mapCountPrev.get("Power and fuel")!=null?mapCountPrev.get("Power and fuel"):0;
+    	double currRent=mapCount.get("Rent")!=null?mapCount.get("Rent"):0;
+    	double preRent=mapCountPrev.get("Rent")!=null?mapCountPrev.get("Rent"):0;
+    	double currRepairs = mapCount.get("Repairs and maintenance")!=null?mapCount.get("Repairs and maintenance"):0;
+    	double preRepairs = mapCountPrev.get("Repairs and maintenance")!=null?mapCountPrev.get("Repairs and maintenance"):0;
+    	double currAdvertisement = mapCount.get("Advertisement")!=null?mapCount.get("Advertisement"):0;
+    	double preAdvertisement = mapCountPrev.get("Advertisement")!=null?mapCountPrev.get("Advertisement"):0;
+       	double currTravelling = mapCount.get("Travelling and conveyance")!=null?mapCount.get("Travelling and conveyance"):0;
+    	double preTravelling = mapCountPrev.get("Travelling and conveyance")!=null?mapCountPrev.get("Travelling and conveyance"):0;
+    	double currLegal = mapCount.get("Legal & professional fees")!=null?mapCount.get("Legal & professional fees"):0;
+    	double preLegal = mapCountPrev.get("Legal & professional fees")!=null?mapCountPrev.get("Legal & professional fees"):0;
+       	double currBad = mapCount.get("Bad debts written off, etc")!=null?mapCount.get("Bad debts written off, etc"):0;
+    	double preBad = mapCountPrev.get("Bad debts written off, etc")!=null?mapCountPrev.get("Bad debts written off, etc"):0;
+    	
+    	double currOtherExpenses = currPowerAndFuel+currRent+currRepairs+currAdvertisement+currTravelling+currLegal+currBad;
+    	double preOtherExpenses = prePowerAndFuel+preRent+preRepairs+preAdvertisement+preTravelling+preLegal+preBad;
+    	expenses.add(Map.of(
                 "title", "Other expenses",
                 "data", Arrays.asList(
                         Map.of("title", "Power and fuel","currentAmount",mapCount.get("Power and fuel")!=null?mapCount.get("Power and fuel"):0,"prevAmount",mapCountPrev.get("Power and fuel")!=null?mapCountPrev.get("Power and fuel"):0),
@@ -615,13 +678,32 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
                         Map.of("title", "Bad debts written off, etc","currentAmount",mapCount.get("Bad debts written off, etc")!=null?mapCount.get("Bad debts written off, etc"):0,"prevAmount",mapCountPrev.get("Travelling and conveyance")!=null?mapCountPrev.get("Travelling and conveyance"):0)
                 )
         ));
-
-        dataList.add(Map.of("title", "Expenses", "data", expenses));
+    	double currExpenses = currCostMaterials+currPurchasesStock+currInventoriesGoods+currEmployeeBenefitExpenses+currFinanceCosts+currOtherExpenses;
+    	double preExpenses = preCostMaterials+prePurchasesStock+preInventoriesGoods+preEmployeeBenefitExpenses+preFinanceCosts+preOtherExpenses;
+    	//Total Expenses
+        dataList.add(Map.of("title", "Total Expenses","currentAmount",currExpenses,"prevAmount",preExpenses));
 
         // 5. Profit before exceptional and extraordinary items and tax
-        dataList.add(Map.of("title", "Profit before exceptional and extraordinary items and tax"));
+        double currProfitExceptional = currTotalRevenue-currExpenses;
+        double preProfitExceptional = preTotalRevenue-preExpenses;
+
+        dataList.add(Map.of("title", "Profit before exceptional and extraordinary items and tax","currentAmount",currProfitExceptional,"prevAmount",preProfitExceptional));
 
         // 6. Exceptional Items
+    	double currImpairment=mapCount.get("Impairment of assets / goodwill")!=null?mapCount.get("Impairment of assets / goodwill"):0;
+    	double preImpairment=mapCountPrev.get("Impairment of assets / goodwill")!=null?mapCountPrev.get("Impairment of assets / goodwill"):0;
+    	double currLoss=mapCount.get("Loss on sale/disposal of a business segment or subsidiary")!=null?mapCount.get("Loss on sale/disposal of a business segment or subsidiary"):0;
+    	double preLoss=mapCountPrev.get("Loss on sale/disposal of a business segment or subsidiary")!=null?mapCountPrev.get("Loss on sale/disposal of a business segment or subsidiary"):0;
+    	double currRestructuring = mapCount.get("Restructuring costs")!=null?mapCount.get("Restructuring costs"):0;
+    	double preRestructuring = mapCountPrev.get("Restructuring costs")!=null?mapCountPrev.get("Restructuring costs"):0;
+    	double currInventories = mapCount.get("Write-off or write-back of major receivables or inventories")!=null?mapCount.get("Write-off or write-back of major receivables or inventories"):0;
+    	double preInventories = mapCountPrev.get("Write-off or write-back of major receivables or inventories")!=null?mapCountPrev.get("Write-off or write-back of major receivables or inventories"):0;
+       	double currCompensation = mapCount.get("Compensation or damages from legal settlements")!=null?mapCount.get("Compensation or damages from legal settlements"):0;
+    	double preCompensation = mapCountPrev.get("Compensation or damages from legal settlements")!=null?mapCountPrev.get("Compensation or damages from legal settlements"):0;
+    	double currGainAndLoss = mapCount.get("Gain/loss from natural calamities or exceptional events")!=null?mapCount.get("Gain/loss from natural calamities or exceptional events"):0;
+    	double preGainAndLoss = mapCountPrev.get("Gain/loss from natural calamities or exceptional events")!=null?mapCountPrev.get("Gain/loss from natural calamities or exceptional events"):0;
+    	double currExceptionalItems = currImpairment+currLoss+currRestructuring+currInventories+currCompensation+currGainAndLoss;
+    	double preExceptionalItems  = preImpairment+preLoss+preRestructuring+preInventories+preCompensation+preGainAndLoss;
         dataList.add(Map.of(
                 "title", "Exceptional Items",
                 "data", Arrays.asList(
@@ -635,9 +717,27 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
         ));
 
         // 7–15. Other sections
-        dataList.add(Map.of("title", "Profit before extraordinary items and tax","currentAmount",mapCount.get("Profit before extraordinary items and tax")!=null?mapCount.get("Profit before extraordinary items and tax"):0,"prevAmount",mapCountPrev.get("Profit before extraordinary items and tax")!=null?mapCountPrev.get("Profit before extraordinary items and tax"):0));
-        dataList.add(Map.of("title", "Extraordinary Items","currentAmount",mapCount.get("Extraordinary Items")!=null?mapCount.get("Extraordinary Items"):0,"prevAmount",mapCountPrev.get("Extraordinary Items")!=null?mapCountPrev.get("Extraordinary Items"):0));
-        dataList.add(Map.of("title", "Profit before tax","currentAmount",mapCount.get("Profit before tax")!=null?mapCount.get("Profit before tax"):0,"prevAmount",mapCountPrev.get("Profit before tax")!=null?mapCountPrev.get("Profit before tax"):0));
+        double currProfitBeforeExtraordinary=currProfitExceptional-currExceptionalItems;
+        double preProfitBeforeExtraordinary=preProfitExceptional-preExceptionalItems;
+        
+        dataList.add(Map.of("title", "Profit before extraordinary items and tax","currentAmount",currProfitBeforeExtraordinary,"prevAmount",preProfitBeforeExtraordinary));
+        double currExtraordinaryItems = mapCount.get("Extraordinary Items")!=null?mapCount.get("Extraordinary Items"):0;
+        double preExtraordinaryItems = mapCountPrev.get("Extraordinary Items")!=null?mapCountPrev.get("Extraordinary Items"):0;
+        dataList.add(Map.of("title", "Extraordinary Items","currentAmount",currExtraordinaryItems,"prevAmount",preExtraordinaryItems));
+       
+        double currProfitBeforeTax = currProfitBeforeExtraordinary-currExtraordinaryItems;
+        double preProfitBeforeTax = preProfitBeforeExtraordinary-preExtraordinaryItems;
+        dataList.add(Map.of("title", "Profit before tax","currentAmount",currProfitBeforeTax,"prevAmount",preProfitBeforeTax));
+       
+        
+    	double currCurrentTax=mapCount.get("Current tax")!=null?mapCount.get("Current tax"):0;
+    	double preCurrentTax=mapCountPrev.get("Current tax")!=null?mapCountPrev.get("Current tax"):0;
+    	double currDeferredTax=mapCount.get("Deferred tax")!=null?mapCount.get("Deferred tax"):0;
+    	double preDeferredTax=mapCountPrev.get("Deferred tax")!=null?mapCountPrev.get("Deferred tax"):0;
+    	
+    	double currTaxExpense = currCurrentTax+currDeferredTax;
+    	double preTaxExpense = preCurrentTax+preDeferredTax;
+    	
         dataList.add(Map.of(
                 "title", "Tax Expense",
                 "data", Arrays.asList(
@@ -645,11 +745,22 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
                         Map.of("title", "Deferred tax","currentAmount",mapCount.get("Deferred tax")!=null?mapCount.get("Deferred tax"):0,"prevAmount",mapCountPrev.get("Deferred tax")!=null?mapCountPrev.get("Deferred tax"):0)
                 )
         ));
-        dataList.add(Map.of("title", "Profit/(Loss) for the period from continuing operations", "price", "1000","currentAmount",mapCount.get("Profit/(Loss) for the period from continuing operations")!=null?mapCount.get("Profit/(Loss) for the period from continuing operations"):0,"prevAmount",mapCountPrev.get("Profit/(Loss) for the period from continuing operations")!=null?mapCountPrev.get("Profit/(Loss) for the period from continuing operations"):0));
+        
+        double currContinuingOperation = currProfitBeforeTax-currTaxExpense;
+        double preContinuingOperation = preProfitBeforeTax-preTaxExpense;
+        dataList.add(Map.of("title", "Profit/(Loss) for the period from continuing operations","currentAmount",currContinuingOperation,"prevAmount",preContinuingOperation));
+       
+        
         dataList.add(Map.of("title", "Profit/(Loss) from discontinuing operations", "price", "1000","currentAmount",mapCount.get("Profit/(Loss) from discontinuing operations")!=null?mapCount.get("Profit/(Loss) from discontinuing operations"):0,"prevAmount",mapCountPrev.get("Profit/(Loss) from discontinuing operations")!=null?mapCountPrev.get("Profit/(Loss) from discontinuing operations"):0));
         dataList.add(Map.of("title", "Tax expense of discontinuing operations", "price", "1000","currentAmount",mapCount.get("Tax expense of discontinuing operations")!=null?mapCount.get("Tax expense of discontinuing operations"):0,"prevAmount",mapCountPrev.get("Tax expense of discontinuing operations")!=null?mapCountPrev.get("Tax expense of discontinuing operations"):0));
-        dataList.add(Map.of("title", "Profit/(Loss) from discontinuing operations", "price", "1000","currentAmount",mapCount.get("Profit/(Loss) from discontinuing operations")!=null?mapCount.get("Profit/(Loss) from discontinuing operations"):0,"prevAmount",mapCountPrev.get("Profit/(Loss) from discontinuing operations")!=null?mapCountPrev.get("Profit/(Loss) from discontinuing operations"):0));
-        dataList.add(Map.of("title", "Profit/(Loss) for the period", "price", "1000","currentAmount",mapCount.get("Profit/(Loss) for the period")!=null?mapCount.get("Profit/(Loss) for the period"):0,"prevAmount",mapCountPrev.get("Profit/(Loss) for the period")!=null?mapCountPrev.get("Profit/(Loss) for the period"):0));
+         double currDiscontinuingOperations = mapCount.get("Profit/(Loss) from discontinuing operations")!=null?mapCount.get("Profit/(Loss) from discontinuing operations"):0;
+         double preDiscontinuingOperations =mapCountPrev.get("Profit/(Loss) from discontinuing operations")!=null?mapCountPrev.get("Profit/(Loss) from discontinuing operations"):0;
+       
+         
+         dataList.add(Map.of("title", "Profit/(Loss) from discontinuing operations","currentAmount",mapCount.get("Profit/(Loss) from discontinuing operations")!=null?mapCount.get("Profit/(Loss) from discontinuing operations"):0,"prevAmount",mapCountPrev.get("Profit/(Loss) from discontinuing operations")!=null?mapCountPrev.get("Profit/(Loss) from discontinuing operations"):0));
+        double currPeriod = currContinuingOperation+currDiscontinuingOperations;
+        double prePeriod = preContinuingOperation+preDiscontinuingOperations;
+        dataList.add(Map.of("title", "Profit/(Loss) for the period", "price", "1000","currentAmount",currPeriod,"prevAmount",prePeriod));
         dataList.add(Map.of("title", "Earnings per equity share", "price", "1000","currentAmount",mapCount.get("Earnings per equity share")!=null?mapCount.get("Earnings per equity share"):0,"prevAmount",mapCountPrev.get("Earnings per equity share")!=null?mapCountPrev.get("Earnings per equity share"):0));
 
         // Final response map
