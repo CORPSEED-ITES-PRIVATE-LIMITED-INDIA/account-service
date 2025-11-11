@@ -255,6 +255,7 @@ public interface UrlsMapping {
 		public static final String ADD_GST_DATA_CRM=PREFIX+ "/gstData/AddGstDataCrm";
 		public static final String GET_ALL_GST_DATA_CRM_COUNT=PREFIX+ "/gstData/getAllGstDataCrmCount";
 		public static final String GET_ALL_GST_DATA_CRM_FOR_EXPORT=PREFIX+ "/gstData/getAllGstDataCrmForExport";
+		public static final String UPDATE_GST_CLAIM_AMOUNT=PREFIX+ "/gstData/updateGstClaimAmount";
 
 
 }

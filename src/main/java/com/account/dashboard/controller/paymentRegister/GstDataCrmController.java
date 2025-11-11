@@ -8,6 +8,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -30,7 +32,7 @@ public class GstDataCrmController {
 		return res;
 		
 	}
-	@GetMapping(UrlsMapping.ADD_GST_DATA_CRM)
+	@PostMapping(UrlsMapping.ADD_GST_DATA_CRM)
 	public Boolean addGstDataCrm(@RequestBody AddGstDto addGstDto){
 		Boolean res=gstDataCrmService.addGstDataCrm(addGstDto);	
 		return res;
@@ -47,6 +49,13 @@ public class GstDataCrmController {
 	@GetMapping(UrlsMapping.GET_ALL_GST_DATA_CRM_FOR_EXPORT)
 	public List<Map<String,Object>> getAllGstDataCrmForExport(@RequestParam String startDate,@RequestParam String endDate){
 		List<Map<String,Object>> res=gstDataCrmService.getAllGstDataCrmForExport(startDate,endDate);	
+		return res;
+		
+	}
+	
+	@PutMapping(UrlsMapping.UPDATE_GST_CLAIM_AMOUNT)
+	public Boolean updateGstClaimAmount(@RequestParam Long id,@RequestParam double amount,@RequestParam String documents){
+		Boolean res=gstDataCrmService.updateGstClaimAmount(id,amount,documents);	
 		return res;
 		
 	}

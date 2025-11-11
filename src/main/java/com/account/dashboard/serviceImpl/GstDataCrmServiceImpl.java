@@ -99,4 +99,16 @@ public class GstDataCrmServiceImpl implements GstDataCrmService{
 		return list;
 	}
 
+	@Override
+	public Boolean updateGstClaimAmount(Long id, double amount, String documents) {
+		Boolean flag=false;
+		GstDataFromCrm gstDataFrom = gstDataFromCrmRepository.findById(id).get();
+		gstDataFrom.setGstClaimAmount(amount);
+		gstDataFrom.setDocument(documents);
+		gstDataFrom.setCreateDate(new Date());
+		gstDataFromCrmRepository.save(gstDataFrom);
+		flag=true;
+		return flag;
+	}
+
 }

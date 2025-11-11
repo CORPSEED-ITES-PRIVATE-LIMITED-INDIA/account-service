@@ -18,4 +18,6 @@ public interface GstDataCrmService {
 
 	List<Map<String, Object>> getAllGstDataCrmForExport(String startDate, String endDate);
 
+	Boolean updateGstClaimAmount(Long id, double amount, String documents);
+
 }

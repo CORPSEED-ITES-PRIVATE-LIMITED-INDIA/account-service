@@ -22,13 +22,13 @@ public class GstDataFromCrm {
 	double  gst;
 	double gstAmount;
 	String company;
-	String type; //payable , reciveable
-	
+	String type; //payable , reciveable	
 	String status;
-
-	String document;
-	
+	String document;	
 	Date createDate;
+	
+	double gstClaimAmount;
+	Date gstClaimDate;
 
 	public Long getId() {
 		return id;
@@ -101,6 +101,24 @@ public class GstDataFromCrm {
 	public void setCreateDate(Date createDate) {
 		this.createDate = createDate;
 	}
+
+
+	public Date getGstClaimDate() {
+		return gstClaimDate;
+	}
+
+	public void setGstClaimDate(Date gstClaimDate) {
+		this.gstClaimDate = gstClaimDate;
+	}
+
+	public double getGstClaimAmount() {
+		return gstClaimAmount;
+	}
+
+	public void setGstClaimAmount(double gstClaimAmount) {
+		this.gstClaimAmount = gstClaimAmount;
+	}
+	
 	
 	
 
