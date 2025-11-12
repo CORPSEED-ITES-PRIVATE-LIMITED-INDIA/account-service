@@ -1,5 +1,7 @@
 package com.account.dashboard.dto;
 
+import java.util.Date;
+
 import lombok.Data;
 
 //@Data
@@ -13,6 +15,10 @@ public class CreateTdsDto {
 	String paymentRegisterId;
 	double tdsAmount;
 	Long ledgerId;
+	//claim
+	double tdsClaimAmount;
+	Date claimDate;
+	String documents;
 	
 	public String getOrganization() {
 		return organization;
@@ -61,6 +67,24 @@ public class CreateTdsDto {
 	}
 	public void setLedgerId(Long ledgerId) {
 		this.ledgerId = ledgerId;
+	}
+	public double getTdsClaimAmount() {
+		return tdsClaimAmount;
+	}
+	public void setTdsClaimAmount(double tdsClaimAmount) {
+		this.tdsClaimAmount = tdsClaimAmount;
+	}
+	public Date getClaimDate() {
+		return claimDate;
+	}
+	public void setClaimDate(Date claimDate) {
+		this.claimDate = claimDate;
+	}
+	public String getDocuments() {
+		return documents;
+	}
+	public void setDocuments(String documents) {
+		this.documents = documents;
 	}
 	
 	

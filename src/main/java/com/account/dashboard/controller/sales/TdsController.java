@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.account.dashboard.domain.BankStatement;
@@ -38,6 +39,13 @@ public class TdsController {
 	@GetMapping(UrlsMapping.GET_ALL_TDS_COUNT)
 	public Map<String,Object> getAllTdsCount(){
 		Map<String,Object> res=tdsService.getAllTdsCount();	
+		return res;
+		
+	}
+	
+	@PostMapping(UrlsMapping.UPDATE_TDS_CLAIM_AMOUNT)
+	public Boolean updateTdsClaimAmount(@RequestParam Long id,@RequestParam double amount,String document){
+		Boolean res=tdsService.updateTdsClaimAmount(id,amount,document);	
 		return res;
 		
 	}

@@ -1,8 +1,10 @@
 package com.account.dashboard.serviceImpl;
 
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,8 @@ public class TdsServiceImpl implements TdsService{
 		tdsDetail.setTdsAmount(createTdsDto.getTdsAmount());
 		tdsDetail.setTdsType("Receivable");
 		tdsDetail.setTdsPrecent(createTdsDto.getTdsPrecent());
+		
+		tdsDetail.setCreateDate(new Date());
 		tdsDetailRepository.save(tdsDetail);
 		return tdsDetail;
 	}
@@ -55,6 +59,18 @@ public class TdsServiceImpl implements TdsService{
 		map.put("receivableTds", receivableTds);
 
 		return map ;
+	}
+
+	@Override
+	public Boolean updateTdsClaimAmount(Long id, double amount, String document) {
+		Boolean flag=false;
+		TdsDetail tdsDetail = tdsDetailRepository.findById(id).get();
+		tdsDetail.setClaimDate(new Date());
+		tdsDetail.setDocuments(document);
+		tdsDetail.setTdsClaimAmount(amount);
+		tdsDetailRepository.save(tdsDetail);
+		flag=true;
+		return flag;
 	}
 
 }

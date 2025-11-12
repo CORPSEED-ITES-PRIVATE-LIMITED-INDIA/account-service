@@ -1,5 +1,7 @@
 package com.account.dashboard.domain;
 
+import java.util.Date;
+
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -20,6 +22,11 @@ public class TdsDetail {
 	String paymentRegisterId;
 	double tdsAmount;
 	String tdsDeductBy; // Sales , Vendor
+	
+	double tdsClaimAmount;
+	Date createDate;
+	Date claimDate;
+	String documents;
 	
 	public Long getId() {
 		return id;
@@ -77,6 +84,30 @@ public class TdsDetail {
 	}
 	public void setTdsDeductBy(String tdsDeductBy) {
 		this.tdsDeductBy = tdsDeductBy;
+	}
+	public double getTdsClaimAmount() {
+		return tdsClaimAmount;
+	}
+	public void setTdsClaimAmount(double tdsClaimAmount) {
+		this.tdsClaimAmount = tdsClaimAmount;
+	}
+	public Date getCreateDate() {
+		return createDate;
+	}
+	public void setCreateDate(Date createDate) {
+		this.createDate = createDate;
+	}
+	public Date getClaimDate() {
+		return claimDate;
+	}
+	public void setClaimDate(Date claimDate) {
+		this.claimDate = claimDate;
+	}
+	public String getDocuments() {
+		return documents;
+	}
+	public void setDocuments(String documents) {
+		this.documents = documents;
 	}
 
 	
