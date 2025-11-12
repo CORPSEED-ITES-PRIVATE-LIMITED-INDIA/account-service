@@ -491,7 +491,29 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
    	result.put("Purchase Accounts", totalPurchaseAccounts);
    	
    	//=============================   
-   	
+    ArrayList<String> purchaseAccount = new ArrayList<>();
+
+    // Add components (no serial numbers)
+    purchaseAccount.add("Cost of Materials");
+    purchaseAccount.add("Inventory Adjustment");
+    purchaseAccount.add("Purchases");
+    
+    //============== 
+    ArrayList<String> indirectExpenses = new ArrayList<>();
+
+    // Add all components (no serial numbers)
+    indirectExpenses.add("Salaries & Wages");
+    indirectExpenses.add("Provident Fund & Other Funds");
+    indirectExpenses.add("Staff Welfare");
+    indirectExpenses.add("Finance Costs");
+    indirectExpenses.add("Depreciation");
+    indirectExpenses.add("Power & Fuel");
+    indirectExpenses.add("Rent");
+    indirectExpenses.add("Repairs & Maintenance");
+    indirectExpenses.add("Advertisement & Marketing");
+    indirectExpenses.add("Travelling & Conveyance");
+    indirectExpenses.add("Legal & Professional Fees");
+    indirectExpenses.add("Bad Debts / Provision");
 		return null;
 	}
 
