@@ -193,6 +193,36 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
        
         return purchaseAccounts;
 	}
+	
+	public List<String> getDirectExpenses(){
+		 List<String> directExpenses = new ArrayList<>();
+
+	        // Non-current Assets
+		 directExpenses.add("Cost of Materials");
+		 directExpenses.add("Inventory Adjustment");
+		 directExpenses.add("Purchases");
+	     return directExpenses;
+	}
+	
+	public List<String> getInDirectExpenses(){
+
+		ArrayList<String> indirectExpenses = new ArrayList<>();
+
+		// Add all components (no serial numbers)
+		indirectExpenses.add("Salaries & Wages");
+		indirectExpenses.add("Provident Fund & Other Funds");
+		indirectExpenses.add("Staff Welfare");
+		indirectExpenses.add("Finance Costs");
+		indirectExpenses.add("Depreciation");
+		indirectExpenses.add("Power & Fuel");
+		indirectExpenses.add("Rent");
+		indirectExpenses.add("Repairs & Maintenance");
+		indirectExpenses.add("Advertisement & Marketing");
+		indirectExpenses.add("Travelling & Conveyance");
+		indirectExpenses.add("Legal & Professional Fees");
+		indirectExpenses.add("Bad Debts / Provision");
+		return indirectExpenses;
+	}
 	public Map<String, Object> getAllTrialBalanceData(String startDate, String endDate) {
 		Map<String ,Object>result=new HashMap<>();
 		
@@ -491,30 +521,77 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
    	result.put("Purchase Accounts", totalPurchaseAccounts);
    	
    	//=============================   
-    ArrayList<String> purchaseAccount = new ArrayList<>();
+   	List<String> directExpenses =getDirectExpenses();
+ 	double totalDirectExpenses=0;
+   	for(String s:directExpenses) {
+   		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
+   		if(ledgerType!=null &&ledgerType.getId()!=null) {
+   			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
+   			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+   			double totalCredit=0;
+   			double totalDebit=0;
+   			double totalAmount=0;
+   			for(Voucher v:voucher) {			
+   						if(v.isCreditDebit()) {
+   							double debitAmount =0;
+   							double creditAmount =0;
+   							if(v!=null && v.getDebitAmount()!=0) {
+   								debitAmount =v.getDebitAmount();
+   							}
+   							if(v!=null && v.getCreditAmount()!=0) {
+   								creditAmount =v.getCreditAmount();
+   							}
+   							totalCredit=totalCredit+creditAmount;
+   							totalDebit=totalDebit+debitAmount;
+   							totalAmount=totalAmount-debitAmount+creditAmount;
+   						}else {
+   							double debitAmount =v.getDebitAmount();
+   							totalDebit=totalDebit+debitAmount;
+   							totalAmount=totalAmount-debitAmount;
+   						}
+   			}
+   			totalDirectExpenses=totalDirectExpenses+totalAmount;
+   		}
 
-    // Add components (no serial numbers)
-    purchaseAccount.add("Cost of Materials");
-    purchaseAccount.add("Inventory Adjustment");
-    purchaseAccount.add("Purchases");
+   	}
+   	result.put("Direct Expenses", totalDirectExpenses);
     
-    //============== 
-    ArrayList<String> indirectExpenses = new ArrayList<>();
+    //============== In Direct Expenses
+  	List<String> inDirectExpenses =getInDirectExpenses();
+ 	double totalInDirectExpenses=0;
+   	for(String s:inDirectExpenses) {
+   		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
+   		if(ledgerType!=null &&ledgerType.getId()!=null) {
+   			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
+   			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+   			double totalCredit=0;
+   			double totalDebit=0;
+   			double totalAmount=0;
+   			for(Voucher v:voucher) {			
+   						if(v.isCreditDebit()) {
+   							double debitAmount =0;
+   							double creditAmount =0;
+   							if(v!=null && v.getDebitAmount()!=0) {
+   								debitAmount =v.getDebitAmount();
+   							}
+   							if(v!=null && v.getCreditAmount()!=0) {
+   								creditAmount =v.getCreditAmount();
+   							}
+   							totalCredit=totalCredit+creditAmount;
+   							totalDebit=totalDebit+debitAmount;
+   							totalAmount=totalAmount-debitAmount+creditAmount;
+   						}else {
+   							double debitAmount =v.getDebitAmount();
+   							totalDebit=totalDebit+debitAmount;
+   							totalAmount=totalAmount-debitAmount;
+   						}
+   			}
+   			totalInDirectExpenses=totalInDirectExpenses+totalAmount;
+   		}
 
-    // Add all components (no serial numbers)
-    indirectExpenses.add("Salaries & Wages");
-    indirectExpenses.add("Provident Fund & Other Funds");
-    indirectExpenses.add("Staff Welfare");
-    indirectExpenses.add("Finance Costs");
-    indirectExpenses.add("Depreciation");
-    indirectExpenses.add("Power & Fuel");
-    indirectExpenses.add("Rent");
-    indirectExpenses.add("Repairs & Maintenance");
-    indirectExpenses.add("Advertisement & Marketing");
-    indirectExpenses.add("Travelling & Conveyance");
-    indirectExpenses.add("Legal & Professional Fees");
-    indirectExpenses.add("Bad Debts / Provision");
-		return null;
+   	}
+   	result.put("Indirect Expenses", totalInDirectExpenses);
+	return result;
 	}
 
 }
