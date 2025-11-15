@@ -454,12 +454,12 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
     	Year currentYear = Year.now();
 
     	// Start of current year: January 1st, 00:00:00
-    	LocalDateTime startOfYear = LocalDateTime.of(
-    			currentYear.getValue(), 1, 1, 0, 0, 0);
+    	String startOfYear = LocalDateTime.of(
+    			currentYear.getValue(), 1, 1, 0, 0, 0).toString();
 
     	// End of current year: December 31st, 23:59:59
-    	LocalDateTime endOfYear = LocalDateTime.of(
-    			currentYear.getValue(), 12, 31, 23, 59, 59);
+    	String endOfYear = LocalDateTime.of(
+    			currentYear.getValue(), 12, 31, 23, 59, 59).toString();
 
     	List<String> assetsGroup = getAllLiabilities();
     	Map<String,List<Voucher>>map=new HashMap<>();
@@ -469,7 +469,8 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
     		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
     		if(ledgerType!=null &&ledgerType.getId()!=null) {
     			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
-    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+    			List<Voucher> voucher = voucherRepository.findByLedgerIdInAndInBetween(ledgerIds,startOfYear,endOfYear);
+//    			List<Voucher> findByLedgerIdInAndInBetween(List<Long> ledgerList,String d1, String d2);
     			map.put(s, voucher);
     			double totalCredit=0;
     			double totalDebit=0;
@@ -504,10 +505,10 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
     	int previousYear = cYear - 1;
 
         // Start of previous year: Jan 1, 00:00:00
-        LocalDateTime startOfPreviousYear = LocalDateTime.of(previousYear, 1, 1, 0, 0, 0);
+        String startOfPreviousYear = LocalDateTime.of(previousYear, 1, 1, 0, 0, 0).toString();
 
         // End of previous year: Dec 31, 23:59:59
-        LocalDateTime endOfPreviousYear = LocalDateTime.of(previousYear, 12, 31, 23, 59, 59);
+        String endOfPreviousYear = LocalDateTime.of(previousYear, 12, 31, 23, 59, 59).toString();
 
 
     	List<String> prevAssetsGroup = getAllLiabilities();
@@ -518,7 +519,10 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
     		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
     		if(ledgerType!=null &&ledgerType.getId()!=null) {
     			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
-    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+//    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+    			
+    			List<Voucher> voucher = voucherRepository.findByLedgerIdInAndInBetween(ledgerIds,startOfPreviousYear,endOfPreviousYear);
+
     			mapPrev.put(s, voucher);
     			double totalCredit=0;
     			double totalDebit=0;

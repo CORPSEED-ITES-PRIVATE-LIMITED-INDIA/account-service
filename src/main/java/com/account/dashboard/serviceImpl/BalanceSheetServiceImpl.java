@@ -817,22 +817,24 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Year currentYear = Year.now();
 
     	// Start of current year: January 1st, 00:00:00
-    	LocalDateTime startOfYear = LocalDateTime.of(
-    			currentYear.getValue(), 1, 1, 0, 0, 0);
-
+    	String startOfYear = LocalDateTime.of(
+    			currentYear.getValue(), 1, 1, 0, 0, 0).toString();
+         
     	// End of current year: December 31st, 23:59:59
-    	LocalDateTime endOfYear = LocalDateTime.of(
-    			currentYear.getValue(), 12, 31, 23, 59, 59);
+    	String endOfYear = LocalDateTime.of(
+    			currentYear.getValue(), 12, 31, 23, 59, 59).toString();
 
     	List<String> assetsGroup = getAllAssetsGroup();
     	Map<String,List<Voucher>>mapAssets=new HashMap<>();
     	Map<String,Double>mapCountAssets=new HashMap<>();
-
+    	
+        double currAssetsTotal=0;
     	for(String s:assetsGroup) {
     		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
     		if(ledgerType!=null &&ledgerType.getId()!=null) {
     			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
-    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+    			List<Voucher> voucher = voucherRepository.findByLedgerIdInAndInBetween(ledgerIds,startOfYear,endOfYear);
+    			
     			mapAssets.put(s, voucher);
     			double totalCredit=0;
     			double totalDebit=0;
@@ -857,8 +859,10 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     						}
     			}
     			mapCountAssets.put(s, totalAmount);
+    			currAssetsTotal=currAssetsTotal+totalAmount;
 
     		}
+    		
 
     	}
 //== = = = = = = == = = = = = = = = == previous Year = = = = === = = = = == = = =   
@@ -867,21 +871,22 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	int previousYear = cYear - 1;
 
         // Start of previous year: Jan 1, 00:00:00
-        LocalDateTime startOfPreviousYear = LocalDateTime.of(previousYear, 1, 1, 0, 0, 0);
+        String startOfPreviousYear = LocalDateTime.of(previousYear, 1, 1, 0, 0, 0).toString();
 
         // End of previous year: Dec 31, 23:59:59
-        LocalDateTime endOfPreviousYear = LocalDateTime.of(previousYear, 12, 31, 23, 59, 59);
+        String endOfPreviousYear = LocalDateTime.of(previousYear, 12, 31, 23, 59, 59).toString();
 
 
     	List<String> prevAssetsGroup = getAllAssetsGroup();
     	Map<String,List<Voucher>>mapPrevAssets=new HashMap<>();
     	Map<String,Double>mapCountPrevAssets=new HashMap<>();
+        double prevAssetsTotal=0;
 
     	for(String s:prevAssetsGroup) {
     		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
     		if(ledgerType!=null &&ledgerType.getId()!=null) {
     			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
-    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+    			List<Voucher> voucher = voucherRepository.findByLedgerIdInAndInBetween(ledgerIds,startOfPreviousYear,endOfPreviousYear);
     			mapPrevAssets.put(s, voucher);
     			double totalCredit=0;
     			double totalDebit=0;
@@ -906,7 +911,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     						}
     			}
     			mapCountPrevAssets.put(s, totalAmount);
-
+    			prevAssetsTotal=prevAssetsTotal+totalAmount;
     		}
 
     	}
@@ -933,12 +938,14 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	List<String> liabilitiesGroup = getAllLiabilities();
     	Map<String,List<Voucher>>map=new HashMap<>();
     	Map<String,Double>mapCount=new HashMap<>();
-
+        double currLiabilitiesTotal=0;
     	for(String s:liabilitiesGroup) {
     		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
     		if(ledgerType!=null &&ledgerType.getId()!=null) {
     			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
-    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+//    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+    			List<Voucher> voucher = voucherRepository.findByLedgerIdInAndInBetween(ledgerIds,startOfYear,endOfYear);
+
     			map.put(s, voucher);
     			double totalCredit=0;
     			double totalDebit=0;
@@ -963,7 +970,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     						}
     			}
     			mapCount.put(s, totalAmount);
-
+    			currLiabilitiesTotal=currLiabilitiesTotal+totalAmount;
     		}
 
     	}
@@ -982,12 +989,13 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	List<String> prevLiabilitiesGroup = getAllLiabilities();
     	Map<String,List<Voucher>>mapPrev=new HashMap<>();
     	Map<String,Double>mapCountPrev=new HashMap<>();
-
+    	double prevLiabilitiesTotal=0;
     	for(String s:prevLiabilitiesGroup) {
     		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
     		if(ledgerType!=null &&ledgerType.getId()!=null) {
     			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
-    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
+    			List<Voucher> voucher = voucherRepository.findByLedgerIdInAndInBetween(ledgerIds,startOfPreviousYear,endOfPreviousYear);
+//    			List<Voucher> voucher = voucherRepository.findAllByLedgerIdIn(ledgerIds);
     			mapPrev.put(s, voucher);
     			double totalCredit=0;
     			double totalDebit=0;
@@ -1012,7 +1020,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     						}
     			}
     			mapCountPrev.put(s, totalAmount);
-
+    			prevLiabilitiesTotal=prevLiabilitiesTotal+totalAmount;
     		}
 
     	}
@@ -1025,8 +1033,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	// ======================= EQUITY AND LIABILITIES =======================
     	Map<String, Object> equityAndLiabilities = new HashMap<>();
     	equityAndLiabilities.put("title", "EQUITY AND LIABILITIES");
-    	equityAndLiabilities.put("totalCurrentAmount",mapCount.get("EQUITY AND LIABILITIES"));
-    	equityAndLiabilities.put("totalPreviousAmount",mapCountPrev.get("EQUITY AND LIABILITIES"));
+    	equityAndLiabilities.put("totalCurrLiabilities",currLiabilitiesTotal);
+    	equityAndLiabilities.put("totalPrevLiabilities",prevLiabilitiesTotal);
 
     	List<Map<String, Object>> equityList = new ArrayList<>();
 
@@ -1274,6 +1282,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	equityList.add(currentLiabilities);
 
     	equityAndLiabilities.put("data", equityList);
+    	equityAndLiabilities.put(endOfPreviousYear, shortTermBorrowings);
     	response.add(equityAndLiabilities);
 
     	// ======================= ASSETS =======================
@@ -1287,7 +1296,9 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	// Non-current Assets
     	Map<String, Object> nonCurrentAssets = new HashMap<>();
     	nonCurrentAssets.put("title", "Non-current Assets");
-    	
+    	nonCurrentAssets.put("totalCurrAssets",currAssetsTotal);
+    	nonCurrentAssets.put("totalPrevAssets", prevAssetsTotal);
+
 //    	Map<String,Double>mapCountPrevAssets=new HashMap<>();
 //    	Map<String,Double>mapCountAssets=new HashMap<>();
 
