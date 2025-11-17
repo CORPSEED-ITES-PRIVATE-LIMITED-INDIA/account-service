@@ -12,4 +12,6 @@ public interface TrialBalanceService {
 
 	List<Map<String, Object>> getAllTrialBalance(String startDate, String endDate);
 
+	Map<String, Object> getAllTrialBalanceData(String startDate, String endDate);
+
 }

@@ -202,6 +202,7 @@ public interface UrlsMapping {
         // get all trial balance
 		
 		public static final String GET_ALL_TRIAL_BALANCE=PREFIX+ "/trialBalance/getAllTrialBalance";
+		public static final String GET_ALL_TRIAL_BALANCE_DATA=PREFIX+ "/trialBalance/getAllTrialBalanceData";
 
 		// get All Cash Flow
 		
