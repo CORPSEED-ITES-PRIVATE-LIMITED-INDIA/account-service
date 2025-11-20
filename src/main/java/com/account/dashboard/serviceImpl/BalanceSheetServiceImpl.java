@@ -1282,7 +1282,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	equityList.add(currentLiabilities);
 
     	equityAndLiabilities.put("data", equityList);
-    	equityAndLiabilities.put(endOfPreviousYear, shortTermBorrowings);
+    	equityAndLiabilities.put("endOfPreviousYear", shortTermBorrowings);
     	response.add(equityAndLiabilities);
 
     	// ======================= ASSETS =======================
