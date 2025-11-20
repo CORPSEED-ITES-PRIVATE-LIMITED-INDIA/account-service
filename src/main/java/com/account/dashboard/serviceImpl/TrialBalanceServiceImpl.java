@@ -369,7 +369,7 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
      							totalAmount=totalAmount-debitAmount;
      						}
      			}
-     			totalCurrentLiabilities=totalCurrentLiabilities+totalAmount;
+     			totalpropertyPlantEquipment=totalpropertyPlantEquipment+totalAmount;
      		}
 
      	}
@@ -378,7 +378,7 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
      	//=========  Current investment + Non current investment ========================
      	List<String> investment = getInvestments();
      	 double totalInvestment=0;
-      	for(String s:currentLiabilities) {
+      	for(String s:investment) {
       		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
       		if(ledgerType!=null &&ledgerType.getId()!=null) {
       			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
@@ -414,7 +414,7 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
 // ================ Current assets ==============
     List<String> currentAssets = getCurrentAssets();
    	double totalCurrentAssets=0;
-   	for(String s:currentLiabilities) {
+   	for(String s:currentAssets) {
    		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
    		if(ledgerType!=null &&ledgerType.getId()!=null) {
    			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());
@@ -441,7 +441,7 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
    							totalAmount=totalAmount-debitAmount;
    						}
    			}
-   			totalInvestment=totalInvestment+totalAmount;
+   			totalCurrentAssets=totalCurrentAssets+totalAmount;
    		}
 
    	}
@@ -450,7 +450,7 @@ public class TrialBalanceServiceImpl implements TrialBalanceService{
    	//======================= Sales Account =========================
     List<String> salesAccount = getSalesAccount();
  	double totalSalesAccount=0;
-   	for(String s:currentLiabilities) {
+   	for(String s:salesAccount) {
    		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
    		if(ledgerType!=null &&ledgerType.getId()!=null) {
    			List<Long> ledgerIds = ledgerRepository.findByLedgerTypeId(ledgerType.getId());

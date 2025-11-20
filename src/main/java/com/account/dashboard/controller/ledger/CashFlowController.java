@@ -28,4 +28,10 @@ public class CashFlowController {
 		List<Map<String,Object>> res=cashFlowService.getAllOutFlow(startDate,endDate);	
 		return res;
 	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_CASH_IN_AND_OUT_FLOW)
+	public List<Map<String,Object>> getAllCashInAndOutFlow(@RequestParam(required=false) String startDate,@RequestParam(required=false) String endDate){
+		List<Map<String,Object>> res=cashFlowService.getAllCashInAndOutFlow(startDate,endDate);	
+		return res;
+	}
 }

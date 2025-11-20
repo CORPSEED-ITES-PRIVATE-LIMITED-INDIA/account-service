@@ -13,4 +13,6 @@ public interface CashFlowService {
 
 	List<Map<String, Object>> getAllOutFlow(String startDate, String endDate);
 
+	List<Map<String,Object>> getAllCashInAndOutFlow(String startDate, String endDate);
+
 }

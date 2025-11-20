@@ -208,6 +208,8 @@ public interface UrlsMapping {
 		
 		public static final String GET_ALL_IN_FLOW=PREFIX+ "/cashFlow/getAllInFlow";
 		public static final String GET_ALL_OUT_FLOW=PREFIX+ "/cashFlow/getAllOutFlow";
+		
+		public static final String GET_ALL_CASH_IN_AND_OUT_FLOW=PREFIX+ "/cashFlow/getAllCashInAndOutFlow";
 
 		// get Profit and Loss
 		
