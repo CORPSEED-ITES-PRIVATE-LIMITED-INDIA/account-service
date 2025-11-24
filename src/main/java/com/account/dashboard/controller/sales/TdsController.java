@@ -44,8 +44,8 @@ public class TdsController {
 	}
 	
 	@PostMapping(UrlsMapping.UPDATE_TDS_CLAIM_AMOUNT)
-	public Boolean updateTdsClaimAmount(@RequestParam Long id,@RequestParam double amount,String document){
-		Boolean res=tdsService.updateTdsClaimAmount(id,amount,document);	
+	public Boolean updateTdsClaimAmount(@RequestParam Long id,@RequestParam double amount,@RequestParam String document,@RequestParam Long currentUserId){
+		Boolean res=tdsService.updateTdsClaimAmount(id,amount,document,currentUserId);	
 		return res;
 		
 	}

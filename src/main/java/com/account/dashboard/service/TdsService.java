@@ -17,6 +17,6 @@ public interface TdsService {
 
 	Map<String, Object> getAllTdsCount();
 
-	Boolean updateTdsClaimAmount(Long id, double amount, String document);
+	Boolean updateTdsClaimAmount(Long id, double amount, String document,Long currentUserId);
 
 }
