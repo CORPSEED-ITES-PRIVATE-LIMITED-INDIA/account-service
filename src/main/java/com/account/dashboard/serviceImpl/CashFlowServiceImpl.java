@@ -393,6 +393,8 @@ public class CashFlowServiceImpl implements CashFlowService {
 
        	}
        	result.put("Direct Expenses", totalDirectExpenses);
+       	result.put("name", "Inflow of Cash");
+       	result.put("totalAmount", totalDirectExpenses);
 		return result;
 	}
 	
@@ -580,7 +582,10 @@ public class CashFlowServiceImpl implements CashFlowService {
        		}
 
        	}
-       	result.put("Direct Expenses", totalDirectExpenses);
+       	result.put("Direct Expenses", totalDirectExpenses);      	
+       	result.put("name", "Outflow of Cash");
+       	result.put("totalAmount", totalDirectExpenses);
+
 		return result;
 	
 	}
