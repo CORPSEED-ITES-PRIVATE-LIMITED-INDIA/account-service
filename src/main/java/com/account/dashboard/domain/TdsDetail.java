@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 @Table
 @Entity
@@ -27,6 +28,8 @@ public class TdsDetail {
 	Date createDate;
 	Date claimDate;
 	String documents;
+	@ManyToOne
+	User tdsClaimBy;
 	
 	public Long getId() {
 		return id;
@@ -108,6 +111,12 @@ public class TdsDetail {
 	}
 	public void setDocuments(String documents) {
 		this.documents = documents;
+	}
+	public User getTdsClaimBy() {
+		return tdsClaimBy;
+	}
+	public void setTdsClaimBy(User tdsClaimBy) {
+		this.tdsClaimBy = tdsClaimBy;
 	}
 
 	

@@ -10,8 +10,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.TdsDetail;
+import com.account.dashboard.domain.User;
 import com.account.dashboard.dto.CreateTdsDto;
 import com.account.dashboard.repository.TdsDetailRepository;
+import com.account.dashboard.repository.UserRepository;
 import com.account.dashboard.service.TdsService;
 
 @Service
@@ -19,6 +21,9 @@ public class TdsServiceImpl implements TdsService{
 	
 	@Autowired
 	TdsDetailRepository tdsDetailRepository;
+	
+	@Autowired
+	UserRepository userRepository;
 
 	@Override
 	public TdsDetail createTds(CreateTdsDto createTdsDto) {
@@ -29,7 +34,6 @@ public class TdsServiceImpl implements TdsService{
 		tdsDetail.setTdsAmount(createTdsDto.getTdsAmount());
 		tdsDetail.setTdsType("Receivable");
 		tdsDetail.setTdsPrecent(createTdsDto.getTdsPrecent());
-		
 		tdsDetail.setCreateDate(new Date());
 		tdsDetailRepository.save(tdsDetail);
 		return tdsDetail;
@@ -68,6 +72,8 @@ public class TdsServiceImpl implements TdsService{
 		tdsDetail.setClaimDate(new Date());
 		tdsDetail.setDocuments(document);
 		tdsDetail.setTdsClaimAmount(amount);
+		User user = userRepository.findById(currentUserId).orElse(null);
+		tdsDetail.setTdsClaimBy(user);
 		tdsDetailRepository.save(tdsDetail);
 		flag=true;
 		return flag;
