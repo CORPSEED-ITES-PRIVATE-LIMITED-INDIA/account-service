@@ -802,7 +802,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
                 "Current Assets",
                 "Current investments",
                 "Inventories",
-                "Trade receivables",
+                "Trade receivables","cash equivalent",
                 "Cash and cash equivalents",
                 "Short-term loans and advances",
                 "Other current assets",
@@ -912,6 +912,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     			}
     			mapCountPrevAssets.put(s, totalAmount);
     			prevAssetsTotal=prevAssetsTotal+totalAmount;
+
     		}
 
     	}
@@ -970,6 +971,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     						}
     			}
     			mapCount.put(s, totalAmount);
+//    			System.out.println("test . . . . "+s+"  .  "+totalAmount);
+
     			currLiabilitiesTotal=currLiabilitiesTotal+totalAmount;
     		}
 
@@ -1020,6 +1023,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     						}
     			}
     			mapCountPrev.put(s, totalAmount);
+//    			System.out.println("test . . . . "+s+"  .  "+totalAmount);
+
     			prevLiabilitiesTotal=prevLiabilitiesTotal+totalAmount;
     		}
 
@@ -1289,6 +1294,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	
     	Map<String, Object> assets = new HashMap<>();
     	assets.put("title", "ASSETS");
+    	assets.put("totalCurrAssets",currAssetsTotal);
+    	assets.put("totalPrevAssets", prevAssetsTotal);
     	assets.put("total", 0);
 
     	List<Map<String, Object>> assetsList = new ArrayList<>();
@@ -1296,8 +1303,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	// Non-current Assets
     	Map<String, Object> nonCurrentAssets = new HashMap<>();
     	nonCurrentAssets.put("title", "Non-current Assets");
-    	nonCurrentAssets.put("totalCurrAssets",currAssetsTotal);
-    	nonCurrentAssets.put("totalPrevAssets", prevAssetsTotal);
+//    	nonCurrentAssets.put("totalCurrAssets",currAssetsTotal);
+//    	nonCurrentAssets.put("totalPrevAssets", prevAssetsTotal);
 
 //    	Map<String,Double>mapCountPrevAssets=new HashMap<>();
 //    	Map<String,Double>mapCountAssets=new HashMap<>();
@@ -1332,6 +1339,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	assetsList.add(nonCurrentAssets);
 
     	// Current Assets
+    	System.out.println("cash equivalent "+mapCountAssets.get("Cash and cash equivalents"));
     	assetsList.add(Map.of(
     			"title", "Current Assets",
     			"data", List.of(
@@ -1339,6 +1347,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     					Map.of("title", "Inventories","price","1000","totalCurrentAmount",mapCountAssets.get("Inventories")!=null?mapCountAssets.get("Inventories"):0,"totalPreviousAmount",mapCountPrevAssets.get("Inventories")!=null?mapCountPrevAssets.get("Inventories"):0),
     					Map.of("title", "Trade receivables","price","1000","totalCurrentAmount",mapCountAssets.get("Trade receivables")!=null?mapCountAssets.get("Trade receivables"):0,"totalPreviousAmount",mapCountPrevAssets.get("Trade receivables")!=null?mapCountPrevAssets.get("Trade receivables"):0),
     					Map.of("title", "Cash and cash equivalents","price","1000","totalCurrentAmount",mapCountAssets.get("Cash and cash equivalents")!=null?mapCountAssets.get("Cash and cash equivalents"):0,"totalPreviousAmount",mapCountPrevAssets.get("Cash and cash equivalents")!=null?mapCountPrevAssets.get("Cash and cash equivalents"):0),
+    					
     					Map.of("title", "Short-term loans and advances","price","1000","totalCurrentAmount",mapCountAssets.get("Short-term loans and advances")!=null?mapCountAssets.get("Short-term loans and advances"):0,"totalPreviousAmount",mapCountPrevAssets.get("Short-term loans and advances")!=null?mapCountPrevAssets.get("Short-term loans and advances"):0),
     					Map.of("title", "Other current assets","price","1000","totalCurrentAmount",mapCountAssets.get("Other current assets")!=null?mapCountAssets.get("Other current assets"):0,"totalPreviousAmount",mapCountPrevAssets.get("Other current assets")!=null?mapCountPrevAssets.get("Other current assets"):0)
     					)
