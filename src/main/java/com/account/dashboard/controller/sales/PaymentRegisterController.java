@@ -33,9 +33,19 @@ public class PaymentRegisterController {
 	PaymentRegisterService paymentRegisterService;
 
 	@PostMapping(UrlsMapping.CREATE_PAYMENT_REGISTER)
-	public PaymentRegister createPaymentRegister(@RequestBody CreateAmountDto createAmountDto){
-		PaymentRegister res=paymentRegisterService.createPaymentRegister(createAmountDto);	
-		return res;
+	public ResponseEntity<Object>  createPaymentRegister(@RequestBody CreateAmountDto createAmountDto){
+		PaymentRegister res = null;
+		
+		try {
+			res = paymentRegisterService.createPaymentRegister(createAmountDto);
+			return new ResponseEntity<>(res, HttpStatus.CREATED);		
+
+		} catch (Exception e) {
+
+			String msg = e.getMessage();
+			return new ResponseEntity<>(msg, HttpStatus.INTERNAL_SERVER_ERROR);		
+
+		}
 		
 	}
 	

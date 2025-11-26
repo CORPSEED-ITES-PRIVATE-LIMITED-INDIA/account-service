@@ -16,7 +16,7 @@ import com.account.dashboard.dto.UpdatePaymentDto;
 @Service
 public interface PaymentRegisterService {
 
-	PaymentRegister createPaymentRegister(CreateAmountDto createAmountDto);
+	PaymentRegister createPaymentRegister(CreateAmountDto createAmountDto) throws Exception;
 
 	List<Map<String,Object>> getAllPaymentRegister(String status);
 

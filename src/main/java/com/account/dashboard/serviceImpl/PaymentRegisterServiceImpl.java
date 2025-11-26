@@ -123,125 +123,131 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
 
 	@Override
-	public PaymentRegister createPaymentRegister(CreateAmountDto createAmountDto) {
+	public PaymentRegister createPaymentRegister(CreateAmountDto createAmountDto) throws Exception {
 
 		PaymentRegister paymentRegister= new PaymentRegister();
-		paymentRegister.setStatus("initiated");
-		paymentRegister.setEstimateId(createAmountDto.getEstimateId());
-		paymentRegister.setEstimateNo("EST00"+createAmountDto.getEstimateId());
-		paymentRegister.setBillingQuantity(createAmountDto.getBillingQuantity());
-		paymentRegister.setPaymentType(createAmountDto.getPaymentType());
-		paymentRegister.setCreatedById(createAmountDto.getCreatedById());
-		paymentRegister.setTransactionId(createAmountDto.getTransactionId());
-		paymentRegister.setServiceName(createAmountDto.getServiceName());
-		paymentRegister.setGovermentfees(createAmountDto.getGovermentfees());
-		paymentRegister.setGovermentGst(createAmountDto.getGovermentGst());
-		paymentRegister.setProductType(createAmountDto.getProductType());
-		paymentRegister.setGovermentGstPercent(createAmountDto.getGovermentGstPercent());
-		
-		//====
-	    double quantity;
-        double actualAmount;
-		paymentRegister.setModeOfPayment(createAmountDto.getModeOfPayment());
-		paymentRegister.setReferenceDate(createAmountDto.getReferenceDate());
-		paymentRegister.setOtherReference(createAmountDto.getOtherReference());
-		paymentRegister.setBuyerOrderNo(createAmountDto.getBuyerOrderNo());
-		paymentRegister.setQuantity(createAmountDto.getQuantity());
-		paymentRegister.setActualAmount(createAmountDto.getActualAmount());
-		
-		if(createAmountDto.getDoc()!=null && createAmountDto.getDoc().size()!=0) {
-			List<FileData>list=new ArrayList<>();
-			for(String s:createAmountDto.getDoc()) {
-				FileData fileData=new FileData(); 
-				fileData.setFilePath(s);
-				fileDataRepository.save(fileData);
-				list.add(fileData);
+		if(createAmountDto.getTotalAmount()>0) {
+
+			paymentRegister.setStatus("initiated");
+			paymentRegister.setEstimateId(createAmountDto.getEstimateId());
+			paymentRegister.setEstimateNo("EST00"+createAmountDto.getEstimateId());
+			paymentRegister.setBillingQuantity(createAmountDto.getBillingQuantity());
+			paymentRegister.setPaymentType(createAmountDto.getPaymentType());
+			paymentRegister.setCreatedById(createAmountDto.getCreatedById());
+			paymentRegister.setTransactionId(createAmountDto.getTransactionId());
+			paymentRegister.setServiceName(createAmountDto.getServiceName());
+			paymentRegister.setGovermentfees(createAmountDto.getGovermentfees());
+			paymentRegister.setGovermentGst(createAmountDto.getGovermentGst());
+			paymentRegister.setProductType(createAmountDto.getProductType());
+			paymentRegister.setGovermentGstPercent(createAmountDto.getGovermentGstPercent());
+
+			//====
+			double quantity;
+			double actualAmount;
+			paymentRegister.setModeOfPayment(createAmountDto.getModeOfPayment());
+			paymentRegister.setReferenceDate(createAmountDto.getReferenceDate());
+			paymentRegister.setOtherReference(createAmountDto.getOtherReference());
+			paymentRegister.setBuyerOrderNo(createAmountDto.getBuyerOrderNo());
+			paymentRegister.setQuantity(createAmountDto.getQuantity());
+			paymentRegister.setActualAmount(createAmountDto.getActualAmount());
+
+			if(createAmountDto.getDoc()!=null && createAmountDto.getDoc().size()!=0) {
+				List<FileData>list=new ArrayList<>();
+				for(String s:createAmountDto.getDoc()) {
+					FileData fileData=new FileData(); 
+					fileData.setFilePath(s);
+					fileDataRepository.save(fileData);
+					list.add(fileData);
+				}
+
+				paymentRegister.setFileData(list);
 			}
 
-			paymentRegister.setFileData(list);
-		}
 
-
-		if(createAmountDto.isTdsPresent()) {
-			double tdsPercent = createAmountDto.getTdsPercent();
-			double totalProfessional = createAmountDto.getProfessionalFees();
-			double actualProfPercetage = 100;
-			double onePercent = totalProfessional/100;
-			double tdsAmount = onePercent*tdsPercent;
-			double profFees=onePercent*actualProfPercetage;
-			paymentRegister.setProfessionalFees(profFees);
-			paymentRegister.setTdsPresent(true);
-			paymentRegister.setTdsPercent(createAmountDto.getTdsPercent());
-			paymentRegister.setTdsAmount(tdsAmount);
-			
-			
-		}else {
-			paymentRegister.setProfessionalFees(createAmountDto.getProfessionalFees());
-		}
-		if("Product".equals(paymentRegister.getProductType())) {
-
-			double totalAmount = createAmountDto.getTotalAmount();
-			double sumPercent = createAmountDto.getGstPercent()+100;
-			double per = totalAmount/sumPercent;
 			if(createAmountDto.isTdsPresent()) {
-				double tdsAmount = per*createAmountDto.getTdsPercent();
+				double tdsPercent = createAmountDto.getTdsPercent();
+				double totalProfessional = createAmountDto.getProfessionalFees();
+				double actualProfPercetage = 100;
+				double onePercent = totalProfessional/100;
+				double tdsAmount = onePercent*tdsPercent;
+				double profFees=onePercent*actualProfPercetage;
+				paymentRegister.setProfessionalFees(profFees);
+				paymentRegister.setTdsPresent(true);
+				paymentRegister.setTdsPercent(createAmountDto.getTdsPercent());
 				paymentRegister.setTdsAmount(tdsAmount);
+
+
+			}else {
+				paymentRegister.setProfessionalFees(createAmountDto.getProfessionalFees());
 			}
-			double amount=per*100;
-			double gstAmount = per*createAmountDto.getGstPercent();
-		    paymentRegister.setAmount(amount);
-		    paymentRegister.setGstPercent(createAmountDto.getGstPercent());
-		    paymentRegister.setGstAmount(gstAmount);
-		}
-		paymentRegister.setCompanyId(createAmountDto.getCompanyId());
-		paymentRegister.setLeadId(createAmountDto.getLeadId());
-		paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
-		double profesionalGst = createAmountDto.getProfesionalGst();
-		paymentRegister.setTermOfDelivery(createAmountDto.getTermOfDelivery());
+			if("Product".equals(paymentRegister.getProductType())) {
+
+				double totalAmount = createAmountDto.getTotalAmount();
+				double sumPercent = createAmountDto.getGstPercent()+100;
+				double per = totalAmount/sumPercent;
+				if(createAmountDto.isTdsPresent()) {
+					double tdsAmount = per*createAmountDto.getTdsPercent();
+					paymentRegister.setTdsAmount(tdsAmount);
+				}
+				double amount=per*100;
+				double gstAmount = per*createAmountDto.getGstPercent();
+				paymentRegister.setAmount(amount);
+				paymentRegister.setGstPercent(createAmountDto.getGstPercent());
+				paymentRegister.setGstAmount(gstAmount);
+			}
+			paymentRegister.setCompanyId(createAmountDto.getCompanyId());
+			paymentRegister.setLeadId(createAmountDto.getLeadId());
+			paymentRegister.setProfesionalGst(createAmountDto.getProfesionalGst());
+			double profesionalGst = createAmountDto.getProfesionalGst();
+			paymentRegister.setTermOfDelivery(createAmountDto.getTermOfDelivery());
 
 
-		double gstAmount = ((createAmountDto.getProfessionalFees()/100)*profesionalGst);
+			double gstAmount = ((createAmountDto.getProfessionalFees()/100)*profesionalGst);
 
-		paymentRegister.setProfessionalGstAmount(gstAmount);
+			paymentRegister.setProfessionalGstAmount(gstAmount);
 
-		//		paymentRegister.setProfessionalGstAmount(createAmountDto.getProfesionalGstFee());
+			//		paymentRegister.setProfessionalGstAmount(createAmountDto.getProfesionalGstFee());
 
-		paymentRegister.setServiceCharge(createAmountDto.getServiceCharge());		
+			paymentRegister.setServiceCharge(createAmountDto.getServiceCharge());		
 
-		paymentRegister.setOtherFees(createAmountDto.getOtherFees());
-		//		paymentRegister.setOtherGst(createAmountDto.g̥etOtherGst());
-		paymentRegister.setOtherGstPercent(createAmountDto.getOtherGstPercent());
-		//		paymentRegister.setUploadReceipt(createAmountDto.getUploadReceipt());
-		paymentRegister.setTotalAmount(createAmountDto.getTotalAmount());
-		paymentRegister.setRemark(createAmountDto.getRemark());
-		paymentRegister.setPaymentDate(createAmountDto.getPaymentDate());
-//		paymentRegister.setEstimateNo(createAmountDto.getEstimateNo());
-		//		paymentRegister.setDoc(createAmountDto.getDoc());
-		paymentRegister.setCompanyName(createAmountDto.getCompanyName());
-		paymentRegister.setRegisterBy(createAmountDto.getRegisterBy());
-		if("milestone".equals(createAmountDto.getPaymentType())) {
-			paymentRegister.setDocPersent(createAmountDto.getDocPersent());
-			paymentRegister.setFilingPersent(createAmountDto.getFilingPersent());
-			paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
-			paymentRegister.setCertificatePersent(100);
-		}else if("partial".equals(createAmountDto.getPaymentType())) {
-			paymentRegister.setDocPersent(50);
-			paymentRegister.setFilingPersent(50);
-			paymentRegister.setLiasoningPersent(50);
-			paymentRegister.setCertificatePersent(100);
+			paymentRegister.setOtherFees(createAmountDto.getOtherFees());
+			//		paymentRegister.setOtherGst(createAmountDto.g̥etOtherGst());
+			paymentRegister.setOtherGstPercent(createAmountDto.getOtherGstPercent());
+			//		paymentRegister.setUploadReceipt(createAmountDto.getUploadReceipt());
+			paymentRegister.setTotalAmount(createAmountDto.getTotalAmount());
+			paymentRegister.setRemark(createAmountDto.getRemark());
+			paymentRegister.setPaymentDate(createAmountDto.getPaymentDate());
+			//		paymentRegister.setEstimateNo(createAmountDto.getEstimateNo());
+			//		paymentRegister.setDoc(createAmountDto.getDoc());
+			paymentRegister.setCompanyName(createAmountDto.getCompanyName());
+			paymentRegister.setRegisterBy(createAmountDto.getRegisterBy());
+			if("milestone".equals(createAmountDto.getPaymentType())) {
+				paymentRegister.setDocPersent(createAmountDto.getDocPersent());
+				paymentRegister.setFilingPersent(createAmountDto.getFilingPersent());
+				paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
+				paymentRegister.setCertificatePersent(100);
+			}else if("partial".equals(createAmountDto.getPaymentType())) {
+				paymentRegister.setDocPersent(50);
+				paymentRegister.setFilingPersent(50);
+				paymentRegister.setLiasoningPersent(50);
+				paymentRegister.setCertificatePersent(100);
+			}else {
+				paymentRegister.setDocPersent(100);
+				paymentRegister.setFilingPersent(100);
+				paymentRegister.setLiasoningPersent(100);
+				paymentRegister.setCertificatePersent(100);
+			}
+			//		paymentRegister.setDocPersent(createAmountDto.getDocPersent());
+			//		paymentRegister.setFilingPersent(createAmountDto.getFilingPersent());
+			//		paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
+			//		paymentRegister.setCertificatePersent(createAmountDto.getCertificatePersent());
+			paymentRegisterRepository.save(paymentRegister);
+			return paymentRegister;
+
 		}else {
-			paymentRegister.setDocPersent(100);
-			paymentRegister.setFilingPersent(100);
-			paymentRegister.setLiasoningPersent(100);
-			paymentRegister.setCertificatePersent(100);
+			throw new IllegalArgumentException("Total amount cannot be null. Please provide a valid total amount for processing.");
 		}
-		//		paymentRegister.setDocPersent(createAmountDto.getDocPersent());
-		//		paymentRegister.setFilingPersent(createAmountDto.getFilingPersent());
-		//		paymentRegister.setLiasoningPersent(createAmountDto.getLiasoningPersent());
-		//		paymentRegister.setCertificatePersent(createAmountDto.getCertificatePersent());
-		paymentRegisterRepository.save(paymentRegister);
 
-		return paymentRegister;
 	}
 
 	public Map<String, Object>remainingAmountAndPaidAmountProduct(Long id) {
