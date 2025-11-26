@@ -2865,7 +2865,7 @@ public Map<String, Object> getRemainingAmount(Long id) {
 		profGst=pr.getProfessionalGstAmount();   
 		govFees=pr.getGovermentfees();
 		paymentType=pr.getPaymentType();
-		totalAmount=pr.getTotalAmount();
+		totalAmount=totalAmount+pr.getTotalAmount();
 		otherFees=pr.getOtherFees();
 		serviceCharge=pr.getServiceCharge();
 	}
