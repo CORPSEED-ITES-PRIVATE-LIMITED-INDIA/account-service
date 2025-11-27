@@ -3047,6 +3047,17 @@ public Map<String,Object> paymentApproveAndDisapprovedManual(PaymentApproveDto p
 	Map<String,Object>map=new HashMap<>();
 	map.put("unbilledId", unbilled!=null?unbilled.getId():null);
 	map.put("estimateId", paymentRegister!=null?paymentRegister.getEstimateId():null);
+	map.put("companyId", paymentRegister.getCompanyId());
+	map.put("companyName", paymentRegister.getCompanyName());
+	map.put("createdById", paymentRegister.getCreatedById());
+	Map<String, Object>remAmount= remainingAmountAndPaidAmount(paymentRegister.getEstimateId());
+	Object dueAmount = remAmount.get("totalRemainingAmount");
+	Object txnAmount = remAmount.get("estimateAmount");
+	Object estimateCreateDate = remAmount.get("estimateDate");
+	map.put("dueAmount", dueAmount);
+	map.put("txnAmount", txnAmount);
+	map.put("estimateCreateDate", estimateCreateDate);
+	map.put("estimateCreateDate", estimateCreateDate);
 
 	return map;
 
