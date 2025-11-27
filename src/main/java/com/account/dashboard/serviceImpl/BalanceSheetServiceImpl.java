@@ -34,6 +34,9 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 	
 	@Autowired
 	VoucherRepository voucherRepository;
+	
+	@Autowired
+	ProfitAndLossServiceImpl profitAndLossServiceImpl;
 
 //	@Override
 	public Map<String,Object> getAllBalanceSheetLiabilitiesV2(String startDate, String endDate) {
@@ -815,7 +818,13 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     public List<Map<String, Object>> getAllAssetsAndLiabilities() {
     	
     	Year currentYear = Year.now();
+        Map<String,Double>profitAndLoss=profitAndLossServiceImpl.getAllProfitAndLossForBalanceSheet(null,null);
+    	Object pl = profitAndLoss.get("Profit before exceptional and extraordinary items and tax curr");
+    	Double plAmount = pl!=null?(Double)pl:0;
+    	Object plPre = profitAndLoss.get("Profit before exceptional and extraordinary items and tax pre");
+    	Double plPreAmount = plPre!=null?(Double)plPre:0;
 
+    	System.out.println();
     	// Start of current year: January 1st, 00:00:00
     	String startOfYear = LocalDateTime.of(
     			currentYear.getValue(), 1, 1, 0, 0, 0).toString();
@@ -827,7 +836,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	List<String> assetsGroup = getAllAssetsGroup();
     	Map<String,List<Voucher>>mapAssets=new HashMap<>();
     	Map<String,Double>mapCountAssets=new HashMap<>();
-    	
+//    	Object pl = profitAndLoss.get("Profit before exceptional and extraordinary items and tax");
+//    	Double d = (Double)pl;
         double currAssetsTotal=0;
     	for(String s:assetsGroup) {
     		LedgerType ledgerType = ledgerTypeRepository.findByName(s);
@@ -865,6 +875,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     		
 
     	}
+    	
 //== = = = = = = == = = = = = = = = == previous Year = = = = === = = = = == = = =   
         int cYear = Year.now().getValue();
 
@@ -977,6 +988,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     		}
 
     	}
+    	currLiabilitiesTotal=currLiabilitiesTotal+plAmount;
 //== = = = = = = == = = = = = = = = == previous Year = = = = === = = = = == = = =   
 //        int cYear = Year.now().getValue();
 //
@@ -1114,10 +1126,11 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	reservesList.add(m6);
     	//	        reservesList.add(Map.of("title", "General Reserve"));
     	Map<String, Object>m7=new HashMap<>();
-    	m7.put("title", "Retained Earnings");
+//    	Object pl = profitAndLoss.get("Profit before exceptional and extraordinary items and tax");
+    	m7.put("title", "Retained Earnings"); 
     	m7.put("price", "1000");
-    	m7.put("totalCurrentAmount",mapCount.get("Retained Earnings"));
-    	m7.put("totalPreviousAmount",mapCountPrev.get("Retained Earnings"));
+    	m7.put("totalCurrentAmount",pl);
+    	m7.put("totalPreviousAmount",plPreAmount);
 
     	reservesList.add(m7);
 
@@ -1337,6 +1350,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	nonCurrentAssetsList.add(Map.of("title", "Other non-current assets","price","1000","totalCurrentAmount",mapCountAssets.get("Other non-current assets")!=null?mapCountAssets.get("Other non-current assets"):0,"totalPreviousAmount",mapCountPrevAssets.get("Other non-current assets")!=null?mapCountPrevAssets.get("Other non-current assets"):0));
     	nonCurrentAssets.put("data", nonCurrentAssetsList);
     	assetsList.add(nonCurrentAssets);
+//        Map<String,Object>profitAndLoss=profitAndLossServiceImpl.getAllProfitAndLoss(null,null);
 
     	// Current Assets
     	System.out.println("cash equivalent "+mapCountAssets.get("Cash and cash equivalents"));
@@ -1360,4 +1374,6 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
 
     	//		return null;
     }
+    
+//    test=profitAndLossServiceImpl.getAllProfitAndLoss(null,null);
 }
