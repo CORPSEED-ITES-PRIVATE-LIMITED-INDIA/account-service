@@ -13,7 +13,9 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import com.account.dashboard.domain.PaymentRegister;
+import com.account.dashboard.domain.VendorPaymentRegister;
 import com.account.dashboard.repository.PaymentRegisterRepository;
+import com.account.dashboard.repository.VendorPaymentRegisterRepo;
 import com.account.dashboard.service.report.SalesReportService;
 
 @Service
@@ -21,7 +23,12 @@ public class SalesReportServiceImpl implements SalesReportService{
 	
 	@Autowired
 	PaymentRegisterRepository paymentRegisterRepository;
-
+	
+	@Autowired
+	VendorPaymentRegisterRepo vendorPaymentRegisterRepo;
+	
+	
+	
 	@Override
 	public List<Map<String, Object>> getAllSalesReport(int page, int size, String status) {
 
@@ -80,6 +87,12 @@ public class SalesReportServiceImpl implements SalesReportService{
 			map.put("otherGstPercent", p.getOtherGstPercent());
 
 			map.put("totalAmount", p.getTotalAmount());
+			if(p.getProductType().equalsIgnoreCase("Product")) {
+				double vendorAmount = vendorPaymentData(p.getEstimateId());
+				map.put("totalSaleAmount", p.getTotalAmount()-vendorAmount);
+			}else {
+				map.put("totalSaleAmount", p.getTotalAmount());
+			}
 			map.put("remark", p.getRemark());
 			map.put("paymentDate", p.getPaymentDate());
 			map.put("estimateNo", p.getEstimateNo());
@@ -102,7 +115,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 			map.put("assigneeId", p.getCreatedByUser()!=null?p.getCreatedByUser().getId():null);
 			map.put("assigneeName", p.getCreatedByUser()!=null?p.getCreatedByUser().getFullName():null);
 			map.put("assigneeEmail", p.getCreatedByUser()!=null?p.getCreatedByUser().getEmail():null);
-
+            
 			map.put("status", p.getStatus());
 			result.add(map);
 
@@ -110,6 +123,11 @@ public class SalesReportServiceImpl implements SalesReportService{
 		return result;
 //		return paymentRegisterList;
 	
+	}
+	
+	public double vendorPaymentData(Long estimateId){
+		VendorPaymentRegister vendorPaymentRegister = vendorPaymentRegisterRepo.findByEstimateId(estimateId);
+		return vendorPaymentRegister.getTotalAmount();
 	}
 
 }
