@@ -76,7 +76,15 @@ public class CreateAmountDto {
 	double sgst;
 	double igst;
     double quantity;
-    double actualAmount;
+    public double getActualPrice() {
+		return actualPrice;
+	}
+
+	public void setActualPrice(double actualPrice) {
+		this.actualPrice = actualPrice;
+	}
+
+	double actualPrice;
 	
 
 	public Long getLeadId() {
@@ -497,15 +505,6 @@ public class CreateAmountDto {
 		this.quantity = quantity;
 	}
 
-	public double getActualAmount() {
-		return actualAmount;
-	}
-
-	public void setActualAmount(double actualAmount) {
-		this.actualAmount = actualAmount;
-	}
-    
-     
-    
+	
 	
 }

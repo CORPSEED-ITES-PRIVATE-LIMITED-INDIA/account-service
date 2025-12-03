@@ -149,7 +149,7 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 			paymentRegister.setOtherReference(createAmountDto.getOtherReference());
 			paymentRegister.setBuyerOrderNo(createAmountDto.getBuyerOrderNo());
 			paymentRegister.setQuantity(createAmountDto.getQuantity());
-			paymentRegister.setActualAmount(createAmountDto.getActualAmount());
+			paymentRegister.setActualAmount(createAmountDto.getActualPrice());
 
 			if(createAmountDto.getDoc()!=null && createAmountDto.getDoc().size()!=0) {
 				List<FileData>list=new ArrayList<>();

@@ -108,6 +108,8 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("remarksForOption", invoice.getRemarksForOption());
 	        res.put("documents", invoice.getDocuments());
 	        res.put("termOfDelivery", invoice.getTermOfDelivery());
+	        res.put("quantity", invoice.getQuantity());
+	        res.put("actualAmount", invoice.getActualAmount());
 
 	        // Fees and Amounts
 //	        res.put("govermentfees", invoice.getGovermentfees());
@@ -151,8 +153,8 @@ public class InvoiceServiceImpl implements InvoiceService{
 		        res.put("igstAmount", invoice.getGstAmount());
 	        }else {
 	        	if(invoice.getGstAmount()!=0) {
-	        		  res.put("cgstAmount", (invoice.getGstAmount())%2);
-	  		        res.put("sgstAmount", (invoice.getGstAmount())%2);
+	        		  res.put("cgstAmount", (invoice.getGstAmount())/2);
+	  		        res.put("sgstAmount", (invoice.getGstAmount())/2);
 	        	}
 
 	        }
