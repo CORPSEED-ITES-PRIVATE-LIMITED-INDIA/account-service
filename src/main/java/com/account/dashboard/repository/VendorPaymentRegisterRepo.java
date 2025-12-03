@@ -20,4 +20,7 @@ public interface VendorPaymentRegisterRepo extends JpaRepository<VendorPaymentRe
 	@Query(value = "SELECT * FROM vendor_payment_register c where c.status =:status", nativeQuery = true)
 	List<VendorPaymentRegister> findAllByStatus(String status);
 
+	@Query(value = "SELECT * FROM vendor_payment_register c where c.estimate_id =:estimateId limit 1", nativeQuery = true)
+	VendorPaymentRegister findByEstimateId(Long estimateId);
+
 }

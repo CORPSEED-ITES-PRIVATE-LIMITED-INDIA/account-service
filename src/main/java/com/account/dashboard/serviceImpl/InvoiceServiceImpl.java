@@ -143,8 +143,19 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("igstPresent", invoice.isIgstPresent());
 
 	        res.put("cgst", invoice.getCgst());
+
 	        res.put("sgst", invoice.getSgst());
+
 	        res.put("igst", invoice.getIgst());
+	        if(invoice.getIgst()!=0 ||invoice.getIgst()>0) {
+		        res.put("igstAmount", invoice.getGstAmount());
+	        }else {
+	        	if(invoice.getGstAmount()!=0) {
+	        		  res.put("cgstAmount", (invoice.getGstAmount())%2);
+	  		        res.put("sgstAmount", (invoice.getGstAmount())%2);
+	        	}
+
+	        }
 
 
 	        // Unbilled information
