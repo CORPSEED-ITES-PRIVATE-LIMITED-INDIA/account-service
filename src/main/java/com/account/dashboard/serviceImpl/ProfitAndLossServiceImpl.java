@@ -11,7 +11,7 @@ import java.util.Map;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
+import com.account.dashboard.config.OpenAPIConfig;
 import com.account.dashboard.domain.account.LedgerType;
 import com.account.dashboard.domain.account.Voucher;
 import com.account.dashboard.repository.LedgerRepository;
@@ -21,6 +21,8 @@ import com.account.dashboard.service.ProfitAndLossService;
 
 @Service
 public class ProfitAndLossServiceImpl implements ProfitAndLossService {
+
+//    private final OpenAPIConfig openAPIConfig;
 	
 	@Autowired
 	LedgerTypeRepository ledgerTypeRepository;
@@ -30,7 +32,12 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 	
 	@Autowired
 	VoucherRepository voucherRepository;
-	
+
+//
+//    ProfitAndLossServiceImpl(OpenAPIConfig openAPIConfig) {
+//        this.openAPIConfig = openAPIConfig;
+//    }
+//	
 
 	public double getLossCount(String startDate, String endDate) {
 
@@ -689,11 +696,14 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 
         // 5. Profit before exceptional and extraordinary items and tax
         double currProfitExceptional = 0;
-        if(currTotalRevenue>0) {
+        System.out.println("currTotalRevenue....."+currTotalRevenue);
+        
+        if(currTotalRevenue!=0) {
         	currProfitExceptional = currTotalRevenue-currExpenses;
         }else {
         	currProfitExceptional = currExpenses;
         }
+        
         double preProfitExceptional = preTotalRevenue-preExpenses;
         if(preTotalRevenue>0) {
         	preProfitExceptional = preTotalRevenue-preExpenses;
@@ -1024,7 +1034,7 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
 
 	        // 5. Profit before exceptional and extraordinary items and tax
 	        double currProfitExceptional = currTotalRevenue-currExpenses;
-	        if(currTotalRevenue>0) {
+	        if(currTotalRevenue!=0) {
 	        	currProfitExceptional = currTotalRevenue-currExpenses;
 	        }else {
 	        	currProfitExceptional = currExpenses;

@@ -261,5 +261,8 @@ public interface UrlsMapping {
 		public static final String GET_ALL_GST_DATA_CRM_FOR_EXPORT=PREFIX+ "/gstData/getAllGstDataCrmForExport";
 		public static final String UPDATE_GST_CLAIM_AMOUNT=PREFIX+ "/gstData/updateGstClaimAmount";
 
+		//==================== Import feature For Account Module ====================
+		public static final String IMPORT_ESTIMATE_DATA=PREFIX+ "/dataImport/importEstimateData";
+		public static final String IMPORT_USER_DATA=PREFIX+ "/dataImport/importUserData";
 
 }

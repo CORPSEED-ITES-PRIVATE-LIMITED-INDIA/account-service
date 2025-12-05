@@ -526,7 +526,6 @@ public class VoucherServiceImpl implements VoucherService{
 	         v.setTotalAmount(createVoucherDto.getTotalAmount());
 			voucherRepository.save(v);
 			flag=true;
-
 		
 		}
 		
