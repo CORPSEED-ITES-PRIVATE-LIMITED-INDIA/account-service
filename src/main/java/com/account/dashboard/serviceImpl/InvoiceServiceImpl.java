@@ -138,7 +138,6 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("otherReference", invoice.getOtherReference());
 	        res.put("buyerOrderNo", invoice.getBuyerOrderNo());
 	        res.put("quantity", invoice.getQuantity());
-	        res.put("quantity", invoice.getActualAmount());
 
 	        res.put("buyerOrderNo", invoice.getBuyerOrderNo());
 	        res.put("cgstSgstPresent", invoice.isCgstSgstPresent());
