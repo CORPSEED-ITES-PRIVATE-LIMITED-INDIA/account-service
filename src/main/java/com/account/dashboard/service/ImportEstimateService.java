@@ -5,14 +5,17 @@ import java.util.Map;
 
 import org.springframework.stereotype.Service;
 
-import com.account.dashboard.dto.GraphDateFilter;
+import com.account.dashboard.domain.PaymentRegister;
+import com.account.dashboard.domain.User;
 
 @Service
 public interface ImportEstimateService {
 
-	List<Map<String, Object>> importEstimateData(GraphDateFilter graphDateFilter);
+	List<Map<String, Object>> importEstimateData(String s3Url);
 
-	List<Map<String, Object>> importUserData(GraphDateFilter graphDateFilter);
+	List<User>  importUserData(String s3Url);
+
+	List<PaymentRegister> importPaymentData(String s3Url);
 	
 	
 

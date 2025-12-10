@@ -264,5 +264,7 @@ public interface UrlsMapping {
 		//==================== Import feature For Account Module ====================
 		public static final String IMPORT_ESTIMATE_DATA=PREFIX+ "/dataImport/importEstimateData";
 		public static final String IMPORT_USER_DATA=PREFIX+ "/dataImport/importUserData";
+		public static final String IMPORT_COMPANY_DATA=PREFIX+ "/dataImport/importCompanyData";
+		public static final String IMPORT_PAYMENT_DATA=PREFIX+ "/dataImport/importPaymentData";
 
 }

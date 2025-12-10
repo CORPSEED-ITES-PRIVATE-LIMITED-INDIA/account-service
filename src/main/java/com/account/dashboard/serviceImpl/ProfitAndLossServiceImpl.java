@@ -692,8 +692,8 @@ public class ProfitAndLossServiceImpl implements ProfitAndLossService {
     	double currExpenses = currCostMaterials+currPurchasesStock+currInventoriesGoods+currEmployeeBenefitExpenses+currFinanceCosts+currOtherExpenses;
     	double preExpenses = preCostMaterials+prePurchasesStock+preInventoriesGoods+preEmployeeBenefitExpenses+preFinanceCosts+preOtherExpenses;
     	//Total Expenses
-        dataList.add(Map.of("title", "Total Expenses","currentAmount",currExpenses,"prevAmount",preExpenses));
-
+        dataList.add(Map.of("title", "Total Expenses","currentAmount",currExpenses,"prevAmount",preExpenses,"data",expenses));
+//        dataList.add(Map.of("title",expenses));
         // 5. Profit before exceptional and extraordinary items and tax
         double currProfitExceptional = 0;
         System.out.println("currTotalRevenue....."+currTotalRevenue);

@@ -146,7 +146,6 @@ public class InvoiceServiceImpl implements InvoiceService{
 	        res.put("cgst", invoice.getCgst());
 
 	        res.put("sgst", invoice.getSgst());
-
 	        res.put("igst", invoice.getIgst());
 	        if(invoice.getIgst()!=0 ||invoice.getIgst()>0) {
 		        res.put("igstAmount", invoice.getGstAmount());
