@@ -113,6 +113,7 @@ public class ImportEstimateServiceImpl implements ImportEstimateService{
 
 				u.setUserRole(rList);
 				userRepository.save(u);
+				users.add(u);
 			}
 
 		}
