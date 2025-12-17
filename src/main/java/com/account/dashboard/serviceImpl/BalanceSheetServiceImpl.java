@@ -1050,8 +1050,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	// ======================= EQUITY AND LIABILITIES =======================
     	Map<String, Object> equityAndLiabilities = new HashMap<>();
     	equityAndLiabilities.put("title", "EQUITY AND LIABILITIES");
-    	equityAndLiabilities.put("totalCurrLiabilities",currLiabilitiesTotal);
-    	equityAndLiabilities.put("totalPrevLiabilities",prevLiabilitiesTotal);
+    	equityAndLiabilities.put("totalCurrLiabilities",Math.abs(currLiabilitiesTotal));
+    	equityAndLiabilities.put("totalPrevLiabilities",Math.abs(prevLiabilitiesTotal));
 
     	List<Map<String, Object>> equityList = new ArrayList<>();
 
@@ -1068,16 +1068,16 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String,Object>m1=new HashMap<>();
     	m1.put("title", "Equity Share Capital");
     	m1.put("price", "1000");
-    	m1.put("totalCurrentAmount",mapCount.get("Equity Share Capital"));
-    	m1.put("totalPreviousAmount",mapCountPrev.get("Equity Share Capital"));
+    	m1.put("totalCurrentAmount",Math.abs(mapCount.get("Equity Share Capital")));
+    	m1.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Equity Share Capital")));
 
     	//	        shareCapitalList.add(Map.of("title", "Equity Share Capital"));
     	shareCapitalList.add(m1);
 
     	Map<String,Object>m2=new HashMap<>();
     	m2.put("title", "Preference Share Capital");
-    	m2.put("totalCurrentAmount",mapCount.get("Preference Share Capital"));
-    	m2.put("totalPreviousAmount",mapCountPrev.get("Preference Share Capital"));
+    	m2.put("totalCurrentAmount",Math.abs(mapCount.get("Preference Share Capital")!=null?mapCount.get("Preference Share Capital"):0));
+    	m2.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Preference Share Capital")!=null?mapCountPrev.get("Preference Share Capital"):0));
 
     	shareCapitalList.add(m2);
 
@@ -1093,8 +1093,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m3=new HashMap<>();
     	m3.put("title", "Capital Reserve");
     	m3.put("price", "1000");
-    	m3.put("totalCurrentAmount",mapCount.get("Capital Reserve"));
-    	m3.put("totalPreviousAmount",mapCountPrev.get("Capital Reserve"));
+    	m3.put("totalCurrentAmount",Math.abs(mapCount.get("Capital Reserve")!=null?mapCount.get("Capital Reserve"):0));
+    	m3.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Capital Reserve")!=null?mapCountPrev.get("Capital Reserve"):0));
 
     	reservesList.add(m3);
 
@@ -1102,8 +1102,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m4=new HashMap<>();
     	m4.put("title", "Share Premium Account");
     	m4.put("price", "1000");
-    	m4.put("totalCurrentAmount",mapCount.get("Share Premium Account"));
-    	m4.put("totalPreviousAmount",mapCountPrev.get("Share Premium Account"));
+    	m4.put("totalCurrentAmount",Math.abs(mapCount.get("Share Premium Account")));
+    	m4.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Share Premium Account")));
 
     	reservesList.add(m4);
 
@@ -1111,7 +1111,7 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m5=new HashMap<>();
     	m5.put("title", "Revaluation Reserve");
     	m5.put("price", "1000");
-    	m5.put("totalCurrentAmount",mapCount.get("Revaluation Reserve"));
+    	m5.put("totalCurrentAmount",Math.abs(mapCount.get("Revaluation Reserve")));
     	m5.put("totalPreviousAmount",mapCountPrev.get("Revaluation Reserve"));
 
     	reservesList.add(m5);
@@ -1120,8 +1120,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m6=new HashMap<>();
     	m6.put("title", "General Reserve");
     	m6.put("price", "1000");
-    	m6.put("totalCurrentAmount",mapCount.get("General Reserve"));
-    	m6.put("totalPreviousAmount",mapCountPrev.get("General Reserve"));
+    	m6.put("totalCurrentAmount",Math.abs(mapCount.get("General Reserve")!=null?mapCount.get("General Reserve"):0));
+    	m6.put("totalPreviousAmount",Math.abs(mapCountPrev.get("General Reserve")!=null?mapCountPrev.get("General Reserve"):0));
 
     	reservesList.add(m6);
     	//	        reservesList.add(Map.of("title", "General Reserve"));
@@ -1138,8 +1138,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m8=new HashMap<>();
     	m8.put("title", "Other Specific Reserves");
     	m8.put("price", "1000");
-    	m8.put("totalCurrentAmount",mapCount.get("Other Specific Reserves"));
-    	m8.put("totalPreviousAmount",mapCountPrev.get("Other Specific Reserves"));
+    	m8.put("totalCurrentAmount",Math.abs(mapCount.get("Other Specific Reserves")));
+    	m8.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Other Specific Reserves")));
 
     	reservesList.add(m8);
     	//	        reservesList.add(Map.of("title", "Other Specific Reserves"));
@@ -1149,8 +1149,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m9=new HashMap<>();
     	m9.put("title", "Money received against share warrants");
     	m9.put("price", "1000");
-    	m9.put("totalCurrentAmount",mapCount.get("Money received against share warrants"));
-    	m9.put("totalPreviousAmount",mapCountPrev.get("Money received against share warrants"));
+    	m9.put("totalCurrentAmount",Math.abs(mapCount.get("Money received against share warrants")!=null?mapCount.get("Money received against share warrants"):0));
+    	m9.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Money received against share warrants")!=null?mapCountPrev.get("Money received against share warrants"):0));
 
     	shareholdersData.add(m9);
     	//	        shareholdersData.add(Map.of("title", "Money received against share warrants"));
@@ -1162,8 +1162,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m10=new HashMap<>();
     	m10.put("title", "Money received against share warrants");
     	m10.put("price", "price");
-    	m10.put("totalCurrentAmount",mapCount.get("Money received against share warrants"));
-    	m10.put("totalPreviousAmount",mapCountPrev.get("Money received against share warrants"));
+    	m10.put("totalCurrentAmount",Math.abs(mapCount.get("Money received against share warrants")));
+    	m10.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Money received against share warrants")));
 
     	equityList.add(m10);
     	//	        equityList.add(Map.of("title", "Share Application Money Pending Allotment", "data", new ArrayList<>()));
@@ -1181,8 +1181,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m11=new HashMap<>();
     	m11.put("title", "Secured Loans");
     	m11.put("price", "1000");
-    	m11.put("totalCurrentAmount",mapCount.get("Secured Loans"));
-    	m11.put("totalPreviousAmount",mapCountPrev.get("Secured Loans"));
+    	m11.put("totalCurrentAmount",Math.abs(mapCount.get("Secured Loans")));
+    	m11.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Secured Loans")));
 
     	longTermBorrowingsList.add(m11);
 
@@ -1190,8 +1190,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m12=new HashMap<>();
     	m12.put("title", "Unsecured Loans");
     	m12.put("price", "1000");
-    	m12.put("totalCurrentAmount",mapCount.get("Unsecured Loans"));
-    	m12.put("totalPreviousAmount",mapCountPrev.get("Unsecured Loans"));
+    	m12.put("totalCurrentAmount",Math.abs(mapCount.get("Unsecured Loans")));
+    	m12.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Unsecured Loans")));
 
     	longTermBorrowingsList.add(m12);
     	//	        longTermBorrowingsList.add(Map.of("title", "Unsecured Loans"));
@@ -1199,24 +1199,24 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object>m13=new HashMap<>();
     	m13.put("title", "Deferred Payment Liabilities");
     	m13.put("price", "1000");
-    	m13.put("totalCurrentAmount",mapCount.get("Deferred Payment Liabilities"));
-    	m13.put("totalPreviousAmount",mapCountPrev.get("Deferred Payment Liabilities"));
+    	m13.put("totalCurrentAmount",Math.abs(mapCount.get("Deferred Payment Liabilities")));
+    	m13.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Deferred Payment Liabilities")));
 
     	longTermBorrowingsList.add(m13);
     	//	        longTermBorrowingsList.add(Map.of("title", "Deferred Payment Liabilities"));
     	Map<String, Object>m14=new HashMap<>();
     	m14.put("title", "Long-term Deposits");
     	m14.put("price", "1000");
-    	m14.put("totalCurrentAmount",mapCount.get("Long-term Deposits"));
-    	m14.put("totalPreviousAmount",mapCountPrev.get("Long-term Deposits"));
+    	m14.put("totalCurrentAmount",Math.abs(mapCount.get("Long-term Deposits")));
+    	m14.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Long-term Deposits")));
 
     	longTermBorrowingsList.add(m14);
     	//	        longTermBorrowingsList.add(Map.of("title", "Long-term Deposits"));
     	Map<String, Object>m15=new HashMap<>();
     	m15.put("title", "Bonds / Debentures");
     	m15.put("price", "1000");
-    	m15.put("totalCurrentAmount",mapCount.get("Bonds / Debentures"));
-    	m15.put("totalPreviousAmount",mapCountPrev.get("Bonds / Debentures"));
+    	m15.put("totalCurrentAmount",Math.abs(mapCount.get("Bonds / Debentures")));
+    	m15.put("totalPreviousAmount",Math.abs(mapCountPrev.get("Bonds / Debentures")));
 
     	longTermBorrowingsList.add(m15);
     	
@@ -1230,8 +1230,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	otherLongTermLiabilities.put("title", "Other long-term liabilities");
     	Double longTermPayables = mapCount.get("Long-term payables")!=null?mapCount.get("Long-term payables"):0;
     	otherLongTermLiabilities.put("data", List.of(
-    			Map.of("title", "Long-term payables","price","1000","totalCurrentAmount",longTermPayables),
-    			Map.of("title", "Long-term lease obligations","price","1000","totalCurrentAmount",mapCount.get("Long-term lease obligations")!=null?mapCount.get("Long-term lease obligations"):0,"totalPreviousAmount",mapCountPrev.get("Long-term lease obligations")!=null?mapCountPrev.get("Long-term lease obligations"):0)
+    			Map.of("title", "Long-term payables","price","1000","totalCurrentAmount",Math.abs(longTermPayables)),
+    			Map.of("title", "Long-term lease obligations","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Long-term lease obligations")!=null?mapCount.get("Long-term lease obligations"):0),"totalPreviousAmount",Math.abs(mapCountPrev.get("Long-term lease obligations")!=null?mapCountPrev.get("Long-term lease obligations"):0))
     			));
 
     	nonCurrentList.add(otherLongTermLiabilities);
@@ -1239,11 +1239,11 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object> longTermProvisions = new HashMap<>();
     	longTermProvisions.put("title", "Long-term provisions");
     	longTermProvisions.put("data", List.of(
-    			Map.of("title", "Provision for employee benefits","price","1000","totalCurrentAmount",mapCount.get("Bonds / Debentures")!=null?mapCount.get("Bonds / Debentures"):0,"totalPreviousAmount",mapCountPrev.get("Bonds / Debentures")!=null?mapCountPrev.get("Bonds / Debentures"):0),
-    			Map.of("title", "Provision for warranty","price","1000","totalCurrentAmount",mapCount.get("Provision for warranty")!=null?mapCount.get("Provision for warranty"):0),
-    			Map.of("title", "Provision for decommissioning/restoration costs","price","1000","totalCurrentAmount",mapCount.get("Provision for decommissioning/restoration costs")!=null?mapCount.get("Provision for decommissioning/restoration costs"):0,"totalPreviousAmount"
+    			Map.of("title", "Provision for employee benefits","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Bonds / Debentures")!=null?mapCount.get("Bonds / Debentures"):0),"totalPreviousAmount",mapCountPrev.get("Bonds / Debentures")!=null?mapCountPrev.get("Bonds / Debentures"):0),
+    			Map.of("title", "Provision for warranty","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Provision for warranty")!=null?mapCount.get("Provision for warranty"):0)),
+    			Map.of("title", "Provision for decommissioning/restoration costs","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Provision for decommissioning/restoration costs")!=null?mapCount.get("Provision for decommissioning/restoration costs"):0),"totalPreviousAmount"
     					,mapCountPrev.get("Provision for decommissioning/restoration costs")!=null?mapCountPrev.get("Provision for decommissioning/restoration costs"):0),
-    			Map.of("title", "Other long-term provisions","price","1000","totalCurrentAmount",mapCount.get("Other long-term provisions")!=null?mapCount.get("Other long-term provisions"):0,"totalPreviousAmount",mapCountPrev.get("Other long-term provisions")!=null?mapCountPrev.get("Other long-term provisions"):0)
+    			Map.of("title", "Other long-term provisions","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Other long-term provisions")!=null?mapCount.get("Other long-term provisions"):0),"totalPreviousAmount",mapCountPrev.get("Other long-term provisions")!=null?mapCountPrev.get("Other long-term provisions"):0)
     			));
     	nonCurrentList.add(longTermProvisions);
 
@@ -1259,40 +1259,40 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	Map<String, Object> shortTermBorrowings = new HashMap<>();
     	shortTermBorrowings.put("title", "Short-term borrowings");
     	shortTermBorrowings.put("data", List.of(
-    			Map.of("title", "Loans from Banks","price","1000","totalCurrentAmount",mapCount.get("Loans from Banks")!=null?mapCount.get("Loans from Banks"):0,"totalPreviousAmount",mapCountPrev.get("Loans from Banks")!=null?mapCountPrev.get("Loans from Banks"):0),
-    			Map.of("title", "Loans from Financial Institutions / NBFCs","price","1000","totalCurrentAmount",mapCount.get("Loans from Banks")!=null?mapCount.get("Loans from Banks"):0,"totalPreviousAmount",mapCountPrev.get("Loans from Banks")!=null?mapCountPrev.get("Loans from Banks"):0),
-    			Map.of("title", "Loans from Others / Unsecured Loans","price","1000","totalCurrentAmount",mapCount.get("Loans from Others / Unsecured Loans")!=null?mapCount.get("Loans from Others / Unsecured Loans"):0,"totalPreviousAmount",mapCountPrev.get("Loans from Others / Unsecured Loans")!=null?mapCountPrev.get("Loans from Others / Unsecured Loans"):0),
-    			Map.of("title", "Other Short-term Borrowings","totalCurrentAmount",mapCount.get("Other Short-term Borrowings")!=null?mapCount.get("Other Short-term Borrowings"):0,"totalPreviousAmount",mapCountPrev.get("Other Short-term Borrowings")!=null?mapCountPrev.get("Other Short-term Borrowings"):0)
+    			Map.of("title", "Loans from Banks","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Loans from Banks")!=null?mapCount.get("Loans from Banks"):0),"totalPreviousAmount",mapCountPrev.get("Loans from Banks")!=null?mapCountPrev.get("Loans from Banks"):0),
+    			Map.of("title", "Loans from Financial Institutions / NBFCs","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Loans from Banks")!=null?mapCount.get("Loans from Banks"):0),"totalPreviousAmount",mapCountPrev.get("Loans from Banks")!=null?mapCountPrev.get("Loans from Banks"):0),
+    			Map.of("title", "Loans from Others / Unsecured Loans","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Loans from Others / Unsecured Loans")!=null?mapCount.get("Loans from Others / Unsecured Loans"):0),"totalPreviousAmount",mapCountPrev.get("Loans from Others / Unsecured Loans")!=null?mapCountPrev.get("Loans from Others / Unsecured Loans"):0),
+    			Map.of("title", "Other Short-term Borrowings","totalCurrentAmount",Math.abs(mapCount.get("Other Short-term Borrowings")!=null?mapCount.get("Other Short-term Borrowings"):0),"totalPreviousAmount",mapCountPrev.get("Other Short-term Borrowings")!=null?mapCountPrev.get("Other Short-term Borrowings"):0)
     			));
     	currentList.add(shortTermBorrowings);
 
     	currentList.add(Map.of(
     			"title", "Trade payables",
     			"data", List.of(
-    					Map.of("title", "Micro, Small and Medium Enterprises (MSMEs)","totalCurrentAmount",mapCount.get("Micro, Small and Medium Enterprises (MSMEs)")!=null?mapCount.get("Micro, Small and Medium Enterprises (MSMEs)"):0,"totalPreviousAmount",mapCountPrev.get("Micro, Small and Medium Enterprises (MSMEs)")!=null?mapCountPrev.get("Micro, Small and Medium Enterprises (MSMEs)"):0),
-    					Map.of("title", "Others","price","1000","totalCurrentAmount",mapCount.get("Others")!=null?mapCount.get("Others"):0)
+    					Map.of("title", "Micro, Small and Medium Enterprises (MSMEs)","totalCurrentAmount",Math.abs(mapCount.get("Micro, Small and Medium Enterprises (MSMEs)")!=null?mapCount.get("Micro, Small and Medium Enterprises (MSMEs)"):0),"totalPreviousAmount",mapCountPrev.get("Micro, Small and Medium Enterprises (MSMEs)")!=null?mapCountPrev.get("Micro, Small and Medium Enterprises (MSMEs)"):0),
+    					Map.of("title", "Others","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Others")!=null?mapCount.get("Others"):0))
     					)
     			));
 
     	currentList.add(Map.of(
     			"title", "Other current liabilities",
     			"data", List.of(
-    					Map.of("title", "Current Maturities of Long-term Borrowings","price","1000","totalCurrentAmount",mapCount.get("Current Maturities of Long-term Borrowings")!=null?mapCount.get("Current Maturities of Long-term Borrowings"):0,"totalPreviousAmount",mapCountPrev.get("Current Maturities of Long-term Borrowings")!=null?mapCountPrev.get("Current Maturities of Long-term Borrowings"):0),
-    					Map.of("title", "Statutory Dues Payable","price","1000","totalCurrentAmount",mapCount.get("Statutory Dues Payable")!=null?mapCount.get("Statutory Dues Payable"):0,"totalPreviousAmount",mapCountPrev.get("Statutory Dues Payable")!=null?mapCountPrev.get("Statutory Dues Payable"):0),
-    					Map.of("title", "Advance from Customers","price","1000","totalCurrentAmount",mapCount.get("Advance from Customers")!=null?mapCount.get("Advance from Customers"):0,"totalPreviousAmount",mapCountPrev.get("Advance from Customers")!=null?mapCountPrev.get("Advance from Customers"):0),
-    					Map.of("title", "Interest Accrued but Not Due","price","1000","totalCurrentAmount",mapCount.get("Interest Accrued but Not Due")!=null?mapCount.get("Interest Accrued but Not Due"):0,"totalPreviousAmount",mapCountPrev.get("Interest Accrued but Not Due")!=null?mapCountPrev.get("Interest Accrued but Not Due"):0),
-    					Map.of("title", "Dividends Payable","price","1000","totalCurrentAmount",mapCount.get("Dividends Payable")!=null?mapCount.get("Dividends Payable"):0,"totalPreviousAmount",mapCountPrev.get("Dividends Payable")!=null?mapCountPrev.get("Dividends Payable"):0),
-    					Map.of("title", "Other Payables / Liabilities","price","1000","totalCurrentAmount",mapCount.get("Other Payables / Liabilities")!=null?mapCount.get("Other Payables / Liabilities"):0,"totalPreviousAmount",mapCountPrev.get("Other Payables / Liabilities")!=null?mapCountPrev.get("Other Payables / Liabilities"):0)
+    					Map.of("title", "Current Maturities of Long-term Borrowings","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Current Maturities of Long-term Borrowings")!=null?mapCount.get("Current Maturities of Long-term Borrowings"):0),"totalPreviousAmount",mapCountPrev.get("Current Maturities of Long-term Borrowings")!=null?mapCountPrev.get("Current Maturities of Long-term Borrowings"):0),
+    					Map.of("title", "Statutory Dues Payable","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Statutory Dues Payable")!=null?mapCount.get("Statutory Dues Payable"):0),"totalPreviousAmount",mapCountPrev.get("Statutory Dues Payable")!=null?mapCountPrev.get("Statutory Dues Payable"):0),
+    					Map.of("title", "Advance from Customers","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Advance from Customers")!=null?mapCount.get("Advance from Customers"):0),"totalPreviousAmount",mapCountPrev.get("Advance from Customers")!=null?mapCountPrev.get("Advance from Customers"):0),
+    					Map.of("title", "Interest Accrued but Not Due","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Interest Accrued but Not Due")!=null?mapCount.get("Interest Accrued but Not Due"):0),"totalPreviousAmount",mapCountPrev.get("Interest Accrued but Not Due")!=null?mapCountPrev.get("Interest Accrued but Not Due"):0),
+    					Map.of("title", "Dividends Payable","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Dividends Payable")!=null?mapCount.get("Dividends Payable"):0),"totalPreviousAmount",mapCountPrev.get("Dividends Payable")!=null?mapCountPrev.get("Dividends Payable"):0),
+    					Map.of("title", "Other Payables / Liabilities","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Other Payables / Liabilities")!=null?mapCount.get("Other Payables / Liabilities"):0),"totalPreviousAmount",mapCountPrev.get("Other Payables / Liabilities")!=null?mapCountPrev.get("Other Payables / Liabilities"):0)
     					)
     			));
 
     	currentList.add(Map.of(
     			"title", "Short-term provisions",
     			"data", List.of(
-    					Map.of("title", "Provision for Employee Benefits","price","1000","totalCurrentAmount",mapCount.get("Provision for Employee Benefits")!=null?mapCount.get("Provision for Employee Benefits"):0,"totalPreviousAmount",mapCountPrev.get("Provision for Employee Benefits")!=null?mapCountPrev.get("Provision for Employee Benefits"):0),
-    					Map.of("title", "Provision for Tax","totalCurrentAmount",mapCount.get("Provision for Tax")!=null?mapCount.get("Provision for Tax"):0,"totalPreviousAmount",mapCountPrev.get("Provision for Tax")!=null?mapCountPrev.get("Provision for Tax"):0),
-    					Map.of("title", "Provision for Warranty","totalCurrentAmount",mapCount.get("Provision for Warranty")!=null?mapCount.get("Provision for Warranty"):0,"totalPreviousAmount",mapCountPrev.get("Provision for Warranty")!=null?mapCountPrev.get("Provision for Warranty"):0),
-    					Map.of("title", "Other Short-term Provisions","totalCurrentAmount",mapCount.get("Other Short-term Provisions")!=null?mapCount.get("Other Short-term Provisions"):0,"totalPreviousAmount",mapCountPrev.get("Other Short-term Provisions")!=null?mapCountPrev.get("Other Short-term Provisions"):0)
+    					Map.of("title", "Provision for Employee Benefits","price","1000","totalCurrentAmount",Math.abs(mapCount.get("Provision for Employee Benefits")!=null?mapCount.get("Provision for Employee Benefits"):0),"totalPreviousAmount",mapCountPrev.get("Provision for Employee Benefits")!=null?mapCountPrev.get("Provision for Employee Benefits"):0),
+    					Map.of("title", "Provision for Tax","totalCurrentAmount",Math.abs(mapCount.get("Provision for Tax")!=null?mapCount.get("Provision for Tax"):0),"totalPreviousAmount",mapCountPrev.get("Provision for Tax")!=null?mapCountPrev.get("Provision for Tax"):0),
+    					Map.of("title", "Provision for Warranty","totalCurrentAmount",Math.abs(mapCount.get("Provision for Warranty")!=null?mapCount.get("Provision for Warranty"):0),"totalPreviousAmount",mapCountPrev.get("Provision for Warranty")!=null?mapCountPrev.get("Provision for Warranty"):0),
+    					Map.of("title", "Other Short-term Provisions","totalCurrentAmount",Math.abs(mapCount.get("Other Short-term Provisions")!=null?mapCount.get("Other Short-term Provisions"):0),"totalPreviousAmount",mapCountPrev.get("Other Short-term Provisions")!=null?mapCountPrev.get("Other Short-term Provisions"):0)
     					)
     			));
 
@@ -1307,8 +1307,8 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	
     	Map<String, Object> assets = new HashMap<>();
     	assets.put("title", "ASSETS");
-    	assets.put("totalCurrAssets",currAssetsTotal);
-    	assets.put("totalPrevAssets", prevAssetsTotal);
+    	assets.put("totalCurrAssets",Math.abs(currAssetsTotal));
+    	assets.put("totalPrevAssets", Math.abs(prevAssetsTotal));
     	assets.put("total", 0);
 
     	List<Map<String, Object>> assetsList = new ArrayList<>();
@@ -1326,28 +1326,28 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	nonCurrentAssetsList.add(Map.of(
     			"title", "Property, Plant and Equipment",
     			"data", List.of(
-    					Map.of("title", "Land","price","1000","totalCurrentAmount",mapCountAssets.get("Land")!=null?mapCountAssets.get("Land"):0,"totalPreviousAmount",mapCountPrevAssets.get("Land")!=null?mapCountPrevAssets.get("Land"):0),
-    					Map.of("title", "Buildings","price","1000","totalCurrentAmount",mapCountAssets.get("Buildings")!=null?mapCountAssets.get("Buildings"):0,"totalPreviousAmount",mapCountPrevAssets.get("Buildings")!=null?mapCountPrevAssets.get("Buildings"):0),
-    					Map.of("title", "Plant and machinery","price","1000","totalCurrentAmount",mapCountAssets.get("Plant and machinery")!=null?mapCountAssets.get("Plant and machinery"):0,"totalPreviousAmount",mapCountPrevAssets.get("Plant and machinery")!=null?mapCountPrevAssets.get("Plant and machinery"):0),
-    					Map.of("title", "Furniture and fixtures","totalCurrentAmount",mapCountAssets.get("Furniture and fixtures")!=null?mapCountAssets.get("Furniture and fixtures"):0,"totalPreviousAmount",mapCountPrevAssets.get("Furniture and fixtures")!=null?mapCountPrevAssets.get("Furniture and fixtures"):0),
-    					Map.of("title", "Vehicles","price","1000","totalCurrentAmount",mapCountAssets.get("Vehicles")!=null?mapCountAssets.get("Vehicles"):0,"totalPreviousAmount",mapCountPrevAssets.get("Vehicles")!=null?mapCountPrevAssets.get("Vehicles"):0),
-    					Map.of("title", "Office equipment","price","1000","totalCurrentAmount",mapCountAssets.get("Office equipment")!=null?mapCountAssets.get("Office equipment"):0,"totalPreviousAmount",mapCountPrevAssets.get("Office equipment")!=null?mapCountPrevAssets.get("Office equipment"):0),
-    					Map.of("title", "Other","price","1000","totalCurrentAmount",mapCountAssets.get("Other")!=null?mapCountAssets.get("Other"):0,"totalPreviousAmount",mapCountPrevAssets.get("Other")!=null?mapCountPrevAssets.get("Other"):0)
+    					Map.of("title", "Land","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Land")!=null?mapCountAssets.get("Land"):0),"totalPreviousAmount",mapCountPrevAssets.get("Land")!=null?mapCountPrevAssets.get("Land"):0),
+    					Map.of("title", "Buildings","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Buildings")!=null?mapCountAssets.get("Buildings"):0),"totalPreviousAmount",mapCountPrevAssets.get("Buildings")!=null?mapCountPrevAssets.get("Buildings"):0),
+    					Map.of("title", "Plant and machinery","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Plant and machinery")!=null?mapCountAssets.get("Plant and machinery"):0),"totalPreviousAmount",mapCountPrevAssets.get("Plant and machinery")!=null?mapCountPrevAssets.get("Plant and machinery"):0),
+    					Map.of("title", "Furniture and fixtures","totalCurrentAmount",Math.abs(mapCountAssets.get("Furniture and fixtures")!=null?mapCountAssets.get("Furniture and fixtures"):0),"totalPreviousAmount",mapCountPrevAssets.get("Furniture and fixtures")!=null?mapCountPrevAssets.get("Furniture and fixtures"):0),
+    					Map.of("title", "Vehicles","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Vehicles")!=null?mapCountAssets.get("Vehicles"):0),"totalPreviousAmount",mapCountPrevAssets.get("Vehicles")!=null?mapCountPrevAssets.get("Vehicles"):0),
+    					Map.of("title", "Office equipment","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Office equipment")!=null?mapCountAssets.get("Office equipment"):0),"totalPreviousAmount",mapCountPrevAssets.get("Office equipment")!=null?mapCountPrevAssets.get("Office equipment"):0),
+    					Map.of("title", "Other","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Other")!=null?mapCountAssets.get("Other"):0),"totalPreviousAmount",mapCountPrevAssets.get("Other")!=null?mapCountPrevAssets.get("Other"):0)
     					)
     			));
     	nonCurrentAssetsList.add(Map.of(
     			"title", "Intangible Assets",
     			"data", List.of(
-    					Map.of("title", "Goodwill","price","1000","totalCurrentAmount",mapCountAssets.get("Other")!=null?mapCountAssets.get("Other"):0,"totalPreviousAmount",mapCountPrevAssets.get("Other")!=null?mapCountPrevAssets.get("Other"):0),
-    					Map.of("title", "Other Intangible Assets","price","1000","totalCurrentAmount",mapCountAssets.get("Other")!=null?mapCountAssets.get("Other"):0,"totalPreviousAmount",mapCountPrevAssets.get("Other")!=null?mapCountPrevAssets.get("Other"):0),
-    					Map.of("title", "Intangible Assets under Development / Work-in-Progress","price","1000","totalCurrentAmount",mapCountAssets.get("Intangible Assets under Development / Work-in-Progress")!=null?mapCountAssets.get("Intangible Assets under Development / Work-in-Progress"):0,"totalPreviousAmount",mapCountPrevAssets.get("Intangible Assets under Development / Work-in-Progress")!=null?mapCountPrevAssets.get("Intangible Assets under Development / Work-in-Progress"):0)
+    					Map.of("title", "Goodwill","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Other")!=null?mapCountAssets.get("Other"):0),"totalPreviousAmount",mapCountPrevAssets.get("Other")!=null?mapCountPrevAssets.get("Other"):0),
+    					Map.of("title", "Other Intangible Assets","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Other")!=null?mapCountAssets.get("Other"):0),"totalPreviousAmount",mapCountPrevAssets.get("Other")!=null?mapCountPrevAssets.get("Other"):0),
+    					Map.of("title", "Intangible Assets under Development / Work-in-Progress","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Intangible Assets under Development / Work-in-Progress")!=null?mapCountAssets.get("Intangible Assets under Development / Work-in-Progress"):0),"totalPreviousAmount",mapCountPrevAssets.get("Intangible Assets under Development / Work-in-Progress")!=null?mapCountPrevAssets.get("Intangible Assets under Development / Work-in-Progress"):0)
     					)
     			));
-    	nonCurrentAssetsList.add(Map.of("title", "Capital Work-in-Progress","price","1000","totalCurrentAmount",mapCountAssets.get("Capital Work-in-Progress")!=null?mapCountAssets.get("Capital Work-in-Progress"):0,"totalPreviousAmount",mapCountPrevAssets.get("Capital Work-in-Progress")!=null?mapCountPrevAssets.get("Capital Work-in-Progress"):0));
-    	nonCurrentAssetsList.add(Map.of("title", "Non-current investments","price","1000","totalCurrentAmount",mapCountAssets.get("Non-current investments")!=null?mapCountAssets.get("Non-current investments"):0,"totalPreviousAmount",mapCountPrevAssets.get("Non-current investments")!=null?mapCountPrevAssets.get("Non-current investments"):0));
-    	nonCurrentAssetsList.add(Map.of("title", "Deferred tax assets (net)","price","1000","totalCurrentAmount",mapCountAssets.get("Deferred tax assets (net)")!=null?mapCountAssets.get("Deferred tax assets (net)"):0,"totalPreviousAmount",mapCountPrevAssets.get("Deferred tax assets (net)")!=null?mapCountPrevAssets.get("Deferred tax assets (net)"):0));
-    	nonCurrentAssetsList.add(Map.of("title", "Long-term loans and advances","price","1000","totalCurrentAmount",mapCountAssets.get("Long-term loans and advances")!=null?mapCountAssets.get("Long-term loans and advances"):0,"totalPreviousAmount",mapCountPrevAssets.get("Long-term loans and advances")!=null?mapCountPrevAssets.get("Long-term loans and advances"):0));
-    	nonCurrentAssetsList.add(Map.of("title", "Other non-current assets","price","1000","totalCurrentAmount",mapCountAssets.get("Other non-current assets")!=null?mapCountAssets.get("Other non-current assets"):0,"totalPreviousAmount",mapCountPrevAssets.get("Other non-current assets")!=null?mapCountPrevAssets.get("Other non-current assets"):0));
+    	nonCurrentAssetsList.add(Map.of("title", "Capital Work-in-Progress","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Capital Work-in-Progress")!=null?mapCountAssets.get("Capital Work-in-Progress"):0),"totalPreviousAmount",mapCountPrevAssets.get("Capital Work-in-Progress")!=null?mapCountPrevAssets.get("Capital Work-in-Progress"):0));
+    	nonCurrentAssetsList.add(Map.of("title", "Non-current investments","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Non-current investments")!=null?mapCountAssets.get("Non-current investments"):0),"totalPreviousAmount",mapCountPrevAssets.get("Non-current investments")!=null?mapCountPrevAssets.get("Non-current investments"):0));
+    	nonCurrentAssetsList.add(Map.of("title", "Deferred tax assets (net)","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Deferred tax assets (net)")!=null?mapCountAssets.get("Deferred tax assets (net)"):0),"totalPreviousAmount",mapCountPrevAssets.get("Deferred tax assets (net)")!=null?mapCountPrevAssets.get("Deferred tax assets (net)"):0));
+    	nonCurrentAssetsList.add(Map.of("title", "Long-term loans and advances","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Long-term loans and advances")!=null?mapCountAssets.get("Long-term loans and advances"):0),"totalPreviousAmount",mapCountPrevAssets.get("Long-term loans and advances")!=null?mapCountPrevAssets.get("Long-term loans and advances"):0));
+    	nonCurrentAssetsList.add(Map.of("title", "Other non-current assets","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Other non-current assets")!=null?mapCountAssets.get("Other non-current assets"):0),"totalPreviousAmount",mapCountPrevAssets.get("Other non-current assets")!=null?mapCountPrevAssets.get("Other non-current assets"):0));
     	nonCurrentAssets.put("data", nonCurrentAssetsList);
     	assetsList.add(nonCurrentAssets);
 //        Map<String,Object>profitAndLoss=profitAndLossServiceImpl.getAllProfitAndLoss(null,null);
@@ -1357,13 +1357,13 @@ public class BalanceSheetServiceImpl implements BalanceSheetService{
     	assetsList.add(Map.of(
     			"title", "Current Assets",
     			"data", List.of(
-    					Map.of("title", "Current investments","price","1000","totalCurrentAmount",mapCountAssets.get("Current investments")!=null?mapCountAssets.get("Current investments"):0,"totalPreviousAmount",mapCountPrevAssets.get("Current investments")!=null?mapCountPrevAssets.get("Current investments"):0),
-    					Map.of("title", "Inventories","price","1000","totalCurrentAmount",mapCountAssets.get("Inventories")!=null?mapCountAssets.get("Inventories"):0,"totalPreviousAmount",mapCountPrevAssets.get("Inventories")!=null?mapCountPrevAssets.get("Inventories"):0),
-    					Map.of("title", "Trade receivables","price","1000","totalCurrentAmount",mapCountAssets.get("Trade receivables")!=null?mapCountAssets.get("Trade receivables"):0,"totalPreviousAmount",mapCountPrevAssets.get("Trade receivables")!=null?mapCountPrevAssets.get("Trade receivables"):0),
-    					Map.of("title", "Cash and cash equivalents","price","1000","totalCurrentAmount",mapCountAssets.get("Cash and cash equivalents")!=null?mapCountAssets.get("Cash and cash equivalents"):0,"totalPreviousAmount",mapCountPrevAssets.get("Cash and cash equivalents")!=null?mapCountPrevAssets.get("Cash and cash equivalents"):0),
+    					Map.of("title", "Current investments","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Current investments")!=null?mapCountAssets.get("Current investments"):0),"totalPreviousAmount",mapCountPrevAssets.get("Current investments")!=null?mapCountPrevAssets.get("Current investments"):0),
+    					Map.of("title", "Inventories","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Inventories")!=null?mapCountAssets.get("Inventories"):0),"totalPreviousAmount",mapCountPrevAssets.get("Inventories")!=null?mapCountPrevAssets.get("Inventories"):0),
+    					Map.of("title", "Trade receivables","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Trade receivables")!=null?mapCountAssets.get("Trade receivables"):0),"totalPreviousAmount",mapCountPrevAssets.get("Trade receivables")!=null?mapCountPrevAssets.get("Trade receivables"):0),
+    					Map.of("title", "Cash and cash equivalents","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Cash and cash equivalents")!=null?mapCountAssets.get("Cash and cash equivalents"):0),"totalPreviousAmount",Math.abs(mapCountPrevAssets.get("Cash and cash equivalents")!=null?mapCountPrevAssets.get("Cash and cash equivalents"):0)),
     					
-    					Map.of("title", "Short-term loans and advances","price","1000","totalCurrentAmount",mapCountAssets.get("Short-term loans and advances")!=null?mapCountAssets.get("Short-term loans and advances"):0,"totalPreviousAmount",mapCountPrevAssets.get("Short-term loans and advances")!=null?mapCountPrevAssets.get("Short-term loans and advances"):0),
-    					Map.of("title", "Other current assets","price","1000","totalCurrentAmount",mapCountAssets.get("Other current assets")!=null?mapCountAssets.get("Other current assets"):0,"totalPreviousAmount",mapCountPrevAssets.get("Other current assets")!=null?mapCountPrevAssets.get("Other current assets"):0)
+    					Map.of("title", "Short-term loans and advances","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Short-term loans and advances")!=null?mapCountAssets.get("Short-term loans and advances"):0),"totalPreviousAmount",mapCountPrevAssets.get("Short-term loans and advances")!=null?mapCountPrevAssets.get("Short-term loans and advances"):0),
+    					Map.of("title", "Other current assets","price","1000","totalCurrentAmount",Math.abs(mapCountAssets.get("Other current assets")!=null?mapCountAssets.get("Other current assets"):0),"totalPreviousAmount",mapCountPrevAssets.get("Other current assets")!=null?mapCountPrevAssets.get("Other current assets"):0)
     					)
     			));
 
