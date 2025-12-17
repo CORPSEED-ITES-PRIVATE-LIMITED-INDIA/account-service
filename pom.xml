@@ -9,8 +9,8 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 
-	<groupId>com.lead</groupId>
-	<artifactId>lead-service</artifactId>
+	<groupId>com.account</groupId>
+	<artifactId>account-service</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>lead-service</name>
 	<description>support project for Spring Boot</description>
