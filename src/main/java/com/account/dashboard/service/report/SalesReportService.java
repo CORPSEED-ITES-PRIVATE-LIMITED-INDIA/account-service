@@ -9,4 +9,6 @@ public interface SalesReportService {
 
 	Long getAllSalesReportCount(String status);
 
+	List<Map<String, Object>> getAllSalesReportForExport(String status);
+
 }

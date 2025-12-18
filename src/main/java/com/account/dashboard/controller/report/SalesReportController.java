@@ -31,5 +31,12 @@ public class SalesReportController {
 		return res;
 		
 	}
+	
+	@GetMapping(UrlsMapping.GET_ALL_SALES_REPORT_FOR_EXPORT)
+	public List<Map<String,Object>> getAllSalesReportForExport(@RequestParam String status){
+		List<Map<String,Object>>res=salesReportService.getAllSalesReportForExport(status);	
+		return res;
+		
+	}
 
 }

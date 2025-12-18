@@ -238,6 +238,7 @@ public interface UrlsMapping {
 		//sales Report
 		public static final String GET_ALL_SALES_REPORT=PREFIX+ "/salesReport/getAllSalesReport";
 		public static final String GET_ALL_SALES_REPORT_COUNT=PREFIX+ "/salesReport/getAllSalesReportCount";
+		public static final String GET_ALL_SALES_REPORT_FOR_EXPORT=PREFIX+ "/salesReport/getAllSalesReportForExport";
 
 		//TdsReport
 		
