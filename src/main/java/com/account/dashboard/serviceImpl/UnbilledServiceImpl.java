@@ -5,6 +5,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -228,6 +229,26 @@ public class UnbilledServiceImpl implements UnbilledService{
         return result;
 
 	
+	}
+
+	@Override
+	public Map<String, Object> getUnbilledByIdForView(Long id) {
+		Map<String, Object>map=new HashMap<>();
+		double totalAmount=0l;
+		double paidAmount=0l;
+		double dueAmount=0l;
+		Optional<Unbilled> unbilled = unbilledRepository.findById(id);
+		if(unbilled!=null&& unbilled.get()!=null) {
+			Unbilled u=unbilled.get();
+			Map<String, Object> estimate = leadFeignClient.getEstimateById(unbilled.get().getEstimateId());
+			totalAmount=totalAmount+u.getOrderAmount();
+			paidAmount=paidAmount+u.getPaidAmount();
+			dueAmount=dueAmount+u.getDueAmount();
+	         map.put("estimate", estimate);
+		}
+         map.put("dueAmount", dueAmount);
+
+         return map;
 	}
 
 	

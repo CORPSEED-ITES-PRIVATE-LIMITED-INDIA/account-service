@@ -25,7 +25,7 @@ public class InvoiceServiceImpl implements InvoiceService{
 	InvoiceDataRepository invoiceDataRepository;
 	@Override
 	public Map<String, Object> getInvoiceById(Long id) {
-		InvoiceData invoice = invoiceDataRepository.findById(id).get();
+		InvoiceData invoice = invoiceDataRepository.findById(id).get(); 
 		  Map<String, Object> res = new HashMap<>();
 	        
 	        // Add fields to the map

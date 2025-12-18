@@ -25,6 +25,11 @@ public class SalesReportController {
 		return res;
 		
 	}
-	
+	@GetMapping(UrlsMapping.GET_ALL_SALES_REPORT_COUNT)
+	public Long getAllSalesReportCount(@RequestParam String status){
+		Long res=salesReportService.getAllSalesReportCount(status);	
+		return res;
+		
+	}
 
 }

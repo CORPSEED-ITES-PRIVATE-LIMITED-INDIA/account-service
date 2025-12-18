@@ -31,4 +31,6 @@ public interface UnbilledService {
 
 	List<Map<String, Object>> getAllUnbilledForExport(String startDate,String endDate);
 
+	Map<String, Object> getUnbilledByIdForView(Long id);
+
 }

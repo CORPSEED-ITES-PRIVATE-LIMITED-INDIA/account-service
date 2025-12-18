@@ -2350,44 +2350,44 @@ public Boolean paymentApproveAndDisapprovedV5(Long paymentRegisterId ,Long estim
 			double gst = Double.parseDouble(feignLeadClient.get("gst")!=null?feignLeadClient.get("gst").toString():"0");
 
 			// == total amount register ==total product amount register
-			Voucher totalAmountRegister = new Voucher();
-			totalAmountRegister.setVoucherType(vType);
-			totalAmountRegister.setCreditDebit(true);
-			totalAmountRegister.setCreateDate(new Date());
-			totalAmountRegister.setDebitAmount(proFees);
-
-			totalAmountRegister.setTotalAmount(totalEstimateAmount);
-			totalAmountRegister.setIgst(gst+"");
-			//				totalAmountRegister.setIgstDebitAmount(gstAmount);
-			//company
-			if(ledger==null) {
-				ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
-			}
-			totalAmountRegister.setLedger(ledger);
-			Ledger prod =ledgerRepository.findByName(paymentRegister.getServiceName());
-			if(prod!=null) {
-				totalAmountRegister.setLedger(prod);
-				System.out.println("==== new product ======");
-			}else {
-				prod=new Ledger();
-				System.out.println("==== new service name ======"+paymentRegister.getCompanyName());
-				prod.setName(paymentRegister.getCompanyName());
-				ledgerRepository.save(prod);
-				totalAmountRegister.setLedger(prod);
-			}
-			totalAmountRegister.setLedger(ledger);
-			Ledger p = ledgerRepository.findByName(paymentRegister.getServiceName());
-			if(p!=null) {
-				totalAmountRegister.setProduct(p);
-			}else{
-				p =new Ledger();
-				p.setName(paymentRegister.getServiceName());
-				ledgerRepository.save(p);
-				totalAmountRegister.setProduct(p);
-			}
-			//				totalAmountRegister.setProduct(p);
-			totalAmountRegister.setCreditDebit(true);
-			voucherRepository.save(totalAmountRegister);
+//			Voucher totalAmountRegister = new Voucher();
+//			totalAmountRegister.setVoucherType(vType);
+//			totalAmountRegister.setCreditDebit(true);
+//			totalAmountRegister.setCreateDate(new Date());
+//			totalAmountRegister.setDebitAmount(proFees);
+//
+//			totalAmountRegister.setTotalAmount(totalEstimateAmount);
+//			totalAmountRegister.setIgst(gst+"");
+//			//				totalAmountRegister.setIgstDebitAmount(gstAmount);
+//			//company
+//			if(ledger==null) {
+//				ledger=createLedgerDataForCompany(feignLeadClient,paymentRegister);
+//			}
+//			totalAmountRegister.setLedger(ledger);
+//			Ledger prod =ledgerRepository.findByName(paymentRegister.getServiceName());
+//			if(prod!=null) {
+//				totalAmountRegister.setLedger(prod);
+//				System.out.println("==== new product ======");
+//			}else {
+//				prod=new Ledger();
+//				System.out.println("==== new service name ======"+paymentRegister.getCompanyName());
+//				prod.setName(paymentRegister.getCompanyName());
+//				ledgerRepository.save(prod);
+//				totalAmountRegister.setLedger(prod);
+//			}
+//			totalAmountRegister.setLedger(ledger);
+//			Ledger p = ledgerRepository.findByName(paymentRegister.getServiceName());
+//			if(p!=null) {
+//				totalAmountRegister.setProduct(p);
+//			}else{
+//				p =new Ledger();
+//				p.setName(paymentRegister.getServiceName());
+//				ledgerRepository.save(p);
+//				totalAmountRegister.setProduct(p);
+//			}
+//			//				totalAmountRegister.setProduct(p);
+//			totalAmountRegister.setCreditDebit(true);
+//			voucherRepository.save(totalAmountRegister);
 
 
 			System.out.println("555555555556666666");
@@ -3078,7 +3078,7 @@ public Boolean createInvoiceV2(Long estimateId,Long paymentRegisterId) {
 	invoiceData.setTermOfDelivery(pRegister.getTermOfDelivery());
 	invoiceData.setProductName(pRegister.getServiceName());   //service name
 	invoiceData.setEstimateId(estimateId);
-
+//	invoiceData.setHsnSac(feignLeadClient.get("gstCode"));
 	String assignee = feignLeadClient.get("assigneeIds").toString();
 	Long assigneeId=Long.parseLong(assignee);
 	String state=feignLeadClient.get("state")!=null?feignLeadClient.get("state").toString():"NA";

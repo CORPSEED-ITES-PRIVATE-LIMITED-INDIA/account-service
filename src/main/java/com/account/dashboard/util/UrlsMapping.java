@@ -197,6 +197,7 @@ public interface UrlsMapping {
 		public static final String GET_ALL_UNBILLED_COUNT=PREFIX+ "/ledgerType/getAllUnbilledCount";
 		public static final String SEARCH_UNBILLED=PREFIX+ "/ledgerType/searchUnbilled";
 		public static final String GET_ALL_UNBILLED_FOR_EXPORT=PREFIX+ "/ledgerType/getAllUnbilledForExport";
+		public static final String GET_UNBILLED_BY_ID_FOR_VIEW=PREFIX+ "/ledgerType/getUnbilledByIdForView";
 
 
         // get all trial balance
@@ -236,7 +237,8 @@ public interface UrlsMapping {
 		
 		//sales Report
 		public static final String GET_ALL_SALES_REPORT=PREFIX+ "/salesReport/getAllSalesReport";
-		
+		public static final String GET_ALL_SALES_REPORT_COUNT=PREFIX+ "/salesReport/getAllSalesReportCount";
+
 		//TdsReport
 		
 		public static final String GET_ALL_TDS_REPORT=PREFIX+ "/salesReport/getAllTdsReport";

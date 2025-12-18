@@ -2,6 +2,7 @@ package com.account.dashboard.repository;
 
 import java.util.List;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -31,7 +32,7 @@ public interface PaymentRegisterRepository  extends JpaRepository<PaymentRegiste
 	List<PaymentRegister> findAllByRegisterType(String registerType);
 	
 	@Query(value = "SELECT * FROM payment_register v WHERE v.status in(:status)", nativeQuery = true)
-	List<PaymentRegister> findAllByStatus(Pageable pageable,List<String> status);
+	Page<PaymentRegister> findAllByStatus(Pageable pageable,List<String> status);
 
 	@Query(value = "SELECT * FROM payment_register v WHERE v.name =:name", nativeQuery = true)
 	List<PaymentRegister> findByName(String name);
@@ -58,6 +59,5 @@ public interface PaymentRegisterRepository  extends JpaRepository<PaymentRegiste
     @Query(value = "SELECT * FROM payment_register pr WHERE pr.payment_date BETWEEN :d1 AND :d2 and pr.created_by_user_id =:userId", nativeQuery = true)
 	List<PaymentRegister> findIdAllByInBetweenDateAndAssignee(String d1, String d2, Long userId);
    
-
 
 }

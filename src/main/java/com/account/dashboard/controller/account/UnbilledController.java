@@ -62,4 +62,10 @@ public class UnbilledController {
         return unbilledService.getAllUnbilledForExport(startDate,endDate);
     }
     
+    @GetMapping(UrlsMapping.GET_UNBILLED_BY_ID_FOR_VIEW)
+    public Map<String,Object> getUnbilledByIdForView(@RequestParam Long id) {
+        return unbilledService.getUnbilledByIdForView(id);
+    }
+    
+    
 }
