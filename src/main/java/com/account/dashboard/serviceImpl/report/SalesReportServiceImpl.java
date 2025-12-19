@@ -127,7 +127,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 	
 	public double vendorPaymentData(Long estimateId){
 		VendorPaymentRegister vendorPaymentRegister = vendorPaymentRegisterRepo.findByEstimateId(estimateId);
-		return vendorPaymentRegister.getTotalAmount();
+		return vendorPaymentRegister!=null?vendorPaymentRegister.getTotalAmount():0;
 	}
 
 	@Override

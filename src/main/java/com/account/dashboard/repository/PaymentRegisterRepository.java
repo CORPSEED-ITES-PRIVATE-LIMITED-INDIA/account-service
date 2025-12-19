@@ -36,7 +36,7 @@ public interface PaymentRegisterRepository  extends JpaRepository<PaymentRegiste
 	@Query(value = "SELECT * FROM payment_register v WHERE v.status in(:status)", nativeQuery = true)
 	Page<PaymentRegister> findAllByStatus(Pageable pageable,List<String> status);
 	
-	@Query(value = "SELECT * FROM payment_register v WHERE v.status in(:status) and v.purchase_date BETWEEN :d1 AND :d2", nativeQuery = true)
+	@Query(value = "SELECT * FROM payment_register v WHERE v.status in(:status) and v.payment_date BETWEEN :d1 AND :d2", nativeQuery = true)
 	Page<PaymentRegister> findAllByStatusInBetweenDate(Pageable pageable,List<String> status,String d1,String d2);
 
 	@Query(value = "SELECT * FROM payment_register v WHERE v.name =:name", nativeQuery = true)
