@@ -20,21 +20,21 @@ public class SalesReportController {
 	
 	@GetMapping(UrlsMapping.GET_ALL_SALES_REPORT)
 	public List<Map<String,Object>> getAllSalesReport(@RequestParam(value = "page", defaultValue = "1") int page,
-			@RequestParam(value = "size", defaultValue = "10") int size,@RequestParam String status){
-		List<Map<String,Object>>res=salesReportService.getAllSalesReport(page-1,size,status);	
+			@RequestParam(value = "size", defaultValue = "10") int size,@RequestParam String status,@RequestParam String startDate,@RequestParam String endDate){
+		List<Map<String,Object>>res=salesReportService.getAllSalesReport(page-1,size,status,startDate,endDate);	
 		return res;
 		
 	}
 	@GetMapping(UrlsMapping.GET_ALL_SALES_REPORT_COUNT)
-	public Long getAllSalesReportCount(@RequestParam String status){
-		Long res=salesReportService.getAllSalesReportCount(status);	
+	public Long getAllSalesReportCount(@RequestParam String status,@RequestParam String startDate,@RequestParam String endDate){
+		Long res=salesReportService.getAllSalesReportCount(status,startDate,endDate);	
 		return res;
 		
 	}
 	
 	@GetMapping(UrlsMapping.GET_ALL_SALES_REPORT_FOR_EXPORT)
-	public List<Map<String,Object>> getAllSalesReportForExport(@RequestParam String status){
-		List<Map<String,Object>>res=salesReportService.getAllSalesReportForExport(status);	
+	public List<Map<String,Object>> getAllSalesReportForExport(@RequestParam String status,@RequestParam String startDate,@RequestParam String endDate){
+		List<Map<String,Object>>res=salesReportService.getAllSalesReportForExport(status,startDate,endDate);	
 		return res;
 		
 	}

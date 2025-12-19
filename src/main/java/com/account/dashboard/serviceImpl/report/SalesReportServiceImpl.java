@@ -30,7 +30,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 	
 	
 	@Override
-	public List<Map<String, Object>> getAllSalesReport(int page, int size, String status) {
+	public List<Map<String, Object>> getAllSalesReport(int page, int size, String status,String startDate, String endDate) {
 
 		List<Map<String,Object>>res=new ArrayList<>();
 		Pageable pageable = PageRequest.of(page, size, Sort.by("id"));
@@ -43,7 +43,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 		}else {
 			statusList.add(status);
 		}
-		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageableDesc,statusList).getContent();
+		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatusInBetweenDate(pageableDesc,statusList,startDate,endDate).getContent();
 		List<Map<String,Object>>result=new ArrayList<>();
 		for(PaymentRegister p :paymentRegisterList) {
 			Map<String, Object> map = new HashMap<>();
@@ -131,7 +131,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 	}
 
 	@Override
-	public Long getAllSalesReportCount(String status) {
+	public Long getAllSalesReportCount(String status,String startDate, String endDate) {
 		List<Map<String,Object>>res=new ArrayList<>();
 		List<String>statusList=new ArrayList<>();
 		if(status.equals("all")) {
@@ -139,7 +139,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 		}else {
 			statusList.add(status);
 		}
-		Long prCount = paymentRegisterRepository.findCountByStatus(statusList);
+		Long prCount = paymentRegisterRepository.findCountByStatusInBetweenDate(statusList,startDate,endDate);
 		return prCount;
 	}
 	
@@ -147,7 +147,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 	
 	
 	
-	public List<Map<String, Object>> getAllSalesReportForExport(String status) {
+	public List<Map<String, Object>> getAllSalesReportForExport(String status,String startDate, String endDate) {
 
 		List<Map<String,Object>>res=new ArrayList<>();
 		List<String>statusList=new ArrayList<>();
@@ -158,7 +158,7 @@ public class SalesReportServiceImpl implements SalesReportService{
 		}else {
 			statusList.add(status);
 		}
-		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(statusList);
+		List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatusInBetweenDate(statusList,startDate,endDate);
 		List<Map<String,Object>>result=new ArrayList<>();
 		for(PaymentRegister p :paymentRegisterList) {
 			Map<String, Object> map = new HashMap<>();
