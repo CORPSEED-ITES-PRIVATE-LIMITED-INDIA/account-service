@@ -23,6 +23,9 @@ public interface LeadFeignClient {
 	@PostMapping("/leadService/api/v1/leadEstimate/getEstimateById")
 	public Map<String, Object> getEstimateById(@RequestBody Long estimateId);
 	
+	@PostMapping("/leadService/api/v1/leadEstimate/getEstimateByLeadIdForView")
+	public Map<String, Object> getEstimateByLeadIdForView(@RequestBody Long estimateId);
+	
 	
 	@GetMapping("/leadService/api/v1/leadEstimate/getEstimateById")
 	public String findCompanyDetailBy();

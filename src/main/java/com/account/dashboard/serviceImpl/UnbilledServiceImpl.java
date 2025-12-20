@@ -240,7 +240,7 @@ public class UnbilledServiceImpl implements UnbilledService{
 		Optional<Unbilled> unbilled = unbilledRepository.findById(id);
 		if(unbilled!=null&& unbilled.get()!=null) {
 			Unbilled u=unbilled.get();
-			Map<String, Object> estimate = leadFeignClient.getEstimateById(unbilled.get().getEstimateId());
+			Map<String, Object> estimate = leadFeignClient.getEstimateByLeadIdForView(unbilled.get().getEstimateId());
 			totalAmount=totalAmount+u.getOrderAmount();
 			paidAmount=paidAmount+u.getPaidAmount();
 			dueAmount=dueAmount+u.getDueAmount();
