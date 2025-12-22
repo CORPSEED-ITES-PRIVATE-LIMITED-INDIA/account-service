@@ -22,6 +22,7 @@ import com.account.dashboard.domain.TdsDetail;
 import com.account.dashboard.domain.User;
 import com.account.dashboard.domain.VendorPaymentHistory;
 import com.account.dashboard.domain.VendorPaymentRegister;
+import com.account.dashboard.dto.AddGstDto;
 import com.account.dashboard.dto.CreateVendorAmountDto;
 import com.account.dashboard.dto.CreateVendorAmountManualDto;
 import com.account.dashboard.dto.CreateVendorSubDto;
@@ -44,6 +45,9 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 	
 	@Autowired
 	UserRepository userRepository;
+	
+	@Autowired
+	GstDataCrmServiceImpl GstDataCrmService;
 	
 	@Autowired
 	FileDataRepository fileDataRepository;
@@ -354,6 +358,16 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		User user = userRepository.findById(currentUserId).get();
 		vendorPayment.setApprovedBy(user);
 		vendorPaymentRegisterRepo.save(vendorPayment);
+		
+		AddGstDto addGstDto=new AddGstDto();
+		addGstDto.setCompany(vendorPayment.getVendorCompanyName());
+		addGstDto.setGst(vendorPayment.getGstPercent());
+		addGstDto.setGst(vendorPayment.getGstPercent());
+		addGstDto.setGstAmount(vendorPayment.getGstAmount());
+		addGstDto.setPaymentRegisterId(vendorPayment.getId());
+		addGstDto.setStatus("initiated");
+		addGstDto.setType("reciveable");
+		GstDataCrmService.addGstDataCrm(addGstDto);
 		flag=true;
 		return flag;
 	}
@@ -391,7 +405,7 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 			tdsDetail.setOrganization(vendor.getVendorCompanyName());
 			tdsDetail.setTdsPrecent(vendorPaymentAddDto.getTdsPercent());			
 			tdsDetail.setTdsType("Payable");
-			tdsDetail.setTotalPaymentAmount(vendorPaymentAddDto.getTotalAmount());
+			tdsDetail.setTotalPaymentAmount(vendorPaymentAddDto.getTotalAmount()+vendorPaymentAddDto.getTdsAmount());
 			tdsDetailRepository.save(tdsDetail);
 			flag=true;
 		}

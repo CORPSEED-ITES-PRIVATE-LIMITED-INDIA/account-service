@@ -1084,55 +1084,58 @@ public class VoucherServiceImpl implements VoucherService{
 		List<Voucher>voucher=voucherRepository.findAll();
 		List<Map<String,Object>>res = new ArrayList<>();
 		for(Voucher v:voucher) {
-			Map<String,Object>map = new HashMap<>();
-			map.put("id", v.getId());
-			map.put("ledgerId", v.getLedger()!=null?v.getLedger().getId():0);
-			map.put("ledgerName", v.getLedger()!=null?v.getLedger().getName():"NA");
+			if(v.getImpact().equalsIgnoreCase("direct")) {
 
-			map.put("creditAmount", v.getCreditAmount());
-			map.put("debitAmount", v.getDebitAmount());
-			//			d gstAmount=0;
-			//			if(v.getCgst()!=null &&v.getSgst()!=null) {
-			//				Double cgst = Double.valueOf(v.getCgst());
-			//				Double sgst = Double.valueOf(v.getSgst());
-			//				double gst = cgst+sgst;
-			//                double remGstAmount = 100-gst;
-			//                if(v.getCreditAmount()) {
-			//                	
-			//                }
-			//
-			//			}
-			//			Double.valueOf(v.getCgst());
-			map.put("cgst", v.getCgst());
-			map.put("sgst", v.getSgst());
-			map.put("cgstCreditAmount", v.getCgstCreditVoucher()!=null?v.getCgstCreditVoucher().getCreditAmount():0);
-			map.put("cgstDebitAmount", v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0);
+				Map<String,Object>map = new HashMap<>();
+				map.put("id", v.getId());
+				map.put("ledgerId", v.getLedger()!=null?v.getLedger().getId():0);
+				map.put("ledgerName", v.getLedger()!=null?v.getLedger().getName():"NA");
 
-			map.put("sgstCreditAmount", v.getSgstCreditVoucher()!=null?v.getSgstCreditVoucher().getCreditAmount():0);
-			map.put("sgstDebitAmount", v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0);
+				map.put("creditAmount", v.getCreditAmount());
+				map.put("debitAmount", v.getDebitAmount());
+				//			d gstAmount=0;
+				//			if(v.getCgst()!=null &&v.getSgst()!=null) {
+				//				Double cgst = Double.valueOf(v.getCgst());
+				//				Double sgst = Double.valueOf(v.getSgst());
+				//				double gst = cgst+sgst;
+				//                double remGstAmount = 100-gst;
+				//                if(v.getCreditAmount()) {
+				//                	
+				//                }
+				//
+				//			}
+				//			Double.valueOf(v.getCgst());
+				map.put("cgst", v.getCgst());
+				map.put("sgst", v.getSgst());
+				map.put("cgstCreditAmount", v.getCgstCreditVoucher()!=null?v.getCgstCreditVoucher().getCreditAmount():0);
+				map.put("cgstDebitAmount", v.getCgstDebitVoucher()!=null?v.getCgstDebitVoucher().getDebitAmount():0);
 
-			map.put("igst", v.getIgst());
-			map.put("igstCreditAmount", v.getIgstCreditVoucher()!=null?v.getIgstCreditVoucher().getCreditAmount():0);
-			map.put("igstDebitAmount", v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0);
+				map.put("sgstCreditAmount", v.getSgstCreditVoucher()!=null?v.getSgstCreditVoucher().getCreditAmount():0);
+				map.put("sgstDebitAmount", v.getSgstDebitVoucher()!=null?v.getSgstDebitVoucher().getDebitAmount():0);
+
+				map.put("igst", v.getIgst());
+				map.put("igstCreditAmount", v.getIgstCreditVoucher()!=null?v.getIgstCreditVoucher().getCreditAmount():0);
+				map.put("igstDebitAmount", v.getIgstDebitVoucher()!=null?v.getIgstDebitVoucher().getDebitAmount():0);
 
 
-			map.put("paymentType", v.getPaymentType());
-			map.put("product", v.getProduct()!=null?v.getProduct().getName():"NA");
-			map.put("productId", v.getProduct()!=null?v.getProduct().getId():"0");
+				map.put("paymentType", v.getPaymentType());
+				map.put("product", v.getProduct()!=null?v.getProduct().getName():"NA");
+				map.put("productId", v.getProduct()!=null?v.getProduct().getId():"0");
 
-			map.put("group", v.getLedger()!=null?v.getLedger().getLedgerType()!=null?v.getLedger().getLedgerType().getName():"NA":"");
-			map.put("voucherTypeId", v!=null?v.getLedgerType()!=null?v.getLedgerType().getId():0:0);
-			map.put("ledgerTypeId", v.getLedgerType()!=null?v.getLedgerType().getId():0);
+				map.put("group", v.getLedger()!=null?v.getLedger().getLedgerType()!=null?v.getLedger().getLedgerType().getName():"NA":"");
+				map.put("voucherTypeId", v!=null?v.getLedgerType()!=null?v.getLedgerType().getId():0:0);
+				map.put("ledgerTypeId", v.getLedgerType()!=null?v.getLedgerType().getId():0);
 
-			map.put("createDate", v.getCreateDate());
-			map.put("ledgerType", v.getLedgerType());
-			map.put("voucherType", v.getVoucherType());
-			map.put("cerateDate", v.getCreateDate());
-			map.put("cerateDate", v.getCreateDate());
-			map.put("professionalGstAmount", v.getProfessionalGstAmount());
-			map.put("totalAmount", v.getTotalAmount());
+				map.put("createDate", v.getCreateDate());
+				map.put("ledgerType", v.getLedgerType());
+				map.put("voucherType", v.getVoucherType());
+				map.put("cerateDate", v.getCreateDate());
+				map.put("cerateDate", v.getCreateDate());
+				map.put("professionalGstAmount", v.getProfessionalGstAmount());
+				map.put("totalAmount", v.getTotalAmount());
 
-			res.add(map);
+				res.add(map);
+			}
 		}
 		return res;
 	}

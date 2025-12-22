@@ -2566,7 +2566,7 @@ public List<Map<String,Object>> getAllPaymentRegisterWithPage(int page, int size
 	}else {
 		statusList.add(status);
 	}
-	List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageableDesc,statusList);
+	List<PaymentRegister> paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageableDesc,statusList).getContent();
 	List<Map<String,Object>>result=new ArrayList<>();
 	for(PaymentRegister p :paymentRegisterList) {
 		Map<String, Object> map = new HashMap<>();
@@ -2716,10 +2716,10 @@ public List<PaymentRegister> getAllPaymentRegisterByUser(int page, int size,Long
 	}
 	List<PaymentRegister> paymentRegisterList =new ArrayList<>();
 	if(user.get()!=null &&user.get().getRole().contains("ADMIN")) {
-		paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageable,statusList);
+		paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageable,statusList).getContent();
 
 	}else {
-		paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageable,statusList);
+		paymentRegisterList = paymentRegisterRepository.findAllByStatus(pageable,statusList).getContent();
 	}
 	return paymentRegisterList;
 }

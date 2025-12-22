@@ -63,6 +63,10 @@ public interface PaymentRegisterRepository  extends JpaRepository<PaymentRegiste
 	
     @Query(value = "SELECT * FROM payment_register pr WHERE pr.payment_date BETWEEN :d1 AND :d2 and pr.created_by_user_id =:userId", nativeQuery = true)
 	List<PaymentRegister> findIdAllByInBetweenDateAndAssignee(String d1, String d2, Long userId);
+
+    
+	@Query(value = "SELECT count(*) FROM payment_register v WHERE v.status in(:statusList)", nativeQuery = true)
+	long findCountByStatus(List<String> statusList);
    
 
 }
