@@ -393,7 +393,8 @@ public class VendorPaymentRegisterServiceImpl implements VendorPaymentRegisterSe
 		double dueAmount = vendor.getTotalDueAmount();
 		dueAmount=dueAmount-totalAmount;
 		vendor.setTotalDueAmount(dueAmount);
-		
+		vendor.setGstAmount(vendorPaymentAddDto.getGstAmount());
+		vendor.setGstPercent(vendorPaymentAddDto.getGst());
 		double paidAmount = vendor.getTotalPaidAmount();
 		paidAmount=paidAmount+totalAmount;
 		vendor.setTotalPaidAmount(paidAmount);
