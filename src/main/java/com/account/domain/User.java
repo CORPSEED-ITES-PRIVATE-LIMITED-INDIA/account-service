@@ -12,22 +12,28 @@ import java.util.List;
 @NoArgsConstructor(force = true)
 @Table(name = "user")
 public class User {
-	
 
-	@Id
+    @Id
     private Long id;
 
-       
     private String fullName;
 
-    @NonNull
+    @Column(nullable = false, unique = true)
     private String email;
 
-    @NonNull
+    @Column(nullable = false)
     private String designation;
 
-    @NonNull
+    @Column(nullable = false)
     private String department;
+
+    // Soft delete flag (standard across your entities)
+    @Column(name = "is_deleted", nullable = false)
+    private boolean isDeleted = false;
+
+    // Optional: active status (if you want both active/inactive without full delete)
+    @Column(name = "is_active", nullable = false)
+    private boolean isActive = true;
     
     @ManyToMany(cascade = CascadeType.ALL)
 	@JoinTable(name="user_role",joinColumns = {@JoinColumn(name="user_id",referencedColumnName="id",nullable=true)},

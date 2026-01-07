@@ -1,15 +1,11 @@
 package com.account.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
-@Table
 @Entity
+@Table(name = "contact")
 @Getter
 @Setter
 public class Contact {
@@ -18,15 +14,21 @@ public class Contact {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "name", nullable = false)
     private String name;
 
-    private String emails;
+    @Column(name = "emails")
+    private String emails; // Comma-separated or JSON array as string if needed
 
+    @Column(name = "contact_no")
     private String contactNo;
 
+    @Column(name = "whatsapp_no")
     private String whatsappNo;
 
+    @Column(name = "company_id", nullable = false)
     private Long companyId;
 
+    @Column(name = "is_deleted")
     private boolean deleteStatus = false;
 }
