@@ -1,6 +1,9 @@
 package com.account.serviceImpl;
 
 import com.account.domain.*;
+import com.account.domain.estimate.Estimate;
+import com.account.domain.estimate.EstimateLineItem;
+import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.exception.ResourceNotFoundException;
@@ -10,8 +13,6 @@ import com.account.service.EstimateService;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

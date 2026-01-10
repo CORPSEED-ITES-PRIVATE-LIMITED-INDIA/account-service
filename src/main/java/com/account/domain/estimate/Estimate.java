@@ -1,5 +1,6 @@
-package com.account.domain;
+package com.account.domain.estimate;
 
+import com.account.domain.*;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedBy;

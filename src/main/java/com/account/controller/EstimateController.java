@@ -1,6 +1,5 @@
 package com.account.controller;
 
-import com.account.domain.EstimateStatus;
 import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.service.EstimateService;
@@ -13,8 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @Tag(name = "Estimate Management", description = "APIs for creating, viewing and listing estimates")
 @RestController

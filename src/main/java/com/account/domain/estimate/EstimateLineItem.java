@@ -1,4 +1,4 @@
-package com.account.domain;
+package com.account.domain.estimate;
 
 import jakarta.persistence.*;
 import lombok.*;
