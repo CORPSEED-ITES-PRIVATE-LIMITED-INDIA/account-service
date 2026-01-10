@@ -65,12 +65,5 @@ public class AccountController {
 		return account;		 
 
 	}	
-	
-	@GetMapping(UrlsMapping.GET_COMPANY_ACCOUNT_DATA)
-	public BankAccount getCompanyAccountData()
-	{
-		BankAccount account=accountService.getCompanyAccountData();
-		return account;		 
 
-	}
 }

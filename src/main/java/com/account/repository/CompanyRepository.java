@@ -12,19 +12,7 @@ public interface CompanyRepository extends JpaRepository<Company, Long>
 
 {
 
-    Optional<Company> findByPanNo(String panNo);
 
-    Optional<Company> findByUuid(String uuid);
-
-    boolean existsByPanNoAndIdNot(String panNo, Long id);
-
-    // If you want to find companies by onboarding status
-    List<Company> findByOnboardingStatus(String onboardingStatus);
-
-    List<Company> findByAccountsApproved(boolean approved);
-
-    // Optional: soft delete support (if you frequently query non-deleted)
-    List<Company> findByIsDeletedFalse();
 
 
 }

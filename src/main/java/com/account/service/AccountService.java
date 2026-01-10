@@ -23,6 +23,5 @@ public interface AccountService {
 
 	ManageSales updateAccountData(UpdateAccountData updateAccountData);
 
-	BankAccount getCompanyAccountData();
 
 }

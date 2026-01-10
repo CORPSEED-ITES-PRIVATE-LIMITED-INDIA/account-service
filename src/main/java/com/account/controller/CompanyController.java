@@ -12,9 +12,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@RequestMapping("/accountService/api/v1")
 public class CompanyController {
 
     @Autowired
@@ -27,7 +29,7 @@ public class CompanyController {
             @ApiResponse(responseCode = "409", description = "Company with PAN or ID conflict"),
             @ApiResponse(responseCode = "404", description = "Referenced entity not found")
     })
-    @PostMapping("/api/companies")
+    @PostMapping("/createCompany")
     public ResponseEntity<CompanyResponseDto> createCompany(
             @Valid @RequestBody CompanyRequestDto requestDto) {
 

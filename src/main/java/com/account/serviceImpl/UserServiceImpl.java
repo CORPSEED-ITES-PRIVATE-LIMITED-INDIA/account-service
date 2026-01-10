@@ -9,6 +9,7 @@ import java.util.Random;
 
 import com.account.dto.UpdateUser;
 import com.account.dto.UserDto;
+import com.account.exception.ResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.context.Context;
@@ -23,14 +24,14 @@ import com.account.service.UserService;
 @Service
 public class UserServiceImpl implements UserService {
 	@Autowired
-	 UserRepository userRepo;
+	UserRepository userRepository;
 
 	@Autowired
 	MailSendSerivceImpl mailSendSerivceImpl;
-	
+
 	@Autowired
 	RoleRepository roleRepository;
-	
+
 	@Autowired
 	LeadFeignClient leadFeignClient;
 
@@ -45,12 +46,12 @@ public class UserServiceImpl implements UserService {
 		List<Role> roleList = roleRepository.findAllByNameIn(user.getRole());
 		u.setUserRole(roleList);
 		u.setRole(user.getRole());
-		return userRepo.save(u);
+		return userRepository.save(u);
 	}
 
 	@Override
 	public User getUserById(Long id) {
-		return userRepo.findById(id).orElse(null);
+		return userRepository.findById(id).orElse(null);
 	}
 
 	@Override
@@ -62,24 +63,24 @@ public class UserServiceImpl implements UserService {
 		List<Role> roleList = roleRepository.findAllByNameIn(user.getRole());
 		existingUser.setUserRole(roleList);
 		existingUser.setRole(user.getRole());
-		return userRepo.save(existingUser);
+		return userRepository.save(existingUser);
 	}
 
 	@Override
 	public void deleteUser(Long id) {
-		userRepo.deleteById(id);
+		userRepository.deleteById(id);
 	}
 
 	@Override
 	public List<User> getAllUsers() {
-		return userRepo.findAll();
+		return userRepository.findAll();
 	}
 
 	@Override
 	public boolean isUserExistOrNot(Long userId) throws Exception {
 		boolean flag=false;
 		try {
-			Optional<User> user = userRepo.findById(userId);
+			Optional<User> user = userRepository.findById(userId);
 			if(user!=null && user.get()!=null) {
 				flag=true;
 			}
@@ -103,7 +104,8 @@ public class UserServiceImpl implements UserService {
 
 	public boolean isUserEmailExistOrNot(String email) {
 		boolean flag=false;
-		User user = userRepo.findByemail(email);
+		User user = userRepository.findByEmail(email)
+				.orElseThrow(() -> new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
 		if(user!=null) {
 			flag=true;
 		}
@@ -117,14 +119,14 @@ public class UserServiceImpl implements UserService {
 
 		String[] emailTo= {"aryan.chaurasia@corpseed.com"};
 		String randomPass = getRandomNumber().toString();
-		boolean isExistOrNot = isUserEmailExistOrNot(email);		
+		boolean isExistOrNot = isUserEmailExistOrNot(email);
 		if(!isExistOrNot) {
 			User u = new User();
 			u.setId(userId);
 			u.setFullName(userName);
 			u.setEmail(email);
-			
-			List<String>listRole = new ArrayList();		
+
+			List<String>listRole = new ArrayList();
 			listRole.add(role);
 			u.setRole(listRole);
 
@@ -132,7 +134,7 @@ public class UserServiceImpl implements UserService {
 			u.setUserRole(roleList);
 			u.setDesignation(designation);
 			String feedbackStatusURL = "https://corpseed.com" ;
-			
+
 					Context context = new Context();
 					context.setVariable("userName", "Aryan Chaurasia");
 					context.setVariable("email", email);
@@ -140,17 +142,18 @@ public class UserServiceImpl implements UserService {
 					context.setVariable("currentYear", LocalDateTime.now().getYear());
 			String subject="Corpseed pvt ltd send a request for adding on team please go and set password and accept";
 			String text="CLICK ON THIS link and set password";
-			userRepo.save(u);
+			userRepository.save(u);
 			String[] ccPersons= {email};
 			mailSendSerivceImpl.sendEmail(emailTo, ccPersons,ccPersons, subject,text,context,"newUserCreate.html");
 			return u;
 		}else {
-			User u = userRepo.findByemail(email);
+			User u = userRepository.findByEmail(email)
+					.orElseThrow(() -> new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
 			List<String>listRole = new ArrayList();
 			listRole.add(role);
 			u.setRole(listRole);
 			String feedbackStatusURL = "http://localhost:3000/erp/login" ;
-			
+
 					Context context = new Context();
 					context.setVariable("userName", "Aryan Chaurasia");
 					context.setVariable("email", email);
@@ -158,7 +161,7 @@ public class UserServiceImpl implements UserService {
 					context.setVariable("currentYear", LocalDateTime.now().getYear());
 			String subject="Corpseed pvt ltd send a request for adding on team please go and Accept";
 			String text="CLICK ON THIS link and set password";
-			userRepo.save(u);
+			userRepository.save(u);
 			String[] ccPersons= {email};
 			mailSendSerivceImpl.sendEmail(emailTo, ccPersons,ccPersons, subject,text,context,"TeamAdd.html");
 
@@ -178,11 +181,12 @@ public class UserServiceImpl implements UserService {
 		user.setRole(userDto.getRole());
 		user.setDepartment(userDto.getDepartment());
 		user.setDesignation(userDto.getDesignation());
-		userRepo.save(user);
+		userRepository.save(user);
 		return user;
-		
+
 	}
-	
+
+
 	public Boolean createUserByLeadServices() {
 		Boolean flag=false;
 		List<Map<String,Object>> feignUser=leadFeignClient.getAllUserForAccount();
@@ -197,7 +201,7 @@ public class UserServiceImpl implements UserService {
 			user.setUserRole(roleList);
 			user.setDepartment(u.get("department").toString());
 			user.setDesignation(u.get("designation").toString());
-			userRepo.save(user);
+			userRepository.save(user);
 			flag=true;
 		}
 		return flag;

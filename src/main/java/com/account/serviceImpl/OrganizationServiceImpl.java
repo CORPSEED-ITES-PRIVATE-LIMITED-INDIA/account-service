@@ -1,123 +1,141 @@
 package com.account.serviceImpl;
 
-import java.util.Date;
-import java.util.List;
-
-import com.account.dto.BankAccountDto;
-import com.account.dto.OrganizationDto;
-import com.account.dto.StatutoryOrganizationDto;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-import com.account.domain.BankAccount;
 import com.account.domain.Organization;
-import com.account.repository.BankAccountRepository;
+import com.account.domain.User;
+import com.account.dto.OrganizationRequestDto;
+import com.account.dto.OrganizationResponseDto;
+import com.account.exception.ResourceNotFoundException;
 import com.account.repository.OrganizationRepository;
+import com.account.repository.UserRepository;
 import com.account.service.OrganizationService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-
+@Slf4j
 @Service
-public class OrganizationServiceImpl implements OrganizationService{
+@Transactional
+@RequiredArgsConstructor
+public class OrganizationServiceImpl implements OrganizationService {
 
-	@Autowired
-	OrganizationRepository  organizationRepository;
-	
-	@Autowired
-	BankAccountRepository bankAccountRepository;
+	private final OrganizationRepository organizationRepository;
+	private final UserRepository userRepository;
+
+	private static final Long SINGLETON_ID = 1L;
 
 	@Override
-	public Boolean createOrganization(OrganizationDto organizationDto) throws Exception {
-		Boolean flag=false;
-		Organization organization=organizationRepository.findByName(organizationDto.getName());
-		if(organization==null) {
-			organization = new Organization();
-			organization.setName(organizationDto.getName());
-			organization.setJoiningDate(new Date());
-			organization.setPin(organizationDto.getPin());
-			organization.setAddress(organizationDto.getAddress());
-			organization.setState(organizationDto.getState());
-			organization.setCountry(organizationDto.getCountry());
-			organization.setPin(organizationDto.getPin());
-			organization.setDeleted(false);
-			organizationRepository.save(organization);
-		}else {
-			throw new Exception("Already Exit");
+	public OrganizationResponseDto saveOrganization(OrganizationRequestDto requestDto, Long currentUserId) {
+		log.info("Saving organization configuration by userId: {}", currentUserId);
+
+		User currentUser = userRepository.findById(currentUserId)
+				.orElseThrow(() -> new ResourceNotFoundException("Current user not found", "USER_NOT_FOUND"));
+
+		// Check if user has ADMIN role (assuming Role has name "ADMIN")
+		boolean isAdmin = currentUser.getUserRole() != null &&
+				currentUser.getUserRole().stream()
+						.anyMatch(role -> "ADMIN".equals(role.getName()));
+
+		if (!isAdmin) {
+			throw new SecurityException("Only ADMIN role can modify organization configuration");
 		}
-		flag=true;
-		return flag;
+
+		Organization organization = organizationRepository.findById(SINGLETON_ID)
+				.orElseGet(() -> {
+					Organization newOrg = new Organization();
+					newOrg.setId(SINGLETON_ID);
+					log.info("Creating new organization singleton with ID=1");
+					return newOrg;
+				});
+
+		// Manual mapping
+		organization.setName(requestDto.getName());
+		organization.setAddressLine1(requestDto.getAddressLine1());
+		organization.setAddressLine2(requestDto.getAddressLine2());
+		organization.setCity(requestDto.getCity());
+		organization.setState(requestDto.getState());
+		organization.setCountry(requestDto.getCountry());
+		organization.setPinCode(requestDto.getPinCode());
+		organization.setGstNo(requestDto.getGstNo());
+		organization.setPanNo(requestDto.getPanNo());
+		organization.setCinNumber(requestDto.getCinNumber());
+		organization.setEstablishedDate(requestDto.getEstablishedDate());
+		organization.setOwnerName(requestDto.getOwnerName());
+		organization.setBankAccountPresent(requestDto.isBankAccountPresent());
+		organization.setAccountHolderName(requestDto.getAccountHolderName());
+		organization.setAccountNo(requestDto.getAccountNo());
+		organization.setIfscCode(requestDto.getIfscCode());
+		organization.setSwiftCode(requestDto.getSwiftCode());
+		organization.setBankName(requestDto.getBankName());
+		organization.setBranch(requestDto.getBranch());
+		organization.setUpiId(requestDto.getUpiId());
+		organization.setWebsite(requestDto.getWebsite());
+		organization.setPaymentPageLink(requestDto.getPaymentPageLink());
+		organization.setEstimateConditions(requestDto.getEstimateConditions());
+		organization.setLogoUrl(requestDto.getLogoUrl());
+		organization.setEmail(requestDto.getEmail());
+		organization.setPhone(requestDto.getPhone());
+		organization.setActive(requestDto.isActive());
+
+		// Set last modified by
+		organization.setUpdatedBy(currentUser);
+
+		organization = organizationRepository.save(organization);
+
+		return mapToResponseDto(organization);
 	}
 
 	@Override
-	public Organization getOrganizationById(Long id) {
-		Organization organization = organizationRepository.findById(id).get();
-		return organization;
+	public OrganizationResponseDto getOrganization() {
+		log.info("Fetching current organization configuration");
+
+		Organization organization = organizationRepository.findById(SINGLETON_ID)
+				.orElseThrow(() -> new ResourceNotFoundException("Organization configuration not found", "ORG_NOT_FOUND"));
+
+		return mapToResponseDto(organization);
 	}
 
-	@Override
-	public List<Organization> getAllOrganization() {
-		List<Organization> organizationList = organizationRepository.findAll();
-		return organizationList;
+	private OrganizationResponseDto mapToResponseDto(Organization org) {
+		OrganizationResponseDto dto = new OrganizationResponseDto();
+
+		dto.setId(org.getId());
+		dto.setName(org.getName());
+		dto.setAddressLine1(org.getAddressLine1());
+		dto.setAddressLine2(org.getAddressLine2());
+		dto.setCity(org.getCity());
+		dto.setState(org.getState());
+		dto.setCountry(org.getCountry());
+		dto.setPinCode(org.getPinCode());
+		dto.setGstNo(org.getGstNo());
+		dto.setPanNo(org.getPanNo());
+		dto.setCinNumber(org.getCinNumber());
+		dto.setEstablishedDate(org.getEstablishedDate());
+		dto.setOwnerName(org.getOwnerName());
+		dto.setBankAccountPresent(org.isBankAccountPresent());
+		dto.setAccountHolderName(org.getAccountHolderName());
+		dto.setAccountNo(org.getAccountNo());
+		dto.setIfscCode(org.getIfscCode());
+		dto.setSwiftCode(org.getSwiftCode());
+		dto.setBankName(org.getBankName());
+		dto.setBranch(org.getBranch());
+		dto.setUpiId(org.getUpiId());
+		dto.setWebsite(org.getWebsite());
+		dto.setPaymentPageLink(org.getPaymentPageLink());
+		dto.setEstimateConditions(org.getEstimateConditions());
+		dto.setLogoUrl(org.getLogoUrl());
+		dto.setEmail(org.getEmail());
+		dto.setPhone(org.getPhone());
+		dto.setActive(org.isActive());
+		dto.setCreatedAt(org.getCreatedAt());
+		dto.setUpdatedAt(org.getUpdatedAt());
+
+		if (org.getCreatedBy() != null) {
+			dto.setCreatedById(org.getCreatedBy().getId());
+		}
+		if (org.getUpdatedBy() != null) {
+			dto.setUpdatedById(org.getUpdatedBy().getId());
+		}
+
+		return dto;
 	}
-
-	@Override
-	public Organization getAllOrganizationByName(String name) {
-		Organization organization = organizationRepository.findByName(name);
-		return organization;
-	}
-
-	@Override
-	public Boolean createStatutoryInOrganization(StatutoryOrganizationDto statutoryOrganizationDto) {
-		Boolean flag=false;
-		Organization organization = organizationRepository.findById(statutoryOrganizationDto.getId()).get();
-		organization.setHsnSacPresent(statutoryOrganizationDto.isHsnSacPresent());
-		organization.setHsnSacDetails(statutoryOrganizationDto.getHsnSacDetails());
-		organization.setHsnDescription(statutoryOrganizationDto.getHsnDescription());
-		organization.setHsnSacData(statutoryOrganizationDto.getHsnSacData());
-		organization.setClassification(statutoryOrganizationDto.getClassification());
-
-		organization.setGstRateDetailPresent(statutoryOrganizationDto.isGstRateDetailPresent());
-		organization.setGstRateDetails(statutoryOrganizationDto.getGstRateDetails());
-		organization.setTaxabilityType(statutoryOrganizationDto.getTaxabilityType());
-		organization.setGstRatesData(statutoryOrganizationDto.getGstRatesData());
-
-		organization.setBankAccountPresent(statutoryOrganizationDto.isBankAccountPresent());
-		organization.setAccountHolderName(statutoryOrganizationDto.getAccountHolderName());
-		organization.setAccountNo(statutoryOrganizationDto.getAccountNo());
-		organization.setIfscCode(statutoryOrganizationDto.getIfscCode());
-		organization.setSwiftCode(statutoryOrganizationDto.getSwiftCode());
-		organization.setBankName(statutoryOrganizationDto.getBankName());
-		organization.setBranch(statutoryOrganizationDto.getBranch());
-
-		organizationRepository.save(organization);
-		flag=true;
-		return flag;
-	}
-
-	@Override
-	public Boolean addBankAccountInOrganization(BankAccountDto bankAccountDto) {
-		Boolean flag = false;
-		Organization organization = organizationRepository.findById(bankAccountDto.getBankAccountId()).get();
-		BankAccount bankAccount = new BankAccount();
-		bankAccount.setAccountHolderName(bankAccountDto.getAccountHolderName());
-		bankAccount.setAccountNo(bankAccountDto.getAccountNo());
-		bankAccount.setBranch(bankAccountDto.getBranch());
-		bankAccount.setIfscCode(bankAccountDto.getIfscCode());
-		bankAccount.setSwiftCode(bankAccountDto.getSwiftCode());
-		bankAccount.setBankName(bankAccountDto.getBankName());
-		bankAccountRepository.save(bankAccount);
-		
-		List<BankAccount>list = organization.getOrganizationBankAccount();
-		list.add(bankAccount);
-		organization.setOrganizationBankAccount(list);
-		organizationRepository.save(organization);
-		flag=true;
-		return flag;
-	}
-
-	@Override
-	public List<BankAccount> getAllBankAccountByOrganization(Long organizationId) {
-		List<BankAccount> bankAccountList = organizationRepository.findById(organizationId).get().getOrganizationBankAccount();
-	    return bankAccountList;
-	}
-
 }

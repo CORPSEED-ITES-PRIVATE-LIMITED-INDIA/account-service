@@ -1,8 +1,7 @@
 package com.account.domain;
 
 import jakarta.persistence.*;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
@@ -11,123 +10,110 @@ import org.springframework.data.annotation.LastModifiedDate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
-@Table(name = "estimate")
+@Table(name = "estimate",
+        indexes = {
+                @Index(name = "idx_estimate_number_unique",
+                        columnList = "estimate_number",
+                        unique = true),
+
+                @Index(name = "idx_estimate_status", columnList = "status"),
+                @Index(name = "idx_estimate_company_id", columnList = "company_id"),
+                @Index(name = "idx_estimate_unit_id", columnList = "unit_id"),
+                @Index(name = "idx_estimate_parent_estimate_id", columnList = "parent_estimate_id")
+        })
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Estimate {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Unique order/estimate number (e.g., EST-2026-0001)
-    @Column(name = "order_number", unique = true, nullable = false)
-    private String orderNumber;
+    // Unique identifier shown to customer (e.g. EST-2026-001234)
+    @Column(name = "estimate_number", nullable = false, unique = true, length = 32)
+    private String estimateNumber;
 
-    // Date when the estimate was requested / created
-    @Column(name = "purchase_date")
-    private LocalDate purchaseDate;
+    @Column(name = "estimate_date", nullable = false)
+    private LocalDate estimateDate = LocalDate.now();
 
-    // Product/Service name
-    @Column(name = "product_name", nullable = false)
-    private String productName;
+    // Validity period
+    @Column(name = "valid_until")
+    private LocalDate validUntil;
 
-    // Client Company (mandatory)
+    // Snapshot of main solution/product name (very useful for display & reporting)
+    @Column(name = "solution_name", nullable = false, length = 255)
+    private String solutionName; // e.g. "FSSAI State License - Uttar Pradesh" or "EPR - Plastic Packaging Compliance"
+
+    // Client references
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    // Specific unit/location of the company (optional)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "unit_id")
-    private CompanyUnit unit;
+    private CompanyUnit unit; // branch/outlet/plant - address comes from here
 
-    // Primary contact person for this estimate
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
-    // Billing Address
-    @Column(name = "billing_address_line1")
-    private String billingAddressLine1;
+    // Reference to originating solution(s) - optional, for traceability
+    @Column(name = "source_solution_ids", length = 500)
+    private String sourceSolutionIds; // e.g. "456" or "567,789"
 
-    @Column(name = "billing_address_line2")
-    private String billingAddressLine2;
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private SolutionType solutionType; // SERVICE / PRODUCT / PLANT_SETUP
 
-    @Column(name = "billing_city")
-    private String billingCity;
+    // Line items - the core breakdown
+    @OneToMany(mappedBy = "estimate", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @OrderColumn(name = "display_order")
+    private List<EstimateLineItem> lineItems = new ArrayList<>();
 
-    @Column(name = "billing_state")
-    private String billingState;
+    // Final calculated values (stored for performance & audit)
+    @Column(precision = 15, scale = 2, nullable = false)
+    private BigDecimal subTotalExGst = BigDecimal.ZERO;
 
-    @Column(name = "billing_country")
-    private String billingCountry = "India";
+    @Column(precision = 15, scale = 2, nullable = false)
+    private BigDecimal totalGstAmount = BigDecimal.ZERO;
 
-    @Column(name = "billing_pin_code")
-    private String billingPinCode;
+    @Column(precision = 15, scale = 2, nullable = false)
+    private BigDecimal grandTotal = BigDecimal.ZERO;
 
-    // Shipping / Service Delivery Address
-    @Column(name = "shipping_address_line1")
-    private String shippingAddressLine1;
+    // Status & lifecycle
+    @Enumerated(EnumType.STRING)
+    @Column(length = 32, nullable = false)
+    private EstimateStatus status = EstimateStatus.DRAFT;
 
-    @Column(name = "shipping_address_line2")
-    private String shippingAddressLine2;
+    @Column(length = 3, nullable = false)
+    private String currency = "INR";
 
-    @Column(name = "shipping_city")
-    private String shippingCity;
+    @Column(columnDefinition = "TEXT")
+    private String customerNotes;
 
-    @Column(name = "shipping_state")
-    private String shippingState;
+    @Column(columnDefinition = "TEXT")
+    private String internalRemarks;
 
-    @Column(name = "shipping_country")
-    private String shippingCountry = "India";
+    // Revision history support - immutable chain
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_estimate_id")
+    private Estimate parentEstimate; // null for original
 
-    @Column(name = "shipping_pin_code")
-    private String shippingPinCode;
+    @Column(nullable = false)
+    private Integer version = 1;
 
-    // Remarks / Notes
-    @Column(name = "remark", columnDefinition = "TEXT")
-    private String remark;
+    @Column(columnDefinition = "TEXT")
+    private String revisionReason; // e.g. "Customer negotiated from 50k to 40k"
 
-    // Employee code for internal discount
-    @Column(name = "employee_code")
-    private String employeeCode;
-
-    // Pricing fields - using BigDecimal for precise monetary values
-    @Column(name = "base_price", precision = 15, scale = 2)
-    private BigDecimal basePrice = BigDecimal.ZERO;
-
-    @Column(name = "tax", precision = 15, scale = 2)
-    private BigDecimal tax = BigDecimal.ZERO;
-
-    @Column(name = "government_fee", precision = 15, scale = 2)
-    private BigDecimal governmentFee = BigDecimal.ZERO;
-
-    @Column(name = "cgst", precision = 15, scale = 2)
-    private BigDecimal cgst = BigDecimal.ZERO;
-
-    @Column(name = "sgst", precision = 15, scale = 2)
-    private BigDecimal sgst = BigDecimal.ZERO;
-
-    @Column(name = "service_charge", precision = 15, scale = 2)
-    private BigDecimal serviceCharge = BigDecimal.ZERO;
-
-    @Column(name = "professional_fee", precision = 15, scale = 2)
-    private BigDecimal professionalFee = BigDecimal.ZERO;
-
-    @Column(name = "total_price", precision = 15, scale = 2)
-    private BigDecimal totalPrice = BigDecimal.ZERO;
-
-    // Status of the estimate
-    @Column(name = "status")
-    private String status = "Draft";
-
-    @Column(name = "is_deleted")
     private boolean isDeleted = false;
 
-    // Auditing fields
+    // Auditing
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by", updatable = false)
@@ -139,29 +125,39 @@ public class Estimate {
     private User updatedBy;
 
     @CreatedDate
-    @Column(name = "created_at", updatable = false)
+    @Column(updatable = false)
     private LocalDateTime createdAt;
 
     @LastModifiedDate
-    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     @PrePersist
     protected void onCreate() {
+        if (estimateDate == null) {
+            estimateDate = LocalDate.now();
+        }
+        if (validUntil == null) {
+            validUntil = estimateDate.plusDays(30); // Default 30 days validity
+        }
         isDeleted = false;
     }
 
     /**
-     * Recalculates the total price by summing all individual price components.
-     * Call this method before saving if any price field has been modified.
+     * Recalculates totals from line items.
+     * Call this before saving if any line item changes.
      */
-    public void calculateTotal() {
-        this.totalPrice = basePrice
-                .add(tax)
-                .add(governmentFee)
-                .add(cgst)
-                .add(sgst)
-                .add(serviceCharge)
-                .add(professionalFee);
+    public void calculateTotals() {
+        this.subTotalExGst = lineItems.stream()
+                .map(EstimateLineItem::getLineTotalExGst)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        this.totalGstAmount = lineItems.stream()
+                .map(EstimateLineItem::getGstAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        this.grandTotal = subTotalExGst.add(totalGstAmount);
     }
+
+
 }

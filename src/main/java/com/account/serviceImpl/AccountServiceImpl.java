@@ -108,12 +108,5 @@ public class AccountServiceImpl implements AccountService{
 		return null;
 	}
 
-	@Override
-	public BankAccount getCompanyAccountData() {
-		Organization org = organizationRepository.findCompanyData();
-		List<BankAccount> accountData = org.getOrganizationBankAccount();
-		BankAccount bankAccount=accountData.stream().findFirst().get();
-		return bankAccount;
-	}
 
 }

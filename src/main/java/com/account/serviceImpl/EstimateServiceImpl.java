@@ -1,290 +1,258 @@
 package com.account.serviceImpl;
 
 import com.account.domain.*;
-import com.account.dto.estimate.EstimateRequestDto;
+import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.*;
 import com.account.service.EstimateService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
+import lombok.RequiredArgsConstructor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashMap;
+import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 @Transactional
+@RequiredArgsConstructor
 public class EstimateServiceImpl implements EstimateService {
 
-    @Autowired
-    private EstimateRepository estimateRepository;
+    private static final Logger log = LogManager.getLogger(EstimateServiceImpl.class);
 
-    @Autowired
-    private CompanyRepository companyRepository;
-
-    @Autowired
-    private CompanyUnitRepository companyUnitRepository;
-
-    @Autowired
-    private ContactRepository contactRepository;
-
-    @Autowired
-    private UserRepository userRepository;
+    private final EstimateRepository estimateRepository;
+    private final CompanyRepository companyRepository;
+    private final CompanyUnitRepository companyUnitRepository;
+    private final ContactRepository contactRepository;
+    private final UserRepository userRepository;
 
     @Override
-    public EstimateResponseDto createEstimate(EstimateRequestDto dto) {
-        // Validate Company
-        Company company = companyRepository.findById(dto.getCompanyId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Company not found with id: " + dto.getCompanyId(),
-                        "ERR_COMPANY_NOT_FOUND",
-                        "Company",
-                        dto.getCompanyId()
-                ));
+    public EstimateResponseDto createEstimate(EstimateCreationRequestDto requestDto) {
+        log.info("Starting estimate creation | companyId: {} | userId: {} | solution: {} | lineItems: {}",
+                requestDto.getCompanyId(),
+                requestDto.getCreatedByUserId(),
+                requestDto.getSolutionName(),
+                requestDto.getLineItems() != null ? requestDto.getLineItems().size() : 0);
 
-        // Validate Unit (if provided)
+        // 1. Basic validation
+        if (requestDto.getLineItems() == null || requestDto.getLineItems().isEmpty()) {
+            log.warn("Validation failed: No line items provided for estimate creation");
+            throw new ValidationException("At least one line item is required", "ERR_NO_LINE_ITEMS");
+        }
+
+        // 2. Validate creator exists
+        log.debug("Fetching creator user with id: {}", requestDto.getCreatedByUserId());
+        User creator = userRepository.findById(requestDto.getCreatedByUserId())
+                .orElseThrow(() -> {
+                    log.error("User not found for id: {}", requestDto.getCreatedByUserId());
+                    return new ResourceNotFoundException(
+                            "User not found with ID: " + requestDto.getCreatedByUserId(), "USER_NOT_FOUND");
+                });
+
+        // 3. Fetch referenced entities
+        log.debug("Fetching company with id: {}", requestDto.getCompanyId());
+        Company company = companyRepository.findById(requestDto.getCompanyId())
+                .orElseThrow(() -> {
+                    log.error("Company not found for id: {}", requestDto.getCompanyId());
+                    return new ResourceNotFoundException("Company not found", "COMPANY_NOT_FOUND");
+                });
+
         CompanyUnit unit = null;
-        if (dto.getUnitId() != null) {
-            unit = companyUnitRepository.findById(dto.getUnitId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Unit not found with id: " + dto.getUnitId(),
-                            "ERR_UNIT_NOT_FOUND",
-                            "CompanyUnit",
-                            dto.getUnitId()
-                    ));
+        if (requestDto.getUnitId() != null && requestDto.getUnitId() > 0) {
+            log.debug("Fetching unit with id: {}", requestDto.getUnitId());
+            unit = companyUnitRepository.findById(requestDto.getUnitId())
+                    .orElseThrow(() -> {
+                        log.error("Unit not found for id: {}", requestDto.getUnitId());
+                        return new ResourceNotFoundException("Unit not found", "UNIT_NOT_FOUND");
+                    });
         }
 
-        // Validate Contact (if provided)
         Contact contact = null;
-        if (dto.getContactId() != null) {
-            contact = contactRepository.findByIdAndDeleteStatusFalse(dto.getContactId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Active contact not found with id: " + dto.getContactId(),
-                            "ERR_CONTACT_NOT_FOUND",
-                            "Contact",
-                            dto.getContactId()
-                    ));
+        if (requestDto.getContactId() != null && requestDto.getContactId() > 0) {
+            log.debug("Fetching contact with id: {}", requestDto.getContactId());
+            contact = contactRepository.findById(requestDto.getContactId())
+                    .orElseThrow(() -> {
+                        log.error("Contact not found for id: {}", requestDto.getContactId());
+                        return new ResourceNotFoundException("Contact not found", "CONTACT_NOT_FOUND");
+                    });
         }
 
-        // Check duplicate order number
-        if (estimateRepository.existsByOrderNumber(dto.getOrderNumber())) {
-            throw new ValidationException(
-                    "Order number already exists: " + dto.getOrderNumber(),
-                    "ERR_DUPLICATE_ORDER_NUMBER",
-                    "orderNumber"
-            );
-        }
-
+        // 4. Create Estimate entity
+        log.debug("Creating new Estimate entity");
         Estimate estimate = new Estimate();
-        mapRequestToEntity(dto, estimate, company, unit, contact);
+        String estimateNumber = generateEstimateNumber();
+        estimate.setEstimateNumber(estimateNumber);
 
-        // Calculate total price
-        estimate.calculateTotal();
+        estimate.setEstimateDate(
+                requestDto.getEstimateDate() != null ? requestDto.getEstimateDate() : LocalDate.now());
+        estimate.setValidUntil(
+                requestDto.getValidUntil() != null ? requestDto.getValidUntil() : LocalDate.now().plusDays(30));
 
-        // Set default status
-        if (dto.getStatus() == null || dto.getStatus().isBlank()) {
-            estimate.setStatus("Draft");
-        }
-
-        Estimate saved = estimateRepository.save(estimate);
-
-        return mapToResponseDto(saved);
-    }
-
-    @Override
-    public EstimateResponseDto getEstimateById(Long id) {
-        return estimateRepository.findById(id)
-                .map(this::mapToResponseDto)
-                .orElse(null);
-    }
-
-    @Override
-    public List<EstimateResponseDto> getEstimatesByCompanyId(Long companyId, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Estimate> estimates = estimateRepository.findByCompanyIdAndIsDeletedFalse(companyId, pageable);
-        return estimates.stream()
-                .map(this::mapToResponseDto)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<EstimateResponseDto> getAllEstimates(int page, int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Estimate> estimates = estimateRepository.findByIsDeletedFalse(pageable);
-        return estimates.stream()
-                .map(this::mapToResponseDto)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<Map<String, Object>> searchEstimates(String query, int page, int size) {
-        Pageable pageable = PageRequest.of(page, size);
-        Page<Estimate> results = estimateRepository.searchByQuery(query, pageable);
-
-        return results.stream()
-                .map(this::mapToSimpleMap)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public Map<String, Object> getEstimateForView(Long id) {
-        Estimate estimate = estimateRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Estimate not found with id: " + id,
-                        "ERR_ESTIMATE_NOT_FOUND",
-                        "Estimate",
-                        id
-                ));
-
-        Map<String, Object> view = new HashMap<>();
-        view.put("estimate", mapToResponseDto(estimate));
-
-        // Formatted fields for PDF/UI
-        view.put("formattedTotal", String.format("₹%,.2f", estimate.getTotalPrice()));
-        view.put("formattedDate", estimate.getPurchaseDate() != null ? estimate.getPurchaseDate().toString() : "");
-        view.put("generatedAt", LocalDateTime.now());
-
-        return view;
-    }
-
-    // ==================== MAPPING HELPERS ====================
-
-    private void mapRequestToEntity(EstimateRequestDto dto, Estimate estimate,
-                                    Company company, CompanyUnit unit, Contact contact) {
-
-        estimate.setOrderNumber(dto.getOrderNumber());
-        estimate.setPurchaseDate(dto.getPurchaseDate());
-        estimate.setProductName(dto.getProductName());
         estimate.setCompany(company);
         estimate.setUnit(unit);
         estimate.setContact(contact);
+        estimate.setSolutionName(requestDto.getSolutionName());
+        estimate.setSourceSolutionIds(requestDto.getSourceSolutionIds());
+        estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
 
-        // Addresses
-        estimate.setBillingAddressLine1(dto.getBillingAddressLine1());
-        estimate.setBillingAddressLine2(dto.getBillingAddressLine2());
-        estimate.setBillingCity(dto.getBillingCity());
-        estimate.setBillingState(dto.getBillingState());
-        estimate.setBillingCountry(dto.getBillingCountry());
-        estimate.setBillingPinCode(dto.getBillingPinCode());
+        // Validate and set SolutionType
+        try {
+            SolutionType solutionType = SolutionType.valueOf(requestDto.getSolutionType());
+            estimate.setSolutionType(solutionType);
+        } catch (IllegalArgumentException e) {
+            String allowedValues = Arrays.stream(SolutionType.values())
+                    .map(Enum::name)
+                    .collect(Collectors.joining(", "));
 
-        estimate.setShippingAddressLine1(dto.getShippingAddressLine1());
-        estimate.setShippingAddressLine2(dto.getShippingAddressLine2());
-        estimate.setShippingCity(dto.getShippingCity());
-        estimate.setShippingState(dto.getShippingState());
-        estimate.setShippingCountry(dto.getShippingCountry());
-        estimate.setShippingPinCode(dto.getShippingPinCode());
+            log.error("Invalid solution type provided: '{}' | Allowed values: {}",
+                    requestDto.getSolutionType(), allowedValues);
 
-        estimate.setRemark(dto.getRemark());
-        estimate.setEmployeeCode(dto.getEmployeeCode());
+            throw new ValidationException(
+                    "Invalid solution type: " + requestDto.getSolutionType() +
+                            ". Allowed values: " + allowedValues,
+                    "ERR_INVALID_SOLUTION_TYPE");
+        }
 
-        // Pricing
-        estimate.setBasePrice(dto.getBasePrice());
-        estimate.setTax(dto.getTax());
-        estimate.setGovernmentFee(dto.getGovernmentFee());
-        estimate.setCgst(dto.getCgst());
-        estimate.setSgst(dto.getSgst());
-        estimate.setServiceCharge(dto.getServiceCharge());
-        estimate.setProfessionalFee(dto.getProfessionalFee());
-        estimate.setStatus(dto.getStatus());
+        estimate.setCustomerNotes(requestDto.getCustomerNotes());
+        estimate.setInternalRemarks(requestDto.getInternalRemarks());
+        estimate.setCurrency("INR");
+        estimate.setStatus(EstimateStatus.DRAFT);
+        estimate.setVersion(1);
+        estimate.setRevisionReason("Initial creation");
+        estimate.setCreatedBy(creator);
+
+        // 5. Process line items
+        log.debug("Processing {} line items", requestDto.getLineItems().size());
+        List<EstimateLineItem> lineItems = new ArrayList<>();
+
+        for (int i = 0; i < requestDto.getLineItems().size(); i++) {
+            EstimateCreationRequestDto.EstimateLineItemDto itemDto = requestDto.getLineItems().get(i);
+
+            EstimateLineItem lineItem = new EstimateLineItem();
+            lineItem.setEstimate(estimate);
+            lineItem.setSourceItemId(itemDto.getSourceItemId());
+            lineItem.setItemName(itemDto.getItemName());
+            lineItem.setDescription(itemDto.getDescription());
+            lineItem.setHsnSacCode(itemDto.getHsnSacCode());
+            lineItem.setQuantity(itemDto.getQuantity());
+            lineItem.setUnit(itemDto.getUnit());
+            lineItem.setUnitPriceExGst(itemDto.getUnitPriceExGst());
+            lineItem.setGstRate(itemDto.getGstRate());
+            lineItem.setCategoryCode(itemDto.getCategoryCode());
+            lineItem.setFeeType(itemDto.getFeeType());
+            lineItem.setDisplayOrder(i + 1);
+
+            lineItem.calculateLineTotals();
+            lineItems.add(lineItem);
+
+            log.trace("Added line item #{}: {} | qty: {} | unitPrice: {} | totalExGst: {}",
+                    i + 1, itemDto.getItemName(), itemDto.getQuantity(),
+                    itemDto.getUnitPriceExGst(), lineItem.getLineTotalExGst());
+        }
+
+        estimate.setLineItems(lineItems);
+
+        // 6. Calculate totals
+        log.debug("Calculating estimate totals");
+        estimate.calculateTotals();
+
+        // 7. Persist
+        log.info("Saving estimate: number={} | company={} | total={}",
+                estimateNumber, company.getId(), estimate.getGrandTotal());
+        estimate = estimateRepository.save(estimate);
+
+        log.info("Estimate created successfully | id={} | number={} | createdBy={} | total={}",
+                estimate.getId(), estimate.getEstimateNumber(),
+                creator.getId(), estimate.getGrandTotal());
+
+        // 8. Return response
+        return mapToResponseDto(estimate);
     }
+
+    private String generateEstimateNumber() {
+        long count = estimateRepository.count() + 1;
+        String number = String.format("EST-%d-%06d", LocalDate.now().getYear(), count);
+        log.debug("Generated estimate number: {}", number);
+        return number;
+    }
+
+
+    @Override
+    public EstimateResponseDto getEstimateById(Long estimateId, Long requestingUserId) {
+        log.info("Fetching estimate | estimateId={} | requestedByUser={}", estimateId, requestingUserId);
+
+        // 1. Check if requesting user exists (basic security)
+        if (!userRepository.existsById(requestingUserId)) {
+            log.warn("User not found: userId={}", requestingUserId);
+            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        // 2. Fetch the estimate
+        Estimate estimate = estimateRepository.findById(estimateId)
+                .orElseThrow(() -> {
+                    log.warn("Estimate not found: id={}", estimateId);
+                    return new ResourceNotFoundException("Estimate not found", "ESTIMATE_NOT_FOUND");
+                });
+
+        log.info("Estimate fetched successfully | number={} | total={}",
+                estimate.getEstimateNumber(), estimate.getGrandTotal());
+
+        return mapToResponseDto(estimate);
+    }
+
 
     private EstimateResponseDto mapToResponseDto(Estimate estimate) {
+        log.trace("Mapping Estimate entity to response DTO | id={}", estimate.getId());
+
         EstimateResponseDto dto = new EstimateResponseDto();
-
         dto.setId(estimate.getId());
-        dto.setOrderNumber(estimate.getOrderNumber());
-        dto.setPurchaseDate(estimate.getPurchaseDate());
-        dto.setProductName(estimate.getProductName());
-        dto.setStatus(estimate.getStatus());
-        dto.setRemark(estimate.getRemark());
-        dto.setEmployeeCode(estimate.getEmployeeCode());
-
-        // Company
-        if (estimate.getCompany() != null) {
-            dto.setCompanyId(estimate.getCompany().getId());
-            dto.setCompanyName(estimate.getCompany().getName());
-            dto.setCompanyPanNo(estimate.getCompany().getPanNo());
-            dto.setCompanyGstNo(estimate.getCompany().getGstNo());
-        }
-
-        // Unit
-        if (estimate.getUnit() != null) {
-            dto.setUnitId(estimate.getUnit().getId());
-            dto.setUnitName(estimate.getUnit().getUnitName());
-            dto.setUnitCity(estimate.getUnit().getCity());
-            dto.setUnitState(estimate.getUnit().getState());
-            dto.setUnitGstNo(estimate.getUnit().getGstNo());
-        }
-
-        // Contact
-        if (estimate.getContact() != null) {
-            dto.setContactId(estimate.getContact().getId());
-            dto.setContactName(estimate.getContact().getName());
-            dto.setContactEmails(estimate.getContact().getEmails());
-            dto.setContactNo(estimate.getContact().getContactNo());
-            dto.setWhatsappNo(estimate.getContact().getWhatsappNo());
-        }
-
-        // Addresses
-        EstimateResponseDto.AddressDto billing = new EstimateResponseDto.AddressDto();
-        billing.setLine1(estimate.getBillingAddressLine1());
-        billing.setLine2(estimate.getBillingAddressLine2());
-        billing.setCity(estimate.getBillingCity());
-        billing.setState(estimate.getBillingState());
-        billing.setCountry(estimate.getBillingCountry());
-        billing.setPinCode(estimate.getBillingPinCode());
-        dto.setBillingAddress(billing);
-
-        EstimateResponseDto.AddressDto shipping = new EstimateResponseDto.AddressDto();
-        shipping.setLine1(estimate.getShippingAddressLine1());
-        shipping.setLine2(estimate.getShippingAddressLine2());
-        shipping.setCity(estimate.getShippingCity());
-        shipping.setState(estimate.getShippingState());
-        shipping.setCountry(estimate.getShippingCountry());
-        shipping.setPinCode(estimate.getShippingPinCode());
-        dto.setShippingAddress(shipping);
-
-        // Pricing
-        dto.setBasePrice(estimate.getBasePrice());
-        dto.setProfessionalFee(estimate.getProfessionalFee());
-        dto.setServiceCharge(estimate.getServiceCharge());
-        dto.setGovernmentFee(estimate.getGovernmentFee());
-        dto.setTax(estimate.getTax());
-        dto.setCgst(estimate.getCgst());
-        dto.setSgst(estimate.getSgst());
-        dto.setTotalPrice(estimate.getTotalPrice());
-
-        // Audit
-        if (estimate.getCreatedBy() != null) {
-            dto.setCreatedByName(estimate.getCreatedBy().getFullName());
-        }
+        dto.setEstimateNumber(estimate.getEstimateNumber());
+        dto.setEstimateDate(estimate.getEstimateDate());
+        dto.setValidUntil(estimate.getValidUntil());
+        dto.setSolutionName(estimate.getSolutionName());
+        dto.setSolutionType(estimate.getSolutionType().name());
+        dto.setStatus(estimate.getStatus().name());
+        dto.setCurrency(estimate.getCurrency());
+        dto.setSubTotalExGst(estimate.getSubTotalExGst());
+        dto.setTotalGstAmount(estimate.getTotalGstAmount());
+        dto.setGrandTotal(estimate.getGrandTotal());
+        dto.setCustomerNotes(estimate.getCustomerNotes());
+        dto.setInternalRemarks(estimate.getInternalRemarks());
+        dto.setVersion(estimate.getVersion());
+        dto.setRevisionReason(estimate.getRevisionReason());
         dto.setCreatedAt(estimate.getCreatedAt());
+        dto.setCreatedById(estimate.getCreatedBy() != null ? estimate.getCreatedBy().getId() : null);
 
-        if (estimate.getUpdatedBy() != null) {
-            dto.setUpdatedByName(estimate.getUpdatedBy().getFullName());
+        List<EstimateResponseDto.EstimateLineItemResponseDto> itemDtos = new ArrayList<>();
+        for (EstimateLineItem item : estimate.getLineItems()) {
+            EstimateResponseDto.EstimateLineItemResponseDto itemDto = new EstimateResponseDto.EstimateLineItemResponseDto();
+            itemDto.setId(item.getId());
+            itemDto.setItemName(item.getItemName());
+            itemDto.setDescription(item.getDescription());
+            itemDto.setHsnSacCode(item.getHsnSacCode());
+            itemDto.setQuantity(item.getQuantity());
+            itemDto.setUnit(item.getUnit());
+            itemDto.setUnitPriceExGst(item.getUnitPriceExGst());
+            itemDto.setGstRate(item.getGstRate());
+            itemDto.setLineTotalExGst(item.getLineTotalExGst());
+            itemDto.setGstAmount(item.getGstAmount());
+            itemDto.setDisplayOrder(item.getDisplayOrder());
+            itemDto.setCategoryCode(item.getCategoryCode());
+            itemDto.setFeeType(item.getFeeType());
+            itemDtos.add(itemDto);
         }
-        dto.setUpdatedAt(estimate.getUpdatedAt());
+        dto.setLineItems(itemDtos);
 
         return dto;
-    }
-
-    private Map<String, Object> mapToSimpleMap(Estimate estimate) {
-        Map<String, Object> map = new HashMap<>();
-        map.put("id", estimate.getId());
-        map.put("orderNumber", estimate.getOrderNumber());
-        map.put("productName", estimate.getProductName());
-        map.put("companyName", estimate.getCompany().getName());
-        map.put("totalPrice", estimate.getTotalPrice());
-        map.put("status", estimate.getStatus());
-        map.put("purchaseDate", estimate.getPurchaseDate());
-        return map;
     }
 }

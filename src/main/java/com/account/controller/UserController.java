@@ -18,12 +18,9 @@ import java.util.List;
 
 @RestController
 @CrossOrigin(origins = "*", maxAge = 3600)
-
 public class UserController {
 	@Autowired
 	 UserService userService;
-
-	
 
 	@GetMapping(UrlsMapping.GET_ALL_USER)
 	public ResponseEntity<List<User>> getAllUserData()

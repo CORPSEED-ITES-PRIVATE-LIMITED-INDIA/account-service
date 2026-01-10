@@ -21,7 +21,6 @@ import org.springframework.stereotype.Service;
 import com.account.config.GetAllCompanyDto;
 import com.account.config.LeadFeignClient;
 import com.account.config.OpenAPIConfig;
-import com.account.controller.ledger.OrganizationController;
 import com.account.domain.FileData;
 import com.account.domain.InvoiceData;
 import com.account.domain.Organization;
@@ -47,7 +46,6 @@ import jakarta.transaction.Transactional;
 @Service
 public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 
-	private final OrganizationController organizationController;
 
 	@Autowired
 	private final GstDetailsRepository gstDetailsRepository;
@@ -108,11 +106,10 @@ public class PaymentRegisterServiceImpl implements  PaymentRegisterService{
 	@Autowired
 	TdsDetailRepository tdsDetailRepository;
 
-
-	PaymentRegisterServiceImpl(OpenAPIConfig openAPIConfig, GstDetailsRepository gstDetailsRepository, OrganizationController organizationController) {
-		this.openAPIConfig = openAPIConfig;
+	public PaymentRegisterServiceImpl(GstDetailsRepository gstDetailsRepository, OpenAPIConfig openAPIConfig, UnbilledRepository unbilledRepository) {
 		this.gstDetailsRepository = gstDetailsRepository;
-		this.organizationController = organizationController;
+		this.openAPIConfig = openAPIConfig;
+		this.unbilledRepository = unbilledRepository;
 	}
 
 

@@ -5,11 +5,11 @@ import org.springframework.web.bind.annotation.CrossOrigin;
 @CrossOrigin(origins = "http://localhost:3000")
 public interface UrlsMapping {
 	public final static String PREFIX = "accountService/api/v1";
-	
-	
+
+
 	//======================= USER API=============
-	
-	public static final String TEST=PREFIX+ "/account/test";	
+
+	public static final String TEST=PREFIX+ "/account/test";
 	public static final String GET_ALL_USER=PREFIX+ "/users/getAllUser";
 	public static final String IS_USER_EXIST_OR_NOT=PREFIX+ "/users/isUserExistOrNot";
 	public static final String CREATE_USER=PREFIX+ "/users/createUser";
@@ -28,11 +28,11 @@ public interface UrlsMapping {
 
 	//=============================  Account  =================================
 	public static final String CREATE_ACCOUNT_DATA=PREFIX+ "/account/createAccountData";
-	public static final String GET_ACCOUNT_DATA=PREFIX+ "/account/getAccountData";	
-	public static final String GET_ALL_ACCOUNT_DATA=PREFIX+ "/account/getAllAccountData";	
-	public static final String UPDATE_ACCOUNT_DATA=PREFIX+ "/account/updateAccountData";	
+	public static final String GET_ACCOUNT_DATA=PREFIX+ "/account/getAccountData";
+	public static final String GET_ALL_ACCOUNT_DATA=PREFIX+ "/account/getAllAccountData";
+	public static final String UPDATE_ACCOUNT_DATA=PREFIX+ "/account/updateAccountData";
 	public static final String DELETE_ACCOUNT_DATA=PREFIX+ "/account/deleteAccountData";
-	public static final String GET_COMPANY_ACCOUNT_DATA=PREFIX+ "/account/getCompanyAccountData";	
+	public static final String GET_COMPANY_ACCOUNT_DATA=PREFIX+ "/account/getCompanyAccountData";
 
 	///===============================  Ledger	Type  =================================
 	public static final String CREATE_LEDGER_TYPE=PREFIX+ "/ledgerType/createLedgerType";
@@ -42,9 +42,9 @@ public interface UrlsMapping {
 	public static final String GET_ALL_LEDGER_TYPE_BY_ID=PREFIX+ "/ledgerType/getAllLedgerTypeById";
 	public static final String GROUP_SEARCH_API=PREFIX+ "/ledgerType/groupSearchApi";
 
-	
+
 	//================================ Ledger ==========================================
-	
+
 	public static final String CREATE_LEDGER=PREFIX+ "/ledger/createLedger";
 	public static final String UPDATE_LEDGER=PREFIX+ "/ledger/updateLedger";
 	public static final String GET_ALL_LEDGER=PREFIX+ "/ledger/getAllLedger";
@@ -58,11 +58,11 @@ public interface UrlsMapping {
 
 	//================================ Voucher Type ==========================================
 
-	
+
 	public static final String CREATE_VOUCHER_TYPE=PREFIX+ "/voucherType/createVoucherType";
 	public static final String UPDATE_VOUCHER_TYPE=PREFIX+ "/voucherType/updateVoucherType";
 	public static final String GET_ALL_VOUCHER_TYPE=PREFIX+ "/voucherType/getAllVoucherType";
-	
+
 	//=============================== Voucher  ===========================================
 	public static final String CREATE_VOUCHER=PREFIX+ "/voucher/createVoucher";
 	public static final String UPDATE_VOUCHER=PREFIX+ "/voucher/updateVoucher";
@@ -79,23 +79,23 @@ public interface UrlsMapping {
 	public static final String GET_VOUCHER_BY_ID=PREFIX+ "/voucher/getVoucherById";
 	public static final String DELETE_VOUCHER_BY_ID=PREFIX+ "/voucher/deleteVoucherById";
 
-	
+
 	//=============================== Bank Details ========================================
 	public static final String CREATE_BANK_DETAILS=PREFIX+ "/ledgerType/createBankDetails";
 	public static final String UPDATE_BANK_DETAILS=PREFIX+ "/ledgerType/updateBankDetails";
 	public static final String GET_ALL_BANK_DETAILS=PREFIX+ "/ledgerType/getAllBankDetails";
 
-	
+
 	//================================= Statutory =========================================
 	public static final String ADD_STATUTORY_DETAILS=PREFIX+ "/statutory/addStatutoryDetails";
-	
+
 	public static final String UPDATE_STATUTORY_DETAILS=PREFIX+ "/statutory/updateStatutoryDetails";
 
 	public static final String GET_STATUTORY_DETAILS=PREFIX+ "/statutory/getStatutoryDetails";
 	public static final String GET_ALL_STATUTORY_DETAILS=PREFIX+ "/statutory/getAllStatutoryDetails";
 
 
-	
+
 	//==================================== organization ========================================
 	public static final String CREATE_ORGANIIZATION=PREFIX+ "/organization/createOrganization";
 	public static final String GET_ORGANIIZATION_BY_ID=PREFIX+ "/organization/getOrganizationById";
@@ -107,7 +107,7 @@ public interface UrlsMapping {
 
 	//==================================== Payment Register ========================================
 		public static final String CREATE_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/createPaymentRegister";
-		
+
 		public static final String GET_ALL_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/getAllPaymentRegister";
 		public static final String UPDATE_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/updatePaymentRegister";
 		public static final String PAYMENT_APPROVE_V2=PREFIX+ "/paymentRegister/paymentApproveV2";
@@ -138,10 +138,10 @@ public interface UrlsMapping {
 		public static final String GET_ALL_PAYMENT_REGISTER_BY_USER=PREFIX+ "/paymentRegister/getAllPaymentRegisterByUser";
 
 		public static final String SEARCH_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/searchPaymentRegister";
-		
+
 		public static final String GET_PAYMENT_REGISTER_WITH_ESTIMATE_BY_ID=PREFIX+ "/paymentRegister/getPaymentRegisterWithEstimateById";
 
-		
+
 		//==================================== Vendor Payment Register ================================================
 
 		public static final String CREATE_VENDOR_PAYMENT_REGISTER=PREFIX+ "/paymentRegister/createVendorPaymentRegister";
@@ -169,25 +169,25 @@ public interface UrlsMapping {
 
 		public static final String GET_ALL_BANK_ACCOUNTS=PREFIX+ "/bankStatements/getAllBankAccounts";
 
-		
+
 		// =  == ================================== Tds Api creation =======================================
 		public static final String CREATE_TDS=PREFIX+ "/tds/createTds";
 		public static final String GET_ALL_TDS=PREFIX+ "/tds/getAllTds";
 		public static final String GET_ALL_TDS_COUNT=PREFIX+ "/tds/getAllTdsCount";
 		public static final String UPDATE_TDS_CLAIM_AMOUNT=PREFIX+ "/tds/updateTdsClaimAmount";
 
-	// = ==========================================  File Upload = = = = =     = == = = = = = == == = = = = 	
-		
+	// = ==========================================  File Upload = = = = =     = == = = = = = == == = = = =
+
 		public static final String UPLOAD_IMAGE_TO_FILE=PREFIX+"/upload/uploadimageToFileSystem";
 		public static final String GET_IMAGE_TO_FILE=PREFIX+"/upload/getImageToFileSystem";
-		
+
 	// =  == ================================== Tds Api creation =======================================
 		public static final String CREATE_GST=PREFIX+ "/gst/createGst";
 		public static final String GET_ALL_GST=PREFIX+ "/gst/getAllGst";
 		public static final String GET_GST_BY_ID=PREFIX+ "/gst/getGstById";
-		
-		
-		
+
+
+
 		//========================================== Unbilled ==========================================
 		public static final String CREATE_UNBILLED=PREFIX+ "/ledgerType/createUnbilled";
 		public static final String UPDATE_UNBILLED=PREFIX+ "/ledgerType/updateUnbilled";
@@ -201,30 +201,30 @@ public interface UrlsMapping {
 
 
         // get all trial balance
-		
+
 		public static final String GET_ALL_TRIAL_BALANCE=PREFIX+ "/trialBalance/getAllTrialBalance";
 		public static final String GET_ALL_TRIAL_BALANCE_DATA=PREFIX+ "/trialBalance/getAllTrialBalanceData";
 
 		// get All Cash Flow
-		
+
 		public static final String GET_ALL_IN_FLOW=PREFIX+ "/cashFlow/getAllInFlow";
 		public static final String GET_ALL_OUT_FLOW=PREFIX+ "/cashFlow/getAllOutFlow";
-		
+
 		public static final String GET_ALL_CASH_IN_AND_OUT_FLOW=PREFIX+ "/cashFlow/getAllCashInAndOutFlow";
 
 		// get Profit and Loss
-		
+
 		public static final String GET_ALL_PROFIT=PREFIX+ "/cashFlow/getAllProfit";
 		public static final String GET_ALL_LOSS=PREFIX+ "/cashFlow/getAllLoss";
 		public static final String GET_ALL_PROFIT_AND_LOSS=PREFIX+ "/cashFlow/getAllProfitAndLoss";
-		
+
 		// get All Balance sheet liabilities
 		public static final String GET_ALL_BALANCE_SHEET_LIABILITIES=PREFIX+ "/balanceSheet/getAllBalanceSheetLiabilities";
 		public static final String GET_ALL_BALANCE_SHEET_ASSETS=PREFIX+ "/balanceSheet/getAllBalanceSheetAssets";
 		public static final String GET_ALL_BALANCE_SHEET_LIABILITIES_FOR_EXPORT=PREFIX+ "/balanceSheet/getAllBalanceSheetLiabilitiesForExport";
 		public static final String GET_ALL_BALANCE_SHEET_ASSETS_FOR_EXPORT=PREFIX+ "/balanceSheet/getAllBalanceSheetAssetsForExport";
 		public static final String GET_ALL_GROUP_BY_PARENT_GROUP_ID=PREFIX+ "/balanceSheet/getAllGroupByParentGroupId";
-		
+
 		// dashboard
 		public static final String GET_SALES_DASHBOARD_REVENUE_MONTHLY=PREFIX+ "/balanceSheet/getSalesDashboardRevenueMonthly";
 		public static final String GET_SALES_DASHBOARD_REVENUE_BY_USER=PREFIX+ "/balanceSheet/getSalesDashboardRevenueByUser";
@@ -234,24 +234,24 @@ public interface UrlsMapping {
 		public static final String GET_ASSETS_SUBGROUP_BY_GROUP=PREFIX+ "/balanceSheet/getAssetsSubGroupByGroup";
 		public static final String GET_ALL_ASSETS_AND_LIABILITIES=PREFIX+ "/balanceSheet/getAllAssetsAndLiabilities";
 
-		
+
 		//sales Report
 		public static final String GET_ALL_SALES_REPORT=PREFIX+ "/salesReport/getAllSalesReport";
 		public static final String GET_ALL_SALES_REPORT_COUNT=PREFIX+ "/salesReport/getAllSalesReportCount";
 		public static final String GET_ALL_SALES_REPORT_FOR_EXPORT=PREFIX+ "/salesReport/getAllSalesReportForExport";
 
 		//TdsReport
-		
+
 		public static final String GET_ALL_TDS_REPORT=PREFIX+ "/salesReport/getAllTdsReport";
-		
-		
+
+
 		//Gst Report
-		
+
 		public static final String GET_ALL_GST_REPORT=PREFIX+ "/gst/getAllGstReport";
 
 
 		// Invoice =====
-        
+
        public static final String GET_INVOICE_BY_ID=PREFIX+ "/invoice/getInvoiceById";
        public static final String GET_INVOICE_BY_UNBILLED_ID=PREFIX+ "/invoice/getInvoiceByUnbilledId";
 

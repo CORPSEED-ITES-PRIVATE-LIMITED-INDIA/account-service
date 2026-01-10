@@ -1,75 +1,134 @@
 package com.account.domain;
 
-import java.util.Date;
-import java.util.List;
+import jakarta.persistence.*;
+import lombok.*;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.annotation.LastModifiedDate;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 
-import jakarta.persistence.CascadeType;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
-import jakarta.persistence.Table;
-import lombok.Getter;
-import lombok.Setter;
-
-@Table
 @Entity
+@Table(name = "organization")
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class Organization {
-	
+
 	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
-	
+	private Long id = 1L; // Singleton - always ID=1 for Corpseed
+
+	@Column(nullable = false, length = 255)
 	private String name;
-	
-	Date joiningDate;
-	boolean isDeleted ;
-	
-	String address;	
-	String state;	
-	String country;	
-	String pin;	
-	Date createDate; 
-	
-	//hsn details
-	boolean hsnSacPresent;
-	String hsnSacDetails;
-	String classification;
-	String hsnSacData;
-	String hsnDescription;
 
+	@Column(length = 255)
+	private String addressLine1;
 
+	@Column(length = 255)
+	private String addressLine2;
 
-	// gst rate details
-	boolean gstRateDetailPresent;
-	String gstRateDetails;
-	String taxabilityType;
-	String gstRatesData;
+	@Column(length = 100)
+	private String city;
 
+	@Column(length = 100)
+	private String state;
 
-	//Bank Details
+	@Column(length = 100)
+	private String country = "India";
 
-	boolean bankAccountPresent;
-	String accountHolderName;
-	String accountNo;
-	String ifscCode;
-	String swiftCode;
-	String bankName;
-	String branch;
-	
-	
-	@ManyToMany(cascade = CascadeType.ALL)
-	@JoinTable(name="organization_bank_account",joinColumns = {@JoinColumn(name="organization_id",referencedColumnName="id",nullable=true)},
-			inverseJoinColumns = {@JoinColumn(name="organization_bank_account_id"
-					+ "",referencedColumnName = "id",nullable=true,unique=false)})
-	List<BankAccount>organizationBankAccount;
+	@Column(length = 20)
+	private String pinCode;
 
+	@Column(length = 50)
+	private String gstNo;
 
-	
+	@Column(length = 50)
+	private String panNo;
+
+	@Column(length = 21)
+	private String cinNumber;
+
+	@Column
+	private LocalDate establishedDate;
+
+	@Column(length = 255)
+	private String ownerName;
+
+	// Bank Details
+	@Column
+	private boolean bankAccountPresent = false;
+
+	@Column(length = 255)
+	private String accountHolderName;
+
+	@Column(length = 100)
+	private String accountNo;
+
+	@Column(length = 20)
+	private String ifscCode;
+
+	@Column(length = 20)
+	private String swiftCode;
+
+	@Column(length = 100)
+	private String bankName;
+
+	@Column(length = 100)
+	private String branch;
+
+	// UPI & Payment Details
+	@Column(length = 100)
+	private String upiId;
+
+	@Column(length = 500)
+	private String website;
+
+	@Column(length = 500)
+	private String paymentPageLink;
+
+	// Conditions – only shown on Estimates
+	@Column(columnDefinition = "TEXT")
+	private String estimateConditions;
+
+	@Column(length = 255)
+	private String logoUrl;
+
+	@Column(length = 100)
+	private String email;
+
+	@Column(length = 50)
+	private String phone;
+
+	private boolean active = true;
+
+	@CreatedDate
+	@Column(updatable = false)
+	private LocalDateTime createdAt;
+
+	@LastModifiedDate
+	private LocalDateTime updatedAt;
+
+	@CreatedBy
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "created_by", updatable = false)
+	private User createdBy;
+
+	@LastModifiedBy
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "updated_by")
+	private User updatedBy;
+
+	@PrePersist
+	protected void onCreate() {
+		createdAt = LocalDateTime.now();
+		updatedAt = LocalDateTime.now();
+	}
+
+	@PreUpdate
+	protected void onUpdate() {
+		updatedAt = LocalDateTime.now();
+	}
 }
