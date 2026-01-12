@@ -218,6 +218,46 @@ public class EstimateServiceImpl implements EstimateService {
     }
 
 
+    @Override
+    public List<EstimateResponseDto> getEstimatesByLeadId(Long leadId) {
+        log.info("Fetching all estimates for leadId: {}", leadId);
+
+        if (leadId == null || leadId <= 0) {
+            throw new ValidationException("Invalid lead ID", "ERR_INVALID_LEAD_ID");
+        }
+
+        List<Estimate> estimates = estimateRepository.findByLeadIdAndIsDeletedFalseOrderByCreatedAtDesc(leadId);
+
+        log.info("Found {} estimates for leadId: {}", estimates.size(), leadId);
+
+        return estimates.stream()
+                .map(this::mapToResponseDto)
+                .collect(Collectors.toList());
+    }
+
+
+    @Override
+    public List<EstimateResponseDto> getEstimatesByCompanyId(Long companyId) {
+        log.info("Fetching estimates for companyId: {}", companyId);
+
+        if (companyId == null || companyId <= 0) {
+            throw new ValidationException("Invalid company ID", "ERR_INVALID_COMPANY_ID");
+        }
+
+        // Optional: verify company exists (recommended)
+        if (!companyRepository.existsById(companyId)) {
+            throw new ResourceNotFoundException("Company not found with ID: " + companyId, "COMPANY_NOT_FOUND");
+        }
+
+        List<Estimate> estimates = estimateRepository
+                .findByCompanyIdAndIsDeletedFalseOrderByCreatedAtDesc(companyId);
+
+        log.info("Found {} estimates for companyId: {}", estimates.size(), companyId);
+
+        return estimates.stream()
+                .map(this::mapToResponseDto)
+                .collect(Collectors.toList());
+    }
     private EstimateResponseDto mapToResponseDto(Estimate estimate) {
         log.trace("Mapping Estimate entity to response DTO | id={}", estimate.getId());
 

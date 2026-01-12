@@ -25,6 +25,8 @@ public class EstimateResponseDto {
     // Secure public identifier for sharing links/PDF/email/WhatsApp
     private String publicUuid;  // UUID v4 - safe for public exposure
 
+    private Long leadId;
+
     // Human-readable estimate number
     private String estimateNumber;
 

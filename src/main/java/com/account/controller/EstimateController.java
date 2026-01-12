@@ -13,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Tag(name = "Estimate Management", description = "APIs for creating, viewing and listing estimates")
 @RestController
 @RequestMapping("/accountService/api/v1/estimates")
@@ -54,8 +56,44 @@ public class EstimateController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/lead/{leadId}")
+    @Operation(summary = "Get all estimates for a given lead ID",
+            description = "Returns list of estimates created against a specific lead. " +
+                    "Typically used in CRM/lead management screens.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "List of estimates returned (can be empty)"),
+            @ApiResponse(responseCode = "400", description = "Invalid lead ID"),
+            @ApiResponse(responseCode = "403", description = "User does not have permission"),
+            @ApiResponse(responseCode = "404", description = "No estimates found (optional - can return 200 with empty list)")
+    })
+    public ResponseEntity<List<EstimateResponseDto>> getEstimatesByLeadId(
+            @PathVariable Long leadId,
+            @RequestParam(value = "userId", required = false) Long requestingUserId) {
+
+        // If userId is provided → can add permission check later
+        // For now: simple fetch
+        List<EstimateResponseDto> estimates = estimateService.getEstimatesByLeadId(leadId);
+
+        return ResponseEntity.ok(estimates);
+    }
 
 
+    @GetMapping("/company/{companyId}")
+    @Operation(summary = "Get all estimates for a given company ID",
+            description = "Returns list of all estimates created for a specific company. " +
+                    "Useful in account/company dashboard views.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "List of estimates (possibly empty)"),
+            @ApiResponse(responseCode = "400", description = "Invalid company ID"),
+            @ApiResponse(responseCode = "404", description = "Company not found (optional)")
+    })
+    public ResponseEntity<List<EstimateResponseDto>> getEstimatesByCompanyId(
+            @PathVariable Long companyId,
+            @RequestParam(value = "userId", required = false) Long requestingUserId) {
+
+        List<EstimateResponseDto> estimates = estimateService.getEstimatesByCompanyId(companyId);
+        return ResponseEntity.ok(estimates);
+    }
 
 
 

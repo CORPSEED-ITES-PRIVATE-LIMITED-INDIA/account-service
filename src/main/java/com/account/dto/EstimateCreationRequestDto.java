@@ -17,6 +17,9 @@ public class EstimateCreationRequestDto {
 
     private Long unitId; // Optional
 
+    private Long leadId;
+
+
     private Long contactId; // Optional
 
     @NotBlank(message = "Solution name is required")

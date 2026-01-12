@@ -42,6 +42,8 @@ public class Estimate {
     @Column(name = "public_uuid", nullable = false, unique = true, length = 36)
     private String publicUuid;
 
+    private Long leadId;
+
     // Human-readable unique number shown to customer (e.g. EST-2026-001234)
     @Column(name = "estimate_number", nullable = false, unique = true, length = 32)
     private String estimateNumber;
