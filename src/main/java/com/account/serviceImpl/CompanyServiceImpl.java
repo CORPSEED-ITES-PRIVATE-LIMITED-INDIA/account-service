@@ -139,11 +139,25 @@ public class CompanyServiceImpl implements CompanyService {
     // ────────────────────────────────────────────────
     @Override
     public CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto dto) {
-        logger.info("Basic company creation started for: {}", dto.getName());
+        logger.info("Basic company creation started for name: {}, leadCompanyId: {}",
+                dto.getName(), dto.getLeadCompanyId());
+
+        Long leadCompanyId = dto.getLeadCompanyId();
+        if (leadCompanyId == null) {
+            throw new ValidationException("leadCompanyId is required", "ERR_LEAD_COMPANY_ID_REQUIRED");
+        }
+
+        // Prevent overwriting existing record
+        if (companyRepository.existsById(leadCompanyId)) {
+            throw new ValidationException(
+                    "Company with leadCompanyId " + leadCompanyId + " already exists",
+                    "ERR_DUPLICATE_COMPANY_ID"
+            );
+        }
 
         String name = dto.getName().trim();
 
-        // Duplicate name check
+        // Name uniqueness (case-insensitive)
         if (companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(name)) {
             throw new ValidationException(
                     "A company with the name '" + name + "' already exists",
@@ -167,27 +181,28 @@ public class CompanyServiceImpl implements CompanyService {
         if (StringUtils.hasText(dto.getGstNo())) {
             gstNo = dto.getGstNo().trim().toUpperCase();
 
-            if (panNo != null) {
+            if (panNo != null && gstNo.length() >= 12) {
                 String panFromGst = gstNo.substring(2, 12);
                 if (!panFromGst.equals(panNo)) {
                     throw new ValidationException(
-                            "PAN in GST (" + panFromGst + ") does not match provided PAN (" + panNo + ")",
+                            "PAN extracted from GST (" + panFromGst + ") does not match provided PAN (" + panNo + ")",
                             "ERR_PAN_GST_MISMATCH"
                     );
                 }
             }
         }
 
-        // ── Create Company ────────────────────────────
+        // ── Create company with externally provided ID ────────────────────────
         Company company = new Company();
-        company.setUuid(/* commonServices.getUuid() — add your UUID service */ "uuid-placeholder"); // ← fix this
+        company.setId(leadCompanyId);                   // ← key line
+//        company.setUuid(generateUuid());                // ← replace with real UUID generation
         company.setName(name);
         company.setPanNo(panNo);
         company.setAddress(dto.getAddress());
         company.setCity(dto.getCity());
         company.setState(dto.getState());
-        company.setPrimaryPinCode(dto.getPinCode());
         company.setCountry(StringUtils.hasText(dto.getCountry()) ? dto.getCountry() : "India");
+        company.setPrimaryPinCode(dto.getPinCode());
 
         company.setIsConsultant(false);
         company.setOnboardingStatus("Minimal");
@@ -195,10 +210,15 @@ public class CompanyServiceImpl implements CompanyService {
         company.setUpdateDate(new Date());
         company.setDeleted(false);
 
-        company = companyRepository.save(company);
-        logger.info("Company created → ID: {}", company.getId());
+        // Optional: link creator if provided
+        // if (dto.getCreatedById() != null) {
+        //     company.setCreatedBy(userRepository.getReferenceById(dto.getCreatedById()));
+        // }
 
-        // ── Auto-create default unit if useful data provided ──
+        company = companyRepository.save(company);
+        logger.info("Basic company created → ID: {}", company.getId());
+
+        // ── Auto-create default unit when it makes sense ──────────────────────
         boolean shouldCreateUnit = StringUtils.hasText(dto.getAddress())
                 || StringUtils.hasText(dto.getUnitName())
                 || StringUtils.hasText(gstNo);
@@ -227,7 +247,6 @@ public class CompanyServiceImpl implements CompanyService {
 
         return mapToResponseDto(company);
     }
-
     // ────────────────────────────────────────────────
     //          Mapping methods (unchanged)
     // ────────────────────────────────────────────────

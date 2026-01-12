@@ -10,6 +10,9 @@ import lombok.Setter;
 @Setter
 public class BasicCompanyRequestDto {
 
+    @NotNull(message = "leadCompanyId is required to maintain same ID in account service")
+    private Long leadCompanyId;
+
     @NotBlank(message = "Company name is required")
     @Size(max = 255, message = "Company name too long")
     private String name;

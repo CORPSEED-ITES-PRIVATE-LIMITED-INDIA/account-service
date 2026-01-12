@@ -7,21 +7,24 @@ import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.Date;
 
 @Entity
 @Table(name = "company_unit")
+@EntityListeners(AuditingEntityListener.class)   // ← important for @CreatedDate etc.
 @Getter
 @Setter
 public class CompanyUnit {
 
     @Id
-    @Column(name = "id", updatable = false, insertable = true)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)   // auto-increment in MySQL/PostgreSQL
+    @Column(name = "id", updatable = false, nullable = false)
     private Long id;
 
-    @Column(name = "unit_name")
+    @Column(name = "unit_name", nullable = false)
     private String unitName;
 
     @Column(name = "address_line1")
@@ -32,22 +35,24 @@ public class CompanyUnit {
 
     private String city;
     private String state;
+
+    @Column(nullable = false)
     private String country = "India";
+
+    @Column(name = "pin_code")
     private String pinCode;
 
-    @Column(name = "gst_no")
+    @Column(name = "gst_no", length = 15)
     private String gstNo;
 
     @Column(name = "gst_type")
     private String gstType;
 
-    @Column(name = "gst_documents")
+    @Column(name = "gst_documents", columnDefinition = "TEXT")
     private String gstDocuments;
 
     private String gstTypeEntity;
-
     private String gstBusinessType;
-
     private String gstTypePrice;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -58,24 +63,23 @@ public class CompanyUnit {
     @JoinColumn(name = "secondary_contact_id")
     private Contact secondaryContact;
 
-    // Bidirectional link to Company
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
     @Column(name = "unit_opening_date")
+    @Temporal(TemporalType.DATE)
     private Date unitOpeningDate;
 
-    @Column(name = "status")
+    @Column(nullable = false)
     private String status = "Active";
 
-    @Column(name = "consultant_present")
     private boolean consultantPresent = false;
 
-    @Column(name = "is_deleted")
+    @Column(name = "is_deleted", nullable = false)
     private boolean isDeleted = false;
 
-    // Auditing
+    // Auditing fields
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by", updatable = false)
@@ -96,6 +100,19 @@ public class CompanyUnit {
 
     @PrePersist
     protected void onCreate() {
-        isDeleted = false;
+        if (isDeleted == false) {   // avoid null → default false
+            isDeleted = false;
+        }
+        if (status == null) {
+            status = "Active";
+        }
+        if (country == null) {
+            country = "India";
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        // optional: can add logic here if needed
     }
 }

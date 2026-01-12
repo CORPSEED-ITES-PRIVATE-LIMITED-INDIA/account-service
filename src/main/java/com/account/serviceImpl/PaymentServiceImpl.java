@@ -2,7 +2,8 @@ package com.account.serviceImpl;
 
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
-import com.account.dto.payment.*;
+import com.account.dto.payment.PaymentRegistrationRequestDto;
+import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
@@ -27,16 +28,16 @@ public class PaymentServiceImpl implements PaymentService {
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
     private final PaymentReceiptRepository paymentReceiptRepository;
     private final PaymentTypeRepository paymentTypeRepository;
-    private final InvoiceRepository invoiceRepository;
     private final UserRepository userRepository;
-    private final InvoiceService invoiceService; // Assume you have this for invoice creation
+    private final InvoiceService invoiceService;
 
     @Override
     @Transactional
     public PaymentRegistrationResponseDto registerPayment(PaymentRegistrationRequestDto request, Long salespersonUserId) {
 
-        log.info("Registering payment for estimateId: {}, amount: {}, mode: {}, ref: {}",
-                request.getEstimateId(), request.getAmount(), request.getPaymentMode(), request.getTransactionReference());
+        log.info("Registering payment | estimateId: {}, amount: {}, mode: {}, ref: {}, salespersonId: {}",
+                request.getEstimateId(), request.getAmount(), request.getPaymentMode(),
+                request.getTransactionReference(), salespersonUserId);
 
         // 1. Fetch required entities
         Estimate estimate = estimateRepository.findById(request.getEstimateId())
@@ -48,10 +49,8 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentType paymentType = paymentTypeRepository.findById(request.getPaymentTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Payment type not found", "PAYMENT_TYPE_NOT_FOUND"));
 
-        // Optional: Validate milestone if provided
-        // if (request.getMilestoneId() != null) { ... }
-
-        // Optional: Add operational gate check here (e.g. milestone completed?)
+        // Optional: Add operational/milestone validation here if needed
+        // e.g. if (request.getMilestoneId() != null) { validate milestone completion }
 
         // 2. Check if UnbilledInvoice already exists for this estimate
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findByEstimate(estimate).orElse(null);
@@ -59,7 +58,7 @@ public class PaymentServiceImpl implements PaymentService {
         boolean isFirstPayment = (unbilled == null);
 
         if (isFirstPayment) {
-            // Create new UnbilledInvoice
+            // Create new UnbilledInvoice on FIRST payment only
             unbilled = new UnbilledInvoice();
             unbilled.setUnbilledNumber(generateUnbilledNumber());
             unbilled.setPublicUuid(UUID.randomUUID().toString());
@@ -73,10 +72,10 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
             unbilled.setCreatedBy(salesperson);
             unbilled = unbilledInvoiceRepository.save(unbilled);
-            log.info("Created new UnbilledInvoice: {}", unbilled.getUnbilledNumber());
+            log.info("Created new UnbilledInvoice: {} (PENDING_APPROVAL)", unbilled.getUnbilledNumber());
         }
 
-        // 3. Create PaymentReceipt
+        // 3. Always create a new PaymentReceipt for every payment
         PaymentReceipt receipt = new PaymentReceipt();
         receipt.setUnbilledInvoice(unbilled);
         receipt.setPaymentType(paymentType);
@@ -88,29 +87,34 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setReceivedBy(salesperson);
         // receipt.setMilestone(...) if milestoneId provided
         receipt = paymentReceiptRepository.save(receipt);
-        log.info("Created PaymentReceipt ID: {}", receipt.getId());
+        log.info("Created PaymentReceipt ID: {} for amount: {}", receipt.getId(), request.getAmount());
 
-        // 4. Apply payment to UnbilledInvoice
+        // 4. Apply payment to UnbilledInvoice (update received & outstanding)
         unbilled.applyPayment(request.getAmount());
         unbilledInvoiceRepository.save(unbilled);
+        log.info("Updated UnbilledInvoice: {} | received: {}, outstanding: {}, status: {}",
+                unbilled.getUnbilledNumber(), unbilled.getReceivedAmount(),
+                unbilled.getOutstandingAmount(), unbilled.getStatus());
 
-        // 5. Generate Tax Invoice ONLY if Unbilled is APPROVED
+        // 5. Generate Tax Invoice ONLY if UnbilledInvoice is APPROVED
         boolean invoiceGenerated = false;
         String invoiceNumber = null;
         BigDecimal invoiceAmount = null;
 
-        if (unbilled.getStatus() == UnbilledStatus.APPROVED ||
-                unbilled.getStatus() == UnbilledStatus.PARTIALLY_PAID ||
-                unbilled.getStatus() == UnbilledStatus.FULLY_PAID) {
-
+        if (unbilled.getStatus() == UnbilledStatus.APPROVED) {
+            // Only generate when explicitly APPROVED (strict check)
             Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(unbilled, receipt);
             invoiceGenerated = true;
             invoiceNumber = generatedInvoice.getInvoiceNumber();
             invoiceAmount = generatedInvoice.getGrandTotal();
-            log.info("Generated Invoice: {} for amount: {}", invoiceNumber, invoiceAmount);
+            log.info("Generated tax Invoice: {} | amount: {} (Unbilled APPROVED)", invoiceNumber, invoiceAmount);
+        } else if (unbilled.getStatus() == UnbilledStatus.PENDING_APPROVAL) {
+            log.info("Unbilled is still PENDING_APPROVAL - no invoice generated yet");
+        } else {
+            log.info("Unbilled status is {} - invoice already handled in previous payments", unbilled.getStatus());
         }
 
-        // 6. Prepare response
+        // 6. Prepare and return response
         return PaymentRegistrationResponseDto.builder()
                 .paymentReceiptId(receipt.getId())
                 .unbilledNumber(unbilled.getUnbilledNumber())
@@ -125,7 +129,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private String generateUnbilledNumber() {
-        // Simple example - use proper sequence + FY in production
+        // Simple example - in production use proper sequence + financial year
         long count = unbilledInvoiceRepository.count() + 1;
         return String.format("UNB-%d-%08d", LocalDateTime.now().getYear(), count);
     }
