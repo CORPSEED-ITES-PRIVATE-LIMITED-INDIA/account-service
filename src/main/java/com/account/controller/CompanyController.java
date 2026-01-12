@@ -1,5 +1,6 @@
 package com.account.controller;
 
+import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.company.CompanyRequestDto;
 import com.account.dto.company.CompanyResponseDto;
 import com.account.service.company.CompanyService;
@@ -37,4 +38,19 @@ public class CompanyController {
 
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
+
+    @Operation(summary = "Quick create company for urgent estimate (minimal details)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Quick company created successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid minimal data"),
+            @ApiResponse(responseCode = "409", description = "Company name already exists")
+    })
+    @PostMapping("/basic-company")
+    public ResponseEntity<CompanyResponseDto> basicCreateCompany(
+            @Valid @RequestBody BasicCompanyRequestDto quickRequest) {
+
+        CompanyResponseDto response = companyService.basicCreateCompany(quickRequest);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
 }

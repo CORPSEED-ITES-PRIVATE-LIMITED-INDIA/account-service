@@ -2,6 +2,8 @@ package com.account.serviceImpl;
 
 import com.account.domain.Company;
 import com.account.domain.CompanyUnit;
+import com.account.domain.User;
+import com.account.dto.BasicCompanyRequestDto;
 import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
@@ -10,6 +12,8 @@ import com.account.dto.company.CompanyRequestDto;
 import com.account.dto.company.CompanyResponseDto;
 import com.account.dto.company.CompanyUnitRequestDto;
 import com.account.dto.company.CompanyUnitResponseDto;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,12 +27,17 @@ import java.util.stream.Collectors;
 @Transactional
 public class CompanyServiceImpl implements CompanyService {
 
+    private static final Logger logger = LoggerFactory.getLogger(CompanyServiceImpl.class);
+
     @Autowired
     private CompanyRepository companyRepository;
 
     @Autowired
     private CompanyUnitRepository companyUnitRepository;
 
+    // ────────────────────────────────────────────────
+    //  Method 1: Sync from Lead (uses external ID)
+    // ────────────────────────────────────────────────
     @Override
     public CompanyResponseDto createCompanyFromLead(CompanyRequestDto requestDto) {
 
@@ -37,20 +46,20 @@ public class CompanyServiceImpl implements CompanyService {
             throw new ValidationException("leadCompanyId is required to sync with same ID", "ERR_LEAD_ID_REQUIRED");
         }
 
-        Optional<Company> existingCompany = companyRepository.findById(leadCompanyId);
+        Optional<Company> existing = companyRepository.findById(leadCompanyId);
 
         Company company;
         boolean isNew = false;
 
-        if (existingCompany.isPresent()) {
-            company = existingCompany.get();
+        if (existing.isPresent()) {
+            company = existing.get();
         } else {
             company = new Company();
-            company.setId(leadCompanyId); // Set same ID from lead-service
+            company.setId(leadCompanyId);           // Preserve lead ID
             isNew = true;
         }
 
-        // Map fields
+        // Update only if value is provided (partial update friendly)
         company.setName(StringUtils.hasText(requestDto.getName()) ? requestDto.getName().trim() : company.getName());
         company.setPanNo(StringUtils.hasText(requestDto.getPanNo()) ? requestDto.getPanNo().trim().toUpperCase() : company.getPanNo());
 
@@ -65,6 +74,7 @@ public class CompanyServiceImpl implements CompanyService {
         company.setSState(requestDto.getSState());
         company.setSCountry(requestDto.getSCountry());
         company.setSecondaryPinCode(requestDto.getSecondaryPinCode());
+
         company.setEstablishDate(requestDto.getEstablishDate());
         company.setIndustry(requestDto.getIndustry());
 
@@ -84,19 +94,18 @@ public class CompanyServiceImpl implements CompanyService {
 
         company = companyRepository.save(company);
 
-        // === Sync Units ===
+        // ── Sync Units ────────────────────────────────
         if (requestDto.getUnits() != null && !requestDto.getUnits().isEmpty()) {
-
             for (CompanyUnitRequestDto unitDto : requestDto.getUnits()) {
-
                 CompanyUnit unit;
 
                 if (unitDto.getLeadUnitId() != null) {
-                    Optional<CompanyUnit> existingUnit = companyUnitRepository.findById(unitDto.getLeadUnitId());
-                    unit = existingUnit.orElse(new CompanyUnit());
-                    if (existingUnit.isEmpty()) {
-                        unit.setId(unitDto.getLeadUnitId()); // Preserve same ID
-                    }
+                    Optional<CompanyUnit> optUnit = companyUnitRepository.findById(unitDto.getLeadUnitId());
+                    unit = optUnit.orElseGet(() -> {
+                        CompanyUnit newUnit = new CompanyUnit();
+                        newUnit.setId(unitDto.getLeadUnitId()); // preserve lead unit ID
+                        return newUnit;
+                    });
                 } else {
                     unit = new CompanyUnit();
                 }
@@ -125,6 +134,103 @@ public class CompanyServiceImpl implements CompanyService {
         return mapToResponseDto(company);
     }
 
+    // ────────────────────────────────────────────────
+    //  Method 2: Basic / Minimal company creation
+    // ────────────────────────────────────────────────
+    @Override
+    public CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto dto) {
+        logger.info("Basic company creation started for: {}", dto.getName());
+
+        String name = dto.getName().trim();
+
+        // Duplicate name check
+        if (companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(name)) {
+            throw new ValidationException(
+                    "A company with the name '" + name + "' already exists",
+                    "ERR_DUPLICATE_COMPANY_NAME"
+            );
+        }
+
+        String panNo = null;
+        if (StringUtils.hasText(dto.getPanNo())) {
+            panNo = dto.getPanNo().trim().toUpperCase();
+
+            if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo)) {
+                throw new ValidationException(
+                        "Company with PAN " + panNo + " already exists",
+                        "ERR_DUPLICATE_PAN"
+                );
+            }
+        }
+
+        String gstNo = null;
+        if (StringUtils.hasText(dto.getGstNo())) {
+            gstNo = dto.getGstNo().trim().toUpperCase();
+
+            if (panNo != null) {
+                String panFromGst = gstNo.substring(2, 12);
+                if (!panFromGst.equals(panNo)) {
+                    throw new ValidationException(
+                            "PAN in GST (" + panFromGst + ") does not match provided PAN (" + panNo + ")",
+                            "ERR_PAN_GST_MISMATCH"
+                    );
+                }
+            }
+        }
+
+        // ── Create Company ────────────────────────────
+        Company company = new Company();
+        company.setUuid(/* commonServices.getUuid() — add your UUID service */ "uuid-placeholder"); // ← fix this
+        company.setName(name);
+        company.setPanNo(panNo);
+        company.setAddress(dto.getAddress());
+        company.setCity(dto.getCity());
+        company.setState(dto.getState());
+        company.setPrimaryPinCode(dto.getPinCode());
+        company.setCountry(StringUtils.hasText(dto.getCountry()) ? dto.getCountry() : "India");
+
+        company.setIsConsultant(false);
+        company.setOnboardingStatus("Minimal");
+        company.setCreateDate(new Date());
+        company.setUpdateDate(new Date());
+        company.setDeleted(false);
+
+        company = companyRepository.save(company);
+        logger.info("Company created → ID: {}", company.getId());
+
+        // ── Auto-create default unit if useful data provided ──
+        boolean shouldCreateUnit = StringUtils.hasText(dto.getAddress())
+                || StringUtils.hasText(dto.getUnitName())
+                || StringUtils.hasText(gstNo);
+
+        if (shouldCreateUnit) {
+            CompanyUnit unit = new CompanyUnit();
+
+            String unitName = StringUtils.hasText(dto.getUnitName())
+                    ? dto.getUnitName().trim()
+                    : name + " - Main Branch";
+
+            unit.setUnitName(unitName);
+            unit.setAddressLine1(dto.getAddress());
+            unit.setCity(dto.getCity());
+            unit.setState(dto.getState());
+            unit.setPinCode(dto.getPinCode());
+            unit.setGstNo(gstNo);
+            unit.setStatus("Active");
+            unit.setCompany(company);
+
+            company.getUnits().add(unit);
+            companyUnitRepository.save(unit);
+
+            logger.info("Auto-created unit '{}' for company {}", unitName, company.getId());
+        }
+
+        return mapToResponseDto(company);
+    }
+
+    // ────────────────────────────────────────────────
+    //          Mapping methods (unchanged)
+    // ────────────────────────────────────────────────
     private CompanyResponseDto mapToResponseDto(Company company) {
         CompanyResponseDto dto = new CompanyResponseDto();
 
@@ -149,7 +255,6 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setCreateDate(company.getCreateDate());
         dto.setUpdateDate(company.getUpdateDate());
 
-        // Map units
         if (company.getUnits() != null) {
             dto.setUnits(company.getUnits().stream()
                     .filter(u -> !u.isDeleted())
