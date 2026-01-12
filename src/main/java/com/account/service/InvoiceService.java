@@ -1,12 +1,15 @@
 package com.account.service;
 
+import com.account.domain.Invoice;
+import com.account.domain.PaymentReceipt;
+import com.account.domain.UnbilledInvoice;
+
 import java.util.List;
 import java.util.Map;
 
 public interface InvoiceService {
 
-	Map<String, Object> getInvoiceById(Long id);
+	Invoice generateInvoiceForPayment(UnbilledInvoice unbilledInvoice, PaymentReceipt triggeringPayment);
 
-	List<Map<String, Object>> getAllInvoiceForExport(String startDate,String endDate);
 
 }

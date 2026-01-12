@@ -1,188 +1,123 @@
 package com.account.serviceImpl;
 
+import com.account.domain.*;
+import com.account.domain.estimate.Estimate;
+import com.account.domain.estimate.EstimateLineItem;
+import com.account.repository.InvoiceLineItemRepository;
+import com.account.repository.InvoiceRepository;
+import com.account.service.InvoiceService;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
-import com.account.domain.InvoiceData;
-import com.account.repository.InvoiceDataRepository;
-import com.account.service.InvoiceService;
-
 @Service
-public class InvoiceServiceImpl implements InvoiceService{
+@RequiredArgsConstructor
+public class InvoiceServiceImpl implements InvoiceService {
 
-	@Autowired
-	InvoiceDataRepository invoiceDataRepository;
+	private static final Logger log = LoggerFactory.getLogger(InvoiceServiceImpl.class);
+
+	private final InvoiceRepository invoiceRepository;
+	private final InvoiceLineItemRepository invoiceLineItemRepository; // if separate repo needed
+
+
+	/**
+	 * Generates a tax invoice for one specific payment amount.
+	 * Proportionally copies line items from estimate and calculates GST.
+	 */
 	@Override
-	public Map<String, Object> getInvoiceById(Long id) {
-		InvoiceData invoice = invoiceDataRepository.findById(id).get(); 
-		  Map<String, Object> res = new HashMap<>();
-	        
-	        // Add fields to the map
-	        res.put("id", invoice.getId());  // @Id and @GeneratedValue are typically used for entity persistence
-	        
-	        // Product information
-	        res.put("productName", invoice.getProductName());
-	        res.put("estimateId", invoice.getEstimateId());
+	@Transactional
+	public Invoice generateInvoiceForPayment(UnbilledInvoice unbilledInvoice, PaymentReceipt triggeringPayment) {
 
-	        // Primary contact information
-
-	        res.put("primaryContactemails", invoice.getPrimaryContactemails());
-
-	        // Secondary contact information
-	        res.put("secondaryContactemails", invoice.getSecondaryContactemails());
-			res.put("gstNo", invoice.getGstNo());
-			Double prof = Double.valueOf(invoice.getProfessionalFees());
-			Double gst =  Double.valueOf(invoice.getProfesionalGst());
-			if(prof!=null&& prof!=0) {
-				double gstAmount = ((gst*prof)/100);			
-				res.put("gstAmount", gstAmount);
-			}else {
-				res.put("gstAmount", 0);
-			}
-			res.put("profGst", invoice.getProfesionalGst());
-
-	        // Dates and Estimate Number
-	        res.put("estimateDate", invoice.getEstimateDate());
-	        res.put("createDate", invoice.getCreateDate());
-	        res.put("estimateNo", invoice.getEstimateNo());
-
-	        // Company details
-	        res.put("isPresent", invoice.getIsPresent());
-	        res.put("companyName", invoice.getCompanyName());
-	        res.put("companyId", invoice.getCompanyId());
-	        res.put("unitName", invoice.getUnitName());
-	        res.put("unitId", invoice.getUnitId());
-	        res.put("panNo", invoice.getPanNo());
-	        res.put("gstNo", invoice.getGstNo());
-	        res.put("gstType", invoice.getGstType());
-	        res.put("gstDocuments", invoice.getGstDocuments());
-	        res.put("companyAge", invoice.getCompanyAge());
-
-	        // Primary Address
-	        res.put("isPrimaryAddress", invoice.getIsPrimaryAddress());
-	        res.put("primaryTitle", invoice.getPrimaryTitle());
-	        res.put("Address", invoice.getAddress());
-	        res.put("City", invoice.getCity());
-	        res.put("State", invoice.getState());
-	        res.put("primaryPinCode", invoice.getPrimaryPinCode());
-	        res.put("Country", invoice.getCountry());
-
-	        // Secondary Address
-	        res.put("isSecondaryAddress", invoice.getIsSecondaryAddress());
-	        res.put("secondaryTitle", invoice.getSecondaryTitle());
-	        res.put("secondaryAddress", invoice.getSecondaryAddress());
-	        res.put("secondaryCity", invoice.getSecondaryCity());
-	        res.put("secondaryState", invoice.getSecondaryState());
-	        res.put("secondaryPinCode", invoice.getSecondaryPinCode());
-	        res.put("secondaryCountry", invoice.getSecondaryCountry());
-
-	        // HSN/SAC details
-	        res.put("hsnSacPrsent", invoice.isHsnSacPrsent());
-	        res.put("hsnSacDetails", invoice.getHsnSacDetails());
-	        res.put("HsnSac", invoice.getHsnSac());
-	        res.put("hsnDescription", invoice.getHsnDescription());
-
-	        // Assignee and Lead information
-	        res.put("assignee", invoice.getAssignee());  // Assuming assignee is a user object
-	        res.put("leadId", invoice.getLeadId());
-	        res.put("status", invoice.getStatus());
-
-	        // Product details
-	        res.put("consultingSale", invoice.getConsultingSale());
-	        res.put("productType", invoice.getProductType());
-	        res.put("orderNumber", invoice.getOrderNumber());
-	        res.put("purchaseDate", invoice.getPurchaseDate());
-	        res.put("cc", invoice.getCc());  // Assuming cc is a List<String>
-	        res.put("invoiceNote", invoice.getInvoiceNote());
-	        res.put("remarksForOption", invoice.getRemarksForOption());
-	        res.put("documents", invoice.getDocuments());
-	        res.put("termOfDelivery", invoice.getTermOfDelivery());
-	        res.put("quantity", invoice.getQuantity());
-	        res.put("actualAmount", invoice.getActualAmount());
-
-	        // Fees and Amounts
-//	        res.put("govermentfees", invoice.getGovermentfees());
-//	        res.put("govermentCode", invoice.getGovermentCode());
-//	        res.put("govermentGst", invoice.getGovermentGst());
-	        res.put("professionalFees", invoice.getProfessionalFees());
-	        res.put("professionalCode", invoice.getProfessionalCode());
-	        res.put("profesionalGst", invoice.getProfesionalGst());
-//	        res.put("serviceCharge", invoice.getServiceCharge());
-//	        res.put("serviceCode", invoice.getServiceCode());
-//	        res.put("serviceGst", invoice.getServiceGst());
-	        res.put("otherFees", invoice.getOtherFees());
-	        res.put("otherCode", invoice.getOtherCode());
-	        res.put("otherGst", invoice.getOtherGst());
-	        res.put("totalAmount", invoice.getTotalAmount());
-	        res.put("paidAmount", invoice.getPaidAmount());
-	        res.put("invoiceNo", "INV00000"+invoice.getId());
-	        String gstNo = invoice.getGstNo();
-	        String firstTwo = gstNo!=null?gstNo.substring(0, 2):"NA";
-	        res.put("gstCode", firstTwo);
-	        res.put("gstPercent", invoice.getGstPercent());
-	        res.put("gstAmount", invoice.getGstAmount());
-	        res.put("amount", invoice.getAmount());
-	        res.put("modeOfPayment", invoice.getModeOfPayment());
-	        res.put("referenceDate", invoice.getReferenceDate());
-	        res.put("otherReference", invoice.getOtherReference());
-	        res.put("buyerOrderNo", invoice.getBuyerOrderNo());
-	        res.put("quantity", invoice.getQuantity());
-
-	        res.put("buyerOrderNo", invoice.getBuyerOrderNo());
-	        res.put("cgstSgstPresent", invoice.isCgstSgstPresent());
-	        res.put("igstPresent", invoice.isIgstPresent());
-
-	        res.put("cgst", invoice.getCgst());
-
-	        res.put("sgst", invoice.getSgst());
-	        res.put("igst", invoice.getIgst());
-	        if(invoice.getIgst()!=0 ||invoice.getIgst()>0) {
-		        res.put("igstAmount", invoice.getGstAmount());
-	        }else {
-	        	if(invoice.getGstAmount()!=0) {
-	        		  res.put("cgstAmount", (invoice.getGstAmount())/2);
-	  		        res.put("sgstAmount", (invoice.getGstAmount())/2);
-	        	}
-
-	        }
-
-
-	        // Unbilled information
-//	        res.put("unbilled", invoice.getUnbilled());  // Assuming U
-		return res;
-	}
-	@Override
-	public List<Map<String, Object>> getAllInvoiceForExport(String startDate,String endDate) {
-
-		// For descending order, use:
-
-
-		List<InvoiceData>invoice=invoiceDataRepository.findAll();
-	    List<Map<String,Object>>result=new ArrayList<>();
-		for(InvoiceData invoiceData:invoice){
-			Map<String,Object>map=new HashMap<>();
-			map.put("id", invoiceData.getId());
-			map.put("invoiceNo", invoiceData.getId());
-			map.put("service", invoiceData.getProductName());
-			map.put("clientid", invoiceData.getPrimaryContactId());
-			map.put("clientName", invoiceData.getPrimaryContactName());
-			map.put("clientEmail", invoiceData.getPrimaryContactemails());
-			map.put("companyName", invoiceData.getCompanyName());
-			map.put("date", invoiceData.getCreateDate());
-			map.put("txnAmount", invoiceData.getTotalAmount());
-			map.put("termOfDelivery", invoiceData.getTermOfDelivery());
-
-			map.put("addedBy", invoiceData.getAssignee());
-			result.add(map);
+		if (unbilledInvoice == null || triggeringPayment == null) {
+			throw new IllegalArgumentException("UnbilledInvoice and PaymentReceipt are required");
 		}
 
-		return result;
-	
+		// Get original estimate
+		Estimate estimate = unbilledInvoice.getEstimate();
+
+		// Calculate proportion (payment amount / total unbilled amount)
+		BigDecimal proportion = triggeringPayment.getAmount()
+				.divide(unbilledInvoice.getTotalAmount(), 6, BigDecimal.ROUND_HALF_UP);
+
+		log.info("Generating invoice for payment {} | proportion: {}",
+				triggeringPayment.getId(), proportion);
+
+		// Create new Invoice
+		Invoice invoice = new Invoice();
+		invoice.setUnbilledInvoice(unbilledInvoice);
+		invoice.setTriggeringPayment(triggeringPayment);
+		invoice.setInvoiceNumber(generateInvoiceNumber());
+		invoice.setPublicUuid(java.util.UUID.randomUUID().toString());
+		invoice.setInvoiceDate(LocalDate.now());
+		invoice.setCurrency("INR");
+		invoice.setStatus(InvoiceStatus.GENERATED);
+		invoice.setPlaceOfSupplyStateCode(estimate.getPlaceOfSupplyStateCode()); // copy from estimate
+
+		// Copy & scale line items
+		List<InvoiceLineItem> invoiceLines = new ArrayList<>();
+
+		BigDecimal invoiceSubTotalExGst = BigDecimal.ZERO;
+		BigDecimal invoiceTotalGst = BigDecimal.ZERO;
+
+		for (EstimateLineItem estLine : estimate.getLineItems()) {
+			InvoiceLineItem invLine = new InvoiceLineItem();
+
+			// Copy snapshot
+			invLine.setInvoice(invoice);
+			invLine.setSourceEstimateLineItemId(estLine.getId());
+			invLine.setItemName(estLine.getItemName());
+			invLine.setDescription(estLine.getDescription());
+			invLine.setHsnSacCode(estLine.getHsnSacCode());
+			invLine.setUnit(estLine.getUnit());
+			invLine.setCategoryCode(estLine.getCategoryCode());
+			invLine.setFeeType(estLine.getFeeType());
+			invLine.setDisplayOrder(estLine.getDisplayOrder());
+
+			// Scale quantity & prices proportionally
+			invLine.setQuantity(estLine.getQuantity()); // usually keep full qty, scale amounts
+			invLine.setUnitPriceExGst(estLine.getUnitPriceExGst().multiply(proportion));
+			invLine.setGstRate(estLine.getGstRate());
+
+			// Let the entity's @PrePersist calculate totals
+			invLine.calculateLineTotals();
+
+			invoiceLines.add(invLine);
+
+			invoiceSubTotalExGst = invoiceSubTotalExGst.add(invLine.getLineTotalExGst());
+			invoiceTotalGst = invoiceTotalGst.add(invLine.getGstAmount());
+		}
+
+		// Set invoice totals
+		invoice.setSubTotalExGst(invoiceSubTotalExGst);
+		invoice.setTotalGstAmount(invoiceTotalGst);
+		invoice.setGrandTotal(invoiceSubTotalExGst.add(invoiceTotalGst));
+
+		// GST breakup (copy from unbilled or recalculate)
+		invoice.setCgstAmount(invoiceTotalGst.divide(BigDecimal.valueOf(2), 2, BigDecimal.ROUND_HALF_UP));
+		invoice.setSgstAmount(invoice.getCgstAmount());
+		invoice.setIgstAmount(BigDecimal.ZERO); // adjust based on placeOfSupply
+
+		// Save invoice + lines (cascade)
+		invoice.setLineItems(invoiceLines);
+		invoice = invoiceRepository.save(invoice);
+
+		log.info("Generated tax invoice: {} | amount: {} | for payment: {}",
+				invoice.getInvoiceNumber(), invoice.getGrandTotal(), triggeringPayment.getId());
+
+		return invoice;
 	}
 
+	private String generateInvoiceNumber() {
+		// Simple example - improve with financial year + sequence in production
+		long count = invoiceRepository.count() + 1;
+		return String.format("INV-%d-%08d", LocalDate.now().getYear(), count);
+	}
 }

@@ -22,6 +22,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -91,6 +92,12 @@ public class EstimateServiceImpl implements EstimateService {
         // 4. Create Estimate entity
         log.debug("Creating new Estimate entity");
         Estimate estimate = new Estimate();
+
+        // Generate secure public UUID for sharing (links, PDFs, emails)
+        String publicUuid = UUID.randomUUID().toString();
+        estimate.setPublicUuid(publicUuid);
+        log.debug("Generated public UUID for estimate: {}", publicUuid);
+
         String estimateNumber = generateEstimateNumber();
         estimate.setEstimateNumber(estimateNumber);
 
@@ -103,7 +110,7 @@ public class EstimateServiceImpl implements EstimateService {
         estimate.setUnit(unit);
         estimate.setContact(contact);
         estimate.setSolutionName(requestDto.getSolutionName());
-        estimate.setSourceSolutionIds(requestDto.getSourceSolutionIds());
+        estimate.setSolutionId(requestDto.getSolutionId());
         estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
 
         // Validate and set SolutionType
@@ -163,23 +170,22 @@ public class EstimateServiceImpl implements EstimateService {
 
         estimate.setLineItems(lineItems);
 
-        // 6. Calculate totals
+        // 6. Calculate totals (including GST breakup)
         log.debug("Calculating estimate totals");
         estimate.calculateTotals();
 
         // 7. Persist
-        log.info("Saving estimate: number={} | company={} | total={}",
-                estimateNumber, company.getId(), estimate.getGrandTotal());
+        log.info("Saving estimate: number={} | publicUuid={} | company={} | total={}",
+                estimateNumber, publicUuid, company.getId(), estimate.getGrandTotal());
         estimate = estimateRepository.save(estimate);
 
-        log.info("Estimate created successfully | id={} | number={} | createdBy={} | total={}",
-                estimate.getId(), estimate.getEstimateNumber(),
+        log.info("Estimate created successfully | id={} | number={} | publicUuid={} | createdBy={} | total={}",
+                estimate.getId(), estimate.getEstimateNumber(), estimate.getPublicUuid(),
                 creator.getId(), estimate.getGrandTotal());
 
         // 8. Return response
         return mapToResponseDto(estimate);
     }
-
     private String generateEstimateNumber() {
         long count = estimateRepository.count() + 1;
         String number = String.format("EST-%d-%06d", LocalDate.now().getYear(), count);

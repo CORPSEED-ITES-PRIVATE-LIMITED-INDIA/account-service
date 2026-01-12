@@ -1,4 +1,4 @@
-package com.account.domain.estimate;
+package com.account.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -10,29 +10,29 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "estimate_line_item",
+@Table(name = "invoice_line_item",
         indexes = {
-                @Index(name = "idx_line_item_estimate_id", columnList = "estimate_id"),
-                @Index(name = "idx_line_item_display_order", columnList = "display_order")
+                @Index(name = "idx_invoice_line_item_invoice_id", columnList = "invoice_id"),
+                @Index(name = "idx_invoice_line_item_display_order", columnList = "display_order")
         })
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = "estimate")
-public class EstimateLineItem {
+@ToString(exclude = "invoice")
+public class InvoiceLineItem {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "estimate_id", nullable = false)
-    private Estimate estimate;
+    @JoinColumn(name = "invoice_id", nullable = false)
+    private Invoice invoice;
 
-    @Column(name = "source_item_id")
-    private Long sourceItemId;
+    @Column(name = "source_estimate_line_item_id")
+    private Long sourceEstimateLineItemId;
 
     @Column(nullable = false, length = 255)
     private String itemName;
@@ -50,16 +50,30 @@ public class EstimateLineItem {
     private String unit;
 
     @Column(precision = 15, scale = 2, nullable = false)
-    private BigDecimal unitPriceExGst = BigDecimal.ZERO;
+    private BigDecimal unitPriceExGst;
 
     @Column(precision = 5, scale = 2)
-    private BigDecimal gstRate = BigDecimal.ZERO;
+    private BigDecimal gstRate;
+
+    // Calculated
+    @Column(precision = 15, scale = 2, nullable = false)
+    private BigDecimal lineTotalExGst;
 
     @Column(precision = 15, scale = 2, nullable = false)
-    private BigDecimal lineTotalExGst = BigDecimal.ZERO;
+    private BigDecimal gstAmount;
 
     @Column(precision = 15, scale = 2, nullable = false)
-    private BigDecimal gstAmount = BigDecimal.ZERO;
+    private BigDecimal lineTotalWithGst;
+
+    // GST breakup per line (for GSTR-1)
+    @Column(precision = 15, scale = 2, nullable = false)
+    private BigDecimal cgstAmount = BigDecimal.ZERO;
+
+    @Column(precision = 15, scale = 2, nullable = false)
+    private BigDecimal sgstAmount = BigDecimal.ZERO;
+
+    @Column(precision = 15, scale = 2, nullable = false)
+    private BigDecimal igstAmount = BigDecimal.ZERO;
 
     @Column(name = "display_order")
     private Integer displayOrder;
@@ -91,5 +105,21 @@ public class EstimateLineItem {
         } else {
             this.gstAmount = BigDecimal.ZERO;
         }
+
+        this.lineTotalWithGst = lineTotalExGst.add(gstAmount);
+
+        // Split GST (same logic as invoice header)
+        BigDecimal halfGst = gstAmount.divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
+        this.cgstAmount = halfGst;
+        this.sgstAmount = halfGst;
+        this.igstAmount = BigDecimal.ZERO;
+
+        // Override with IGST if needed (based on placeOfSupplyStateCode from invoice)
+        // if (invoice != null && invoice.getPlaceOfSupplyStateCode() != null &&
+        //     !invoice.getPlaceOfSupplyStateCode().equals("seller_state")) {
+        //     this.igstAmount = gstAmount;
+        //     this.cgstAmount = BigDecimal.ZERO;
+        //     this.sgstAmount = BigDecimal.ZERO;
+        // }
     }
 }

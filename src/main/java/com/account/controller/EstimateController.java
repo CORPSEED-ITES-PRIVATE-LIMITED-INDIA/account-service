@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 @Tag(name = "Estimate Management", description = "APIs for creating, viewing and listing estimates")
 @RestController
-@RequestMapping("/api/v1/estimates")
+@RequestMapping("/accountService/api/v1/estimates")
 @RequiredArgsConstructor
 public class EstimateController {
 
