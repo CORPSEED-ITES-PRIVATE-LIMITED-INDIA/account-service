@@ -15,6 +15,10 @@ import com.account.service.EstimateService;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -356,5 +360,77 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLineItems(itemDtos);
 
         return dto;
+    }
+
+    @Override
+    public long getEstimatesCount(Long requestingUserId) {
+        log.info("Counting visible estimates | requestedByUserId={}", requestingUserId);
+
+        // 1. Verify user exists
+        User user = userRepository.findById(requestingUserId)
+                .orElseThrow(() -> {
+                    log.warn("User not found for count request: {}", requestingUserId);
+                    return new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+                });
+
+        // 2. Check admin privileges (same logic as in getAllEstimates)
+        boolean isAdmin = user.getUserRole().stream()
+                .anyMatch(role ->
+                        "ADMIN".equalsIgnoreCase(role.getName()) ||
+                                "SUPER_ADMIN".equalsIgnoreCase(role.getName())
+                );
+
+        long count;
+
+        if (isAdmin) {
+            // Admin sees count of ALL non-deleted estimates
+            count = estimateRepository.countByIsDeletedFalse();
+            log.debug("Admin count: {} estimates (all)", count);
+        } else {
+            // Regular user only sees count of estimates they created
+            count = estimateRepository.countByCreatedByIdAndIsDeletedFalse(requestingUserId);
+            log.debug("User count: {} estimates (own only)", count);
+        }
+
+        return count;
+    }
+
+    @Override
+    public List<EstimateResponseDto> getAllEstimates(
+            Long requestingUserId,
+            int page,
+            int size) {
+
+        log.info("Fetching all estimates | requestedBy={} | page={} | size={}",
+                requestingUserId, page, size);
+
+        // 1. Validate user exists
+        User user = userRepository.findById(requestingUserId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
+
+        // 2. Check if user has admin privileges
+        boolean isAdmin = user.getUserRole().stream()
+                .anyMatch(role ->
+                        "ADMIN".equalsIgnoreCase(role.getName()) ||
+                                "SUPER_ADMIN".equalsIgnoreCase(role.getName())
+                );
+
+        // 3. Prepare pagination + default sorting (newest first)
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Page<Estimate> estimatePage;
+
+        if (isAdmin) {
+            // Admin sees everything
+            estimatePage = estimateRepository.findAll(pageable);
+        } else {
+            // Regular user sees only own estimates
+            estimatePage = estimateRepository.findByCreatedById(requestingUserId, pageable);
+        }
+
+        // 4. Map to DTOs
+        return estimatePage.getContent().stream()
+                .map(this::mapToResponseDto)
+                .collect(Collectors.toList());
     }
 }

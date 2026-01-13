@@ -13,5 +13,9 @@ public interface EstimateService {
     List<EstimateResponseDto> getEstimatesByLeadId(Long leadId);
 
     List<EstimateResponseDto> getEstimatesByCompanyId(Long companyId);
+
+    List<EstimateResponseDto> getAllEstimates(Long requestingUserId, int i, int size);
+
+    long getEstimatesCount(Long requestingUserId);
 }
 

@@ -95,6 +95,52 @@ public class EstimateController {
         return ResponseEntity.ok(estimates);
     }
 
+    @GetMapping("/all")
+    @Operation(
+            summary = "Get all estimates (paginated)",
+            description = "ADMIN: sees every estimate in the system. Normal user: sees only estimates they created."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "List of estimates"),
+            @ApiResponse(responseCode = "400", description = "Invalid pagination parameters"),
+            @ApiResponse(responseCode = "401", description = "Not authenticated"),
+            @ApiResponse(responseCode = "403", description = "Forbidden")
+    })
+    public ResponseEntity<List<EstimateResponseDto>> getAllEstimates(
+            @RequestParam("userId") Long requestingUserId,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size) {
+
+        if (page < 1) {
+            page = 1;
+        }
+        if (size < 1 || size > 200) {
+            size = 20;
+        }
+
+        List<EstimateResponseDto> estimates = estimateService.getAllEstimates(
+                requestingUserId,
+                page - 1,   // convert to 0-based for Spring Data
+                size
+        );
+
+        return ResponseEntity.ok(estimates);
+    }
+
+    @GetMapping("/count")
+    @Operation(summary = "Get total count of estimates",
+            description = "ADMIN: total estimates in system | Regular user: only estimates created by the user")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Count returned"),
+            @ApiResponse(responseCode = "400", description = "Invalid user"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized")
+    })
+    public ResponseEntity<Long> getEstimatesCount(
+            @RequestParam("userId") Long requestingUserId) {
+
+        long count = estimateService.getEstimatesCount(requestingUserId);
+        return ResponseEntity.ok(count);
+    }
 
 
 }

@@ -1,6 +1,8 @@
 package com.account.repository;
 
 import com.account.domain.estimate.Estimate;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -30,12 +32,15 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long> {
         """)
     List<Estimate> findByCompanyIdAndIsDeletedFalseOrderByCreatedAtDesc(@Param("companyId") Long companyId);
 
-    // Optional: if you ever need single estimate fetch with line items (to avoid N+1)
-    @Query("""
-        SELECT e FROM Estimate e
-        LEFT JOIN FETCH e.lineItems
-        WHERE e.id = :id
-          AND e.isDeleted = false
-        """)
-    Optional<Estimate> findByIdAndIsDeletedFalseWithLineItems(@Param("id") Long id);
+    Page<Estimate> findByCreatedById(Long requestingUserId, Pageable pageable);
+
+    /**
+     * Count all non-deleted estimates (for admins)
+     */
+    long countByIsDeletedFalse();
+
+    /**
+     * Count non-deleted estimates created by a specific user
+     */
+    long countByCreatedByIdAndIsDeletedFalse(Long createdById);
 }
