@@ -62,6 +62,9 @@ public class EstimateResponseDto {
     private Long createdById;              // ID of user who created it
     private String createdByName;          // Optional - full name for display
 
+    private CompanySummaryDto company;
+    private CompanyUnitSummaryDto unit;
+
     // Line items breakdown
     private List<EstimateLineItemResponseDto> lineItems;
 
