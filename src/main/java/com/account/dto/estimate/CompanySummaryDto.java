@@ -15,9 +15,8 @@ public class CompanySummaryDto {
     private String panNo;
     private String gstNo;
     private String gstType;
-    private String state;           // very useful for GST logic
+    private String state;
     private String city;
+    private String country;
     private String primaryPinCode;
-    private String onboardingStatus;
-    private Boolean accountsApproved;
 }

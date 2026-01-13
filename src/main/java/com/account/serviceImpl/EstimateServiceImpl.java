@@ -307,8 +307,7 @@ public class EstimateServiceImpl implements EstimateService {
             companyDto.setState(company.getState());
             companyDto.setCity(company.getCity());
             companyDto.setPrimaryPinCode(company.getPrimaryPinCode());
-            companyDto.setOnboardingStatus(company.getOnboardingStatus());
-            companyDto.setAccountsApproved(company.isAccountsApproved());
+            companyDto.setCountry(company.getCountry());
             dto.setCompany(companyDto);
         }
 
