@@ -46,16 +46,38 @@ public class EstimateServiceImpl implements EstimateService {
 
     @Override
     public EstimateResponseDto createEstimate(EstimateCreationRequestDto requestDto) {
+
+        if (requestDto == null) {
+            throw new ValidationException("Request body is required", "ERR_REQUEST_REQUIRED");
+        }
+
         log.info("Starting estimate creation | companyId: {} | userId: {} | solution: {} | lineItems: {}",
                 requestDto.getCompanyId(),
                 requestDto.getCreatedByUserId(),
                 requestDto.getSolutionName(),
                 requestDto.getLineItems() != null ? requestDto.getLineItems().size() : 0);
 
+        // ---- Required field validations (prevents 500 due to nulls) ----
+        if (requestDto.getCompanyId() == null || requestDto.getCompanyId() <= 0) {
+            throw new ValidationException("Invalid companyId", "ERR_INVALID_COMPANY_ID", "companyId");
+        }
+
+        if (requestDto.getCreatedByUserId() == null || requestDto.getCreatedByUserId() <= 0) {
+            throw new ValidationException("Invalid createdByUserId", "ERR_INVALID_CREATED_BY", "createdByUserId");
+        }
+
+        if (requestDto.getSolutionType() == null || requestDto.getSolutionType().trim().isEmpty()) {
+            throw new ValidationException("solutionType is required", "ERR_SOLUTION_TYPE_REQUIRED", "solutionType");
+        }
+
+        if (requestDto.getSolutionName() == null || requestDto.getSolutionName().trim().isEmpty()) {
+            throw new ValidationException("solutionName is required", "ERR_SOLUTION_NAME_REQUIRED", "solutionName");
+        }
+
         // 1. Basic validation
         if (requestDto.getLineItems() == null || requestDto.getLineItems().isEmpty()) {
             log.warn("Validation failed: No line items provided for estimate creation");
-            throw new ValidationException("At least one line item is required", "ERR_NO_LINE_ITEMS");
+            throw new ValidationException("At least one line item is required", "ERR_NO_LINE_ITEMS", "lineItems");
         }
 
         // 2. Validate creator exists
@@ -64,7 +86,9 @@ public class EstimateServiceImpl implements EstimateService {
                 .orElseThrow(() -> {
                     log.error("User not found for id: {}", requestDto.getCreatedByUserId());
                     return new ResourceNotFoundException(
-                            "User not found with ID: " + requestDto.getCreatedByUserId(), "USER_NOT_FOUND");
+                            "User not found with ID: " + requestDto.getCreatedByUserId(),
+                            "USER_NOT_FOUND"
+                    );
                 });
 
         // 3. Fetch referenced entities
@@ -107,10 +131,19 @@ public class EstimateServiceImpl implements EstimateService {
         String estimateNumber = generateEstimateNumber();
         estimate.setEstimateNumber(estimateNumber);
 
-        estimate.setEstimateDate(
-                requestDto.getEstimateDate() != null ? requestDto.getEstimateDate() : LocalDate.now());
-        estimate.setValidUntil(
-                requestDto.getValidUntil() != null ? requestDto.getValidUntil() : LocalDate.now().plusDays(30));
+        estimate.setEstimateDate(requestDto.getEstimateDate() != null
+                ? requestDto.getEstimateDate()
+                : LocalDate.now());
+
+        estimate.setValidUntil(requestDto.getValidUntil() != null
+                ? requestDto.getValidUntil()
+                : LocalDate.now().plusDays(30));
+
+        // Additional date sanity check
+        if (estimate.getValidUntil() != null && estimate.getEstimateDate() != null
+                && estimate.getValidUntil().isBefore(estimate.getEstimateDate())) {
+            throw new ValidationException("validUntil cannot be before estimateDate", "ERR_INVALID_DATES", "validUntil");
+        }
 
         estimate.setCompany(company);
         estimate.setUnit(unit);
@@ -135,7 +168,9 @@ public class EstimateServiceImpl implements EstimateService {
             throw new ValidationException(
                     "Invalid solution type: " + requestDto.getSolutionType() +
                             ". Allowed values: " + allowedValues,
-                    "ERR_INVALID_SOLUTION_TYPE");
+                    "ERR_INVALID_SOLUTION_TYPE",
+                    "solutionType"
+            );
         }
 
         estimate.setCustomerNotes(requestDto.getCustomerNotes());
@@ -152,6 +187,19 @@ public class EstimateServiceImpl implements EstimateService {
 
         for (int i = 0; i < requestDto.getLineItems().size(); i++) {
             EstimateCreationRequestDto.EstimateLineItemDto itemDto = requestDto.getLineItems().get(i);
+
+            if (itemDto == null) {
+                throw new ValidationException("Line item is null at index: " + i, "ERR_INVALID_LINE_ITEM", "lineItems[" + i + "]");
+            }
+            if (itemDto.getQuantity() == null || itemDto.getQuantity() <= 0) {
+                throw new ValidationException("Quantity must be greater than 0", "ERR_INVALID_QUANTITY", "lineItems[" + i + "].quantity");
+            }
+            if (itemDto.getUnitPriceExGst() == null) {
+                throw new ValidationException("unitPriceExGst is required", "ERR_UNIT_PRICE_REQUIRED", "lineItems[" + i + "].unitPriceExGst");
+            }
+            if (itemDto.getGstRate() == null) {
+                throw new ValidationException("gstRate is required", "ERR_GST_RATE_REQUIRED", "lineItems[" + i + "].gstRate");
+            }
 
             EstimateLineItem lineItem = new EstimateLineItem();
             lineItem.setEstimate(estimate);
@@ -171,8 +219,11 @@ public class EstimateServiceImpl implements EstimateService {
             lineItems.add(lineItem);
 
             log.trace("Added line item #{}: {} | qty: {} | unitPrice: {} | totalExGst: {}",
-                    i + 1, itemDto.getItemName(), itemDto.getQuantity(),
-                    itemDto.getUnitPriceExGst(), lineItem.getLineTotalExGst());
+                    i + 1,
+                    itemDto.getItemName(),
+                    itemDto.getQuantity(),
+                    itemDto.getUnitPriceExGst(),
+                    lineItem.getLineTotalExGst());
         }
 
         estimate.setLineItems(lineItems);
@@ -205,10 +256,18 @@ public class EstimateServiceImpl implements EstimateService {
     public EstimateResponseDto getEstimateById(Long estimateId, Long requestingUserId) {
         log.info("Fetching estimate | estimateId={} | requestedByUser={}", estimateId, requestingUserId);
 
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
         // Basic security check
         if (!userRepository.existsById(requestingUserId)) {
             log.warn("User not found: userId={}", requestingUserId);
             throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        if (estimateId == null || estimateId <= 0) {
+            throw new ValidationException("Invalid estimateId", "ERR_INVALID_ESTIMATE_ID", "estimateId");
         }
 
         // Fetch the estimate
@@ -229,7 +288,7 @@ public class EstimateServiceImpl implements EstimateService {
         log.info("Fetching all estimates for leadId: {}", leadId);
 
         if (leadId == null || leadId <= 0) {
-            throw new ValidationException("Invalid lead ID", "ERR_INVALID_LEAD_ID");
+            throw new ValidationException("Invalid lead ID", "ERR_INVALID_LEAD_ID", "leadId");
         }
 
         List<Estimate> estimates = estimateRepository.findByLeadIdAndIsDeletedFalseOrderByCreatedAtDesc(leadId);
@@ -246,7 +305,7 @@ public class EstimateServiceImpl implements EstimateService {
         log.info("Fetching estimates for companyId: {}", companyId);
 
         if (companyId == null || companyId <= 0) {
-            throw new ValidationException("Invalid company ID", "ERR_INVALID_COMPANY_ID");
+            throw new ValidationException("Invalid company ID", "ERR_INVALID_COMPANY_ID", "companyId");
         }
 
         if (!companyRepository.existsById(companyId)) {
@@ -367,6 +426,10 @@ public class EstimateServiceImpl implements EstimateService {
     public long getEstimatesCount(Long requestingUserId) {
         log.info("Counting visible estimates | requestedByUserId={}", requestingUserId);
 
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
         // 1. Verify user exists
         User user = userRepository.findById(requestingUserId)
                 .orElseThrow(() -> {
@@ -382,13 +445,10 @@ public class EstimateServiceImpl implements EstimateService {
                 );
 
         long count;
-
         if (isAdmin) {
-            // Admin sees count of ALL non-deleted estimates
             count = estimateRepository.countByIsDeletedFalse();
             log.debug("Admin count: {} estimates (all)", count);
         } else {
-            // Regular user only sees count of estimates they created
             count = estimateRepository.countByCreatedByIdAndIsDeletedFalse(requestingUserId);
             log.debug("User count: {} estimates (own only)", count);
         }
@@ -397,13 +457,19 @@ public class EstimateServiceImpl implements EstimateService {
     }
 
     @Override
-    public List<EstimateResponseDto> getAllEstimates(
-            Long requestingUserId,
-            int page,
-            int size) {
+    public List<EstimateResponseDto> getAllEstimates(Long requestingUserId, int page, int size) {
 
-        log.info("Fetching all estimates | requestedBy={} | page={} | size={}",
-                requestingUserId, page, size);
+        log.info("Fetching all estimates | requestedBy={} | page={} | size={}", requestingUserId, page, size);
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+        if (page < 0) {
+            throw new ValidationException("page must be >= 0", "ERR_INVALID_PAGE", "page");
+        }
+        if (size <= 0 || size > 200) {
+            throw new ValidationException("size must be between 1 and 200", "ERR_INVALID_SIZE", "size");
+        }
 
         // 1. Validate user exists
         User user = userRepository.findById(requestingUserId)
@@ -412,8 +478,7 @@ public class EstimateServiceImpl implements EstimateService {
         // 2. Check if user has admin privileges
         boolean isAdmin = user.getUserRole().stream()
                 .anyMatch(role ->
-                        "ADMIN".equalsIgnoreCase(role.getName()) ||
-                                "SUPER_ADMIN".equalsIgnoreCase(role.getName())
+                        "ADMIN".equalsIgnoreCase(role.getName())
                 );
 
         // 3. Prepare pagination + default sorting (newest first)
@@ -422,14 +487,12 @@ public class EstimateServiceImpl implements EstimateService {
         Page<Estimate> estimatePage;
 
         if (isAdmin) {
-            // Admin sees everything
+            // Admin sees everything (NOTE: if you support soft-delete, prefer a repository method that filters isDeleted=false)
             estimatePage = estimateRepository.findAll(pageable);
         } else {
-            // Regular user sees only own estimates
             estimatePage = estimateRepository.findByCreatedById(requestingUserId, pageable);
         }
 
-        // 4. Map to DTOs
         return estimatePage.getContent().stream()
                 .map(this::mapToResponseDto)
                 .collect(Collectors.toList());

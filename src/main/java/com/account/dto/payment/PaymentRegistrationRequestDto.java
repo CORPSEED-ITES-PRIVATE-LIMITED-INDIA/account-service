@@ -21,7 +21,7 @@ public class PaymentRegistrationRequestDto {
     private BigDecimal amount;
 
     @NotNull(message = "Payment date is required")
-    private LocalDateTime paymentDate;
+    private LocalDate paymentDate;
 
     @NotBlank(message = "Payment mode is required")
     private String paymentMode; // UPI, NEFT, CASH, etc.

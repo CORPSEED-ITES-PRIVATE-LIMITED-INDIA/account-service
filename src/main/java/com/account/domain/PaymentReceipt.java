@@ -9,6 +9,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -43,7 +44,7 @@ public class PaymentReceipt {
     private BigDecimal amount;
 
     @Column(name = "payment_date", nullable = false)
-    private LocalDateTime paymentDate;
+    private LocalDate paymentDate;
 
     @Column(length = 50)
     private String paymentMode;  // UPI, NEFT, RTGS, CASH, CARD, CHEQUE, etc.

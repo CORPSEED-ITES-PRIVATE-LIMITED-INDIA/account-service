@@ -26,8 +26,6 @@ public class UserServiceImpl implements UserService {
 	@Autowired
 	UserRepository userRepository;
 
-	@Autowired
-	MailSendSerivceImpl mailSendSerivceImpl;
 
 	@Autowired
 	RoleRepository roleRepository;
@@ -113,62 +111,6 @@ public class UserServiceImpl implements UserService {
 	}
 
 
-
-	@Override
-	public User createUserByEmail(String userName, String email, String role, Long userId, String designation) {
-
-		String[] emailTo= {"aryan.chaurasia@corpseed.com"};
-		String randomPass = getRandomNumber().toString();
-		boolean isExistOrNot = isUserEmailExistOrNot(email);
-		if(!isExistOrNot) {
-			User u = new User();
-			u.setId(userId);
-			u.setFullName(userName);
-			u.setEmail(email);
-
-			List<String>listRole = new ArrayList();
-			listRole.add(role);
-			u.setRole(listRole);
-
-			List<Role> roleList = roleRepository.findAllByNameIn(listRole);
-			u.setUserRole(roleList);
-			u.setDesignation(designation);
-			String feedbackStatusURL = "https://corpseed.com" ;
-
-					Context context = new Context();
-					context.setVariable("userName", "Aryan Chaurasia");
-					context.setVariable("email", email);
-					context.setVariable("Rurl", feedbackStatusURL);
-					context.setVariable("currentYear", LocalDateTime.now().getYear());
-			String subject="Corpseed pvt ltd send a request for adding on team please go and set password and accept";
-			String text="CLICK ON THIS link and set password";
-			userRepository.save(u);
-			String[] ccPersons= {email};
-			mailSendSerivceImpl.sendEmail(emailTo, ccPersons,ccPersons, subject,text,context,"newUserCreate.html");
-			return u;
-		}else {
-			User u = userRepository.findByEmail(email)
-					.orElseThrow(() -> new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
-			List<String>listRole = new ArrayList();
-			listRole.add(role);
-			u.setRole(listRole);
-			String feedbackStatusURL = "http://localhost:3000/erp/login" ;
-
-					Context context = new Context();
-					context.setVariable("userName", "Aryan Chaurasia");
-					context.setVariable("email", email);
-					context.setVariable("Rurl", feedbackStatusURL);
-					context.setVariable("currentYear", LocalDateTime.now().getYear());
-			String subject="Corpseed pvt ltd send a request for adding on team please go and Accept";
-			String text="CLICK ON THIS link and set password";
-			userRepository.save(u);
-			String[] ccPersons= {email};
-			mailSendSerivceImpl.sendEmail(emailTo, ccPersons,ccPersons, subject,text,context,"TeamAdd.html");
-
-			return u;
-
-	}
-	}
 
 	@Override
 	public User createUserByLead(UserDto userDto) {
