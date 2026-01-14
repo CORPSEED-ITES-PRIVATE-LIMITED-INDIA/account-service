@@ -1,13 +1,20 @@
 package com.account.service;
 
+import com.account.domain.UnbilledStatus;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
+import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+
+import java.util.List;
 
 public interface PaymentService {
 
     PaymentRegistrationResponseDto registerPayment(PaymentRegistrationRequestDto request, Long salespersonUserId);
 
     UnbilledInvoiceApprovalResponseDto approveUnbilledInvoice(Long unbilledId, UnbilledInvoiceApprovalRequestDto request);
+
+
+    List<UnbilledInvoiceSummaryDto> getAllUnbilledInvoices();
 }

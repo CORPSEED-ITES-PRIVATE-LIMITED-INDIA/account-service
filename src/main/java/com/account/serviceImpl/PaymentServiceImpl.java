@@ -6,6 +6,7 @@ import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
+import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
@@ -13,13 +14,17 @@ import com.account.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -166,6 +171,50 @@ public class PaymentServiceImpl implements PaymentService {
                 .approvalRemarks(unbilled.getApprovalRemarks())
                 .message("Unbilled invoice approved and tax invoice generated. " +
                         (finalStatus == UnbilledStatus.FULLY_PAID ? "Fully paid." : "Partially paid – awaiting remaining amount."))
+                .build();
+    }
+
+    @Override
+    public List<UnbilledInvoiceSummaryDto> getAllUnbilledInvoices() {
+
+        log.info("Fetching all unbilled invoices (no filters)");
+
+        // Fetch all (no pagination, no filters)
+        List<UnbilledInvoice> unbilledList = unbilledInvoiceRepository.findAll(
+                Sort.by(Sort.Direction.DESC, "createdAt")  // newest first - recommended
+        );
+
+        // Map to DTOs
+        List<UnbilledInvoiceSummaryDto> result = unbilledList.stream()
+                .map(this::mapToSummaryDto)
+                .collect(Collectors.toList());
+
+        return result;
+    }
+    private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
+        return UnbilledInvoiceSummaryDto.builder()
+                .id(unbilled.getId())
+                .unbilledNumber(unbilled.getUnbilledNumber())
+                .estimateNumber(unbilled.getEstimate() != null ? unbilled.getEstimate().getEstimateNumber() : null)
+                .estimateId(unbilled.getEstimate() != null ? unbilled.getEstimate().getId() : null)
+                .companyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null)
+                .contactName(unbilled.getContact() != null ? unbilled.getContact().getName() : null)
+                .totalAmount(unbilled.getTotalAmount())
+                .receivedAmount(unbilled.getReceivedAmount())
+                .outstandingAmount(unbilled.getOutstandingAmount())
+                .status(unbilled.getStatus())
+                .createdAt(unbilled.getCreatedAt())
+                .createdByName(unbilled.getCreatedBy() != null
+                        ? (unbilled.getCreatedBy().getFullName() != null
+                        ? unbilled.getCreatedBy().getFullName()
+                        : unbilled.getCreatedBy().getEmail())
+                        : null)
+                .approvedAt(unbilled.getApprovedAt())
+                .approvedByName(unbilled.getApprovedBy() != null
+                        ? (unbilled.getApprovedBy().getFullName() != null
+                        ? unbilled.getApprovedBy().getFullName()
+                        : unbilled.getApprovedBy().getEmail())
+                        : null)
                 .build();
     }
 
