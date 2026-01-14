@@ -64,6 +64,16 @@ public class PaymentReceipt {
     @Column(length = 500)
     private String proofDocumentUrl;
 
+    @Column(length = 9)
+    private String eprFinancialYear;
+
+    @Column(length = 50)
+    private String eprPortalRegistrationNumber;
+
+    @Column(length = 100)
+    private String eprCertificateOrInvoiceNumber;
+
+
     // Auditing
     @CreatedDate
     @Column(updatable = false)

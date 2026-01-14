@@ -4,6 +4,8 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
+import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
+import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.UUID;
 
 @Service
@@ -39,26 +42,24 @@ public class PaymentServiceImpl implements PaymentService {
                 request.getEstimateId(), request.getAmount(), request.getPaymentMode(),
                 request.getTransactionReference(), salespersonUserId);
 
-        // 1. Fetch required entities
         Estimate estimate = estimateRepository.findById(request.getEstimateId())
                 .orElseThrow(() -> new ResourceNotFoundException("Estimate not found", "ESTIMATE_NOT_FOUND"));
 
         User salesperson = userRepository.findById(salespersonUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Salesperson user not found", "USER_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException("Salesperson not found", "USER_NOT_FOUND"));
 
         PaymentType paymentType = paymentTypeRepository.findById(request.getPaymentTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Payment type not found", "PAYMENT_TYPE_NOT_FOUND"));
 
-        // Optional: Add operational/milestone validation here if needed
-        // e.g. if (request.getMilestoneId() != null) { validate milestone completion }
+        boolean isEprRelated = isEprRelatedEstimate(estimate);
+        if (isEprRelated) {
+            validateEprFields(request);
+        }
 
-        // 2. Check if UnbilledInvoice already exists for this estimate
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findByEstimate(estimate).orElse(null);
-
         boolean isFirstPayment = (unbilled == null);
 
         if (isFirstPayment) {
-            // Create new UnbilledInvoice on FIRST payment only
             unbilled = new UnbilledInvoice();
             unbilled.setUnbilledNumber(generateUnbilledNumber());
             unbilled.setPublicUuid(UUID.randomUUID().toString());
@@ -72,10 +73,11 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
             unbilled.setCreatedBy(salesperson);
             unbilled = unbilledInvoiceRepository.save(unbilled);
-            log.info("Created new UnbilledInvoice: {} (PENDING_APPROVAL)", unbilled.getUnbilledNumber());
+
+            log.info("Created UnbilledInvoice {} (PENDING_APPROVAL) for estimate {}",
+                    unbilled.getUnbilledNumber(), estimate.getEstimateNumber());
         }
 
-        // 3. Always create a new PaymentReceipt for every payment
         PaymentReceipt receipt = new PaymentReceipt();
         receipt.setUnbilledInvoice(unbilled);
         receipt.setPaymentType(paymentType);
@@ -85,52 +87,113 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setTransactionReference(request.getTransactionReference());
         receipt.setRemarks(request.getRemarks());
         receipt.setReceivedBy(salesperson);
-        // receipt.setMilestone(...) if milestoneId provided
-        receipt = paymentReceiptRepository.save(receipt);
-        log.info("Created PaymentReceipt ID: {} for amount: {}", receipt.getId(), request.getAmount());
 
-        // 4. Apply payment to UnbilledInvoice (update received & outstanding)
+        receipt.setEprFinancialYear(request.getEprFinancialYear());
+        receipt.setEprPortalRegistrationNumber(request.getEprPortalRegistrationNumber());
+        receipt.setEprCertificateOrInvoiceNumber(request.getEprCertificateOrInvoiceNumber());
+
+        receipt = paymentReceiptRepository.save(receipt);
+        log.info("Created PaymentReceipt {} | amount: {}", receipt.getId(), request.getAmount());
+
         unbilled.applyPayment(request.getAmount());
         unbilledInvoiceRepository.save(unbilled);
-        log.info("Updated UnbilledInvoice: {} | received: {}, outstanding: {}, status: {}",
+        log.info("Updated unbilled {} | received: {}, outstanding: {}, status: {}",
                 unbilled.getUnbilledNumber(), unbilled.getReceivedAmount(),
                 unbilled.getOutstandingAmount(), unbilled.getStatus());
 
-        // 5. Generate Tax Invoice ONLY if UnbilledInvoice is APPROVED
-        boolean invoiceGenerated = false;
-        String invoiceNumber = null;
-        BigDecimal invoiceAmount = null;
+        String message = isFirstPayment
+                ? "First payment registered. Unbilled created – awaiting Accounts approval"
+                : String.format("Additional payment of ₹%s registered. Total received: ₹%s / ₹%s. Awaiting approval.",
+                request.getAmount(), unbilled.getReceivedAmount(), unbilled.getTotalAmount());
 
-        if (unbilled.getStatus() == UnbilledStatus.APPROVED) {
-            // Only generate when explicitly APPROVED (strict check)
-            Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(unbilled, receipt);
-            invoiceGenerated = true;
-            invoiceNumber = generatedInvoice.getInvoiceNumber();
-            invoiceAmount = generatedInvoice.getGrandTotal();
-            log.info("Generated tax Invoice: {} | amount: {} (Unbilled APPROVED)", invoiceNumber, invoiceAmount);
-        } else if (unbilled.getStatus() == UnbilledStatus.PENDING_APPROVAL) {
-            log.info("Unbilled is still PENDING_APPROVAL - no invoice generated yet");
-        } else {
-            log.info("Unbilled status is {} - invoice already handled in previous payments", unbilled.getStatus());
-        }
-
-        // 6. Prepare and return response
         return PaymentRegistrationResponseDto.builder()
                 .paymentReceiptId(receipt.getId())
                 .unbilledNumber(unbilled.getUnbilledNumber())
                 .unbilledStatus(unbilled.getStatus())
-                .invoiceGenerated(invoiceGenerated)
-                .invoiceNumber(invoiceNumber)
-                .invoiceAmount(invoiceAmount)
-                .message(isFirstPayment
-                        ? "First payment registered. Unbilled created - waiting for Accounts approval"
-                        : "Payment registered successfully" + (invoiceGenerated ? " and tax invoice generated" : ""))
+                .invoiceGenerated(false)
+                .invoiceNumber(null)
+                .invoiceAmount(null)
+                .message(message)
                 .build();
     }
 
+    @Transactional
+    public UnbilledInvoiceApprovalResponseDto approveUnbilledInvoice(
+            Long unbilledId,
+            UnbilledInvoiceApprovalRequestDto request) {
+
+        log.info("Approving unbilled invoice | unbilledId: {}, approverId: {}", unbilledId, request.getApproverUserId());
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unbilled invoice not found", "UNBILLED_NOT_FOUND"));
+
+        if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
+            throw new IllegalStateException(
+                    "Only PENDING_APPROVAL unbilled invoices can be approved. Current status: " + unbilled.getStatus());
+        }
+
+        User approver = userRepository.findById(request.getApproverUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Approver not found", "USER_NOT_FOUND"));
+
+        unbilled.setStatus(UnbilledStatus.APPROVED);
+        unbilled.setApprovedBy(approver);
+        unbilled.setApprovedAt(LocalDateTime.now());
+        unbilled.setApprovalRemarks(request.getApprovalRemarks());
+
+        PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
+                .min(Comparator.comparing(PaymentReceipt::getCreatedAt))
+                .orElseThrow(() -> new IllegalStateException("No payments found for unbilled invoice"));
+
+        Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(unbilled, triggeringReceipt);
+
+        UnbilledStatus finalStatus = (unbilled.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0)
+                ? UnbilledStatus.FULLY_PAID
+                : UnbilledStatus.PARTIALLY_PAID;
+
+        unbilled.setStatus(finalStatus);
+        unbilledInvoiceRepository.save(unbilled);
+
+        log.info("Unbilled {} approved → final status: {}, invoice: {}",
+                unbilled.getUnbilledNumber(), finalStatus, generatedInvoice.getInvoiceNumber());
+
+        return UnbilledInvoiceApprovalResponseDto.builder()
+                .unbilledNumber(unbilled.getUnbilledNumber())
+                .status(finalStatus)
+                .invoiceNumber(generatedInvoice.getInvoiceNumber())
+                .invoiceId(generatedInvoice.getId())
+                .approvedByName(approver.getFullName() != null ? approver.getFullName() : approver.getEmail())
+                .approvedAt(unbilled.getApprovedAt())
+                .approvalRemarks(unbilled.getApprovalRemarks())
+                .message("Unbilled invoice approved and tax invoice generated. " +
+                        (finalStatus == UnbilledStatus.FULLY_PAID ? "Fully paid." : "Partially paid – awaiting remaining amount."))
+                .build();
+    }
+
+    private boolean isEprRelatedEstimate(Estimate estimate) {
+        if (estimate.getSolutionType() != SolutionType.SERVICE) return false;
+        String name = estimate.getSolutionName();
+        if (name == null) return false;
+        String upper = name.toUpperCase();
+        return upper.contains("EPR") || upper.contains("PLASTIC WASTE") ||
+                upper.contains("EXTENDED PRODUCER") || upper.contains("PLASTIC EPR") ||
+                upper.contains("CPCB EPR");
+    }
+
+    private void validateEprFields(PaymentRegistrationRequestDto request) {
+        if (request.getEprFinancialYear() == null || request.getEprFinancialYear().trim().isEmpty()) {
+            throw new IllegalArgumentException("EPR Financial Year is required (YYYY-YYYY)");
+        }
+        if (request.getEprPortalRegistrationNumber() == null || request.getEprPortalRegistrationNumber().trim().isEmpty()) {
+            throw new IllegalArgumentException("EPR Portal Registration Number is required");
+        }
+        if (!request.getEprFinancialYear().matches("\\d{4}-\\d{4}")) {
+            throw new IllegalArgumentException("Invalid EPR Financial Year format. Use YYYY-YYYY");
+        }
+    }
+
     private String generateUnbilledNumber() {
-        // Simple example - in production use proper sequence + financial year
         long count = unbilledInvoiceRepository.count() + 1;
-        return String.format("UNB-%d-%08d", LocalDateTime.now().getYear(), count);
+        int year = LocalDateTime.now().getYear();
+        return String.format("UNB-%d-%08d", year, count);
     }
 }

@@ -115,13 +115,20 @@ public class UnbilledInvoice {
         }
     }
 
+    /**
+     * Updates received and outstanding amounts only.
+     * Does NOT change status — status is controlled only by approval workflow.
+     */
     public void applyPayment(BigDecimal amount) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be positive");
+        }
+
         this.receivedAmount = this.receivedAmount.add(amount);
         this.outstandingAmount = this.totalAmount.subtract(this.receivedAmount);
-        if (this.outstandingAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            this.status = UnbilledStatus.FULLY_PAID;
-        } else if (this.receivedAmount.compareTo(BigDecimal.ZERO) > 0) {
-            this.status = UnbilledStatus.PARTIALLY_PAID;
-        }
+
+        // IMPORTANT: REMOVE THESE LINES COMPLETELY
+        // if (this.outstandingAmount.compareTo(BigDecimal.ZERO) <= 0) { ... }
+        // else if (this.receivedAmount.compareTo(BigDecimal.ZERO) > 0) { ... }
     }
 }
