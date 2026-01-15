@@ -34,6 +34,28 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             UnbilledStatus status,
             Pageable pageable);
 
+    @Query("""
+        SELECT u
+        FROM UnbilledInvoice u
+        WHERE
+            (:userId IS NULL
+                OR u.createdBy.id = :userId
+                OR u.approvedBy.id = :userId)
+        AND
+            (:status IS NULL OR u.status = :status)
+        """)
+    Page<UnbilledInvoice> findUnbilledInvoices(
+            @Param("userId") Long userId,
+            @Param("status") UnbilledStatus status,
+            Pageable pageable
+    );
+
+    long countByCreatedByIdOrApprovedById(Long createdById, Long approvedById);
+
+    long countByStatus(UnbilledStatus status);
+
+    long countByCreatedByIdOrApprovedByIdAndStatus(Long createdById, Long approvedById, UnbilledStatus status);
+
 
 
 

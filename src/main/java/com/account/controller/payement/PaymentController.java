@@ -1,5 +1,5 @@
 // Final: Separate PaymentController (clean & MNC-style)
-package com.account.controller;
+package com.account.controller.payement;
 
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;

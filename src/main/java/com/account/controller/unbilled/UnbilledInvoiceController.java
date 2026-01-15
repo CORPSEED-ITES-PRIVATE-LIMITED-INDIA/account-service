@@ -8,20 +8,11 @@ import com.account.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
-import org.springdoc.core.annotations.ParameterObject;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -30,7 +21,7 @@ import java.util.List;
 
 @Tag(name = "Unbilled Invoices", description = "Operations related to unbilled / proforma / advance invoices (approval flow for accounts team)")
 @RestController
-@RequestMapping("/api/v1/unbilled-invoices")
+@RequestMapping("/accountService/api/v1/unbilled-invoices")
 @RequiredArgsConstructor
 @Validated
 public class UnbilledInvoiceController {
@@ -111,4 +102,26 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(new UnbilledInvoiceApprovalResponseDto(...));
     }
     */
+
+    @Operation(
+            summary = "Get count of unbilled invoices",
+            description = "Returns only the total number of unbilled invoices matching the optional filters (status and/or userId)"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Count returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid parameters", content = @Content)
+    })
+    @GetMapping("/count")
+    public ResponseEntity<Long> getUnbilledInvoicesCount(
+            @RequestParam(value = "status", required = false)
+            @Parameter(description = "Filter by unbilled invoice status") UnbilledStatus status,
+
+            @RequestParam(value = "userId", required = false)
+            @Parameter(description = "Filter by user who created or approved the record") Long userId
+    ) {
+        long count = paymentService.getUnbilledInvoicesCount(userId, status);
+        return ResponseEntity.ok(count);
+    }
+
+
 }

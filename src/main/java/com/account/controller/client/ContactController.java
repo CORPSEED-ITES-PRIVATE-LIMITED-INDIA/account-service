@@ -1,4 +1,4 @@
-package com.account.controller;
+package com.account.controller.client;
 
 import com.account.dto.contact.ContactRequestDto;
 import com.account.dto.contact.ContactResponseDto;

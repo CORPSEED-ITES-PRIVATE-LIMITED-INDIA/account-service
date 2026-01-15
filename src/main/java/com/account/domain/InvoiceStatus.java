@@ -1,4 +1,3 @@
-// 2. InvoiceStatus Enum
 package com.account.domain;
 
 public enum InvoiceStatus {

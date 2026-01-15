@@ -1,4 +1,4 @@
-package com.account.controller;
+package com.account.controller.estimate;
 
 import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.estimate.EstimateResponseDto;

@@ -1,4 +1,4 @@
-package com.account.controller;
+package com.account.controller.payement;
 
 import com.account.dto.payment.PaymentTypeRequestDto;
 import com.account.dto.payment.PaymentTypeResponseDto;

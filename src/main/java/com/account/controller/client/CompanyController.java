@@ -1,4 +1,4 @@
-package com.account.controller;
+package com.account.controller.client;
 
 import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.company.CompanyRequestDto;

@@ -1,4 +1,4 @@
-package com.account.controller;
+package com.account.controller.user;
 
 
 

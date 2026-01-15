@@ -215,23 +215,28 @@ public class PaymentServiceImpl implements PaymentService {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        Page<UnbilledInvoice> pageResult;
-
-        if (userId != null && status != null) {
-            pageResult = unbilledInvoiceRepository.findByCreatedByIdOrApprovedByIdAndStatus(
-                    userId, userId, status, pageable);
-        } else if (userId != null) {
-            pageResult = unbilledInvoiceRepository.findByCreatedByIdOrApprovedById(
-                    userId, userId, pageable);
-        } else if (status != null) {
-            pageResult = unbilledInvoiceRepository.findByStatus(status, pageable);
-        } else {
-            pageResult = unbilledInvoiceRepository.findAll(pageable);
-        }
+        Page<UnbilledInvoice> pageResult =
+                unbilledInvoiceRepository.findUnbilledInvoices(userId, status, pageable);
 
         return pageResult.getContent().stream()
                 .map(this::mapToSummaryDto)
                 .collect(Collectors.toList());
+    }
+    @Override
+    public long getUnbilledInvoicesCount(Long userId, UnbilledStatus status) {
+        log.info("Counting unbilled invoices | userId={}, status={}",
+                userId != null ? userId : "all",
+                status != null ? status : "all");
+
+        if (userId != null && status != null) {
+            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndStatus(userId, userId, status);
+        } else if (userId != null) {
+            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedById(userId, userId);
+        } else if (status != null) {
+            return unbilledInvoiceRepository.countByStatus(status);
+        } else {
+            return unbilledInvoiceRepository.count();
+        }
     }
 
 
