@@ -14,6 +14,8 @@ import com.account.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -174,23 +176,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
-    @Override
-    public List<UnbilledInvoiceSummaryDto> getAllUnbilledInvoices() {
 
-        log.info("Fetching all unbilled invoices (no filters)");
-
-        // Fetch all (no pagination, no filters)
-        List<UnbilledInvoice> unbilledList = unbilledInvoiceRepository.findAll(
-                Sort.by(Sort.Direction.DESC, "createdAt")  // newest first - recommended
-        );
-
-        // Map to DTOs
-        List<UnbilledInvoiceSummaryDto> result = unbilledList.stream()
-                .map(this::mapToSummaryDto)
-                .collect(Collectors.toList());
-
-        return result;
-    }
     private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
         return UnbilledInvoiceSummaryDto.builder()
                 .id(unbilled.getId())
@@ -217,6 +203,37 @@ public class PaymentServiceImpl implements PaymentService {
                         : null)
                 .build();
     }
+
+    @Override
+    public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size) {
+
+        log.info("Fetching unbilled invoices list (paginated) | userId={}, status={}, page={}, size={}",
+                userId != null ? userId : "all",
+                status != null ? status : "all",
+                page + 1,
+                size);
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        Page<UnbilledInvoice> pageResult;
+
+        if (userId != null && status != null) {
+            pageResult = unbilledInvoiceRepository.findByCreatedByIdOrApprovedByIdAndStatus(
+                    userId, userId, status, pageable);
+        } else if (userId != null) {
+            pageResult = unbilledInvoiceRepository.findByCreatedByIdOrApprovedById(
+                    userId, userId, pageable);
+        } else if (status != null) {
+            pageResult = unbilledInvoiceRepository.findByStatus(status, pageable);
+        } else {
+            pageResult = unbilledInvoiceRepository.findAll(pageable);
+        }
+
+        return pageResult.getContent().stream()
+                .map(this::mapToSummaryDto)
+                .collect(Collectors.toList());
+    }
+
 
     private boolean isEprRelatedEstimate(Estimate estimate) {
         if (estimate.getSolutionType() != SolutionType.SERVICE) return false;

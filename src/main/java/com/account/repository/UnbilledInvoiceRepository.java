@@ -5,6 +5,7 @@ import com.account.domain.UnbilledStatus;
 import com.account.domain.estimate.Estimate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -17,6 +18,22 @@ import java.util.Optional;
 public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice, Long> {
 
     Optional<UnbilledInvoice> findByEstimate(Estimate estimate);
+
+    Page<UnbilledInvoice> findByCreatedByIdOrApprovedById(
+            Long createdById,
+            Long approvedById,
+            Pageable pageable);
+
+    Page<UnbilledInvoice> findByStatus(
+            UnbilledStatus status,
+            Pageable pageable);
+
+    Page<UnbilledInvoice> findByCreatedByIdOrApprovedByIdAndStatus(
+            Long createdById,
+            Long approvedById,
+            UnbilledStatus status,
+            Pageable pageable);
+
 
 
 
