@@ -3,62 +3,62 @@ package com.account.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.annotation.CreatedBy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedBy;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 
 @Entity
-@Table(name = "company")
+@Table(
+		name = "company",
+		uniqueConstraints = {
+				@UniqueConstraint(columnNames = {"pan_no"})
+		}
+)
+@EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 public class Company {
 
 	@Id
-	@Column(name = "id", updatable = false, insertable = true)
+	@GeneratedValue(strategy = GenerationType.IDENTITY) // ✅ DB auto-increment
+	@Column(name = "id", updatable = false, nullable = false)
 	private Long id;
 
-
+	@Column(name = "uuid", unique = true, length = 36)
 	private String uuid;
 
-	@Column(name = "name")
+	@Column(name = "name", nullable = false)
 	private String name;
 
-	@Column(name = "pan_no", unique = true)
+	@Column(name = "pan_no", nullable = false, length = 10, unique = true)
 	private String panNo;
 
-	private String gstType;
-	private String gstNo;
-	private String gstDocuments;
+	@Column(name = "establish_date")
+	private LocalDate establishDate;
 
-	private String companyGstType;
-
-	private String gstBussinessType;
-
-	private String gstTypePrice;
-
-	private Date establishDate;
+	@Column(name = "industry")
 	private String industry;
 
-	// Legacy Primary Address (kept for backward compatibility)
-	private String Address;
-	private String City;
-	private String State;
-	private String Country;
-	private String primaryPinCode;
+	@Column(name = "industries")
+	private String industries;
 
-	// Legacy Secondary Address
-	private String sAddress;
-	private String sCity;
-	private String sState;
-	private String sCountry;
-	private String secondaryPinCode;
+	@Column(name = "sub_industry")
+	private String subIndustry;
 
+	@Column(name = "subsub_industry")
+	private String subsubIndustry;
 
+	@Column(name = "lead_id")
 	private Long leadId;
 
+	@Column(name = "status")
 	private String status;
 
 	// Consultant Flow
@@ -66,39 +66,29 @@ public class Company {
 	@JoinColumn(name = "parent_id")
 	private Company parent;
 
+	@Column(name = "is_consultant", nullable = false)
 	private Boolean isConsultant = false;
 
-	private String industries;
-
-	private String subIndustry;
-
-	private String subsubIndustry;
-
-
 	// Agreements
+	@Column(name = "payment_term")
 	private String paymentTerm;
+
+	@Column(name = "agreement_present", nullable = false)
 	private boolean aggrementPresent = false;
+
+	@Column(name = "agreement", columnDefinition = "TEXT")
 	private String aggrement;
-	private String nda;
+
+	@Column(name = "nda_present", nullable = false)
 	private boolean ndaPresent = false;
+
+	@Column(name = "nda", columnDefinition = "TEXT")
+	private String nda;
+
+	@Column(name = "revenue")
 	private String revenue;
 
-	// Audit
-	private boolean isDeleted = false;
-	private Date createDate;
-	private LocalDate date;
-
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "created_by_id")
-	private User createdBy;
-
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "updated_by_id")
-	private User updatedBy;
-
-	private Date updateDate;
-
-	// === NEW: OneToMany relationship with CompanyUnit ===
+	// Relationship: Company -> Units
 	@OneToMany(
 			mappedBy = "company",
 			cascade = CascadeType.ALL,
@@ -107,16 +97,15 @@ public class Company {
 	)
 	private List<CompanyUnit> units = new ArrayList<>();
 
-	// === ONBOARDING & ACCOUNTS APPROVAL STATUS ===
+	// Onboarding & Accounts approval
 	@Column(name = "onboarding_status")
 	private String onboardingStatus;
 
-	// Possible values: "Approved", "Rejected",
-	@Column(name = "accounts_approved")
+	@Column(name = "accounts_approved", nullable = false)
 	private boolean accountsApproved = false;
 
 	@Column(name = "accounts_remark", columnDefinition = "TEXT")
-	private String accountsRemark;  // Long text for comments
+	private String accountsRemark;
 
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "accounts_reviewed_by_id")
@@ -125,11 +114,46 @@ public class Company {
 	@Column(name = "accounts_reviewed_at")
 	private LocalDateTime accountsReviewedAt;
 
+	// Soft delete
+	@Column(name = "is_deleted", nullable = false)
+	private boolean isDeleted = false;
+
+	// Auditing
+	@CreatedBy
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "created_by_id", updatable = false)
+	private User createdBy;
+
+	@LastModifiedBy
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "updated_by_id")
+	private User updatedBy;
+
+	@CreatedDate
+	@Column(name = "created_at", updatable = false)
+	private LocalDateTime createdAt;
+
+	@LastModifiedDate
+	@Column(name = "updated_at")
+	private LocalDateTime updatedAt;
+
+	// ✅ Helper methods (important for bidirectional + orphanRemoval)
+	public void addUnit(CompanyUnit unit) {
+		if (unit == null) return;
+		units.add(unit);
+		unit.setCompany(this);
+	}
+
+	public void removeUnit(CompanyUnit unit) {
+		if (unit == null) return;
+		units.remove(unit);
+		unit.setCompany(null);
+	}
+
 	@PrePersist
-	protected void onCreate() {
-		if (createDate == null) {
-			createDate = new Date();
-		}
-		isDeleted = false;
+	protected void onCreateDefaults() {
+		if (status == null) status = "Active";
+		// isDeleted default false already
+		if (isConsultant == null) isConsultant = false;
 	}
 }

@@ -3,6 +3,7 @@ package com.account.dto.company;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
 
@@ -20,7 +21,7 @@ public class CompanyUnitResponseDto {
     private String pinCode;
     private String gstNo;
     private String status;
-    private Date unitOpeningDate;
+    private LocalDate unitOpeningDate;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

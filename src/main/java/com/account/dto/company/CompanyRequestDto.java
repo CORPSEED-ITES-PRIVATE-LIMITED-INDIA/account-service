@@ -1,5 +1,6 @@
 package com.account.dto.company;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -15,70 +16,93 @@ import java.util.List;
 @Setter
 public class CompanyRequestDto {
 
-
-    @NotNull(message = "leadCompanyId is required to maintain same ID in account service")
+    /**
+     * Lead/external system identifier.
+     * NOTE: If your Company.id is @GeneratedValue, do NOT try to save this into Company.id.
+     * Store it in Company.leadCompanyId (separate column).
+     */
+    @NotNull(message = "leadCompanyId is required to maintain mapping with lead service")
     private Long leadCompanyId;
 
-    // === BASIC COMPANY INFO (MANDATORY) ===
+    // ─────────────────────────────
+    // BASIC COMPANY INFO (MANDATORY)
+    // ─────────────────────────────
     @NotBlank(message = "Company name is required")
     @Size(max = 255, message = "Company name cannot exceed 255 characters")
     private String name;
 
     @NotBlank(message = "PAN number is required")
-    @Pattern(regexp = "^[A-Z]{5}[0-9]{4}[A-Z]{1}$", message = "Invalid PAN format. Must be like ABCDE1234F")
+    @Pattern(
+            regexp = "^[A-Z]{5}[0-9]{4}[A-Z]{1}$",
+            message = "Invalid PAN format. Must be like ABCDE1234F"
+    )
     private String panNo;
 
-    // === OPTIONAL COMPANY DETAILS ===
-    private String rating;
-    private String companyAge;
+    // ─────────────────────────────
+    // OPTIONAL COMPANY DETAILS
+    // ─────────────────────────────
     private Date establishDate;
-    private String industry; // Legacy free-text field
 
-    // === INDUSTRY HIERARCHY ===
+    @Size(max = 255, message = "Industry cannot exceed 255 characters")
+    private String industry;
+
+    // If you use master tables (optional)
     private Long industryId;
     private Long subIndustryId;
     private Long subSubIndustryId;
 
-    // === LEGACY ADDRESSES (Kept for backward compatibility – now optional) ===
-    private String address;          // Primary HQ address line
+    // Rating/age are optional; keep only if you use them (otherwise remove)
+    private String rating;
+    private String companyAge;
+
+    // ─────────────────────────────
+    // SALES & ASSIGNMENT (optional)
+    // ─────────────────────────────
+    private Long assigneeId;
+    private String status;  // Active, Inactive
+    private Long leadId;
+
+    // ─────────────────────────────
+    // AGREEMENTS & PAYMENT (company-level)
+    // ─────────────────────────────
+    private String paymentTerm;
+    private Boolean aggrementPresent;
+    private String aggrement;
+    private String nda;
+    private Boolean ndaPresent;
+    private String revenue;
+
+    // ─────────────────────────────
+    // CONSULTANT FLOW
+    // ─────────────────────────────
+    private Boolean isConsultant = false;
+    private Long actualClientCompanyId;
+
+    // ─────────────────────────────
+    // MODERN MULTI-LOCATION SUPPORT (preferred)
+    // ─────────────────────────────
+    @Valid
+    private List<CompanyUnitRequestDto> units = new ArrayList<>();
+
+    // ─────────────────────────────
+    // LEGACY ADDRESSES (DEPRECATED)
+    // Use ONLY when units is empty; service may auto-create a default unit from these.
+    // ─────────────────────────────
+    private String address;
     private String city;
     private String state;
     private String country;
     private String primaryPinCode;
 
-    private String sAddress;         // Secondary address
+    private String sAddress;
     private String sCity;
     private String sState;
     private String sCountry;
     private String secondaryPinCode;
 
-    // === SALES & ASSIGNMENT ===
-    private Long assigneeId;
-    private String stage;            // e.g., New, Working, Proposal, Closed Won
-    private String status;           // e.g., Active, Inactive
-
-    private Long leadId;             // Optional: link to originating lead
-
-    // === AGREEMENTS & PAYMENT ===
-    private String paymentTerm;      // e.g., Net 30, Advance
-    private Boolean aggrementPresent;
-    private String aggrement;
-    private String nda;
-    private Boolean ndaPresent;
-    private String revenue;          // e.g., "500 Crores", "85 Lakhs"
-
-    // === CONSULTANT FLOW ===
-    private Boolean isConsultant = false;        // true if this is a consultant company
-
-    // If isConsultant = true → this links to the actual client company
-    // If isConsultant = false → this can be used to link to the consultant who brought the client
-    private Long actualClientCompanyId;
-
-    // === MULTI-LOCATION SUPPORT: UNITS / BRANCHES / OUTLETS ===
-    // This is the modern way — add multiple units in one request
-    private List<CompanyUnitRequestDto> units = new ArrayList<>();
-
-    // === AUDIT ===
+    // ─────────────────────────────
+    // AUDIT (optional)
+    // ─────────────────────────────
     private Long createdById;
     private Long updatedById;
 }
