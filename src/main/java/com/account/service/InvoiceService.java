@@ -23,6 +23,10 @@ public interface InvoiceService {
 
 	long getInvoicesCount(Long createdById, InvoiceStatus status);
 
+	Object countSearchInvoices(String invoiceNumber, String companyName);
+
+	List<InvoiceSummaryDto> searchInvoices(String invoiceNumber, String companyName, int i, int size);
+
 	// Optional future methods can be added here
 	// Invoice getInvoiceDetail(Long id);
 	// void updateInvoiceStatus(Long invoiceId, InvoiceStatus newStatus);

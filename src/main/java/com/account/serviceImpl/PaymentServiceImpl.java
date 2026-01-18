@@ -7,6 +7,7 @@ import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
@@ -139,6 +140,34 @@ public class PaymentServiceImpl implements PaymentService {
                     "Only PENDING_APPROVAL unbilled invoices can be approved. Current status: " + unbilled.getStatus());
         }
 
+        // ────────────────────────────────────────────────
+        //  NEW: Enforce company + unit approval BEFORE allowing unbilled approval
+        // ────────────────────────────────────────────────
+        Company company = unbilled.getCompany();
+        CompanyUnit unit = unbilled.getUnit();
+
+        boolean companyApproved = company != null && company.isAccountsApproved();
+        boolean unitApproved = unit == null || unit.isAccountsApproved();  // if unit is optional/null → ignore
+
+        if (!companyApproved || !unitApproved) {
+            StringBuilder msg = new StringBuilder("Cannot approve this unbilled invoice yet. ");
+
+            if (!companyApproved) {
+                msg.append("Company '").append(company != null ? company.getName() : "unknown")
+                        .append("' is not approved. ");
+            }
+            if (!unitApproved) {
+                msg.append("Unit '").append(unit != null ? unit.getUnitName() : "unknown")
+                        .append("' is not approved. ");
+            }
+
+            msg.append("Please go to the company/unit details and approve them first.");
+
+            // Optional: throw custom exception with extra metadata for frontend
+            throw new ApprovalBlockedException(msg.toString(), companyApproved, unitApproved);
+        }
+
+        // If we reach here → approvals are OK → proceed normally
         User approver = userRepository.findById(request.getApproverUserId())
                 .orElseThrow(() -> new ResourceNotFoundException("Approver not found", "USER_NOT_FOUND"));
 
@@ -175,7 +204,6 @@ public class PaymentServiceImpl implements PaymentService {
                         (finalStatus == UnbilledStatus.FULLY_PAID ? "Fully paid." : "Partially paid – awaiting remaining amount."))
                 .build();
     }
-
 
     private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
         return UnbilledInvoiceSummaryDto.builder()

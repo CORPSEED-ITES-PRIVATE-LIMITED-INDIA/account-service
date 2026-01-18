@@ -182,5 +182,39 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.build();
 	}
 
+	@Override
+	public List<InvoiceSummaryDto> searchInvoices(
+			String invoiceNumber,
+			String companyName,
+			int page,
+			int size
+	) {
+		log.info("Searching invoices | invoiceNumber={}, companyName={}, page={}, size={}",
+				invoiceNumber, companyName, page, size);
+
+		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+
+		Page<Invoice> pageResult = invoiceRepository.searchInvoices(
+				invoiceNumber != null && !invoiceNumber.trim().isEmpty() ? invoiceNumber.trim() : null,
+				companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null,
+				pageable
+		);
+
+		return pageResult.getContent().stream()
+				.map(this::toSummaryDto)
+				.collect(Collectors.toList());
+	}
+
+	@Override
+	public long countSearchInvoices(String invoiceNumber, String companyName) {
+		log.info("Counting search invoices | invoiceNumber={}, companyName={}",
+				invoiceNumber, companyName);
+
+		return invoiceRepository.countSearchInvoices(
+				invoiceNumber != null && !invoiceNumber.trim().isEmpty() ? invoiceNumber.trim() : null,
+				companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
+		);
+	}
+
 
 }

@@ -123,6 +123,19 @@ public class CompanyUnit {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+
+    @Column(name = "accounts_approved", nullable = false)
+    private boolean accountsApproved = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "accounts_reviewed_by_id")
+    private User accountsReviewedBy;
+
+    @Column(name = "accounts_reviewed_at")
+    private LocalDateTime accountsReviewedAt;
+
+    @Column(name = "accounts_remark", columnDefinition = "TEXT")
+    private String accountsRemark;
     @PrePersist
     protected void onCreateDefaults() {
         if (status == null) status = "Active";

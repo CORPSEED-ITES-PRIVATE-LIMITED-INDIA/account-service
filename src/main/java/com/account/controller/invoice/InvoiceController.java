@@ -47,4 +47,36 @@ public class InvoiceController {
     ) {
         return ResponseEntity.ok(invoiceService.getInvoicesCount(createdById, status));
     }
+
+
+    @Operation(summary = "Search invoices by invoice number and/or company name (partial match)")
+    @GetMapping("/search")
+    public ResponseEntity<List<InvoiceSummaryDto>> searchInvoices(
+            @RequestParam(value = "invoiceNumber", required = false) String invoiceNumber,
+            @RequestParam(value = "companyName", required = false) String companyName,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        List<InvoiceSummaryDto> result = invoiceService.searchInvoices(
+                invoiceNumber,
+                companyName,
+                page - 1,
+                size
+        );
+
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Get count of invoices matching search criteria")
+    @GetMapping("/search/count")
+    public ResponseEntity<Long> countSearchInvoices(
+            @RequestParam(value = "invoiceNumber", required = false) String invoiceNumber,
+            @RequestParam(value = "companyName", required = false) String companyName
+    ) {
+        return ResponseEntity.ok(invoiceService.countSearchInvoices(invoiceNumber, companyName));
+    }
 }

@@ -40,4 +40,30 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
             @Param("status") InvoiceStatus status,
             @Param("createdById") Long createdById
     );
+
+    // NEW: Search by invoice number and/or company name (case-insensitive partial match)
+    @Query("""
+        SELECT i FROM Invoice i
+        LEFT JOIN i.unbilledInvoice u
+        LEFT JOIN u.company c
+        WHERE (:invoiceNumber IS NULL OR LOWER(i.invoiceNumber) LIKE LOWER(CONCAT('%', :invoiceNumber, '%')))
+        AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+        """)
+    Page<Invoice> searchInvoices(
+            @Param("invoiceNumber") String invoiceNumber,
+            @Param("companyName") String companyName,
+            Pageable pageable
+    );
+
+    @Query("""
+        SELECT COUNT(i) FROM Invoice i
+        LEFT JOIN i.unbilledInvoice u
+        LEFT JOIN u.company c
+        WHERE (:invoiceNumber IS NULL OR LOWER(i.invoiceNumber) LIKE LOWER(CONCAT('%', :invoiceNumber, '%')))
+        AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+        """)
+    long countSearchInvoices(
+            @Param("invoiceNumber") String invoiceNumber,
+            @Param("companyName") String companyName
+    );
 }
