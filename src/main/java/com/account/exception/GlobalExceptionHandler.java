@@ -135,4 +135,29 @@ public class GlobalExceptionHandler {
         body.put("errorCode", errorCode);
         return body;
     }
+
+    // Add this method to GlobalExceptionHandler
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Object> handleAccessDeniedException(AccessDeniedException ex) {
+        Map<String, Object> body = baseBody(
+                HttpStatus.FORBIDDEN,
+                "Forbidden",
+                ex.getMessage(),
+                ex.getErrorCode() != null ? ex.getErrorCode() : "ACCESS_DENIED"
+        );
+
+        // Optional rich details
+        if (ex.getResourceType() != null) {
+            body.put("resourceType", ex.getResourceType());
+        }
+        if (ex.getResourceId() != null) {
+            body.put("resourceId", ex.getResourceId());
+        }
+        if (ex.getRequiredPermission() != null) {
+            body.put("requiredPermission", ex.getRequiredPermission());
+        }
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
+    }
 }

@@ -2,22 +2,18 @@ package com.account.repository;
 
 import com.account.domain.Company;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
-@Repository
 public interface CompanyRepository extends JpaRepository<Company, Long> {
 
     boolean existsByNameIgnoreCaseAndIsDeletedFalse(String name);
 
     boolean existsByPanNoAndIsDeletedFalse(String panNo);
 
-    Optional<Company> findByLeadCompanyId(Long leadCompanyId);
+    // Fixed versions ↓
+    Optional<Company> findByLeadId(Long leadId);           // ← change here
 
-    boolean existsByLeadCompanyId(Long leadCompanyId);
-
-
-
+    boolean existsByLeadId(Long leadId);                   // ← change here too if you use it
 
 }

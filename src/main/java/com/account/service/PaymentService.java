@@ -19,7 +19,7 @@ public interface PaymentService {
 
     long getUnbilledInvoicesCount(Long userId, UnbilledStatus status);
 
+    List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(String unbilledNumber, String companyName, int i, int size);
 
-
-
+    long countSearchUnbilledInvoices(String unbilledNumber, String companyName);
 }

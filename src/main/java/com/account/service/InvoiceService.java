@@ -4,6 +4,7 @@ import com.account.domain.Invoice;
 import com.account.domain.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
 import com.account.domain.UnbilledInvoice;
+import com.account.dto.invoice.InvoiceDetailDto;
 import com.account.dto.invoice.InvoiceSummaryDto;
 
 import java.util.List;
@@ -23,9 +24,12 @@ public interface InvoiceService {
 
 	long getInvoicesCount(Long createdById, InvoiceStatus status);
 
-	Object countSearchInvoices(String invoiceNumber, String companyName);
 
 	List<InvoiceSummaryDto> searchInvoices(String invoiceNumber, String companyName, int i, int size);
+
+	long countSearchInvoices(String invoiceNumber, String companyName);
+
+	InvoiceDetailDto getInvoiceById(Long id, Long userId);
 
 	// Optional future methods can be added here
 	// Invoice getInvoiceDetail(Long id);

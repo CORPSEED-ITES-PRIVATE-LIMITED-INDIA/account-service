@@ -124,4 +124,52 @@ public class UnbilledInvoiceController {
     }
 
 
+    @Operation(
+            summary = "Search unbilled invoices by unbilled number and/or company name (paginated)",
+            description = "Returns a paginated list of unbilled invoices matching the search criteria (partial match, case-insensitive)."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Search results returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid pagination or search parameters", content = @Content)
+    })
+    @GetMapping("/search")
+    public ResponseEntity<List<UnbilledInvoiceSummaryDto>> searchUnbilledInvoices(
+            @RequestParam(value = "unbilledNumber", required = false)
+            @Parameter(description = "Partial unbilled number to search for") String unbilledNumber,
+
+            @RequestParam(value = "companyName", required = false)
+            @Parameter(description = "Partial company name to search for") String companyName,
+
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("Page and size must be greater than 0");
+        }
+
+        List<UnbilledInvoiceSummaryDto> list =
+                paymentService.searchUnbilledInvoices(unbilledNumber, companyName, page - 1, size);
+
+        return ResponseEntity.ok(list);
+    }
+
+    @Operation(
+            summary = "Get count of unbilled invoices matching search criteria",
+            description = "Returns the total number of unbilled invoices matching the optional search filters (unbilledNumber and/or companyName)"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Count returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid search parameters", content = @Content)
+    })
+    @GetMapping("/search/count")
+    public ResponseEntity<Long> countSearchUnbilledInvoices(
+            @RequestParam(value = "unbilledNumber", required = false)
+            @Parameter(description = "Partial unbilled number to search for") String unbilledNumber,
+
+            @RequestParam(value = "companyName", required = false)
+            @Parameter(description = "Partial company name to search for") String companyName
+    ) {
+        long count = paymentService.countSearchUnbilledInvoices(unbilledNumber, companyName);
+        return ResponseEntity.ok(count);
+    }
 }

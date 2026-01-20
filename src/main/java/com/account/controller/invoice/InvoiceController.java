@@ -1,9 +1,12 @@
 package com.account.controller.invoice;
 
 import com.account.domain.InvoiceStatus;
+import com.account.dto.invoice.InvoiceDetailDto;
 import com.account.dto.invoice.InvoiceSummaryDto;
 import com.account.service.InvoiceService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -78,5 +81,21 @@ public class InvoiceController {
             @RequestParam(value = "companyName", required = false) String companyName
     ) {
         return ResponseEntity.ok(invoiceService.countSearchInvoices(invoiceNumber, companyName));
+    }
+
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Get full detailed invoice by ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invoice details"),
+            @ApiResponse(responseCode = "403", description = "Not authorized"),
+            @ApiResponse(responseCode = "404", description = "Invoice not found")
+    })
+    public ResponseEntity<InvoiceDetailDto> getInvoiceDetail(
+            @PathVariable Long id,
+            @RequestParam Long userId   // ← in production → replace with @AuthenticationPrincipal
+    ) {
+        InvoiceDetailDto detail = invoiceService.getInvoiceById(id, userId);
+        return ResponseEntity.ok(detail);
     }
 }

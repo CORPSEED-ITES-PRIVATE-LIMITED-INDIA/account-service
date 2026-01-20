@@ -11,7 +11,4 @@ public class ApprovalBlockedException extends RuntimeException {
         this.unitApproved = unitApproved;
     }
 
-    // getters if you want to send more structured info to frontend
-    public boolean isCompanyApproved() { return companyApproved; }
-    public boolean isUnitApproved() { return unitApproved; }
 }

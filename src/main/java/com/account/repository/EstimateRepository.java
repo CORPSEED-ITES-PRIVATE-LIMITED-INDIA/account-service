@@ -14,7 +14,6 @@ import java.util.Optional;
 @Repository
 public interface EstimateRepository extends JpaRepository<Estimate, Long> {
 
-    // Keep the exact same method name as before
     @Query("""
         SELECT e FROM Estimate e
         WHERE e.leadId = :leadId

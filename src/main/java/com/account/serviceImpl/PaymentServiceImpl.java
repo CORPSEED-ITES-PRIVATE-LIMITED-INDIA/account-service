@@ -9,6 +9,7 @@ import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
+import com.account.exception.ValidationException;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
@@ -51,16 +52,31 @@ public class PaymentServiceImpl implements PaymentService {
                 request.getTransactionReference(), salespersonUserId);
 
         Estimate estimate = estimateRepository.findById(request.getEstimateId())
-                .orElseThrow(() -> new ResourceNotFoundException("Estimate not found", "ESTIMATE_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Estimate not found with ID: " + request.getEstimateId(),
+                        "ESTIMATE_NOT_FOUND",
+                        "Estimate",
+                        request.getEstimateId()
+                ));
 
         User salesperson = userRepository.findById(salespersonUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Salesperson not found", "USER_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Salesperson not found with ID: " + salespersonUserId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        salespersonUserId
+                ));
 
         PaymentType paymentType = paymentTypeRepository.findById(request.getPaymentTypeId())
-                .orElseThrow(() -> new ResourceNotFoundException("Payment type not found", "PAYMENT_TYPE_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Payment type not found with ID: " + request.getPaymentTypeId(),
+                        "PAYMENT_TYPE_NOT_FOUND",
+                        "PaymentType",
+                        request.getPaymentTypeId()
+                ));
 
-        boolean isEprRelated = isEprRelatedEstimate(estimate);
-        if (isEprRelated) {
+        boolean productRelatedEstimate = isProductRelatedEstimate(estimate);
+        if (productRelatedEstimate) {
             validateEprFields(request);
         }
 
@@ -133,7 +149,12 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Approving unbilled invoice | unbilledId: {}, approverId: {}", unbilledId, request.getApproverUserId());
 
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException("Unbilled invoice not found", "UNBILLED_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled invoice not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
 
         if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
             throw new IllegalStateException(
@@ -141,13 +162,13 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // ────────────────────────────────────────────────
-        //  NEW: Enforce company + unit approval BEFORE allowing unbilled approval
+        // NEW: Enforce company + unit approval BEFORE allowing unbilled approval
         // ────────────────────────────────────────────────
         Company company = unbilled.getCompany();
         CompanyUnit unit = unbilled.getUnit();
 
         boolean companyApproved = company != null && company.isAccountsApproved();
-        boolean unitApproved = unit == null || unit.isAccountsApproved();  // if unit is optional/null → ignore
+        boolean unitApproved = unit == null || unit.isAccountsApproved(); // if unit is optional/null → ignore
 
         if (!companyApproved || !unitApproved) {
             StringBuilder msg = new StringBuilder("Cannot approve this unbilled invoice yet. ");
@@ -169,7 +190,12 @@ public class PaymentServiceImpl implements PaymentService {
 
         // If we reach here → approvals are OK → proceed normally
         User approver = userRepository.findById(request.getApproverUserId())
-                .orElseThrow(() -> new ResourceNotFoundException("Approver not found", "USER_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Approver not found with ID: " + request.getApproverUserId(),
+                        "USER_NOT_FOUND",
+                        "User",
+                        request.getApproverUserId()
+                ));
 
         unbilled.setStatus(UnbilledStatus.APPROVED);
         unbilled.setApprovedBy(approver);
@@ -266,9 +292,41 @@ public class PaymentServiceImpl implements PaymentService {
             return unbilledInvoiceRepository.count();
         }
     }
+        @Override
+    public List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(
+            String unbilledNumber,
+            String companyName,
+            int page,
+            int size
+    ) {
+        log.info("Searching unbilled invoices | unbilledNumber={}, companyName={}, page={}, size={}",
+                unbilledNumber, companyName, page, size);
 
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-    private boolean isEprRelatedEstimate(Estimate estimate) {
+        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.searchUnbilledInvoices(
+                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
+                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null,
+                pageable
+        );
+
+        return pageResult.getContent().stream()
+                .map(this::mapToSummaryDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public long countSearchUnbilledInvoices(String unbilledNumber, String companyName) {
+        log.info("Counting search unbilled invoices | unbilledNumber={}, companyName={}",
+                unbilledNumber, companyName);
+
+        return unbilledInvoiceRepository.countSearchUnbilledInvoices(
+                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
+                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
+        );
+    }
+
+    private boolean isProductRelatedEstimate(Estimate estimate) {
         if (estimate.getSolutionType() != SolutionType.SERVICE) return false;
         String name = estimate.getSolutionName();
         if (name == null) return false;
@@ -280,13 +338,13 @@ public class PaymentServiceImpl implements PaymentService {
 
     private void validateEprFields(PaymentRegistrationRequestDto request) {
         if (request.getEprFinancialYear() == null || request.getEprFinancialYear().trim().isEmpty()) {
-            throw new IllegalArgumentException("EPR Financial Year is required (YYYY-YYYY)");
+            throw new ValidationException("EPR Financial Year is required (YYYY-YYYY)", "VALIDATION_FAILED", "eprFinancialYear");
         }
         if (request.getEprPortalRegistrationNumber() == null || request.getEprPortalRegistrationNumber().trim().isEmpty()) {
-            throw new IllegalArgumentException("EPR Portal Registration Number is required");
+            throw new ValidationException("EPR Portal Registration Number is required", "VALIDATION_FAILED", "eprPortalRegistrationNumber");
         }
         if (!request.getEprFinancialYear().matches("\\d{4}-\\d{4}")) {
-            throw new IllegalArgumentException("Invalid EPR Financial Year format. Use YYYY-YYYY");
+            throw new ValidationException("Invalid EPR Financial Year format. Use YYYY-YYYY", "VALIDATION_FAILED", "eprFinancialYear");
         }
     }
 
@@ -295,4 +353,5 @@ public class PaymentServiceImpl implements PaymentService {
         int year = LocalDateTime.now().getYear();
         return String.format("UNB-%d-%08d", year, count);
     }
+
 }

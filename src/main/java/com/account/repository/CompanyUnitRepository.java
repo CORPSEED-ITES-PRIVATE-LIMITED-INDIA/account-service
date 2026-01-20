@@ -10,7 +10,6 @@ import java.util.Optional;
 @Repository
 public interface CompanyUnitRepository extends JpaRepository<CompanyUnit, Long>
         {
-            Optional<CompanyUnit> findByLeadUnitId(Long leadUnitId);
-
+            Optional<CompanyUnit> findByLeadId(Long leadId);   // ← change to this
 
 }

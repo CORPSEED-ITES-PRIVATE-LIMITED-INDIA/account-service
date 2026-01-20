@@ -19,20 +19,6 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
 
     Optional<UnbilledInvoice> findByEstimate(Estimate estimate);
 
-    Page<UnbilledInvoice> findByCreatedByIdOrApprovedById(
-            Long createdById,
-            Long approvedById,
-            Pageable pageable);
-
-    Page<UnbilledInvoice> findByStatus(
-            UnbilledStatus status,
-            Pageable pageable);
-
-    Page<UnbilledInvoice> findByCreatedByIdOrApprovedByIdAndStatus(
-            Long createdById,
-            Long approvedById,
-            UnbilledStatus status,
-            Pageable pageable);
 
     @Query("""
         SELECT u
@@ -56,6 +42,28 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
 
     long countByCreatedByIdOrApprovedByIdAndStatus(Long createdById, Long approvedById, UnbilledStatus status);
 
+    @Query("""
+        SELECT u FROM UnbilledInvoice u
+        LEFT JOIN u.company c
+        WHERE (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
+        AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+        """)
+    Page<UnbilledInvoice> searchUnbilledInvoices(
+            @Param("unbilledNumber") String unbilledNumber,
+            @Param("companyName") String companyName,
+            Pageable pageable
+    );
+
+    @Query("""
+        SELECT COUNT(u) FROM UnbilledInvoice u
+        LEFT JOIN u.company c
+        WHERE (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
+        AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+        """)
+    long countSearchUnbilledInvoices(
+            @Param("unbilledNumber") String unbilledNumber,
+            @Param("companyName") String companyName
+    );
 
 
 

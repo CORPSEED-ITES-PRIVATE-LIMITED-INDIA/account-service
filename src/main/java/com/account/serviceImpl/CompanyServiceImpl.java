@@ -58,7 +58,7 @@ public class CompanyServiceImpl implements CompanyService {
 
         // IMPORTANT:
         // Company.id is @GeneratedValue → NEVER use findById(leadCompanyId) or setId(leadCompanyId)
-        Company company = companyRepository.findByLeadCompanyId(leadCompanyId)
+        Company company = companyRepository.findByLeadId(leadCompanyId)
                 .orElseGet(Company::new);
 
         boolean isNew = (company.getId() == null);
@@ -116,7 +116,7 @@ public class CompanyServiceImpl implements CompanyService {
                 CompanyUnit unit;
 
                 if (unitDto.getLeadUnitId() != null) {
-                    unit = companyUnitRepository.findByLeadUnitId(unitDto.getLeadUnitId())
+                    unit = companyUnitRepository.findByLeadId(unitDto.getLeadUnitId())
                             .orElseGet(CompanyUnit::new);
                     unit.setLeadId(unitDto.getLeadUnitId());
                 } else {
@@ -213,7 +213,7 @@ public class CompanyServiceImpl implements CompanyService {
         }
 
         // IMPORTANT: check existence by leadCompanyId, not by primary key id
-        if (companyRepository.existsByLeadCompanyId(leadCompanyId)) {
+        if (companyRepository.existsByLeadId(leadCompanyId)) {
             throw new ValidationException(
                     "Company with leadCompanyId " + leadCompanyId + " already exists",
                     "ERR_DUPLICATE_COMPANY_ID"

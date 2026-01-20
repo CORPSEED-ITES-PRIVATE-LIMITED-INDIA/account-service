@@ -85,7 +85,7 @@ public class Invoice {
     @JoinColumn(name = "payment_receipt_id")
     private PaymentReceipt triggeringPayment;
 
-    // === GST e-Invoicing Fields (NIC IRP Integration) ===
+    // GST e-Invoicing Fields (NIC IRP Integration)
     @Column(length = 64)
     private String irn; // Invoice Reference Number (from IRP)
 

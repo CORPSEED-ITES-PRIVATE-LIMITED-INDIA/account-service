@@ -16,9 +16,6 @@ import java.util.Optional;
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
-    Invoice findByInvoiceNumber(String invoiceNumber);
-
-    Invoice findByPublicUuid(String publicUuid);
 
     @Query("""
         SELECT i FROM Invoice i
@@ -41,7 +38,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
             @Param("createdById") Long createdById
     );
 
-    // NEW: Search by invoice number and/or company name (case-insensitive partial match)
     @Query("""
         SELECT i FROM Invoice i
         LEFT JOIN i.unbilledInvoice u

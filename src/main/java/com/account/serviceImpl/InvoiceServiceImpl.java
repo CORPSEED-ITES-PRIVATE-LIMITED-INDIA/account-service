@@ -3,7 +3,10 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
+import com.account.dto.invoice.InvoiceDetailDto;
 import com.account.dto.invoice.InvoiceSummaryDto;
+import com.account.exception.AccessDeniedException;
+import com.account.exception.ResourceNotFoundException;
 import com.account.repository.InvoiceRepository;
 import com.account.service.InvoiceService;
 import lombok.RequiredArgsConstructor;
@@ -30,9 +33,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	private final InvoiceRepository invoiceRepository;
 
-	// ────────────────────────────────────────────────
-	// Generate invoice from a specific payment
-	// ────────────────────────────────────────────────
 	@Override
 	@Transactional
 	public Invoice generateInvoiceForPayment(UnbilledInvoice unbilledInvoice, PaymentReceipt triggeringPayment) {
@@ -85,7 +85,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			invLine.setUnitPriceExGst(estLine.getUnitPriceExGst().multiply(proportion));
 			invLine.setGstRate(estLine.getGstRate());
 
-			invLine.calculateLineTotals();  // assume this method exists in InvoiceLineItem
+			invLine.calculateLineTotals(); // This method exists in InvoiceLineItem as public
 
 			invoiceLines.add(invLine);
 
@@ -116,9 +116,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return invoice;
 	}
 
-	// ────────────────────────────────────────────────
-	// List / paginated invoices
-	// ────────────────────────────────────────────────
 	@Override
 	public List<InvoiceSummaryDto> getInvoicesList(Long createdById, InvoiceStatus status, int page, int size) {
 		log.info("Fetching invoices list | createdById={}, status={}, page={}, size={}",
@@ -144,9 +141,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return invoiceRepository.countInvoices(status, createdById);
 	}
 
-	// ────────────────────────────────────────────────
-	// Helpers
-	// ────────────────────────────────────────────────
 	private String generateInvoiceNumber() {
 		// TODO: In production use financial year + sequence per year
 		long count = invoiceRepository.count() + 1;
@@ -216,5 +210,100 @@ public class InvoiceServiceImpl implements InvoiceService {
 		);
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public InvoiceDetailDto getInvoiceById(Long invoiceId, Long requestingUserId) {
+		if (invoiceId == null || requestingUserId == null) {
+			throw new IllegalArgumentException("Invoice ID and requesting user ID are required");
+		}
+
+		Invoice invoice = invoiceRepository.findById(invoiceId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Invoice not found with ID: " + invoiceId,
+						"INVOICE_NOT_FOUND",
+						"Invoice",
+						invoiceId
+				));
+
+		// Security check: only creator can view (you can extend with roles later)
+		if (invoice.getCreatedBy() == null ||
+				!invoice.getCreatedBy().getId().equals(requestingUserId)) {
+
+			throw new AccessDeniedException(
+					"You are not authorized to view this invoice",
+					"ACCESS_DENIED_INVOICE"
+			);
+		}
+		return toDetailDto(invoice);
+	}
+
+	private InvoiceDetailDto toDetailDto(Invoice invoice) {
+		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
+		Estimate estimate = unbilled != null ? unbilled.getEstimate() : null;
+
+		List<InvoiceDetailDto.LineItemDto> lineItems = invoice.getLineItems().stream()
+				.map(this::toLineItemDto)
+				.sorted(java.util.Comparator.comparing(
+						InvoiceDetailDto.LineItemDto::getDisplayOrder,
+						java.util.Comparator.nullsLast(Integer::compareTo)))
+				.collect(Collectors.toList());
+
+		return InvoiceDetailDto.builder()
+				.id(invoice.getId())
+				.publicUuid(invoice.getPublicUuid())
+				.invoiceNumber(invoice.getInvoiceNumber())
+				.unbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null)
+				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
+				.companyName(unbilled != null && unbilled.getCompany() != null
+						? unbilled.getCompany().getName() : null)
+				.contactName(unbilled != null && unbilled.getContact() != null
+						? unbilled.getContact().getName() : null)
+				.invoiceDate(invoice.getInvoiceDate())
+				.currency(invoice.getCurrency())
+				.status(invoice.getStatus())
+				.irn(invoice.getIrn())
+				.placeOfSupplyStateCode(invoice.getPlaceOfSupplyStateCode())
+				.buyerGstin(invoice.getBuyerGstin())
+				.sellerGstin(invoice.getSellerGstin())
+				.subTotalExGst(invoice.getSubTotalExGst())
+				.totalGstAmount(invoice.getTotalGstAmount())
+				.cgstAmount(invoice.getCgstAmount())
+				.sgstAmount(invoice.getSgstAmount())
+				.igstAmount(invoice.getIgstAmount())
+				.grandTotal(invoice.getGrandTotal())
+				.createdByName(getUserDisplayName(invoice.getCreatedBy()))
+				.createdAt(invoice.getCreatedAt())
+				.updatedAt(invoice.getUpdatedAt())
+				.lineItems(lineItems)
+				.build();
+	}
+
+	private InvoiceDetailDto.LineItemDto toLineItemDto(InvoiceLineItem li) {
+		return InvoiceDetailDto.LineItemDto.builder()
+				.id(li.getId())
+				.sourceEstimateLineItemId(li.getSourceEstimateLineItemId())
+				.itemName(li.getItemName())
+				.description(li.getDescription())
+				.hsnSacCode(li.getHsnSacCode())
+				.quantity(li.getQuantity())
+				.unit(li.getUnit())
+				.unitPriceExGst(li.getUnitPriceExGst())
+				.lineTotalExGst(li.getLineTotalExGst())
+				.gstRate(li.getGstRate())
+				.gstAmount(li.getGstAmount())
+				.lineTotalWithGst(li.getLineTotalWithGst())
+				.cgstAmount(li.getCgstAmount())
+				.sgstAmount(li.getSgstAmount())
+				.igstAmount(li.getIgstAmount())
+				.displayOrder(li.getDisplayOrder())
+				.categoryCode(li.getCategoryCode())
+				.feeType(li.getFeeType())
+				.build();
+	}
+
+	private String getUserDisplayName(User user) {
+		if (user == null) return null;
+		return user.getFullName() != null ? user.getFullName() : user.getEmail();
+	}
 
 }
