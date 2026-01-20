@@ -172,4 +172,19 @@ public class UnbilledInvoiceController {
         long count = paymentService.countSearchUnbilledInvoices(unbilledNumber, companyName);
         return ResponseEntity.ok(count);
     }
+
+    @GetMapping("/{id}")
+    @Operation(summary = "Get full detailed invoice by ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invoice details"),
+            @ApiResponse(responseCode = "403", description = "Not authorized"),
+            @ApiResponse(responseCode = "404", description = "Invoice not found")
+    })
+    public ResponseEntity<UnbilledInvoiceSummaryDto> getInvoiceDetail(
+            @PathVariable Long id,
+            @RequestParam Long userId
+    ) {
+        UnbilledInvoiceSummaryDto unbilledInvoiceSummaryDto = paymentService.getUnilledInovice(id, userId);
+        return ResponseEntity.ok(unbilledInvoiceSummaryDto);
+    }
 }

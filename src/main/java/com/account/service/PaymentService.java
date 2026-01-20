@@ -22,4 +22,6 @@ public interface PaymentService {
     List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(String unbilledNumber, String companyName, int i, int size);
 
     long countSearchUnbilledInvoices(String unbilledNumber, String companyName);
+
+    UnbilledInvoiceSummaryDto getUnilledInovice(Long id, Long userId);
 }

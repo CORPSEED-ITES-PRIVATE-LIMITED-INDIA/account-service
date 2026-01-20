@@ -7,6 +7,7 @@ import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+import com.account.exception.AccessDeniedException;
 import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
@@ -259,6 +260,33 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
+    public UnbilledInvoiceSummaryDto getUnilledInovice(Long unBilledId, Long requestingUserId) {
+        if (unBilledId == null || requestingUserId == null) {
+            throw new IllegalArgumentException("Invoice ID and requesting user ID are required");
+        }
+
+        UnbilledInvoice unbilledInvoice = unbilledInvoiceRepository.findById(unBilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled Invoice not found with ID: " + unBilledId,
+                        "INVOICE_NOT_FOUND",
+                        "UnBilled Invoice",
+                        unBilledId
+                ));
+
+        // Security check: only creator can view (you can extend with roles later)
+        if (unbilledInvoice.getCreatedBy() == null ||
+                !unbilledInvoice.getCreatedBy().getId().equals(requestingUserId)) {
+
+            throw new AccessDeniedException(
+                    "You are not authorized to view this invoice",
+                    "ACCESS_DENIED_INVOICE"
+            );
+        }
+        return mapToSummaryDto(unbilledInvoice);
+    }
+
+
+    @Override
     public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size) {
 
         log.info("Fetching unbilled invoices list (paginated) | userId={}, status={}, page={}, size={}",
@@ -292,7 +320,10 @@ public class PaymentServiceImpl implements PaymentService {
             return unbilledInvoiceRepository.count();
         }
     }
-        @Override
+
+
+
+    @Override
     public List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(
             String unbilledNumber,
             String companyName,
@@ -314,6 +345,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .map(this::mapToSummaryDto)
                 .collect(Collectors.toList());
     }
+
 
     @Override
     public long countSearchUnbilledInvoices(String unbilledNumber, String companyName) {
