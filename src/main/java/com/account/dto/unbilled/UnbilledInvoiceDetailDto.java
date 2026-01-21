@@ -23,6 +23,9 @@ public class UnbilledInvoiceDetailDto {
     private String currency;
     private UnbilledStatus status;
 
+    private String solutionName;
+    private String solutionType;
+
     private BigDecimal subTotalExGst;
     private BigDecimal totalGstAmount;
     private BigDecimal cgstAmount;

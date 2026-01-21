@@ -264,13 +264,17 @@ public class PaymentServiceImpl implements PaymentService {
 
     private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
         Estimate estimate = unbilled.getEstimate();
-        String placeOfSupply = estimate.getPlaceOfSupplyStateCode();
-        boolean isIntraState = "06".equals(placeOfSupply); // Assuming seller state is "06" (Haryana)
 
+        // Determine GST breakup logic (intra-state vs inter-state)
+        String placeOfSupply = estimate.getPlaceOfSupplyStateCode();
+        boolean isIntraState = "06".equals(placeOfSupply); // ← Change "06" to your actual seller state code
+
+        // Map line items with proper GST split
         List<UnbilledInvoiceDetailDto.LineItemDto> lineItemDtos = estimate.getLineItems().stream()
                 .map(item -> {
-                    BigDecimal gstAmount = item.getGstAmount();
+                    BigDecimal gstAmount = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
                     BigDecimal halfGst = gstAmount.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+
                     BigDecimal cgstAmount = isIntraState ? halfGst : BigDecimal.ZERO;
                     BigDecimal sgstAmount = isIntraState ? halfGst : BigDecimal.ZERO;
                     BigDecimal igstAmount = isIntraState ? BigDecimal.ZERO : gstAmount;
@@ -295,13 +299,18 @@ public class PaymentServiceImpl implements PaymentService {
                             .categoryCode(item.getCategoryCode())
                             .feeType(item.getFeeType())
                             .build();
-                }).collect(Collectors.toList());
+                })
+                .collect(Collectors.toList());
 
         return UnbilledInvoiceDetailDto.builder()
                 .id(unbilled.getId())
                 .publicUuid(unbilled.getPublicUuid())
                 .unbilledNumber(unbilled.getUnbilledNumber())
                 .estimateNumber(estimate.getEstimateNumber())
+                // ── NEW: Added missing fields ──
+                .solutionName(estimate.getSolutionName())
+                .solutionType(estimate.getSolutionType() != null ? estimate.getSolutionType().name() : null)
+                // ─────────────────────────────────
                 .companyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null)
                 .contactName(unbilled.getContact() != null ? unbilled.getContact().getName() : null)
                 .invoiceDate(unbilled.getCreatedAt() != null ? unbilled.getCreatedAt().toLocalDate() : null)
@@ -332,7 +341,6 @@ public class PaymentServiceImpl implements PaymentService {
                 .lineItems(lineItemDtos)
                 .build();
     }
-
     @Override
     public UnbilledInvoiceDetailDto getUnbilledInvoice(Long unBilledId, Long requestingUserId) {
         if (unBilledId == null || requestingUserId == null) {
