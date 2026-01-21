@@ -5,6 +5,7 @@ import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
+import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 
 import java.util.List;
@@ -23,5 +24,5 @@ public interface PaymentService {
 
     long countSearchUnbilledInvoices(String unbilledNumber, String companyName);
 
-    UnbilledInvoiceSummaryDto getUnilledInovice(Long id, Long userId);
+    UnbilledInvoiceDetailDto getUnbilledInvoice(Long id, Long userId);
 }

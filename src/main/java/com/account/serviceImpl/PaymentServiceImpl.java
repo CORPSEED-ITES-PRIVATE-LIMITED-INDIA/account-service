@@ -2,10 +2,12 @@ package com.account.serviceImpl;
 
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
+import com.account.domain.estimate.EstimateLineItem;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
+import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ApprovalBlockedException;
@@ -25,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -259,8 +262,79 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
+    private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
+        Estimate estimate = unbilled.getEstimate();
+        String placeOfSupply = estimate.getPlaceOfSupplyStateCode();
+        boolean isIntraState = "06".equals(placeOfSupply); // Assuming seller state is "06" (Haryana)
+
+        List<UnbilledInvoiceDetailDto.LineItemDto> lineItemDtos = estimate.getLineItems().stream()
+                .map(item -> {
+                    BigDecimal gstAmount = item.getGstAmount();
+                    BigDecimal halfGst = gstAmount.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+                    BigDecimal cgstAmount = isIntraState ? halfGst : BigDecimal.ZERO;
+                    BigDecimal sgstAmount = isIntraState ? halfGst : BigDecimal.ZERO;
+                    BigDecimal igstAmount = isIntraState ? BigDecimal.ZERO : gstAmount;
+
+                    return UnbilledInvoiceDetailDto.LineItemDto.builder()
+                            .id(item.getId())
+                            .sourceEstimateLineItemId(item.getId())
+                            .itemName(item.getItemName())
+                            .description(item.getDescription())
+                            .hsnSacCode(item.getHsnSacCode())
+                            .quantity(item.getQuantity())
+                            .unit(item.getUnit())
+                            .unitPriceExGst(item.getUnitPriceExGst())
+                            .lineTotalExGst(item.getLineTotalExGst())
+                            .gstRate(item.getGstRate())
+                            .gstAmount(gstAmount)
+                            .lineTotalWithGst(item.getLineTotalExGst().add(gstAmount))
+                            .cgstAmount(cgstAmount)
+                            .sgstAmount(sgstAmount)
+                            .igstAmount(igstAmount)
+                            .displayOrder(item.getDisplayOrder())
+                            .categoryCode(item.getCategoryCode())
+                            .feeType(item.getFeeType())
+                            .build();
+                }).collect(Collectors.toList());
+
+        return UnbilledInvoiceDetailDto.builder()
+                .id(unbilled.getId())
+                .publicUuid(unbilled.getPublicUuid())
+                .unbilledNumber(unbilled.getUnbilledNumber())
+                .estimateNumber(estimate.getEstimateNumber())
+                .companyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null)
+                .contactName(unbilled.getContact() != null ? unbilled.getContact().getName() : null)
+                .invoiceDate(unbilled.getCreatedAt() != null ? unbilled.getCreatedAt().toLocalDate() : null)
+                .currency(estimate.getCurrency())
+                .status(unbilled.getStatus())
+                .subTotalExGst(estimate.getSubTotalExGst())
+                .totalGstAmount(estimate.getTotalGstAmount())
+                .cgstAmount(estimate.getCgstAmount())
+                .sgstAmount(estimate.getSgstAmount())
+                .igstAmount(estimate.getIgstAmount())
+                .grandTotal(unbilled.getTotalAmount())
+                .receivedAmount(unbilled.getReceivedAmount())
+                .outstandingAmount(unbilled.getOutstandingAmount())
+                .createdByName(unbilled.getCreatedBy() != null
+                        ? (unbilled.getCreatedBy().getFullName() != null
+                        ? unbilled.getCreatedBy().getFullName()
+                        : unbilled.getCreatedBy().getEmail())
+                        : null)
+                .createdAt(unbilled.getCreatedAt())
+                .updatedAt(unbilled.getUpdatedAt())
+                .approvedByName(unbilled.getApprovedBy() != null
+                        ? (unbilled.getApprovedBy().getFullName() != null
+                        ? unbilled.getApprovedBy().getFullName()
+                        : unbilled.getApprovedBy().getEmail())
+                        : null)
+                .approvedAt(unbilled.getApprovedAt())
+                .approvalRemarks(unbilled.getApprovalRemarks())
+                .lineItems(lineItemDtos)
+                .build();
+    }
+
     @Override
-    public UnbilledInvoiceSummaryDto getUnilledInovice(Long unBilledId, Long requestingUserId) {
+    public UnbilledInvoiceDetailDto getUnbilledInvoice(Long unBilledId, Long requestingUserId) {
         if (unBilledId == null || requestingUserId == null) {
             throw new IllegalArgumentException("Invoice ID and requesting user ID are required");
         }
@@ -282,7 +356,7 @@ public class PaymentServiceImpl implements PaymentService {
                     "ACCESS_DENIED_INVOICE"
             );
         }
-        return mapToSummaryDto(unbilledInvoice);
+        return mapToDetailDto(unbilledInvoice);
     }
 
 

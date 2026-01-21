@@ -3,6 +3,7 @@ package com.account.controller.unbilled;
 import com.account.domain.UnbilledStatus;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
+import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 import com.account.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -180,11 +181,11 @@ public class UnbilledInvoiceController {
             @ApiResponse(responseCode = "403", description = "Not authorized"),
             @ApiResponse(responseCode = "404", description = "Invoice not found")
     })
-    public ResponseEntity<UnbilledInvoiceSummaryDto> getInvoiceDetail(
+    public ResponseEntity<UnbilledInvoiceDetailDto> getInvoiceDetail(
             @PathVariable Long id,
             @RequestParam Long userId
     ) {
-        UnbilledInvoiceSummaryDto unbilledInvoiceSummaryDto = paymentService.getUnilledInovice(id, userId);
-        return ResponseEntity.ok(unbilledInvoiceSummaryDto);
+        UnbilledInvoiceDetailDto unbilledInvoiceDetailDto = paymentService.getUnbilledInvoice(id, userId);
+        return ResponseEntity.ok(unbilledInvoiceDetailDto);
     }
 }
