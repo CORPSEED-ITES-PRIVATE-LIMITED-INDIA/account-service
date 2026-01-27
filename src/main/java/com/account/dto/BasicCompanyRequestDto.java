@@ -38,4 +38,6 @@ public class BasicCompanyRequestDto {
     private String panNo;
 
     private Long leadId;
+
+    private Long companyUnitId;
 }

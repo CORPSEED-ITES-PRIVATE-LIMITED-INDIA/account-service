@@ -28,7 +28,6 @@ import java.time.LocalDateTime;
 public class CompanyUnit {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", updatable = false, nullable = false)
     private Long id;
 
@@ -45,6 +44,7 @@ public class CompanyUnit {
 
     @Column(name = "address_line2")
     private String addressLine2;
+
 
     @Column(name = "city", nullable = false)
     private String city;

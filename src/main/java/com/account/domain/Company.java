@@ -27,7 +27,6 @@ import java.util.List;
 public class Company {
 
 	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY) // ✅ DB auto-increment
 	@Column(name = "id", updatable = false, nullable = false)
 	private Long id;
 

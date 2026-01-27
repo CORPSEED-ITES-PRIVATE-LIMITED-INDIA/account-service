@@ -2,7 +2,6 @@ package com.account.serviceImpl;
 
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
-import com.account.domain.estimate.EstimateLineItem;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -16,6 +15,7 @@ import com.account.exception.ValidationException;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
+import com.account.util.DateTimeUtil;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +46,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentTypeRepository paymentTypeRepository;
     private final UserRepository userRepository;
     private final InvoiceService invoiceService;
+    private final DateTimeUtil dateTimeUtil;
 
     @Override
     @Transactional
@@ -166,13 +167,13 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // ────────────────────────────────────────────────
-        // NEW: Enforce company + unit approval BEFORE allowing unbilled approval
+        // Enforce company + unit approval BEFORE allowing unbilled approval
         // ────────────────────────────────────────────────
         Company company = unbilled.getCompany();
         CompanyUnit unit = unbilled.getUnit();
 
         boolean companyApproved = company != null && company.isAccountsApproved();
-        boolean unitApproved = unit == null || unit.isAccountsApproved(); // if unit is optional/null → ignore
+        boolean unitApproved = unit == null || unit.isAccountsApproved(); // unit optional
 
         if (!companyApproved || !unitApproved) {
             StringBuilder msg = new StringBuilder("Cannot approve this unbilled invoice yet. ");
@@ -188,11 +189,9 @@ public class PaymentServiceImpl implements PaymentService {
 
             msg.append("Please go to the company/unit details and approve them first.");
 
-            // Optional: throw custom exception with extra metadata for frontend
             throw new ApprovalBlockedException(msg.toString(), companyApproved, unitApproved);
         }
 
-        // If we reach here → approvals are OK → proceed normally
         User approver = userRepository.findById(request.getApproverUserId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Approver not found with ID: " + request.getApproverUserId(),
@@ -203,7 +202,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         unbilled.setStatus(UnbilledStatus.APPROVED);
         unbilled.setApprovedBy(approver);
-        unbilled.setApprovedAt(LocalDateTime.now());
+        unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
         unbilled.setApprovalRemarks(request.getApprovalRemarks());
 
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
@@ -341,6 +340,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .lineItems(lineItemDtos)
                 .build();
     }
+
     @Override
     public UnbilledInvoiceDetailDto getUnbilledInvoice(Long unBilledId, Long requestingUserId) {
         if (unBilledId == null || requestingUserId == null) {
@@ -367,7 +367,6 @@ public class PaymentServiceImpl implements PaymentService {
         return mapToDetailDto(unbilledInvoice);
     }
 
-
     @Override
     public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size) {
 
@@ -386,6 +385,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .map(this::mapToSummaryDto)
                 .collect(Collectors.toList());
     }
+
     @Override
     public long getUnbilledInvoicesCount(Long userId, UnbilledStatus status) {
         log.info("Counting unbilled invoices | userId={}, status={}",
@@ -402,8 +402,6 @@ public class PaymentServiceImpl implements PaymentService {
             return unbilledInvoiceRepository.count();
         }
     }
-
-
 
     @Override
     public List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(
@@ -427,7 +425,6 @@ public class PaymentServiceImpl implements PaymentService {
                 .map(this::mapToSummaryDto)
                 .collect(Collectors.toList());
     }
-
 
     @Override
     public long countSearchUnbilledInvoices(String unbilledNumber, String companyName) {
@@ -464,8 +461,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private String generateUnbilledNumber() {
         long count = unbilledInvoiceRepository.count() + 1;
-        int year = LocalDateTime.now().getYear();
+        int year = dateTimeUtil.nowLocalDateTime().getYear();
         return String.format("UNB-%d-%08d", year, count);
     }
-
 }

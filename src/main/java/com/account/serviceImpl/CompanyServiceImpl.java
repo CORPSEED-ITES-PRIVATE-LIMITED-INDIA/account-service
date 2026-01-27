@@ -13,6 +13,7 @@ import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
 import com.account.service.company.CompanyService;
+import com.account.util.DateTimeUtil;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
@@ -22,11 +23,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Date;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
+/**
+ * Implementation of CompanyService with consistent IST timezone handling
+ */
 @Service
 @Transactional
 public class CompanyServiceImpl implements CompanyService {
@@ -35,18 +37,22 @@ public class CompanyServiceImpl implements CompanyService {
 
     private final CompanyRepository companyRepository;
     private final CompanyUnitRepository companyUnitRepository;
+    private final DateTimeUtil dateTimeUtil;
 
     @PersistenceContext
     private EntityManager em;
 
-    public CompanyServiceImpl(CompanyRepository companyRepository,
-                              CompanyUnitRepository companyUnitRepository) {
+    public CompanyServiceImpl(
+            CompanyRepository companyRepository,
+            CompanyUnitRepository companyUnitRepository,
+            DateTimeUtil dateTimeUtil) {
         this.companyRepository = companyRepository;
         this.companyUnitRepository = companyUnitRepository;
+        this.dateTimeUtil = dateTimeUtil;
     }
 
     // ────────────────────────────────────────────────
-    //  Method 1: Sync from Lead (uses leadCompanyId / leadUnitId)
+    // Method 1: Sync from Lead (uses leadCompanyId / leadUnitId)
     // ────────────────────────────────────────────────
     @Override
     public CompanyResponseDto createCompanyFromLead(CompanyRequestDto requestDto) {
@@ -71,14 +77,14 @@ public class CompanyServiceImpl implements CompanyService {
         company.setName(StringUtils.hasText(requestDto.getName()) ? requestDto.getName().trim() : company.getName());
         company.setPanNo(StringUtils.hasText(requestDto.getPanNo()) ? requestDto.getPanNo().trim().toUpperCase() : company.getPanNo());
 
+        // Use consistent IST conversion
+        company.setEstablishDate(dateTimeUtil.toLocalDate(requestDto.getEstablishDate()));
 
-        company.setEstablishDate(toLocalDate(requestDto.getEstablishDate()));
         company.setIndustry(requestDto.getIndustry());
-
 
         // sales & assignment
         company.setStatus(requestDto.getStatus());
-        company.setLeadId(requestDto.getLeadId());
+        company.setLeadId(requestDto.getLeadId());  // Note: this overwrites the earlier setLeadId — intentional?
 
         // agreements
         company.setPaymentTerm(requestDto.getPaymentTerm());
@@ -90,7 +96,7 @@ public class CompanyServiceImpl implements CompanyService {
 
         // consultant flow
         company.setIsConsultant(Boolean.TRUE.equals(requestDto.getIsConsultant()));
-//        company.setActualClientCompanyId(requestDto.getActualClientCompanyId());
+        // company.setActualClientCompanyId(requestDto.getActualClientCompanyId());
 
         // audit (optional)
         if (requestDto.getCreatedById() != null && isNew) {
@@ -140,7 +146,6 @@ public class CompanyServiceImpl implements CompanyService {
                 unit.setGstBusinessType(unitDto.getGstBusinessType());
                 unit.setGstTypePrice(unitDto.getGstTypePrice());
 
-
                 // contacts (by id)
                 if (unitDto.getPrimaryContactId() != null) {
                     unit.setPrimaryContact(em.getReference(Contact.class, unitDto.getPrimaryContactId()));
@@ -153,13 +158,15 @@ public class CompanyServiceImpl implements CompanyService {
                     unit.setSecondaryContact(null);
                 }
 
-                unit.setUnitOpeningDate(toLocalDate(unitDto.getUnitOpeningDate()));
+                // Use consistent IST conversion
+                unit.setUnitOpeningDate(dateTimeUtil.toLocalDate(unitDto.getUnitOpeningDate()));
+
                 unit.setConsultantPresent(Boolean.TRUE.equals(unitDto.getConsultantPresent()));
 
                 // link
                 unit.setCompany(company);
 
-                // default status (you can change to “unitDto.getStatus()” if you add it to DTO)
+                // default status
                 if (!StringUtils.hasText(unit.getStatus())) {
                     unit.setStatus("Active");
                 }
@@ -200,7 +207,7 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     // ────────────────────────────────────────────────
-    //  Method 2: Basic / Minimal company creation
+    // Method 2: Basic / Minimal company creation
     // ────────────────────────────────────────────────
     @Override
     public CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto dto) {
@@ -212,7 +219,7 @@ public class CompanyServiceImpl implements CompanyService {
             throw new ValidationException("leadCompanyId is required", "ERR_LEAD_COMPANY_ID_REQUIRED");
         }
 
-        // IMPORTANT: check existence by leadCompanyId, not by primary key id
+        // Check existence by leadCompanyId (business key), not by primary key
         if (companyRepository.existsByLeadId(leadCompanyId)) {
             throw new ValidationException(
                     "Company with leadCompanyId " + leadCompanyId + " already exists",
@@ -258,13 +265,14 @@ public class CompanyServiceImpl implements CompanyService {
         }
 
         Company company = new Company();
-        company.setLeadId(leadCompanyId);
+        company.setLeadId(dto.getLeadId());
+        company.setId(leadCompanyId);           // ← Using leadCompanyId as entity ID (careful!)
         company.setName(name);
         company.setPanNo(panNo);
 
+        company.setUuid(dateTimeUtil.generateUuid());           // or generateCompactUuid()
         company.setIsConsultant(false);
         company.setOnboardingStatus("Minimal");
-
         company.setDeleted(false);
 
         company = companyRepository.save(company);
@@ -282,6 +290,7 @@ public class CompanyServiceImpl implements CompanyService {
                     ? dto.getUnitName().trim()
                     : name + " - Main Branch";
 
+            unit.setId(dto.getCompanyUnitId());
             unit.setUnitName(unitName);
             unit.setAddressLine1(dto.getAddress());
             unit.setCity(dto.getCity());
@@ -340,10 +349,5 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setCreatedAt(unit.getCreatedAt());
         dto.setUpdatedAt(unit.getUpdatedAt());
         return dto;
-    }
-
-    private static LocalDate toLocalDate(Date date) {
-        if (date == null) return null;
-        return date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
     }
 }
