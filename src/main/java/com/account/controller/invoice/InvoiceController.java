@@ -24,6 +24,7 @@ public class InvoiceController {
 
     private final InvoiceService invoiceService;
 
+
     @Operation(summary = "Get paginated list of tax invoices")
     @GetMapping("/list")
     public ResponseEntity<List<InvoiceSummaryDto>> getInvoicesList(

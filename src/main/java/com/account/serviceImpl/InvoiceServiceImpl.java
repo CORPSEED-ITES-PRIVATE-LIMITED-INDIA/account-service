@@ -8,6 +8,7 @@ import com.account.dto.invoice.InvoiceSummaryDto;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.InvoiceRepository;
+import com.account.repository.UserRepository;
 import com.account.service.InvoiceService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -32,6 +33,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private static final Logger log = LoggerFactory.getLogger(InvoiceServiceImpl.class);
 
 	private final InvoiceRepository invoiceRepository;
+
+	private final UserRepository userRepository;
 
 	@Override
 	@Transactional
@@ -117,15 +120,40 @@ public class InvoiceServiceImpl implements InvoiceService {
 	}
 
 	@Override
-	public List<InvoiceSummaryDto> getInvoicesList(Long createdById, InvoiceStatus status, int page, int size) {
-		log.info("Fetching invoices list | createdById={}, status={}, page={}, size={}",
-				createdById != null ? createdById : "all",
-				status != null ? status : "all",
-				page + 1, size);
+	public List<InvoiceSummaryDto> getInvoicesList(Long userId, InvoiceStatus status, int page, int size) {
+
+		if (userId == null) {
+			throw new IllegalArgumentException("userId is required");
+		}
+
+		User requestingUser = userRepository.findById(userId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"User not found with ID: " + userId,
+						"USER_NOT_FOUND",
+						"User",
+						userId
+				));
+
+		boolean isAdmin = requestingUser.getUserRole() != null
+				&& requestingUser.getUserRole().stream()
+				.anyMatch(r -> r != null && "ADMIN".equalsIgnoreCase(r.getName()));
+
+		boolean isAccountDept = requestingUser.getDepartment() != null
+				&& "account".equalsIgnoreCase(requestingUser.getDepartment());
+
+		// Authorization rules
+		Long createdByIdFilter;
+		if (isAdmin) {
+			createdByIdFilter = null;          // admin gets all
+		} else if (isAccountDept) {
+			createdByIdFilter = userId;        // account dept: only own invoices (safe default)
+		} else {
+			throw new AccessDeniedException("Not authorized to view invoices", "ACCESS_DENIED_INVOICE_LIST");
+		}
 
 		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-		Page<Invoice> pageResult = invoiceRepository.findInvoices(status, createdById, pageable);
+		Page<Invoice> pageResult = invoiceRepository.findInvoices(status, createdByIdFilter, pageable);
 
 		return pageResult.getContent().stream()
 				.map(this::toSummaryDto)
@@ -133,6 +161,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 	}
 
 	@Override
+
 	public long getInvoicesCount(Long createdById, InvoiceStatus status) {
 		log.info("Counting invoices | createdById={}, status={}",
 				createdById != null ? createdById : "all",

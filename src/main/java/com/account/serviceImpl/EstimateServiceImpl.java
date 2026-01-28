@@ -130,6 +130,7 @@ public class EstimateServiceImpl implements EstimateService {
 
         String estimateNumber = generateEstimateNumber();
         estimate.setEstimateNumber(estimateNumber);
+        estimate.setLeadId(requestDto.getLeadId());
 
         estimate.setEstimateDate(requestDto.getEstimateDate() != null
                 ? requestDto.getEstimateDate()
