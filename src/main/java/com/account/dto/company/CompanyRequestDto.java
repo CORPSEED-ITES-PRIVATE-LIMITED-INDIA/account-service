@@ -100,9 +100,6 @@ public class CompanyRequestDto {
     private String sCountry;
     private String secondaryPinCode;
 
-    // ─────────────────────────────
-    // AUDIT (optional)
-    // ─────────────────────────────
     private Long createdById;
     private Long updatedById;
 }

@@ -1,20 +1,16 @@
 package com.account.service;
 
-import com.account.domain.Invoice;
-import com.account.domain.InvoiceStatus;
-import com.account.domain.PaymentReceipt;
-import com.account.domain.UnbilledInvoice;
+import com.account.domain.*;
 import com.account.dto.invoice.InvoiceDetailDto;
 import com.account.dto.invoice.InvoiceSummaryDto;
 
 import java.util.List;
 
 public interface InvoiceService {
+	
+	
 
-	// Generation (called from PaymentService / approval flow)
-	Invoice generateInvoiceForPayment(UnbilledInvoice unbilledInvoice, PaymentReceipt triggeringPayment);
 
-	// Listing / querying
 	List<InvoiceSummaryDto> getInvoicesList(
 			Long createdById,
 			InvoiceStatus status,
@@ -30,6 +26,8 @@ public interface InvoiceService {
 	long countSearchInvoices(String invoiceNumber, String companyName);
 
 	InvoiceDetailDto getInvoiceById(Long id, Long userId);
+
+	Invoice generateInvoiceForPayment(UnbilledInvoice unbilled, PaymentReceipt triggeringReceipt, User approver);
 
 	// Optional future methods can be added here
 	// Invoice getInvoiceDetail(Long id);

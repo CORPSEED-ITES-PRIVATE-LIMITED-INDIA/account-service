@@ -106,8 +106,8 @@ public class Invoice {
     @Column(name = "buyer_gstin", length = 15)
     private String buyerGstin;
 
-    @Column(name = "seller_gstin", length = 15)
-    private String sellerGstin;
+//    @Column(name = "seller_gstin", length = 15)
+//    private String sellerGstin;
 
     // Auditing
     @CreatedBy

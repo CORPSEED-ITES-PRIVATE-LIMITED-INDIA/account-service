@@ -1,15 +1,15 @@
-// Summary DTO for listing unbilled invoices
 package com.account.dto.unbilled;
 
 import com.account.domain.UnbilledStatus;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Getter
-@Builder
+@Setter
 public class UnbilledInvoiceSummaryDto {
 
     private Long id;

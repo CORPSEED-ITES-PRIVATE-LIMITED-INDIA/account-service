@@ -11,9 +11,8 @@ public interface CompanyRepository extends JpaRepository<Company, Long> {
 
     boolean existsByPanNoAndIsDeletedFalse(String panNo);
 
-    // Fixed versions ↓
-    Optional<Company> findByLeadId(Long leadId);           // ← change here
+    Optional<Company> findByLeadId(Long leadId);
 
-    boolean existsByLeadId(Long leadId);                   // ← change here too if you use it
+    boolean existsByLeadId(Long leadId);
 
 }

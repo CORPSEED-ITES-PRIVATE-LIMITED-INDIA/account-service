@@ -1,8 +1,9 @@
 package com.account.dto.invoice;
 
 import com.account.domain.InvoiceStatus;
-import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -10,7 +11,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
-@Builder
 public class InvoiceDetailDto {
 
     // Basic info (same as summary + more)
@@ -46,7 +46,8 @@ public class InvoiceDetailDto {
     private List<LineItemDto> lineItems;
 
     @Data
-    @Builder
+    @Getter
+    @Setter
     public static class LineItemDto {
         private Long id;
         private Long sourceEstimateLineItemId;

@@ -108,13 +108,6 @@ public class UnbilledInvoice {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    @PrePersist
-    protected void onCreate() {
-        if (publicUuid == null) {
-            publicUuid = UUID.randomUUID().toString();
-        }
-    }
-
     /**
      * Updates received and outstanding amounts only.
      * Does NOT change status — status is controlled only by approval workflow.
@@ -127,8 +120,5 @@ public class UnbilledInvoice {
         this.receivedAmount = this.receivedAmount.add(amount);
         this.outstandingAmount = this.totalAmount.subtract(this.receivedAmount);
 
-        // IMPORTANT: REMOVE THESE LINES COMPLETELY
-        // if (this.outstandingAmount.compareTo(BigDecimal.ZERO) <= 0) { ... }
-        // else if (this.receivedAmount.compareTo(BigDecimal.ZERO) > 0) { ... }
     }
 }

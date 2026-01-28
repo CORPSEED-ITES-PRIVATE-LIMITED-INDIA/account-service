@@ -10,6 +10,7 @@ import com.account.exception.ResourceNotFoundException;
 import com.account.repository.InvoiceRepository;
 import com.account.repository.UserRepository;
 import com.account.service.InvoiceService;
+import com.account.util.DateTimeUtil;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -36,12 +38,15 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	private final UserRepository userRepository;
 
+	private final DateTimeUtil dateTimeUtil;
+
+
 	@Override
 	@Transactional
-	public Invoice generateInvoiceForPayment(UnbilledInvoice unbilledInvoice, PaymentReceipt triggeringPayment) {
+	public Invoice generateInvoiceForPayment(UnbilledInvoice unbilledInvoice, PaymentReceipt triggeringPayment, User createdBy) {
 
-		if (unbilledInvoice == null || triggeringPayment == null) {
-			throw new IllegalArgumentException("UnbilledInvoice and PaymentReceipt are required");
+		if (unbilledInvoice == null || triggeringPayment == null || createdBy == null) {
+			throw new IllegalArgumentException("UnbilledInvoice, PaymentReceipt, and createdBy User are required");
 		}
 
 		Estimate estimate = unbilledInvoice.getEstimate();
@@ -49,27 +54,66 @@ public class InvoiceServiceImpl implements InvoiceService {
 			throw new IllegalStateException("Estimate not found for unbilled invoice");
 		}
 
-		// Calculate proportion based on this payment vs total unbilled amount
+		// Calculate proportion: this payment / total unbilled amount
 		BigDecimal proportion = triggeringPayment.getAmount()
-				.divide(unbilledInvoice.getTotalAmount(), 6, BigDecimal.ROUND_HALF_UP);
+				.divide(unbilledInvoice.getTotalAmount(), 6, RoundingMode.HALF_UP);
 
-		log.info("Generating invoice for payment {} | proportion: {} | unbilled: {}",
-				triggeringPayment.getId(), proportion, unbilledInvoice.getUnbilledNumber());
+		log.info("Generating invoice for payment {} | proportion: {} | unbilled: {} | estimate: {}",
+				triggeringPayment.getId(), proportion, unbilledInvoice.getUnbilledNumber(),
+				estimate.getEstimateNumber());
 
 		Invoice invoice = new Invoice();
 		invoice.setUnbilledInvoice(unbilledInvoice);
 		invoice.setTriggeringPayment(triggeringPayment);
 		invoice.setInvoiceNumber(generateInvoiceNumber());
-		invoice.setPublicUuid(java.util.UUID.randomUUID().toString());
-		invoice.setInvoiceDate(LocalDate.now());
+		invoice.setPublicUuid(dateTimeUtil.generateUuid());
+		invoice.setInvoiceDate(dateTimeUtil.nowLocalDate());
 		invoice.setCurrency("INR");
 		invoice.setStatus(InvoiceStatus.GENERATED);
 		invoice.setPlaceOfSupplyStateCode(estimate.getPlaceOfSupplyStateCode());
 
-		// Copy and scale line items
+		invoice.setCreatedBy(createdBy);
+
+		// Buyer GSTIN – take from the UNIT (most accurate), fallback to any valid unit
+		String buyerGstin = null;
+		if (unbilledInvoice.getUnit() != null) {
+			buyerGstin = unbilledInvoice.getUnit().getGstNo();
+		}
+
+		// Fallback: if no specific unit is linked, take first non-deleted unit with GSTIN
+		if (buyerGstin == null || buyerGstin.trim().isEmpty()) {
+			if (unbilledInvoice.getCompany() != null && unbilledInvoice.getCompany().getUnits() != null) {
+				buyerGstin = unbilledInvoice.getCompany().getUnits().stream()
+						.filter(unit -> !unit.isDeleted() && unit.getGstNo() != null && !unit.getGstNo().trim().isEmpty())
+						.map(CompanyUnit::getGstNo)
+						.findFirst()
+						.orElse(null);
+			}
+		}
+
+		if (buyerGstin != null && !buyerGstin.trim().isEmpty()) {
+			invoice.setBuyerGstin(buyerGstin.trim());
+		} else {
+			log.warn("No valid buyer GSTIN found for unbilled invoice {} (Company: {}, Unit: {})",
+					unbilledInvoice.getUnbilledNumber(),
+					unbilledInvoice.getCompany() != null ? unbilledInvoice.getCompany().getName() : "N/A",
+					unbilledInvoice.getUnit() != null ? unbilledInvoice.getUnit().getUnitName() : "N/A");
+		}
+
+
+		String sellerStateCode = "06"; // Example: Delhi = "07", Haryana = "06", Maharashtra = "27", etc.
+		String placeOfSupply = invoice.getPlaceOfSupplyStateCode();
+		boolean isIntraState = placeOfSupply != null && placeOfSupply.equals(sellerStateCode);
+
+		// ─────────────────────────────────────────────────────────────
+		// Line items – proportional copy + GST breakup
+		// ─────────────────────────────────────────────────────────────
 		List<InvoiceLineItem> invoiceLines = new ArrayList<>();
 		BigDecimal subTotalExGst = BigDecimal.ZERO;
 		BigDecimal totalGst = BigDecimal.ZERO;
+		BigDecimal totalCgst = BigDecimal.ZERO;
+		BigDecimal totalSgst = BigDecimal.ZERO;
+		BigDecimal totalIgst = BigDecimal.ZERO;
 
 		for (EstimateLineItem estLine : estimate.getLineItems()) {
 			InvoiceLineItem invLine = new InvoiceLineItem();
@@ -83,42 +127,57 @@ public class InvoiceServiceImpl implements InvoiceService {
 			invLine.setFeeType(estLine.getFeeType());
 			invLine.setDisplayOrder(estLine.getDisplayOrder());
 
-			// Proportional scaling (quantity stays full, amounts scaled)
 			invLine.setQuantity(estLine.getQuantity());
 			invLine.setUnitPriceExGst(estLine.getUnitPriceExGst().multiply(proportion));
 			invLine.setGstRate(estLine.getGstRate());
 
-			invLine.calculateLineTotals(); // This method exists in InvoiceLineItem as public
+			invLine.calculateLineTotals();  // Must recalculate totals after scaling
+
+			// Apply correct GST split (CGST+SGST or IGST)
+			BigDecimal gstAmount = invLine.getGstAmount() != null ? invLine.getGstAmount() : BigDecimal.ZERO;
+			BigDecimal halfGst = gstAmount.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+
+			if (isIntraState) {
+				invLine.setCgstAmount(halfGst);
+				invLine.setSgstAmount(halfGst);
+				invLine.setIgstAmount(BigDecimal.ZERO);
+			} else {
+				invLine.setCgstAmount(BigDecimal.ZERO);
+				invLine.setSgstAmount(BigDecimal.ZERO);
+				invLine.setIgstAmount(gstAmount);
+			}
 
 			invoiceLines.add(invLine);
 
 			subTotalExGst = subTotalExGst.add(invLine.getLineTotalExGst());
-			totalGst = totalGst.add(invLine.getGstAmount());
+			totalGst = totalGst.add(gstAmount);
+			totalCgst = totalCgst.add(invLine.getCgstAmount());
+			totalSgst = totalSgst.add(invLine.getSgstAmount());
+			totalIgst = totalIgst.add(invLine.getIgstAmount());
 		}
 
-		// Set totals
-		invoice.setSubTotalExGst(subTotalExGst);
-		invoice.setTotalGstAmount(totalGst);
-		invoice.setGrandTotal(subTotalExGst.add(totalGst));
+		// Set header totals
+		invoice.setSubTotalExGst(subTotalExGst.setScale(2, RoundingMode.HALF_UP));
+		invoice.setTotalGstAmount(totalGst.setScale(2, RoundingMode.HALF_UP));
+		invoice.setGrandTotal(invoice.getSubTotalExGst().add(invoice.getTotalGstAmount()));
 
-		// Simple GST breakup (assuming intra-state - CGST + SGST)
-		// In production → use placeOfSupply vs seller state to decide CGST/SGST vs IGST
-		BigDecimal halfGst = totalGst.divide(BigDecimal.valueOf(2), 2, BigDecimal.ROUND_HALF_UP);
-		invoice.setCgstAmount(halfGst);
-		invoice.setSgstAmount(halfGst);
-		invoice.setIgstAmount(BigDecimal.ZERO);
+		invoice.setCgstAmount(totalCgst.setScale(2, RoundingMode.HALF_UP));
+		invoice.setSgstAmount(totalSgst.setScale(2, RoundingMode.HALF_UP));
+		invoice.setIgstAmount(totalIgst.setScale(2, RoundingMode.HALF_UP));
 
 		invoice.setLineItems(invoiceLines);
 
-		// Save (cascade saves line items)
 		invoice = invoiceRepository.save(invoice);
 
-		log.info("Generated invoice: {} | grandTotal: {} | lines: {} | for payment: {}",
-				invoice.getInvoiceNumber(), invoice.getGrandTotal(), invoiceLines.size(), triggeringPayment.getId());
+		log.info("Generated invoice: {} | grandTotal: {} | lines: {} | buyerGSTIN: {} | for payment: {}",
+				invoice.getInvoiceNumber(),
+				invoice.getGrandTotal(),
+				invoiceLines.size(),
+				invoice.getBuyerGstin(),
+				triggeringPayment.getId());
 
 		return invoice;
 	}
-
 	@Override
 	public List<InvoiceSummaryDto> getInvoicesList(Long userId, InvoiceStatus status, int page, int size) {
 
@@ -139,14 +198,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.anyMatch(r -> r != null && "ADMIN".equalsIgnoreCase(r.getName()));
 
 		boolean isAccountDept = requestingUser.getDepartment() != null
-				&& "account".equalsIgnoreCase(requestingUser.getDepartment());
+				&& "accounts".equalsIgnoreCase(requestingUser.getDepartment());
 
 		// Authorization rules
 		Long createdByIdFilter;
 		if (isAdmin) {
-			createdByIdFilter = null;          // admin gets all
+			createdByIdFilter = null;
 		} else if (isAccountDept) {
-			createdByIdFilter = userId;        // account dept: only own invoices (safe default)
+			createdByIdFilter = userId;
 		} else {
 			throw new AccessDeniedException("Not authorized to view invoices", "ACCESS_DENIED_INVOICE_LIST");
 		}
@@ -254,7 +313,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 						invoiceId
 				));
 
-		// Security check: only creator can view (you can extend with roles later)
 		if (invoice.getCreatedBy() == null ||
 				!invoice.getCreatedBy().getId().equals(requestingUserId)) {
 
@@ -268,8 +326,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	private InvoiceDetailDto toDetailDto(Invoice invoice) {
 		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
-		Estimate estimate = unbilled != null ? unbilled.getEstimate() : null;
+		Estimate estimate = (unbilled != null) ? unbilled.getEstimate() : null;
 
+		// Map and sort line items
 		List<InvoiceDetailDto.LineItemDto> lineItems = invoice.getLineItems().stream()
 				.map(this::toLineItemDto)
 				.sorted(java.util.Comparator.comparing(
@@ -277,57 +336,73 @@ public class InvoiceServiceImpl implements InvoiceService {
 						java.util.Comparator.nullsLast(Integer::compareTo)))
 				.collect(Collectors.toList());
 
-		return InvoiceDetailDto.builder()
-				.id(invoice.getId())
-				.publicUuid(invoice.getPublicUuid())
-				.invoiceNumber(invoice.getInvoiceNumber())
-				.unbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null)
-				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
-				.companyName(unbilled != null && unbilled.getCompany() != null
-						? unbilled.getCompany().getName() : null)
-				.contactName(unbilled != null && unbilled.getContact() != null
-						? unbilled.getContact().getName() : null)
-				.invoiceDate(invoice.getInvoiceDate())
-				.currency(invoice.getCurrency())
-				.status(invoice.getStatus())
-				.irn(invoice.getIrn())
-				.placeOfSupplyStateCode(invoice.getPlaceOfSupplyStateCode())
-				.buyerGstin(invoice.getBuyerGstin())
-				.sellerGstin(invoice.getSellerGstin())
-				.subTotalExGst(invoice.getSubTotalExGst())
-				.totalGstAmount(invoice.getTotalGstAmount())
-				.cgstAmount(invoice.getCgstAmount())
-				.sgstAmount(invoice.getSgstAmount())
-				.igstAmount(invoice.getIgstAmount())
-				.grandTotal(invoice.getGrandTotal())
-				.createdByName(getUserDisplayName(invoice.getCreatedBy()))
-				.createdAt(invoice.getCreatedAt())
-				.updatedAt(invoice.getUpdatedAt())
-				.lineItems(lineItems)
-				.build();
+		// Create DTO instance with setters
+		InvoiceDetailDto dto = new InvoiceDetailDto();
+
+		dto.setId(invoice.getId());
+		dto.setPublicUuid(invoice.getPublicUuid());
+		dto.setInvoiceNumber(invoice.getInvoiceNumber());
+		dto.setUnbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null);
+		dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+
+		dto.setCompanyName(
+				unbilled != null && unbilled.getCompany() != null
+						? unbilled.getCompany().getName()
+						: null
+		);
+
+		dto.setContactName(
+				unbilled != null && unbilled.getContact() != null
+						? unbilled.getContact().getName()
+						: null
+		);
+
+		dto.setInvoiceDate(invoice.getInvoiceDate());
+		dto.setCurrency(invoice.getCurrency());
+		dto.setStatus(invoice.getStatus());
+		dto.setIrn(invoice.getIrn());
+		dto.setPlaceOfSupplyStateCode(invoice.getPlaceOfSupplyStateCode());
+		dto.setBuyerGstin(invoice.getBuyerGstin());
+
+		dto.setSubTotalExGst(invoice.getSubTotalExGst());
+		dto.setTotalGstAmount(invoice.getTotalGstAmount());
+		dto.setCgstAmount(invoice.getCgstAmount());
+		dto.setSgstAmount(invoice.getSgstAmount());
+		dto.setIgstAmount(invoice.getIgstAmount());
+		dto.setGrandTotal(invoice.getGrandTotal());
+
+		dto.setCreatedByName(getUserDisplayName(invoice.getCreatedBy()));
+		dto.setCreatedAt(invoice.getCreatedAt());
+		dto.setUpdatedAt(invoice.getUpdatedAt());
+
+		dto.setLineItems(lineItems);
+
+		return dto;
 	}
 
 	private InvoiceDetailDto.LineItemDto toLineItemDto(InvoiceLineItem li) {
-		return InvoiceDetailDto.LineItemDto.builder()
-				.id(li.getId())
-				.sourceEstimateLineItemId(li.getSourceEstimateLineItemId())
-				.itemName(li.getItemName())
-				.description(li.getDescription())
-				.hsnSacCode(li.getHsnSacCode())
-				.quantity(li.getQuantity())
-				.unit(li.getUnit())
-				.unitPriceExGst(li.getUnitPriceExGst())
-				.lineTotalExGst(li.getLineTotalExGst())
-				.gstRate(li.getGstRate())
-				.gstAmount(li.getGstAmount())
-				.lineTotalWithGst(li.getLineTotalWithGst())
-				.cgstAmount(li.getCgstAmount())
-				.sgstAmount(li.getSgstAmount())
-				.igstAmount(li.getIgstAmount())
-				.displayOrder(li.getDisplayOrder())
-				.categoryCode(li.getCategoryCode())
-				.feeType(li.getFeeType())
-				.build();
+		InvoiceDetailDto.LineItemDto lineDto = new InvoiceDetailDto.LineItemDto();
+
+		lineDto.setId(li.getId());
+		lineDto.setSourceEstimateLineItemId(li.getSourceEstimateLineItemId());
+		lineDto.setItemName(li.getItemName());
+		lineDto.setDescription(li.getDescription());
+		lineDto.setHsnSacCode(li.getHsnSacCode());
+		lineDto.setQuantity(li.getQuantity());
+		lineDto.setUnit(li.getUnit());
+		lineDto.setUnitPriceExGst(li.getUnitPriceExGst());
+		lineDto.setLineTotalExGst(li.getLineTotalExGst());
+		lineDto.setGstRate(li.getGstRate());
+		lineDto.setGstAmount(li.getGstAmount());
+		lineDto.setLineTotalWithGst(li.getLineTotalWithGst());
+		lineDto.setCgstAmount(li.getCgstAmount());
+		lineDto.setSgstAmount(li.getSgstAmount());
+		lineDto.setIgstAmount(li.getIgstAmount());
+		lineDto.setDisplayOrder(li.getDisplayOrder());
+		lineDto.setCategoryCode(li.getCategoryCode());
+		lineDto.setFeeType(li.getFeeType());
+
+		return lineDto;
 	}
 
 	private String getUserDisplayName(User user) {

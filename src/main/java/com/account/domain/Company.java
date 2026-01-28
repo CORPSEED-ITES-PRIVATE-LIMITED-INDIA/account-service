@@ -136,23 +136,5 @@ public class Company {
 	@Column(name = "updated_at")
 	private LocalDateTime updatedAt;
 
-	// ✅ Helper methods (important for bidirectional + orphanRemoval)
-	public void addUnit(CompanyUnit unit) {
-		if (unit == null) return;
-		units.add(unit);
-		unit.setCompany(this);
-	}
 
-	public void removeUnit(CompanyUnit unit) {
-		if (unit == null) return;
-		units.remove(unit);
-		unit.setCompany(null);
-	}
-
-	@PrePersist
-	protected void onCreateDefaults() {
-		if (status == null) status = "Active";
-		// isDeleted default false already
-		if (isConsultant == null) isConsultant = false;
-	}
 }

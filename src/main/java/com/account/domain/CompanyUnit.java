@@ -16,9 +16,7 @@ import java.time.LocalDateTime;
 @Table(
         name = "company_unit",
         uniqueConstraints = {
-                // ✅ unit name unique within a company
                 @UniqueConstraint(columnNames = {"company_id", "unit_name"}),
-                // ✅ GST unique within a company (change to global unique if you want)
                 @UniqueConstraint(columnNames = {"company_id", "gst_no"})
         }
 )
@@ -58,7 +56,6 @@ public class CompanyUnit {
     @Column(name = "pin_code", nullable = false)
     private String pinCode;
 
-    // GST (unit-level)
     @Column(name = "gst_no", length = 15)
     private String gstNo;
 
@@ -86,12 +83,10 @@ public class CompanyUnit {
     @JoinColumn(name = "secondary_contact_id")
     private Contact secondaryContact;
 
-    // Link to Company
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
-    // Unit lifecycle
     @Column(name = "unit_opening_date")
     private LocalDate unitOpeningDate;
 
@@ -136,10 +131,5 @@ public class CompanyUnit {
 
     @Column(name = "accounts_remark", columnDefinition = "TEXT")
     private String accountsRemark;
-    @PrePersist
-    protected void onCreateDefaults() {
-        if (status == null) status = "Active";
-        if (country == null) country = "India";
-        // isDeleted default false already
-    }
+
 }

@@ -28,7 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -91,7 +91,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (isFirstPayment) {
             unbilled = new UnbilledInvoice();
             unbilled.setUnbilledNumber(generateUnbilledNumber());
-            unbilled.setPublicUuid(UUID.randomUUID().toString());
+            unbilled.setPublicUuid(dateTimeUtil.generateUuid());  // ← Using DateTimeUtil
             unbilled.setEstimate(estimate);
             unbilled.setCompany(estimate.getCompany());
             unbilled.setUnit(estimate.getUnit());
@@ -135,17 +135,19 @@ public class PaymentServiceImpl implements PaymentService {
                 : String.format("Additional payment of ₹%s registered. Total received: ₹%s / ₹%s. Awaiting approval.",
                 request.getAmount(), unbilled.getReceivedAmount(), unbilled.getTotalAmount());
 
-        return PaymentRegistrationResponseDto.builder()
-                .paymentReceiptId(receipt.getId())
-                .unbilledNumber(unbilled.getUnbilledNumber())
-                .unbilledStatus(unbilled.getStatus())
-                .invoiceGenerated(false)
-                .invoiceNumber(null)
-                .invoiceAmount(null)
-                .message(message)
-                .build();
-    }
+        // Manual creation of DTO (no builder)
+        PaymentRegistrationResponseDto response = new PaymentRegistrationResponseDto();
 
+        response.setPaymentReceiptId(receipt.getId());
+        response.setUnbilledNumber(unbilled.getUnbilledNumber());
+        response.setUnbilledStatus(unbilled.getStatus());
+        response.setInvoiceGenerated(false);
+        response.setInvoiceNumber(null);
+        response.setInvoiceAmount(null);
+        response.setMessage(message);
+
+        return response;
+    }
     @Transactional
     public UnbilledInvoiceApprovalResponseDto approveUnbilledInvoice(
             Long unbilledId,
@@ -209,7 +211,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .min(Comparator.comparing(PaymentReceipt::getCreatedAt))
                 .orElseThrow(() -> new IllegalStateException("No payments found for unbilled invoice"));
 
-        Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(unbilled, triggeringReceipt);
+        Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(unbilled, triggeringReceipt,approver);
 
         UnbilledStatus finalStatus = (unbilled.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0)
                 ? UnbilledStatus.FULLY_PAID
@@ -235,41 +237,67 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
-        return UnbilledInvoiceSummaryDto.builder()
-                .id(unbilled.getId())
-                .unbilledNumber(unbilled.getUnbilledNumber())
-                .estimateNumber(unbilled.getEstimate() != null ? unbilled.getEstimate().getEstimateNumber() : null)
-                .estimateId(unbilled.getEstimate() != null ? unbilled.getEstimate().getId() : null)
-                .companyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null)
-                .contactName(unbilled.getContact() != null ? unbilled.getContact().getName() : null)
-                .totalAmount(unbilled.getTotalAmount())
-                .receivedAmount(unbilled.getReceivedAmount())
-                .outstandingAmount(unbilled.getOutstandingAmount())
-                .status(unbilled.getStatus())
-                .createdAt(unbilled.getCreatedAt())
-                .createdByName(unbilled.getCreatedBy() != null
+        UnbilledInvoiceSummaryDto dto = new UnbilledInvoiceSummaryDto();
+
+        dto.setId(unbilled.getId());
+        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+
+        // Estimate related fields with null-safety
+        Estimate estimate = unbilled.getEstimate();
+        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+        dto.setEstimateId(estimate != null ? estimate.getId() : null);
+
+        dto.setCompanyName(
+                unbilled.getCompany() != null
+                        ? unbilled.getCompany().getName()
+                        : null
+        );
+
+        dto.setContactName(
+                unbilled.getContact() != null
+                        ? unbilled.getContact().getName()
+                        : null
+        );
+
+        dto.setTotalAmount(unbilled.getTotalAmount());
+        dto.setReceivedAmount(unbilled.getReceivedAmount());
+        dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+        dto.setStatus(unbilled.getStatus());
+
+        dto.setCreatedAt(unbilled.getCreatedAt());
+
+        // Created by name logic
+        dto.setCreatedByName(
+                unbilled.getCreatedBy() != null
                         ? (unbilled.getCreatedBy().getFullName() != null
                         ? unbilled.getCreatedBy().getFullName()
                         : unbilled.getCreatedBy().getEmail())
-                        : null)
-                .approvedAt(unbilled.getApprovedAt())
-                .approvedByName(unbilled.getApprovedBy() != null
+                        : null
+        );
+
+        dto.setApprovedAt(unbilled.getApprovedAt());
+
+        // Approved by name logic
+        dto.setApprovedByName(
+                unbilled.getApprovedBy() != null
                         ? (unbilled.getApprovedBy().getFullName() != null
                         ? unbilled.getApprovedBy().getFullName()
                         : unbilled.getApprovedBy().getEmail())
-                        : null)
-                .build();
-    }
+                        : null
+        );
 
+        return dto;
+    }
     private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
         Estimate estimate = unbilled.getEstimate();
 
         // Determine GST breakup logic (intra-state vs inter-state)
-        String placeOfSupply = estimate.getPlaceOfSupplyStateCode();
-        boolean isIntraState = "06".equals(placeOfSupply); // ← Change "06" to your actual seller state code
+        String placeOfSupply = estimate != null ? estimate.getPlaceOfSupplyStateCode() : null;
+        boolean isIntraState = "09".equals(placeOfSupply); // ← Replace "06" with your actual seller state code
 
         // Map line items with proper GST split
-        List<UnbilledInvoiceDetailDto.LineItemDto> lineItemDtos = estimate.getLineItems().stream()
+        List<UnbilledInvoiceDetailDto.LineItemDto> lineItemDtos = estimate != null && estimate.getLineItems() != null
+                ? estimate.getLineItems().stream()
                 .map(item -> {
                     BigDecimal gstAmount = item.getGstAmount() != null ? item.getGstAmount() : BigDecimal.ZERO;
                     BigDecimal halfGst = gstAmount.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
@@ -278,69 +306,89 @@ public class PaymentServiceImpl implements PaymentService {
                     BigDecimal sgstAmount = isIntraState ? halfGst : BigDecimal.ZERO;
                     BigDecimal igstAmount = isIntraState ? BigDecimal.ZERO : gstAmount;
 
-                    return UnbilledInvoiceDetailDto.LineItemDto.builder()
-                            .id(item.getId())
-                            .sourceEstimateLineItemId(item.getId())
-                            .itemName(item.getItemName())
-                            .description(item.getDescription())
-                            .hsnSacCode(item.getHsnSacCode())
-                            .quantity(item.getQuantity())
-                            .unit(item.getUnit())
-                            .unitPriceExGst(item.getUnitPriceExGst())
-                            .lineTotalExGst(item.getLineTotalExGst())
-                            .gstRate(item.getGstRate())
-                            .gstAmount(gstAmount)
-                            .lineTotalWithGst(item.getLineTotalExGst().add(gstAmount))
-                            .cgstAmount(cgstAmount)
-                            .sgstAmount(sgstAmount)
-                            .igstAmount(igstAmount)
-                            .displayOrder(item.getDisplayOrder())
-                            .categoryCode(item.getCategoryCode())
-                            .feeType(item.getFeeType())
-                            .build();
-                })
-                .collect(Collectors.toList());
+                    UnbilledInvoiceDetailDto.LineItemDto lineDto = new UnbilledInvoiceDetailDto.LineItemDto();
 
-        return UnbilledInvoiceDetailDto.builder()
-                .id(unbilled.getId())
-                .publicUuid(unbilled.getPublicUuid())
-                .unbilledNumber(unbilled.getUnbilledNumber())
-                .estimateNumber(estimate.getEstimateNumber())
-                // ── NEW: Added missing fields ──
-                .solutionName(estimate.getSolutionName())
-                .solutionType(estimate.getSolutionType() != null ? estimate.getSolutionType().name() : null)
-                // ─────────────────────────────────
-                .companyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null)
-                .contactName(unbilled.getContact() != null ? unbilled.getContact().getName() : null)
-                .invoiceDate(unbilled.getCreatedAt() != null ? unbilled.getCreatedAt().toLocalDate() : null)
-                .currency(estimate.getCurrency())
-                .status(unbilled.getStatus())
-                .subTotalExGst(estimate.getSubTotalExGst())
-                .totalGstAmount(estimate.getTotalGstAmount())
-                .cgstAmount(estimate.getCgstAmount())
-                .sgstAmount(estimate.getSgstAmount())
-                .igstAmount(estimate.getIgstAmount())
-                .grandTotal(unbilled.getTotalAmount())
-                .receivedAmount(unbilled.getReceivedAmount())
-                .outstandingAmount(unbilled.getOutstandingAmount())
-                .createdByName(unbilled.getCreatedBy() != null
+                    lineDto.setId(item.getId());
+                    lineDto.setSourceEstimateLineItemId(item.getId());
+                    lineDto.setItemName(item.getItemName());
+                    lineDto.setDescription(item.getDescription());
+                    lineDto.setHsnSacCode(item.getHsnSacCode());
+                    lineDto.setQuantity(item.getQuantity());
+                    lineDto.setUnit(item.getUnit());
+                    lineDto.setUnitPriceExGst(item.getUnitPriceExGst());
+                    lineDto.setLineTotalExGst(item.getLineTotalExGst());
+                    lineDto.setGstRate(item.getGstRate());
+                    lineDto.setGstAmount(gstAmount);
+                    lineDto.setLineTotalWithGst(item.getLineTotalExGst().add(gstAmount));
+                    lineDto.setCgstAmount(cgstAmount);
+                    lineDto.setSgstAmount(sgstAmount);
+                    lineDto.setIgstAmount(igstAmount);
+                    lineDto.setDisplayOrder(item.getDisplayOrder());
+                    lineDto.setCategoryCode(item.getCategoryCode());
+                    lineDto.setFeeType(item.getFeeType());
+
+                    return lineDto;
+                })
+                .collect(Collectors.toList())
+                : new ArrayList<>();
+
+        // Create main DTO with setters
+        UnbilledInvoiceDetailDto dto = new UnbilledInvoiceDetailDto();
+
+        dto.setId(unbilled.getId());
+        dto.setPublicUuid(unbilled.getPublicUuid());
+        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+
+        // Added missing fields
+        dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
+        dto.setSolutionType(estimate != null && estimate.getSolutionType() != null
+                ? estimate.getSolutionType().name()
+                : null);
+
+        dto.setCompanyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null);
+        dto.setContactName(unbilled.getContact() != null ? unbilled.getContact().getName() : null);
+
+        dto.setInvoiceDate(unbilled.getCreatedAt() != null ? unbilled.getCreatedAt().toLocalDate() : null);
+        dto.setCurrency(estimate != null ? estimate.getCurrency() : null);
+        dto.setStatus(unbilled.getStatus());
+
+        dto.setSubTotalExGst(estimate != null ? estimate.getSubTotalExGst() : null);
+        dto.setTotalGstAmount(estimate != null ? estimate.getTotalGstAmount() : null);
+        dto.setCgstAmount(estimate != null ? estimate.getCgstAmount() : null);
+        dto.setSgstAmount(estimate != null ? estimate.getSgstAmount() : null);
+        dto.setIgstAmount(estimate != null ? estimate.getIgstAmount() : null);
+
+        dto.setGrandTotal(unbilled.getTotalAmount());
+        dto.setReceivedAmount(unbilled.getReceivedAmount());
+        dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+
+        dto.setCreatedByName(
+                unbilled.getCreatedBy() != null
                         ? (unbilled.getCreatedBy().getFullName() != null
                         ? unbilled.getCreatedBy().getFullName()
                         : unbilled.getCreatedBy().getEmail())
-                        : null)
-                .createdAt(unbilled.getCreatedAt())
-                .updatedAt(unbilled.getUpdatedAt())
-                .approvedByName(unbilled.getApprovedBy() != null
+                        : null
+        );
+
+        dto.setCreatedAt(unbilled.getCreatedAt());
+        dto.setUpdatedAt(unbilled.getUpdatedAt());
+
+        dto.setApprovedByName(
+                unbilled.getApprovedBy() != null
                         ? (unbilled.getApprovedBy().getFullName() != null
                         ? unbilled.getApprovedBy().getFullName()
                         : unbilled.getApprovedBy().getEmail())
-                        : null)
-                .approvedAt(unbilled.getApprovedAt())
-                .approvalRemarks(unbilled.getApprovalRemarks())
-                .lineItems(lineItemDtos)
-                .build();
-    }
+                        : null
+        );
 
+        dto.setApprovedAt(unbilled.getApprovedAt());
+        dto.setApprovalRemarks(unbilled.getApprovalRemarks());
+
+        dto.setLineItems(lineItemDtos);
+
+        return dto;
+    }
     @Override
     public UnbilledInvoiceDetailDto getUnbilledInvoice(Long unBilledId, Long requestingUserId) {
         if (unBilledId == null || requestingUserId == null) {

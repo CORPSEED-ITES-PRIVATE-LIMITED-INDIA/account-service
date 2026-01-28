@@ -2,7 +2,6 @@ package com.account.serviceImpl;
 
 import com.account.domain.Company;
 import com.account.domain.CompanyUnit;
-import com.account.domain.Contact;
 import com.account.domain.User;
 import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.company.CompanyRequestDto;
@@ -12,23 +11,17 @@ import com.account.dto.company.CompanyUnitResponseDto;
 import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
+import com.account.repository.UserRepository;
 import com.account.service.company.CompanyService;
 import com.account.util.DateTimeUtil;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.time.LocalDate;
-import java.util.Date;
 import java.util.stream.Collectors;
 
-/**
- * Implementation of CompanyService with consistent IST timezone handling
- */
 @Service
 @Transactional
 public class CompanyServiceImpl implements CompanyService {
@@ -37,23 +30,20 @@ public class CompanyServiceImpl implements CompanyService {
 
     private final CompanyRepository companyRepository;
     private final CompanyUnitRepository companyUnitRepository;
+    private final UserRepository userRepository;
     private final DateTimeUtil dateTimeUtil;
-
-    @PersistenceContext
-    private EntityManager em;
 
     public CompanyServiceImpl(
             CompanyRepository companyRepository,
             CompanyUnitRepository companyUnitRepository,
+            UserRepository userRepository,
             DateTimeUtil dateTimeUtil) {
         this.companyRepository = companyRepository;
         this.companyUnitRepository = companyUnitRepository;
+        this.userRepository = userRepository;
         this.dateTimeUtil = dateTimeUtil;
     }
 
-    // ────────────────────────────────────────────────
-    // Method 1: Sync from Lead (uses leadCompanyId / leadUnitId)
-    // ────────────────────────────────────────────────
     @Override
     public CompanyResponseDto createCompanyFromLead(CompanyRequestDto requestDto) {
 
@@ -62,52 +52,54 @@ public class CompanyServiceImpl implements CompanyService {
             throw new ValidationException("leadCompanyId is required", "ERR_LEAD_ID_REQUIRED");
         }
 
-        // IMPORTANT:
-        // Company.id is @GeneratedValue → NEVER use findById(leadCompanyId) or setId(leadCompanyId)
+        // Find by business key (leadId)
         Company company = companyRepository.findByLeadId(leadCompanyId)
                 .orElseGet(Company::new);
 
         boolean isNew = (company.getId() == null);
 
-        // ── Mapping: ALL CompanyRequestDto fields ─────────────────────────────
-
+        // ── Core mapping ────────────────────────────────────────────────────────
         company.setLeadId(leadCompanyId);
 
-        // mandatory
-        company.setName(StringUtils.hasText(requestDto.getName()) ? requestDto.getName().trim() : company.getName());
-        company.setPanNo(StringUtils.hasText(requestDto.getPanNo()) ? requestDto.getPanNo().trim().toUpperCase() : company.getPanNo());
+        company.setName(StringUtils.trimWhitespace(requestDto.getName()));
+        company.setPanNo(StringUtils.hasText(requestDto.getPanNo())
+                ? requestDto.getPanNo().trim().toUpperCase()
+                : company.getPanNo());
 
-        // Use consistent IST conversion
         company.setEstablishDate(dateTimeUtil.toLocalDate(requestDto.getEstablishDate()));
+        company.setIndustry(StringUtils.trimWhitespace(requestDto.getIndustry()));
+        company.setStatus(StringUtils.trimWhitespace(requestDto.getStatus()));
 
-        company.setIndustry(requestDto.getIndustry());
-
-        // sales & assignment
-        company.setStatus(requestDto.getStatus());
-        company.setLeadId(requestDto.getLeadId());  // Note: this overwrites the earlier setLeadId — intentional?
-
-        // agreements
-        company.setPaymentTerm(requestDto.getPaymentTerm());
+        // Agreements
+        company.setPaymentTerm(StringUtils.trimWhitespace(requestDto.getPaymentTerm()));
         company.setAggrementPresent(Boolean.TRUE.equals(requestDto.getAggrementPresent()));
         company.setAggrement(requestDto.getAggrement());
-        company.setNda(requestDto.getNda());
         company.setNdaPresent(Boolean.TRUE.equals(requestDto.getNdaPresent()));
-        company.setRevenue(requestDto.getRevenue());
+        company.setNda(requestDto.getNda());
+        company.setRevenue(StringUtils.trimWhitespace(requestDto.getRevenue()));
 
-        // consultant flow
         company.setIsConsultant(Boolean.TRUE.equals(requestDto.getIsConsultant()));
-        // company.setActualClientCompanyId(requestDto.getActualClientCompanyId());
 
-        // audit (optional)
-        if (requestDto.getCreatedById() != null && isNew) {
-            company.setCreatedBy(em.getReference(User.class, requestDto.getCreatedById()));
+        // ── Auditing ────────────────────────────────────────────────────────────
+        if (isNew && requestDto.getCreatedById() != null) {
+            User creator = userRepository.findByIdAndNotDeleted(requestDto.getCreatedById())
+                    .orElseThrow(() -> new ValidationException(
+                            "Creator user not found or deleted with ID: " + requestDto.getCreatedById(),
+                            "USER_NOT_FOUND", "createdById"));
+            company.setCreatedBy(creator);
         }
+
         if (requestDto.getUpdatedById() != null) {
-            company.setUpdatedBy(em.getReference(User.class, requestDto.getUpdatedById()));
+            User updater = userRepository.findByIdAndNotDeleted(requestDto.getUpdatedById())
+                    .orElseThrow(() -> new ValidationException(
+                            "Updater user not found or deleted with ID: " + requestDto.getUpdatedById(),
+                            "USER_NOT_FOUND", "updatedById"));
+            company.setUpdatedBy(updater);
         }
 
-        // set defaults for new company
+        // Defaults for new company
         if (isNew) {
+            company.setUuid(dateTimeUtil.generateUuid());
             company.setOnboardingStatus("PendingApproval");
             company.setAccountsApproved(false);
             company.setDeleted(false);
@@ -115,12 +107,11 @@ public class CompanyServiceImpl implements CompanyService {
 
         company = companyRepository.save(company);
 
-        // ── Sync Units ────────────────────────────────
+        // ── Units sync ──────────────────────────────────────────────────────────
         if (requestDto.getUnits() != null && !requestDto.getUnits().isEmpty()) {
             for (CompanyUnitRequestDto unitDto : requestDto.getUnits()) {
 
                 CompanyUnit unit;
-
                 if (unitDto.getLeadUnitId() != null) {
                     unit = companyUnitRepository.findByLeadId(unitDto.getLeadUnitId())
                             .orElseGet(CompanyUnit::new);
@@ -129,86 +120,55 @@ public class CompanyServiceImpl implements CompanyService {
                     unit = new CompanyUnit();
                 }
 
-                // map ALL unit fields
-                unit.setUnitName(StringUtils.hasText(unitDto.getUnitName()) ? unitDto.getUnitName().trim() : "Default Branch");
+                unit.setUnitName(StringUtils.trimWhitespace(unitDto.getUnitName()));
+                if (!StringUtils.hasText(unit.getUnitName())) {
+                    unit.setUnitName("Default Branch");
+                }
 
                 unit.setAddressLine1(unitDto.getAddressLine1());
                 unit.setAddressLine2(unitDto.getAddressLine2());
                 unit.setCity(unitDto.getCity());
                 unit.setState(unitDto.getState());
-                unit.setCountry(StringUtils.hasText(unitDto.getCountry()) ? unitDto.getCountry().trim() : "India");
                 unit.setPinCode(unitDto.getPinCode());
-
-                unit.setGstNo(StringUtils.hasText(unitDto.getGstNo()) ? unitDto.getGstNo().trim().toUpperCase() : null);
-
-                // “ID-based” GST fields (from request)
+                unit.setGstNo(StringUtils.trimWhitespace(unitDto.getGstNo()));
                 unit.setGstType(unitDto.getGstTypeEntity());
                 unit.setGstBusinessType(unitDto.getGstBusinessType());
                 unit.setGstTypePrice(unitDto.getGstTypePrice());
 
-                // contacts (by id)
-                if (unitDto.getPrimaryContactId() != null) {
-                    unit.setPrimaryContact(em.getReference(Contact.class, unitDto.getPrimaryContactId()));
-                } else {
-                    unit.setPrimaryContact(null);
-                }
-                if (unitDto.getSecondaryContactId() != null) {
-                    unit.setSecondaryContact(em.getReference(Contact.class, unitDto.getSecondaryContactId()));
-                } else {
-                    unit.setSecondaryContact(null);
-                }
+                // Contacts – assuming lazy loading or ID reference is fine
+                // If you need to load Contact entity → add ContactRepository and fetch
 
-                // Use consistent IST conversion
                 unit.setUnitOpeningDate(dateTimeUtil.toLocalDate(unitDto.getUnitOpeningDate()));
-
                 unit.setConsultantPresent(Boolean.TRUE.equals(unitDto.getConsultantPresent()));
 
-                // link
                 unit.setCompany(company);
 
-                // default status
                 if (!StringUtils.hasText(unit.getStatus())) {
                     unit.setStatus("Active");
                 }
 
-                // audit (optional)
-                if (requestDto.getCreatedById() != null && unit.getId() == null) {
-                    unit.setCreatedBy(em.getReference(User.class, requestDto.getCreatedById()));
+                // Unit auditing
+                if (unit.getId() == null && requestDto.getCreatedById() != null) {
+                    User creator = userRepository.findByIdAndNotDeleted(requestDto.getCreatedById())
+                            .orElseThrow(() -> new ValidationException(
+                                    "Creator not found or deleted", "USER_NOT_FOUND", "createdById"));
+                    unit.setCreatedBy(creator);
                 }
+
                 if (requestDto.getUpdatedById() != null) {
-                    unit.setUpdatedBy(em.getReference(User.class, requestDto.getUpdatedById()));
+                    User updater = userRepository.findByIdAndNotDeleted(requestDto.getUpdatedById())
+                            .orElseThrow(() -> new ValidationException(
+                                    "Updater not found or deleted", "USER_NOT_FOUND", "updatedById"));
+                    unit.setUpdatedBy(updater);
                 }
 
-                companyUnitRepository.save(unit);
-            }
-        } else {
-            // If units empty but legacy address exists → optional auto-create a default unit
-            boolean shouldCreateDefaultUnit =
-                    StringUtils.hasText(requestDto.getAddress()) ||
-                            StringUtils.hasText(requestDto.getCity()) ||
-                            StringUtils.hasText(requestDto.getState());
-
-            if (shouldCreateDefaultUnit) {
-                CompanyUnit unit = new CompanyUnit();
-                unit.setUnitName(company.getName() + " - Main Branch");
-                unit.setAddressLine1(requestDto.getAddress());
-                unit.setCity(requestDto.getCity());
-                unit.setState(requestDto.getState());
-                unit.setCountry(StringUtils.hasText(requestDto.getCountry()) ? requestDto.getCountry().trim() : "India");
-                unit.setPinCode(requestDto.getPrimaryPinCode());
-                unit.setStatus("Active");
-                unit.setCompany(company);
                 companyUnitRepository.save(unit);
             }
         }
 
-        // reload company with units if needed (lazy)
         return mapToResponseDto(company);
     }
 
-    // ────────────────────────────────────────────────
-    // Method 2: Basic / Minimal company creation
-    // ────────────────────────────────────────────────
     @Override
     public CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto dto) {
         logger.info("Basic company creation started for name: {}, leadCompanyId: {}",
@@ -219,66 +179,62 @@ public class CompanyServiceImpl implements CompanyService {
             throw new ValidationException("leadCompanyId is required", "ERR_LEAD_COMPANY_ID_REQUIRED");
         }
 
-        // Check existence by leadCompanyId (business key), not by primary key
         if (companyRepository.existsByLeadId(leadCompanyId)) {
             throw new ValidationException(
                     "Company with leadCompanyId " + leadCompanyId + " already exists",
-                    "ERR_DUPLICATE_COMPANY_ID"
-            );
+                    "ERR_DUPLICATE_COMPANY_ID");
         }
 
-        String name = dto.getName().trim();
-
-        // Name uniqueness (case-insensitive)
+        String name = StringUtils.trimWhitespace(dto.getName());
         if (companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(name)) {
             throw new ValidationException(
-                    "A company with the name '" + name + "' already exists",
-                    "ERR_DUPLICATE_COMPANY_NAME"
-            );
+                    "Company name '" + name + "' already exists",
+                    "ERR_DUPLICATE_COMPANY_NAME");
         }
 
         String panNo = null;
         if (StringUtils.hasText(dto.getPanNo())) {
             panNo = dto.getPanNo().trim().toUpperCase();
-
             if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo)) {
-                throw new ValidationException(
-                        "Company with PAN " + panNo + " already exists",
-                        "ERR_DUPLICATE_PAN"
-                );
+                throw new ValidationException("PAN " + panNo + " already exists", "ERR_DUPLICATE_PAN");
             }
         }
 
         String gstNo = null;
         if (StringUtils.hasText(dto.getGstNo())) {
             gstNo = dto.getGstNo().trim().toUpperCase();
-
             if (panNo != null && gstNo.length() >= 12) {
                 String panFromGst = gstNo.substring(2, 12);
                 if (!panFromGst.equals(panNo)) {
                     throw new ValidationException(
-                            "PAN extracted from GST (" + panFromGst + ") does not match provided PAN (" + panNo + ")",
-                            "ERR_PAN_GST_MISMATCH"
-                    );
+                            "PAN from GST (" + panFromGst + ") does not match provided PAN",
+                            "ERR_PAN_GST_MISMATCH");
                 }
             }
         }
 
         Company company = new Company();
-        company.setLeadId(dto.getLeadId());
-        company.setId(leadCompanyId);           // ← Using leadCompanyId as entity ID (careful!)
+        company.setLeadId(leadCompanyId);
         company.setName(name);
         company.setPanNo(panNo);
-
-        company.setUuid(dateTimeUtil.generateUuid());           // or generateCompactUuid()
+        company.setUuid(dateTimeUtil.generateUuid());
         company.setIsConsultant(false);
         company.setOnboardingStatus("Minimal");
         company.setDeleted(false);
 
-        company = companyRepository.save(company);
-        logger.info("Basic company created → ID: {}, leadCompanyId: {}", company.getId(), company.getLeadId());
+        // Optional auditing (if provided in DTO)
+        if (dto.getCreatedById() != null) {
+            User creator = userRepository.findByIdAndNotDeleted(dto.getCreatedById())
+                    .orElseThrow(() -> new ValidationException(
+                            "Creator user not found or deleted with ID: " + dto.getCreatedById(),
+                            "USER_NOT_FOUND", "createdById"));
+            company.setCreatedBy(creator);
+        }
 
-        // Auto-create default unit when it makes sense
+        company = companyRepository.save(company);
+        logger.info("Basic company created → ID: {}, leadId: {}", company.getId(), company.getLeadId());
+
+        // Auto-create default unit if needed
         boolean shouldCreateUnit = StringUtils.hasText(dto.getAddress())
                 || StringUtils.hasText(dto.getUnitName())
                 || StringUtils.hasText(gstNo);
@@ -290,19 +246,16 @@ public class CompanyServiceImpl implements CompanyService {
                     ? dto.getUnitName().trim()
                     : name + " - Main Branch";
 
-            unit.setId(dto.getCompanyUnitId());
             unit.setUnitName(unitName);
             unit.setAddressLine1(dto.getAddress());
             unit.setCity(dto.getCity());
             unit.setState(dto.getState());
-            unit.setCountry(StringUtils.hasText(dto.getCountry()) ? dto.getCountry().trim() : "India");
             unit.setPinCode(dto.getPinCode());
             unit.setGstNo(gstNo);
             unit.setStatus("Active");
             unit.setCompany(company);
 
             companyUnitRepository.save(unit);
-
             logger.info("Auto-created unit '{}' for company {}", unitName, company.getId());
         }
 
@@ -310,15 +263,13 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     // ────────────────────────────────────────────────
-    // Mapping methods
+    // Mapping methods (unchanged)
     // ────────────────────────────────────────────────
     private CompanyResponseDto mapToResponseDto(Company company) {
         CompanyResponseDto dto = new CompanyResponseDto();
-
         dto.setId(company.getId());
         dto.setName(company.getName());
         dto.setPanNo(company.getPanNo());
-
         dto.setOnboardingStatus(company.getOnboardingStatus());
         dto.setAccountsApproved(company.isAccountsApproved());
         dto.setAccountsRemark(company.getAccountsRemark());
@@ -329,7 +280,6 @@ public class CompanyServiceImpl implements CompanyService {
                     .map(this::mapUnitToResponseDto)
                     .collect(Collectors.toList()));
         }
-
         return dto;
     }
 

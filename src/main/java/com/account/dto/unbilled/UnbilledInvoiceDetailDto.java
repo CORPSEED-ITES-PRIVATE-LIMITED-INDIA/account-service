@@ -10,7 +10,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
-@Builder
 public class UnbilledInvoiceDetailDto {
 
     private Long id;
@@ -45,7 +44,6 @@ public class UnbilledInvoiceDetailDto {
     private List<LineItemDto> lineItems;
 
     @Data
-    @Builder
     public static class LineItemDto {
         private Long id;
         private Long sourceEstimateLineItemId;
