@@ -1,4 +1,4 @@
-package com.account.dto.company;
+package com.account.dto.company.response;
 
 import lombok.Getter;
 import lombok.Setter;

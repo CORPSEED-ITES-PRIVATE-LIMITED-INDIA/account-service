@@ -1,8 +1,9 @@
 package com.account.service.company;
 
 import com.account.dto.BasicCompanyRequestDto;
-import com.account.dto.company.CompanyRequestDto;
-import com.account.dto.company.CompanyResponseDto;
+import com.account.dto.company.request.BasicUnitCreateRequest;
+import com.account.dto.company.request.CompanyRequestDto;
+import com.account.dto.company.response.CompanyResponseDto;
 
 public interface CompanyService {
 
@@ -11,4 +12,5 @@ public interface CompanyService {
 
     CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto quickRequest);
 
+    CompanyResponseDto addBasicUnitToCompany(Long companyId, BasicUnitCreateRequest request, Long updatedById);
 }

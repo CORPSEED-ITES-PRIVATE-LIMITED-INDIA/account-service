@@ -31,4 +31,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     """)
 	Optional<User> findByIdAndNotDeleted(@Param("id") Long id);
 
+	@Query(value = "SELECT * FROM user u WHERE u.id = :userId AND u.is_deleted = false", nativeQuery = true)
+	User findByUserIdAndIsDeletedFalse(Long userId);
+
+
 }

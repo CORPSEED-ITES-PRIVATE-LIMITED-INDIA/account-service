@@ -1,4 +1,4 @@
-package com.account.dto.company;
+package com.account.dto.company.request;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -46,25 +46,18 @@ public class CompanyRequestDto {
     @Size(max = 255, message = "Industry cannot exceed 255 characters")
     private String industry;
 
-    // If you use master tables (optional)
     private Long industryId;
     private Long subIndustryId;
     private Long subSubIndustryId;
 
-    // Rating/age are optional; keep only if you use them (otherwise remove)
     private String rating;
     private String companyAge;
 
-    // ─────────────────────────────
-    // SALES & ASSIGNMENT (optional)
-    // ─────────────────────────────
+
     private Long assigneeId;
     private String status;  // Active, Inactive
     private Long leadId;
 
-    // ─────────────────────────────
-    // AGREEMENTS & PAYMENT (company-level)
-    // ─────────────────────────────
     private String paymentTerm;
     private Boolean aggrementPresent;
     private String aggrement;
@@ -72,22 +65,12 @@ public class CompanyRequestDto {
     private Boolean ndaPresent;
     private String revenue;
 
-    // ─────────────────────────────
-    // CONSULTANT FLOW
-    // ─────────────────────────────
     private Boolean isConsultant = false;
     private Long actualClientCompanyId;
 
-    // ─────────────────────────────
-    // MODERN MULTI-LOCATION SUPPORT (preferred)
-    // ─────────────────────────────
     @Valid
     private List<CompanyUnitRequestDto> units = new ArrayList<>();
 
-    // ─────────────────────────────
-    // LEGACY ADDRESSES (DEPRECATED)
-    // Use ONLY when units is empty; service may auto-create a default unit from these.
-    // ─────────────────────────────
     private String address;
     private String city;
     private String state;

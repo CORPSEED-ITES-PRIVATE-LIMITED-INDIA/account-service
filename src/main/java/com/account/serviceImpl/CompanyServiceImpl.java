@@ -4,10 +4,12 @@ import com.account.domain.Company;
 import com.account.domain.CompanyUnit;
 import com.account.domain.User;
 import com.account.dto.BasicCompanyRequestDto;
-import com.account.dto.company.CompanyRequestDto;
-import com.account.dto.company.CompanyResponseDto;
-import com.account.dto.company.CompanyUnitRequestDto;
-import com.account.dto.company.CompanyUnitResponseDto;
+import com.account.dto.company.request.BasicUnitCreateRequest;
+import com.account.dto.company.request.CompanyRequestDto;
+import com.account.dto.company.response.CompanyResponseDto;
+import com.account.dto.company.request.CompanyUnitRequestDto;
+import com.account.dto.company.response.CompanyUnitResponseDto;
+import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
@@ -20,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.util.Date;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -281,6 +285,92 @@ public class CompanyServiceImpl implements CompanyService {
                     .collect(Collectors.toList()));
         }
         return dto;
+    }
+
+    @Override
+    @Transactional
+    public CompanyResponseDto addBasicUnitToCompany(Long companyId, BasicUnitCreateRequest request, Long updatedById) {
+        logger.info("Adding/Updating basic unit for company ID: {} by user {}", companyId, updatedById);
+
+        Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company not found", "ERR_COMPANY_NOT_FOUND"));
+
+        User updatedBy = userRepository.findByUserIdAndIsDeletedFalse(updatedById);
+        if (updatedBy == null) {
+            throw new ResourceNotFoundException("User not found", "ERR_USER_NOT_FOUND");
+        }
+
+        CompanyUnit unit;
+
+        Long requestedId = request.getCompanyUnitId();
+
+        if (requestedId != null) {
+            // Try to find existing active unit
+            Optional<CompanyUnit> existing = companyUnitRepository.findByIdAndCompanyIdAndIsDeletedFalse(
+                    requestedId, companyId);
+
+            if (existing.isPresent()) {
+                // Update existing
+                unit = existing.get();
+                logger.info("Updating existing unit ID: {}", requestedId);
+            } else {
+                // Create NEW unit → force the requested ID
+                unit = new CompanyUnit();
+                unit.setId(requestedId);               // ← force ID (risky!)
+                unit.setCompany(company);
+                unit.setStatus("Active");
+                logger.info("Creating new unit with forced ID: {}", requestedId);
+            }
+        } else {
+            // No ID provided → normal create (DB generates ID)
+            unit = new CompanyUnit();
+            unit.setCompany(company);
+            unit.setStatus("Active");
+            logger.info("Creating new unit (auto ID)");
+        }
+
+        // Unit name logic (fallback only on create)
+        String unitName = StringUtils.hasText(request.getUnitName())
+                ? request.getUnitName().trim()
+                : (unit.getId() == null || unit.getUnitName() == null  // if forced ID but new entity
+                ? company.getName() + " - Branch " + new Date().toString().substring(4, 10)
+                : unit.getUnitName());
+
+        // Duplicate name check (exclude self)
+        boolean duplicateUnitName = company.getUnits().stream()
+                .filter(u -> !u.isDeleted() && !u.getId().equals(unit.getId()))
+                .anyMatch(u -> StringUtils.hasText(u.getUnitName()) &&
+                        u.getUnitName().trim().equalsIgnoreCase(unitName));
+
+        if (duplicateUnitName) {
+            throw new ValidationException("Unit name '" + unitName + "' already exists", "ERR_DUPLICATE_UNIT_NAME");
+        }
+
+        // Apply fields
+        unit.setUnitName(unitName);
+        unit.setAddressLine1(request.getAddress());
+        unit.setCity(request.getCity());
+        unit.setState(request.getState());
+        unit.setCountry(StringUtils.hasText(request.getCountry()) ? request.getCountry().trim() : "India");
+        unit.setPinCode(request.getPinCode());
+        unit.setGstNo(StringUtils.hasText(request.getGstNo()) ? request.getGstNo().trim().toUpperCase() : null);
+
+        unit.setUpdatedBy(updatedBy);
+
+        companyUnitRepository.save(unit);
+
+        // Add to collection only if it was truly new
+        if (!company.getUnits().contains(unit)) {
+            company.getUnits().add(unit);
+        }
+
+        company.setUpdatedBy(updatedBy);
+        companyRepository.save(company);
+
+        logger.info("Basic unit '{}' (ID: {}) processed for company ID {} by user {}",
+                unitName, unit.getId(), companyId, updatedById);
+
+        return mapToResponseDto(company);
     }
 
     private CompanyUnitResponseDto mapUnitToResponseDto(CompanyUnit unit) {
