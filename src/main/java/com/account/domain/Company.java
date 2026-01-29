@@ -100,6 +100,7 @@ public class Company {
 	@Column(name = "onboarding_status")
 	private String onboardingStatus;
 
+
 	// Soft delete
 	@Column(name = "is_deleted", nullable = false)
 	private boolean isDeleted = false;

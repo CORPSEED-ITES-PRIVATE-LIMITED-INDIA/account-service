@@ -1,6 +1,7 @@
 package com.account.controller.client;
 
 import com.account.dto.BasicCompanyRequestDto;
+import com.account.dto.company.request.ApproveRejectUnitRequestDto;
 import com.account.dto.company.request.BasicUnitCreateRequest;
 import com.account.dto.company.request.CompanyRequestDto;
 import com.account.dto.company.response.CompanyResponseDto;
@@ -81,6 +82,28 @@ public class CompanyController {
 
         CompanyResponseDto response = companyService.updateFullCompanyDetails(companyId, dto, updatedById);
         return ResponseEntity.ok(response);
+    }
+
+    @Operation(summary = "[Accounts] Approve or reject a specific company unit")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Unit approved/rejected successfully, company status updated"),
+            @ApiResponse(responseCode = "400", description = "Invalid request (e.g., remark missing on reject)"),
+            @ApiResponse(responseCode = "404", description = "Company or unit not found"),
+            @ApiResponse(responseCode = "403", description = "Not authorized (accounts only)")
+    })
+    @PutMapping("/{companyId}/units/{unitId}/review")
+    public ResponseEntity<CompanyResponseDto> reviewUnit(
+            @PathVariable Long companyId,
+            @PathVariable Long unitId,
+            @RequestParam("reviewedBy") Long reviewedById,
+            @Valid @RequestBody ApproveRejectUnitRequestDto request) {
+
+        if (reviewedById == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "reviewedBy user is required");
+        }
+
+        CompanyResponseDto updated =  companyService.reviewUnit(companyId, unitId, reviewedById, request);
+        return ResponseEntity.ok(updated);
     }
 
 

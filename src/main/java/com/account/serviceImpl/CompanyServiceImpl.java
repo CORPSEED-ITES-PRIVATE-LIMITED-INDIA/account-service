@@ -4,6 +4,7 @@ import com.account.domain.Company;
 import com.account.domain.CompanyUnit;
 import com.account.domain.User;
 import com.account.dto.BasicCompanyRequestDto;
+import com.account.dto.company.request.ApproveRejectUnitRequestDto;
 import com.account.dto.company.request.BasicUnitCreateRequest;
 import com.account.dto.company.request.CompanyRequestDto;
 import com.account.dto.company.request.CompanyUnitFullRequestDto;
@@ -386,6 +387,70 @@ public class CompanyServiceImpl implements CompanyService {
         return mapToResponseDto(company);
     }
 
+    @Override
+    @Transactional
+    public CompanyResponseDto reviewUnit(Long companyId, Long unitId, Long reviewedById, ApproveRejectUnitRequestDto request) {
+        logger.info("Reviewing unit {} of company {} by user {}", unitId, companyId, reviewedById);
+
+        // 1. Fetch company
+        Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company not found", "ERR_COMPANY_NOT_FOUND"));
+
+        // 2. Fetch unit
+        CompanyUnit unit = companyUnitRepository.findByIdAndCompanyIdAndIsDeletedFalse(unitId, companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Unit not found", "ERR_UNIT_NOT_FOUND"));
+
+        // 3. Validate reviewer user (assume accounts role check is done via security filter or here)
+        User reviewedBy = userRepository.findByIdAndNotDeleted(reviewedById)
+                .orElseThrow(() -> new ResourceNotFoundException("Reviewer user not found", "ERR_USER_NOT_FOUND"));
+
+        // 4. Validate request
+        if (request.getApprove() == null) {
+            throw new ValidationException("Approve flag is required (true/false)", "ERR_APPROVE_REQUIRED");
+        }
+
+        if (!request.getApprove() && !StringUtils.hasText(request.getRemark())) {
+            throw new ValidationException("Remark is required when rejecting", "ERR_REMARK_REQUIRED");
+        }
+
+        // 5. Apply approval/rejection
+        unit.setAccountsApproved(request.getApprove());
+        unit.setAccountsReviewedBy(reviewedBy);
+        unit.setAccountsRemark(request.getApprove() ? null : request.getRemark().trim());
+
+        companyUnitRepository.save(unit);
+
+        // 6. Update company onboarding status based on units
+        updateCompanyOnboardingStatus(company);
+
+        // 7. Update company metadata
+        company.setUpdatedBy(reviewedBy);
+        companyRepository.save(company);
+
+        logger.info("Unit {} of company {} {} by user {}. Company status now: {}",
+                unitId, companyId, request.getApprove() ? "approved" : "rejected", reviewedById, company.getOnboardingStatus());
+
+        return mapToResponseDto(company);
+    }
+
+    // Helper method to update company status
+    private void updateCompanyOnboardingStatus(Company company) {
+        boolean allApproved = company.getUnits().stream()
+                .filter(u -> !u.isDeleted())
+                .allMatch(CompanyUnit::isAccountsApproved);
+
+        boolean anyRejected = company.getUnits().stream()
+                .filter(u -> !u.isDeleted())
+                .anyMatch(u -> !u.isAccountsApproved() && StringUtils.hasText(u.getAccountsRemark()));
+
+        if (allApproved) {
+            company.setOnboardingStatus("Approved"); // or use enum if you have one
+        } else if (anyRejected) {
+            company.setOnboardingStatus("Rejected");
+        } else {
+            company.setOnboardingStatus("Pending Review");
+        }
+    }
 
 
     private CompanyUnitResponseDto mapUnitToResponseDto(CompanyUnit unit) {
