@@ -22,21 +22,6 @@ public class CompanyController {
     @Autowired
     private CompanyService companyService;
 
-    @Operation(summary = "Create company in account service from lead service data")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Company created successfully in account service"),
-            @ApiResponse(responseCode = "400", description = "Invalid request data"),
-            @ApiResponse(responseCode = "409", description = "Company with PAN or ID conflict"),
-            @ApiResponse(responseCode = "404", description = "Referenced entity not found")
-    })
-    @PostMapping("/createCompany")
-    public ResponseEntity<CompanyResponseDto> createCompany(
-            @Valid @RequestBody CompanyRequestDto requestDto) {
-
-        CompanyResponseDto response = companyService.createCompanyFromLead(requestDto);
-
-        return new ResponseEntity<>(response, HttpStatus.CREATED);
-    }
 
     @Operation(summary = "Quick create company for urgent estimate (minimal details)")
     @ApiResponses({
@@ -71,5 +56,32 @@ public class CompanyController {
         CompanyResponseDto response = companyService.addBasicUnitToCompany(companyId, request, updatedById);
         return ResponseEntity.ok(response);
     }
+
+    @Operation(
+            summary = "Update company + units with complete details after payment",
+            description = "Updates company profile and all units. " +
+                    "Units are upserted by their ID (create if not exists, update if exists). " +
+                    "Typically called after payment / onboarding step."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Updated successfully – usually moves to pending accounts review"),
+            @ApiResponse(responseCode = "400", description = "Validation failed (duplicate name/PAN/GST, format error, missing required fields, etc.)"),
+            @ApiResponse(responseCode = "404", description = "Company or updating user not found"),
+            @ApiResponse(responseCode = "409", description = "Duplicate PAN, company name or unit name")
+    })
+    @PutMapping("/{companyId}/full-details")
+    public ResponseEntity<CompanyResponseDto> updateFullCompanyDetails(
+            @PathVariable Long companyId,
+            @RequestParam(value = "updatedBy", required = true) Long updatedById,
+            @Valid @RequestBody CompanyRequestDto dto) {
+
+        if (updatedById == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "updatedBy user is required");
+        }
+
+        CompanyResponseDto response = companyService.updateFullCompanyDetails(companyId, dto, updatedById);
+        return ResponseEntity.ok(response);
+    }
+
 
 }

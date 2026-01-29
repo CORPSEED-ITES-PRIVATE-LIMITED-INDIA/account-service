@@ -13,10 +13,6 @@ public interface CompanyRepository extends JpaRepository<Company, Long> {
 
     boolean existsByPanNoAndIsDeletedFalse(String panNo);
 
-    Optional<Company> findByLeadId(Long leadId);
-
-    boolean existsByLeadId(Long leadId);
-
     @Query("SELECT c FROM Company c WHERE c.id = :id AND c.isDeleted = false")
     Optional<Company> findByIdAndIsDeletedFalse(@Param("id") Long id);
 

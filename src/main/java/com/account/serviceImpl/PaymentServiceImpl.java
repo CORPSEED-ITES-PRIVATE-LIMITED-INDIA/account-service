@@ -174,25 +174,25 @@ public class PaymentServiceImpl implements PaymentService {
         Company company = unbilled.getCompany();
         CompanyUnit unit = unbilled.getUnit();
 
-        boolean companyApproved = company != null && company.isAccountsApproved();
+//        boolean companyApproved = company != null && company.isAccountsApproved();
         boolean unitApproved = unit == null || unit.isAccountsApproved(); // unit optional
 
-        if (!companyApproved || !unitApproved) {
-            StringBuilder msg = new StringBuilder("Cannot approve this unbilled invoice yet. ");
-
-            if (!companyApproved) {
-                msg.append("Company '").append(company != null ? company.getName() : "unknown")
-                        .append("' is not approved. ");
-            }
-            if (!unitApproved) {
-                msg.append("Unit '").append(unit != null ? unit.getUnitName() : "unknown")
-                        .append("' is not approved. ");
-            }
-
-            msg.append("Please go to the company/unit details and approve them first.");
-
-            throw new ApprovalBlockedException(msg.toString(), companyApproved, unitApproved);
-        }
+//        if (!companyApproved || !unitApproved) {
+//            StringBuilder msg = new StringBuilder("Cannot approve this unbilled invoice yet. ");
+//
+//            if (!companyApproved) {
+//                msg.append("Company '").append(company != null ? company.getName() : "unknown")
+//                        .append("' is not approved. ");
+//            }
+//            if (!unitApproved) {
+//                msg.append("Unit '").append(unit != null ? unit.getUnitName() : "unknown")
+//                        .append("' is not approved. ");
+//            }
+//
+//            msg.append("Please go to the company/unit details and approve them first.");
+//
+//            throw new ApprovalBlockedException(msg.toString(), companyApproved, unitApproved);
+//        }
 
         User approver = userRepository.findById(request.getApproverUserId())
                 .orElseThrow(() -> new ResourceNotFoundException(

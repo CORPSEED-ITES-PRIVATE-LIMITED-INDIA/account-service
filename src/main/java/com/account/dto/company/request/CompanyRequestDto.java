@@ -3,73 +3,29 @@ package com.account.dto.company.request;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.Data;
 
-import java.util.ArrayList;
-import java.util.Date;
+import java.time.LocalDate;
 import java.util.List;
 
-@Getter
-@Setter
+@Data
 public class CompanyRequestDto {
 
-    /**
-     * Lead/external system identifier.
-     * NOTE: If your Company.id is @GeneratedValue, do NOT try to save this into Company.id.
-     * Store it in Company.leadCompanyId (separate column).
-     */
+
     @NotNull(message = "leadCompanyId is required to maintain mapping with lead service")
     private Long leadCompanyId;
 
-    // ─────────────────────────────
-    // BASIC COMPANY INFO (MANDATORY)
-    // ─────────────────────────────
+
+
     @NotBlank(message = "Company name is required")
-    @Size(max = 255, message = "Company name cannot exceed 255 characters")
     private String name;
 
-    @NotBlank(message = "PAN number is required")
-    @Pattern(
-            regexp = "^[A-Z]{5}[0-9]{4}[A-Z]{1}$",
-            message = "Invalid PAN format. Must be like ABCDE1234F"
-    )
+    @NotBlank(message = "PAN is required for full registration")
     private String panNo;
-
-    // ─────────────────────────────
-    // OPTIONAL COMPANY DETAILS
-    // ─────────────────────────────
-    private Date establishDate;
-
-    @Size(max = 255, message = "Industry cannot exceed 255 characters")
-    private String industry;
-
-    private Long industryId;
-    private Long subIndustryId;
-    private Long subSubIndustryId;
 
     private String rating;
     private String companyAge;
-
-
-    private Long assigneeId;
-    private String status;  // Active, Inactive
-    private Long leadId;
-
-    private String paymentTerm;
-    private Boolean aggrementPresent;
-    private String aggrement;
-    private String nda;
-    private Boolean ndaPresent;
-    private String revenue;
-
-    private Boolean isConsultant = false;
-    private Long actualClientCompanyId;
-
-    @Valid
-    private List<CompanyUnitRequestDto> units = new ArrayList<>();
+    private LocalDate establishDate;
 
     private String address;
     private String city;
@@ -77,12 +33,25 @@ public class CompanyRequestDto {
     private String country;
     private String primaryPinCode;
 
-    private String sAddress;
-    private String sCity;
-    private String sState;
-    private String sCountry;
-    private String secondaryPinCode;
+    // Industry (you can use IDs or names/strings – here using strings for simplicity)
+    private String industry;
+    private String subIndustry;
+    private String subSubIndustry;
 
-    private Long createdById;
+    private Boolean isConsultant;
+
+    // Agreements & financials
+    private String paymentTerm;
+    private Boolean aggrementPresent;
+    private String aggrement;
+    private Boolean ndaPresent;
+    private String nda;
+    private String revenue;
+
+    // Units – can update existing or add new
+    @Valid
+    private List<CompanyUnitFullRequestDto> units;
+
+    @NotNull(message = "updatedBy user ID is required")
     private Long updatedById;
 }

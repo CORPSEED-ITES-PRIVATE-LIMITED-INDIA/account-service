@@ -6,8 +6,8 @@ import com.account.domain.User;
 import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.company.request.BasicUnitCreateRequest;
 import com.account.dto.company.request.CompanyRequestDto;
+import com.account.dto.company.request.CompanyUnitFullRequestDto;
 import com.account.dto.company.response.CompanyResponseDto;
-import com.account.dto.company.request.CompanyUnitRequestDto;
 import com.account.dto.company.response.CompanyUnitResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
@@ -48,147 +48,26 @@ public class CompanyServiceImpl implements CompanyService {
         this.dateTimeUtil = dateTimeUtil;
     }
 
-    @Override
-    public CompanyResponseDto createCompanyFromLead(CompanyRequestDto requestDto) {
-
-        Long leadCompanyId = requestDto.getLeadCompanyId();
-        if (leadCompanyId == null) {
-            throw new ValidationException("leadCompanyId is required", "ERR_LEAD_ID_REQUIRED");
-        }
-
-        // Find by business key (leadId)
-        Company company = companyRepository.findByLeadId(leadCompanyId)
-                .orElseGet(Company::new);
-
-        boolean isNew = (company.getId() == null);
-
-        // ── Core mapping ────────────────────────────────────────────────────────
-        company.setLeadId(leadCompanyId);
-
-        company.setName(StringUtils.trimWhitespace(requestDto.getName()));
-        company.setPanNo(StringUtils.hasText(requestDto.getPanNo())
-                ? requestDto.getPanNo().trim().toUpperCase()
-                : company.getPanNo());
-
-        company.setEstablishDate(dateTimeUtil.toLocalDate(requestDto.getEstablishDate()));
-        company.setIndustry(StringUtils.trimWhitespace(requestDto.getIndustry()));
-        company.setStatus(StringUtils.trimWhitespace(requestDto.getStatus()));
-
-        // Agreements
-        company.setPaymentTerm(StringUtils.trimWhitespace(requestDto.getPaymentTerm()));
-        company.setAggrementPresent(Boolean.TRUE.equals(requestDto.getAggrementPresent()));
-        company.setAggrement(requestDto.getAggrement());
-        company.setNdaPresent(Boolean.TRUE.equals(requestDto.getNdaPresent()));
-        company.setNda(requestDto.getNda());
-        company.setRevenue(StringUtils.trimWhitespace(requestDto.getRevenue()));
-
-        company.setIsConsultant(Boolean.TRUE.equals(requestDto.getIsConsultant()));
-
-        // ── Auditing ────────────────────────────────────────────────────────────
-        if (isNew && requestDto.getCreatedById() != null) {
-            User creator = userRepository.findByIdAndNotDeleted(requestDto.getCreatedById())
-                    .orElseThrow(() -> new ValidationException(
-                            "Creator user not found or deleted with ID: " + requestDto.getCreatedById(),
-                            "USER_NOT_FOUND", "createdById"));
-            company.setCreatedBy(creator);
-        }
-
-        if (requestDto.getUpdatedById() != null) {
-            User updater = userRepository.findByIdAndNotDeleted(requestDto.getUpdatedById())
-                    .orElseThrow(() -> new ValidationException(
-                            "Updater user not found or deleted with ID: " + requestDto.getUpdatedById(),
-                            "USER_NOT_FOUND", "updatedById"));
-            company.setUpdatedBy(updater);
-        }
-
-        // Defaults for new company
-        if (isNew) {
-            company.setUuid(dateTimeUtil.generateUuid());
-            company.setOnboardingStatus("PendingApproval");
-            company.setAccountsApproved(false);
-            company.setDeleted(false);
-        }
-
-        company = companyRepository.save(company);
-
-        // ── Units sync ──────────────────────────────────────────────────────────
-        if (requestDto.getUnits() != null && !requestDto.getUnits().isEmpty()) {
-            for (CompanyUnitRequestDto unitDto : requestDto.getUnits()) {
-
-                CompanyUnit unit;
-                if (unitDto.getLeadUnitId() != null) {
-                    unit = companyUnitRepository.findByLeadId(unitDto.getLeadUnitId())
-                            .orElseGet(CompanyUnit::new);
-                    unit.setLeadId(unitDto.getLeadUnitId());
-                } else {
-                    unit = new CompanyUnit();
-                }
-
-                unit.setUnitName(StringUtils.trimWhitespace(unitDto.getUnitName()));
-                if (!StringUtils.hasText(unit.getUnitName())) {
-                    unit.setUnitName("Default Branch");
-                }
-
-                unit.setAddressLine1(unitDto.getAddressLine1());
-                unit.setAddressLine2(unitDto.getAddressLine2());
-                unit.setCity(unitDto.getCity());
-                unit.setState(unitDto.getState());
-                unit.setPinCode(unitDto.getPinCode());
-                unit.setGstNo(StringUtils.trimWhitespace(unitDto.getGstNo()));
-                unit.setGstType(unitDto.getGstTypeEntity());
-                unit.setGstBusinessType(unitDto.getGstBusinessType());
-                unit.setGstTypePrice(unitDto.getGstTypePrice());
-
-                // Contacts – assuming lazy loading or ID reference is fine
-                // If you need to load Contact entity → add ContactRepository and fetch
-
-                unit.setUnitOpeningDate(dateTimeUtil.toLocalDate(unitDto.getUnitOpeningDate()));
-                unit.setConsultantPresent(Boolean.TRUE.equals(unitDto.getConsultantPresent()));
-
-                unit.setCompany(company);
-
-                if (!StringUtils.hasText(unit.getStatus())) {
-                    unit.setStatus("Active");
-                }
-
-                // Unit auditing
-                if (unit.getId() == null && requestDto.getCreatedById() != null) {
-                    User creator = userRepository.findByIdAndNotDeleted(requestDto.getCreatedById())
-                            .orElseThrow(() -> new ValidationException(
-                                    "Creator not found or deleted", "USER_NOT_FOUND", "createdById"));
-                    unit.setCreatedBy(creator);
-                }
-
-                if (requestDto.getUpdatedById() != null) {
-                    User updater = userRepository.findByIdAndNotDeleted(requestDto.getUpdatedById())
-                            .orElseThrow(() -> new ValidationException(
-                                    "Updater not found or deleted", "USER_NOT_FOUND", "updatedById"));
-                    unit.setUpdatedBy(updater);
-                }
-
-                companyUnitRepository.save(unit);
-            }
-        }
-
-        return mapToResponseDto(company);
-    }
 
     @Override
     public CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto dto) {
         logger.info("Basic company creation started for name: {}, leadCompanyId: {}",
                 dto.getName(), dto.getLeadCompanyId());
 
-        Long leadCompanyId = dto.getLeadCompanyId();
-        if (leadCompanyId == null) {
+        Long companyId = dto.getLeadCompanyId();   // this will become PK
+
+        if (companyId == null) {
             throw new ValidationException("leadCompanyId is required", "ERR_LEAD_COMPANY_ID_REQUIRED");
         }
 
-        if (companyRepository.existsByLeadId(leadCompanyId)) {
+        // 1. Already exists? → reject
+        if (companyRepository.existsById(companyId)) {
             throw new ValidationException(
-                    "Company with leadCompanyId " + leadCompanyId + " already exists",
+                    "Company with ID " + companyId + " already exists",
                     "ERR_DUPLICATE_COMPANY_ID");
         }
 
+        // 2. Name uniqueness (soft-deleted excluded)
         String name = StringUtils.trimWhitespace(dto.getName());
         if (companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(name)) {
             throw new ValidationException(
@@ -196,6 +75,7 @@ public class CompanyServiceImpl implements CompanyService {
                     "ERR_DUPLICATE_COMPANY_NAME");
         }
 
+        // PAN checks ...
         String panNo = null;
         if (StringUtils.hasText(dto.getPanNo())) {
             panNo = dto.getPanNo().trim().toUpperCase();
@@ -204,6 +84,7 @@ public class CompanyServiceImpl implements CompanyService {
             }
         }
 
+        // GST ↔ PAN consistency check (if both present) ...
         String gstNo = null;
         if (StringUtils.hasText(dto.getGstNo())) {
             gstNo = dto.getGstNo().trim().toUpperCase();
@@ -217,8 +98,10 @@ public class CompanyServiceImpl implements CompanyService {
             }
         }
 
+        // ── Create entity ──
         Company company = new Company();
-        company.setLeadId(leadCompanyId);
+        company.setId(companyId);                    // ← important: set PK manually
+        company.setLeadId(companyId);                // if you still want to keep this field
         company.setName(name);
         company.setPanNo(panNo);
         company.setUuid(dateTimeUtil.generateUuid());
@@ -226,30 +109,29 @@ public class CompanyServiceImpl implements CompanyService {
         company.setOnboardingStatus("Minimal");
         company.setDeleted(false);
 
-        // Optional auditing (if provided in DTO)
+        // Optional: set creator
         if (dto.getCreatedById() != null) {
             User creator = userRepository.findByIdAndNotDeleted(dto.getCreatedById())
                     .orElseThrow(() -> new ValidationException(
-                            "Creator user not found or deleted with ID: " + dto.getCreatedById(),
-                            "USER_NOT_FOUND", "createdById"));
+                            "Creator user not found or deleted", "USER_NOT_FOUND"));
             company.setCreatedBy(creator);
         }
 
         company = companyRepository.save(company);
-        logger.info("Basic company created → ID: {}, leadId: {}", company.getId(), company.getLeadId());
+        logger.info("Basic company created → ID: {}", company.getId());
 
-        // Auto-create default unit if needed
+        // Auto-create default unit (your existing logic, unchanged)
         boolean shouldCreateUnit = StringUtils.hasText(dto.getAddress())
                 || StringUtils.hasText(dto.getUnitName())
                 || StringUtils.hasText(gstNo);
 
         if (shouldCreateUnit) {
             CompanyUnit unit = new CompanyUnit();
-
             String unitName = StringUtils.hasText(dto.getUnitName())
                     ? dto.getUnitName().trim()
                     : name + " - Main Branch";
 
+            unit.setId(dto.getCompanyUnitId());
             unit.setUnitName(unitName);
             unit.setAddressLine1(dto.getAddress());
             unit.setCity(dto.getCity());
@@ -265,7 +147,6 @@ public class CompanyServiceImpl implements CompanyService {
 
         return mapToResponseDto(company);
     }
-
     // ────────────────────────────────────────────────
     // Mapping methods (unchanged)
     // ────────────────────────────────────────────────
@@ -275,9 +156,6 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setName(company.getName());
         dto.setPanNo(company.getPanNo());
         dto.setOnboardingStatus(company.getOnboardingStatus());
-        dto.setAccountsApproved(company.isAccountsApproved());
-        dto.setAccountsRemark(company.getAccountsRemark());
-
         if (company.getUnits() != null) {
             dto.setUnits(company.getUnits().stream()
                     .filter(u -> !u.isDeleted())
@@ -287,6 +165,141 @@ public class CompanyServiceImpl implements CompanyService {
         return dto;
     }
 
+    @Override
+    @Transactional
+    public CompanyResponseDto updateFullCompanyDetails(Long companyId, CompanyRequestDto dto, Long updatedById) {
+        logger.info("Full company update started for companyId: {}, updatedBy: {}", companyId, updatedById);
+
+        if (companyId == null) {
+            throw new ValidationException("companyId is required", "ERR_COMPANY_ID_REQUIRED");
+        }
+
+        Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Company not found", "ERR_COMPANY_NOT_FOUND"));
+
+        User updatedBy = userRepository.findByIdAndNotDeleted(updatedById)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found", "ERR_USER_NOT_FOUND"));
+
+        // ── Update company fields (only if provided) ──
+        if (StringUtils.hasText(dto.getName())) {
+            String trimmedName = dto.getName().trim();
+            if (!company.getName().equalsIgnoreCase(trimmedName) &&
+                    companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(trimmedName)) {
+                throw new ValidationException("Company name already exists", "ERR_DUPLICATE_COMPANY_NAME");
+            }
+            company.setName(trimmedName);
+        }
+
+        if (StringUtils.hasText(dto.getPanNo())) {
+            String pan = dto.getPanNo().trim().toUpperCase();
+            if (!pan.equals(company.getPanNo()) &&
+                    companyRepository.existsByPanNoAndIsDeletedFalse(pan)) {
+                throw new ValidationException("PAN already exists", "ERR_DUPLICATE_PAN");
+            }
+            company.setPanNo(pan);
+        }
+
+        if (dto.getEstablishDate() != null) {
+            company.setEstablishDate(dto.getEstablishDate());
+        }
+
+        if (StringUtils.hasText(dto.getIndustry())) company.setIndustry(dto.getIndustry().trim());
+        if (StringUtils.hasText(dto.getSubIndustry())) company.setSubIndustry(dto.getSubIndustry().trim());
+
+        if (StringUtils.hasText(dto.getPaymentTerm())) company.setPaymentTerm(dto.getPaymentTerm().trim());
+        if (dto.getAggrementPresent() != null) company.setAggrementPresent(dto.getAggrementPresent());
+        if (StringUtils.hasText(dto.getAggrement())) company.setAggrement(dto.getAggrement());
+        if (dto.getNdaPresent() != null) company.setNdaPresent(dto.getNdaPresent());
+        if (StringUtils.hasText(dto.getNda())) company.setNda(dto.getNda());
+        if (StringUtils.hasText(dto.getRevenue())) company.setRevenue(dto.getRevenue().trim());
+
+        company.setUpdatedBy(updatedBy);
+
+        // ── Handle units ── full replace / upsert style
+        if (dto.getUnits() != null && !dto.getUnits().isEmpty()) {
+
+            // Optional: clear old units if you want full replacement
+            // company.getUnits().clear();   // ← only if you want to delete old ones not sent now
+
+            for (CompanyUnitFullRequestDto unitDto : dto.getUnits()) {
+                Long unitId = unitDto.getId();
+
+                if (unitId == null) {
+                    throw new ValidationException("Unit id is required for full update flow", "ERR_UNIT_ID_REQUIRED");
+                }
+
+                CompanyUnit unit;
+
+                Optional<CompanyUnit> existingOpt = companyUnitRepository.findByIdAndCompanyIdAndIsDeletedFalse(
+                        unitId, companyId);
+
+                if (existingOpt.isPresent()) {
+                    unit = existingOpt.get();
+                    logger.info("Updating existing unit id: {}", unitId);
+                } else {
+                    unit = new CompanyUnit();
+                    unit.setId(unitId);           // manual ID assignment
+                    unit.setCompany(company);
+                    unit.setCreatedBy(updatedBy); // new unit
+                    logger.info("Creating new unit with id: {}", unitId);
+                }
+
+                // ── Apply / update fields ──
+                String unitName = unitDto.getUnitName().trim();
+                // Duplicate name check (exclude self)
+                boolean duplicate = company.getUnits().stream()
+                        .filter(u -> !u.isDeleted() && !u.getId().equals(unitId))
+                        .anyMatch(u -> u.getUnitName() != null &&
+                                u.getUnitName().trim().equalsIgnoreCase(unitName));
+
+                if (duplicate) {
+                    throw new ValidationException("Unit name '" + unitName + "' already exists in this company", "ERR_DUPLICATE_UNIT_NAME");
+                }
+
+                unit.setUnitName(unitName);
+                unit.setAddressLine1(unitDto.getAddressLine1().trim());
+                unit.setAddressLine2(StringUtils.trimWhitespace(unitDto.getAddressLine2()));
+                unit.setCity(unitDto.getCity().trim());
+                unit.setState(unitDto.getState().trim());
+                unit.setCountry(StringUtils.hasText(unitDto.getCountry()) ? unitDto.getCountry().trim() : "India");
+                unit.setPinCode(unitDto.getPinCode().trim());
+
+                if (StringUtils.hasText(unitDto.getGstNo())) {
+                    String gst = unitDto.getGstNo().trim().toUpperCase();
+                    // Optional: validate GST-PAN match if company has PAN
+                    if (company.getPanNo() != null && gst.length() >= 12) {
+                        String panFromGst = gst.substring(2, 12);
+                        if (!panFromGst.equals(company.getPanNo())) {
+                            throw new ValidationException(
+                                    "GST " + gst + " PAN part does not match company PAN", "ERR_PAN_GST_MISMATCH");
+                        }
+                    }
+                    unit.setGstNo(gst);
+                } else {
+                    unit.setGstNo(null);
+                }
+
+                unit.setUnitOpeningDate(unitDto.getUnitOpeningDate());
+                unit.setGstBusinessType(StringUtils.trimWhitespace(unitDto.getGstBusinessType()));
+
+                unit.setUpdatedBy(updatedBy);
+                unit.setStatus("Active"); // or from DTO if you add it
+
+                companyUnitRepository.save(unit);
+
+                if (!company.getUnits().contains(unit)) {
+                    company.getUnits().add(unit);
+                }
+            }
+        }
+
+        companyRepository.save(company);
+
+        logger.info("Full company details updated → companyId: {}, onboardingStatus: {}",
+                company.getId(), company.getOnboardingStatus());
+
+        return mapToResponseDto(company);
+    }
     @Override
     @Transactional
     public CompanyResponseDto addBasicUnitToCompany(Long companyId, BasicUnitCreateRequest request, Long updatedById) {
@@ -372,6 +385,8 @@ public class CompanyServiceImpl implements CompanyService {
 
         return mapToResponseDto(company);
     }
+
+
 
     private CompanyUnitResponseDto mapUnitToResponseDto(CompanyUnit unit) {
         CompanyUnitResponseDto dto = new CompanyUnitResponseDto();

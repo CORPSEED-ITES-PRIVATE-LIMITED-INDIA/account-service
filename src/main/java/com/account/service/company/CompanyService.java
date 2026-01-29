@@ -8,9 +8,9 @@ import com.account.dto.company.response.CompanyResponseDto;
 public interface CompanyService {
 
 
-    CompanyResponseDto createCompanyFromLead(CompanyRequestDto requestDto);
-
     CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto quickRequest);
 
     CompanyResponseDto addBasicUnitToCompany(Long companyId, BasicUnitCreateRequest request, Long updatedById);
+
+    CompanyResponseDto updateFullCompanyDetails(Long companyId, CompanyRequestDto dto, Long updatedById);
 }

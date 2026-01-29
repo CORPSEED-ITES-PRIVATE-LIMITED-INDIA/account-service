@@ -15,18 +15,6 @@ public class CompanyResponseDto {
     private String name;
     private String panNo;
 
-    private String address;
-    private String city;
-    private String state;
-    private String country;
-    private String primaryPinCode;
-
-    private String sAddress;
-    private String sCity;
-    private String sState;
-    private String sCountry;
-    private String secondaryPinCode;
-
     private String onboardingStatus;
     private boolean accountsApproved;
     private String accountsRemark;
