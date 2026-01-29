@@ -10,8 +10,9 @@ public interface PaymentTypeService {
     PaymentTypeResponseDto createPaymentType(PaymentTypeRequestDto dto);
 
     PaymentTypeResponseDto getPaymentTypeById(Long id);
+    List<PaymentTypeResponseDto> getAllPaymentTypes();
 
-    List<PaymentTypeResponseDto> getAllPaymentTypes(int page, int size);
+
 
     PaymentTypeResponseDto updatePaymentType(Long id, PaymentTypeRequestDto dto);
 

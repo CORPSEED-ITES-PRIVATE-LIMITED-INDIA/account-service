@@ -5,8 +5,6 @@ import java.util.List;
 
 public class UpdatePaymentDto {
 
-	
-
 	private Long id;
 
 	private Long leadId;

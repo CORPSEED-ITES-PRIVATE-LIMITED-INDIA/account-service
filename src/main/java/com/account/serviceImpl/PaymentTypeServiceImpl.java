@@ -65,11 +65,9 @@ public class PaymentTypeServiceImpl implements PaymentTypeService {
     }
 
     @Override
-    public List<PaymentTypeResponseDto> getAllPaymentTypes(int page, int size) {
-        var pageable = PageRequest.of(page, size);
-        var pageResult = paymentTypeRepository.findByIsDeletedFalse(pageable);
-
-        return pageResult.getContent().stream()
+    public List<PaymentTypeResponseDto> getAllPaymentTypes() {
+        return paymentTypeRepository.findByIsDeletedFalse()
+                .stream()
                 .map(this::mapToResponseDto)
                 .collect(Collectors.toList());
     }

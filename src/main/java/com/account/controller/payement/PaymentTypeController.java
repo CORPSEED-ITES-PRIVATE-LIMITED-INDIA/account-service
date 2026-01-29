@@ -31,11 +31,10 @@ public class PaymentTypeController {
     }
 
     @GetMapping
-    public ResponseEntity<List<PaymentTypeResponseDto>> getAll(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(paymentTypeService.getAllPaymentTypes(page, size));
+    public ResponseEntity<List<PaymentTypeResponseDto>> getAll() {
+        return ResponseEntity.ok(paymentTypeService.getAllPaymentTypes());
     }
+
 
     @PutMapping("/{id}")
     public ResponseEntity<PaymentTypeResponseDto> update(
