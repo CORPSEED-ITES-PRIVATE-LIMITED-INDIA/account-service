@@ -118,6 +118,9 @@ public class CompanyUnit {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "onboarding_status")
+    private OnboardingStatus onboardingStatus = OnboardingStatus.MINIMAL;
 
     @Column(name = "accounts_approved", nullable = false)
     private boolean accountsApproved = false;

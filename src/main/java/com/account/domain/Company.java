@@ -96,10 +96,9 @@ public class Company {
 	)
 	private List<CompanyUnit> units = new ArrayList<>();
 
-	// Onboarding & Accounts approval
+	@Enumerated(EnumType.STRING)
 	@Column(name = "onboarding_status")
-	private String onboardingStatus;
-
+	private OnboardingStatus onboardingStatus = OnboardingStatus.MINIMAL;
 
 	// Soft delete
 	@Column(name = "is_deleted", nullable = false)
@@ -123,6 +122,20 @@ public class Company {
 	@LastModifiedDate
 	@Column(name = "updated_at")
 	private LocalDateTime updatedAt;
+
+
+	@Column(name = "accounts_approved", nullable = false)
+	private boolean accountsApproved = false;
+
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "accounts_reviewed_by_id")
+	private User accountsReviewedBy;
+
+	@Column(name = "accounts_reviewed_at")
+	private LocalDateTime accountsReviewedAt;
+
+	@Column(name = "accounts_remark", columnDefinition = "TEXT")
+	private String accountsRemark;
 
 
 }

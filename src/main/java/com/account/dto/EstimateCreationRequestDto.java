@@ -28,7 +28,7 @@ public class EstimateCreationRequestDto {
     @NotBlank(message = "Solution type is required")
     private String solutionType;
 
-    private String solutionId;
+    private Long solutionId;
 
     private LocalDate estimateDate;
 

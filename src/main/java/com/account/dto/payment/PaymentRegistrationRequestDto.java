@@ -34,7 +34,6 @@ public class PaymentRegistrationRequestDto {
     @NotNull(message = "Payment type ID is required")
     private Long paymentTypeId;
 
-
     /**
      * Financial year the payment relates to (for EPR compliance tracking)
      * Format: "2025-2026"
@@ -54,7 +53,5 @@ public class PaymentRegistrationRequestDto {
      */
     private String eprCertificateOrInvoiceNumber;
 
-    // You can add more if needed, e.g.:
-    // private String eprTargetCategory;   // Cat I, II, III, IV, etc.
-    // private BigDecimal eprTargetQuantityInTonnes;
+
 }

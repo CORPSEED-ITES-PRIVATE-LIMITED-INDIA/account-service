@@ -14,13 +14,15 @@ public class CompanyUnitResponseDto {
     private Long id;
     private String unitName;
     private String addressLine1;
-    private String addressLine2;
     private String city;
     private String state;
     private String country;
     private String pinCode;
     private String gstNo;
     private String status;
+    private String onboardingStatus;
+    private boolean accountsApproved;
+    private String accountsRemark;
     private LocalDate unitOpeningDate;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

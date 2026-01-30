@@ -71,7 +71,7 @@ public class Estimate {
 
     // Reference to originating solution(s)
     @Column(name = "solution_id", length = 500)
-    private String solutionId;
+    private Long solutionId;
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20)

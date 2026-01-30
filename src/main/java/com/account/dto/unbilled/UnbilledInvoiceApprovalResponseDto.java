@@ -1,22 +1,56 @@
-package com.account.dto.unbilled;// Response DTO
+package com.account.dto.unbilled;
 
-
-import com.account.domain.UnbilledStatus;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 @Getter
-@Builder
+@Setter
 public class UnbilledInvoiceApprovalResponseDto {
 
+    private String name;
+
+    private String projectNo;
+
+    private Long salesPersonId;
+
+    private String salesPersonName;
+
+    private Long productId;
+
+    private Long companyId;
+
     private String unbilledNumber;
-    private UnbilledStatus status;
-    private String invoiceNumber;
-    private Long invoiceId;
-    private String approvedByName;           // or full name / email
-    private LocalDateTime approvedAt;
-    private String approvalRemarks;
-    private String message;
+
+    private String estimateNumber;
+
+    private Long contactId;
+
+    private Long leadId;
+
+    private LocalDate date;
+
+    private String address;
+
+    private String city;
+
+    private String state;
+
+    private String country;
+
+    private String primaryPinCode;
+
+    private Double totalAmount;
+
+    private Double paidAmount;
+
+    private Long paymentTypeId;
+
+    private Long approvedById;
+
+    private Long createdBy;
+
+    private Long updatedBy;
 }
