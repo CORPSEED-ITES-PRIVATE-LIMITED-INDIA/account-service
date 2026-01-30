@@ -13,8 +13,6 @@ public class CompanySummaryDto {
     private Long id;
     private String name;
     private String panNo;
-    private String gstNo;
-    private String gstType;
     private String state;
     private String city;
     private String country;

@@ -333,6 +333,7 @@ public class EstimateServiceImpl implements EstimateService {
 
         // Basic fields
         dto.setId(estimate.getId());
+        dto.setLeadId(estimate.getLeadId());
         dto.setPublicUuid(estimate.getPublicUuid());
         dto.setEstimateNumber(estimate.getEstimateNumber());
         dto.setEstimateDate(estimate.getEstimateDate());

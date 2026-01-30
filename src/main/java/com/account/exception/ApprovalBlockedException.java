@@ -11,4 +11,11 @@ public class ApprovalBlockedException extends RuntimeException {
         this.unitApproved = unitApproved;
     }
 
+    public boolean isCompanyApproved() {
+        return companyApproved;
+    }
+
+    public boolean isUnitApproved() {
+        return unitApproved;
+    }
 }

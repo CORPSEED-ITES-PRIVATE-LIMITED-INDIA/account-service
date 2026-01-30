@@ -160,4 +160,20 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(body);
     }
+
+    @ExceptionHandler(ApprovalBlockedException.class)
+    public ResponseEntity<Object> handleApprovalBlockedException(ApprovalBlockedException ex) {
+        Map<String, Object> body = baseBody(
+                HttpStatus.CONFLICT,                    // 409
+                "Approval Blocked",
+                ex.getMessage(),
+                "APPROVAL_BLOCKED"                      // your preferred error code
+        );
+
+        // Optional: enrich response with state info (useful for frontend to show specific messages)
+        body.put("companyApproved", ex.isCompanyApproved());
+        body.put("unitApproved", ex.isUnitApproved());
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
 }

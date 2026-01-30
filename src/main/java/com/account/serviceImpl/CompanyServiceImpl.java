@@ -361,6 +361,8 @@ public class CompanyServiceImpl implements CompanyService {
         unit.setAccountsReviewedBy(reviewedBy);
         unit.setAccountsReviewedAt(LocalDateTime.now());
         unit.setAccountsRemark(request.getApprove() ? null : request.getRemark().trim());
+        unit.setOnboardingStatus(request.getApprove() ? OnboardingStatus.APPROVED : OnboardingStatus.DISAPPROVED);
+
 
         companyUnitRepository.save(unit);
 

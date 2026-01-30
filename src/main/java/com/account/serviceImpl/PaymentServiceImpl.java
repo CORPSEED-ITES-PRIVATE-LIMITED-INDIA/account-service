@@ -157,6 +157,7 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Approving unbilled invoice | unbilledId: {}, approverId: {}",
                 unbilledId, request.getApproverUserId());
 
+        // 1. Fetch unbilled invoice
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Unbilled invoice not found with ID: " + unbilledId,
@@ -165,38 +166,43 @@ public class PaymentServiceImpl implements PaymentService {
                         unbilledId
                 ));
 
+        // 2. Validate current status
         if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
             throw new IllegalStateException(
-                    "Only PENDING_APPROVAL unbilled invoices can be approved. Current status: " + unbilled.getStatus());
+                    "Only PENDING_APPROVAL unbilled invoices can be approved. " +
+                            "Current status: " + unbilled.getStatus());
         }
 
+        // 3. Get related entities
         Company company = unbilled.getCompany();
         CompanyUnit unit = unbilled.getUnit();
 
-        // Calculate actual states
+        // 4. Determine approval eligibility
         boolean companyApproved = company != null && company.getOnboardingStatus() == OnboardingStatus.APPROVED;
         boolean unitApproved = unit == null || unit.getOnboardingStatus() == OnboardingStatus.APPROVED;
 
-// Company check
+        // 5. Block approval if company is not approved
         if (!companyApproved) {
+            String companyStatus = (company != null) ? company.getOnboardingStatus().toString() : "N/A";
             throw new ApprovalBlockedException(
                     "Company must be APPROVED before unbilled invoice approval. " +
-                            "Current status: " + (company != null ? company.getOnboardingStatus() : "N/A"),
-                    companyApproved,     // ← pass true/false
-                    unitApproved         // ← pass current unit state
+                            "Current status: " + companyStatus,
+                    companyApproved,
+                    unitApproved
             );
         }
 
-// Unit check (only if unit exists)
+        // 6. Block approval if unit exists and is not approved
         if (unit != null && !unitApproved) {
             throw new ApprovalBlockedException(
                     "Unit must be APPROVED before unbilled invoice approval. " +
                             "Current status: " + unit.getOnboardingStatus(),
-                    companyApproved,     // ← pass current company state
-                    unitApproved         // ← pass false
+                    companyApproved,
+                    unitApproved
             );
         }
 
+        // 7. Fetch approver
         User approver = userRepository.findById(request.getApproverUserId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Approver not found with ID: " + request.getApproverUserId(),
@@ -205,17 +211,23 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getApproverUserId()
                 ));
 
+        // 8. Update unbilled invoice to APPROVED (temporary state)
         unbilled.setStatus(UnbilledStatus.APPROVED);
         unbilled.setApprovedBy(approver);
         unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
         unbilled.setApprovalRemarks(request.getApprovalRemarks());
 
+        // 9. Identify the first (triggering) payment receipt
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
                 .min(Comparator.comparing(PaymentReceipt::getCreatedAt))
-                .orElseThrow(() -> new IllegalStateException("No payments found for unbilled invoice"));
+                .orElseThrow(() -> new IllegalStateException(
+                        "No payments found for unbilled invoice: " + unbilled.getUnbilledNumber()));
 
-        Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(unbilled, triggeringReceipt, approver);
+        // 10. Generate actual GST invoice
+        Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(
+                unbilled, triggeringReceipt, approver);
 
+        // 11. Determine final unbilled status based on payment
         UnbilledStatus finalStatus = (unbilled.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0)
                 ? UnbilledStatus.FULLY_PAID
                 : UnbilledStatus.PARTIALLY_PAID;
@@ -223,32 +235,41 @@ public class PaymentServiceImpl implements PaymentService {
         unbilled.setStatus(finalStatus);
         unbilledInvoiceRepository.save(unbilled);
 
-        log.info("Unbilled {} approved → final status: {}, invoice: {}",
+        log.info("Unbilled {} approved → final status: {}, invoice generated: {}",
                 unbilled.getUnbilledNumber(), finalStatus, generatedInvoice.getInvoiceNumber());
 
-        // Build response manually using setters (no builder)
+        // 12. Build response
         Estimate estimate = unbilled.getEstimate();
 
         UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
 
-        response.setName(estimate != null ? estimate.getSolutionName() : (company != null ? company.getName() + " - Project" : "Unnamed Project"));
+        // Project / Solution name fallback logic
+        response.setName(
+                estimate != null ? estimate.getSolutionName() :
+                        (company != null ? company.getName() + " - Project" : "Unnamed Project")
+        );
+
         response.setProjectNo("PRJ-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
         response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        response.setSalesPersonName(unbilled.getCreatedBy() != null
-                ? (unbilled.getCreatedBy().getFullName() != null
-                ? unbilled.getCreatedBy().getFullName()
-                : unbilled.getCreatedBy().getEmail())
-                : null);
-        response.setProductId(estimate != null ? estimate.getSolutionId() : null); // adjust if productId field exists
+        response.setSalesPersonName(
+                unbilled.getCreatedBy() != null
+                        ? (unbilled.getCreatedBy().getFullName() != null
+                        ? unbilled.getCreatedBy().getFullName()
+                        : unbilled.getCreatedBy().getEmail())
+                        : null
+        );
+        response.setProductId(estimate != null ? estimate.getSolutionId() : null);
         response.setCompanyId(company != null ? company.getId() : null);
         response.setUnbilledNumber(unbilled.getUnbilledNumber());
         response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
         response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
         response.setLeadId(estimate != null ? estimate.getLeadId() : null);
         response.setDate(LocalDate.now());
-        response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : null);
-        response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : null);
-        response.setPaymentTypeId(triggeringReceipt.getPaymentType() != null ? triggeringReceipt.getPaymentType().getId() : null);
+        response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
+        response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
+        response.setPaymentTypeId(
+                triggeringReceipt.getPaymentType() != null ? triggeringReceipt.getPaymentType().getId() : null
+        );
         response.setApprovedById(approver.getId());
         response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
         response.setUpdatedBy(approver.getId());
