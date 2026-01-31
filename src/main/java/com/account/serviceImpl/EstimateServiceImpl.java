@@ -343,6 +343,7 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setStatus(estimate.getStatus() != null ? estimate.getStatus().name() : null);
         dto.setCurrency(estimate.getCurrency());
 
+
         // Financials
         dto.setSubTotalExGst(estimate.getSubTotalExGst());
         dto.setTotalGstAmount(estimate.getTotalGstAmount());
@@ -368,6 +369,7 @@ public class EstimateServiceImpl implements EstimateService {
             companyDto.setId(company.getId());
             companyDto.setName(company.getName());
             companyDto.setPanNo(company.getPanNo());
+            companyDto.setOnboardingStatus(companyDto.getOnboardingStatus());
             dto.setCompany(companyDto);
         }
 
@@ -385,6 +387,10 @@ public class EstimateServiceImpl implements EstimateService {
             unitDto.setGstNo(unit.getGstNo());
             unitDto.setGstType(unit.getGstType());
             unitDto.setStatus(unit.getStatus());
+            unitDto.setOnboardingStatus(
+                    unit.getOnboardingStatus() != null ?
+                            unit.getOnboardingStatus().name() : null
+            );
             dto.setUnit(unitDto);
         }
 

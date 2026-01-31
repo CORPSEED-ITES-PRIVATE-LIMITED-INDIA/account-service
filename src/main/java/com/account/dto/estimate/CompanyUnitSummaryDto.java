@@ -20,4 +20,6 @@ public class CompanyUnitSummaryDto {
     private String gstNo;
     private String gstType;
     private String status;
+    private String onboardingStatus;
+
 }

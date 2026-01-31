@@ -17,4 +17,5 @@ public class CompanySummaryDto {
     private String city;
     private String country;
     private String primaryPinCode;
+    private String onboardingStatus;
 }

@@ -70,8 +70,6 @@ public class EstimateController {
             @PathVariable Long leadId,
             @RequestParam(value = "userId", required = false) Long requestingUserId) {
 
-        // If userId is provided → can add permission check later
-        // For now: simple fetch
         List<EstimateResponseDto> estimates = estimateService.getEstimatesByLeadId(leadId);
 
         return ResponseEntity.ok(estimates);

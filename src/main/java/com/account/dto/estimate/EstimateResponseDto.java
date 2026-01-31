@@ -16,7 +16,6 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class EstimateResponseDto {
 
     // Internal ID - used only internally (not exposed in public views)
@@ -75,7 +74,6 @@ public class EstimateResponseDto {
     @Setter
     @NoArgsConstructor
     @AllArgsConstructor
-    @Builder
     public static class EstimateLineItemResponseDto {
 
         private Long id;
