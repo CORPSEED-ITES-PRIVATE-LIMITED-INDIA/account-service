@@ -369,7 +369,10 @@ public class EstimateServiceImpl implements EstimateService {
             companyDto.setId(company.getId());
             companyDto.setName(company.getName());
             companyDto.setPanNo(company.getPanNo());
-            companyDto.setOnboardingStatus(companyDto.getOnboardingStatus());
+            companyDto.setOnboardingStatus(
+                    company.getOnboardingStatus() != null ?
+                            company.getOnboardingStatus().name() : null
+            );
             dto.setCompany(companyDto);
         }
 
