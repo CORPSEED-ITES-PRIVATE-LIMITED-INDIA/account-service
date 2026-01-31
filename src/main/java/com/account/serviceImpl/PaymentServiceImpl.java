@@ -192,15 +192,6 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        // 6. Block approval if unit exists and is not approved
-        if (unit != null && !unitApproved) {
-            throw new ApprovalBlockedException(
-                    "Unit must be APPROVED before unbilled invoice approval. " +
-                            "Current status: " + unit.getOnboardingStatus(),
-                    companyApproved,
-                    unitApproved
-            );
-        }
 
         // 7. Fetch approver
         User approver = userRepository.findById(request.getApproverUserId())

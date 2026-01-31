@@ -7,9 +7,6 @@ import com.account.dto.invoice.InvoiceSummaryDto;
 import java.util.List;
 
 public interface InvoiceService {
-	
-	
-
 
 	List<InvoiceSummaryDto> getInvoicesList(
 			Long createdById,
@@ -19,7 +16,6 @@ public interface InvoiceService {
 	);
 
 	long getInvoicesCount(Long createdById, InvoiceStatus status);
-
 
 	List<InvoiceSummaryDto> searchInvoices(String invoiceNumber, String companyName, int i, int size);
 

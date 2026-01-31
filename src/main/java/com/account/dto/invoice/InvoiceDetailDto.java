@@ -28,6 +28,8 @@ public class InvoiceDetailDto {
     private String placeOfSupplyStateCode;
     private String buyerGstin;
     private String sellerGstin;
+    private Long solutionId;
+    private String solutionName;
 
     // Financials
     private BigDecimal subTotalExGst;

@@ -35,9 +35,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private static final Logger log = LoggerFactory.getLogger(InvoiceServiceImpl.class);
 
 	private final InvoiceRepository invoiceRepository;
-
 	private final UserRepository userRepository;
-
 	private final DateTimeUtil dateTimeUtil;
 
 
@@ -131,7 +129,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			invLine.setUnitPriceExGst(estLine.getUnitPriceExGst().multiply(proportion));
 			invLine.setGstRate(estLine.getGstRate());
 
-			invLine.calculateLineTotals();  // Must recalculate totals after scaling
+			invLine.calculateLineTotals(); // Must recalculate totals after scaling
 
 			// Apply correct GST split (CGST+SGST or IGST)
 			BigDecimal gstAmount = invLine.getGstAmount() != null ? invLine.getGstAmount() : BigDecimal.ZERO;
@@ -178,6 +176,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return invoice;
 	}
+
+
 	@Override
 	public List<InvoiceSummaryDto> getInvoicesList(Long userId, InvoiceStatus status, int page, int size) {
 
@@ -219,8 +219,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.collect(Collectors.toList());
 	}
 
-	@Override
 
+	@Override
 	public long getInvoicesCount(Long createdById, InvoiceStatus status) {
 		log.info("Counting invoices | createdById={}, status={}",
 				createdById != null ? createdById : "all",
@@ -229,6 +229,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return invoiceRepository.countInvoices(status, createdById);
 	}
 
+
 	private String generateInvoiceNumber() {
 		// TODO: In production use financial year + sequence per year
 		long count = invoiceRepository.count() + 1;
@@ -236,16 +237,21 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return String.format("INV-%d-%08d", year, count);
 	}
 
+
 	private InvoiceSummaryDto toSummaryDto(Invoice inv) {
 		UnbilledInvoice unbilled = inv.getUnbilledInvoice();
+		Estimate estimate = (unbilled != null) ? unbilled.getEstimate() : null;
 
 		return InvoiceSummaryDto.builder()
 				.id(inv.getId())
 				.publicUuid(inv.getPublicUuid())
 				.invoiceNumber(inv.getInvoiceNumber())
 				.unbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null)
-				.estimateNumber(unbilled != null && unbilled.getEstimate() != null
-						? unbilled.getEstimate().getEstimateNumber() : null)
+				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
+				// ─── Added solution fields ────────────────────────────────
+				.solutionId(estimate != null ? estimate.getSolutionId() : null)
+				.solutionName(estimate != null ? estimate.getSolutionName() : null)
+				// ───────────────────────────────────────────────────────────
 				.companyName(unbilled != null && unbilled.getCompany() != null
 						? unbilled.getCompany().getName() : null)
 				.contactName(unbilled != null && unbilled.getContact() != null
@@ -263,6 +269,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.createdAt(inv.getCreatedAt())
 				.build();
 	}
+
 
 	@Override
 	public List<InvoiceSummaryDto> searchInvoices(
@@ -287,6 +294,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.collect(Collectors.toList());
 	}
 
+
 	@Override
 	public long countSearchInvoices(String invoiceNumber, String companyName) {
 		log.info("Counting search invoices | invoiceNumber={}, companyName={}",
@@ -297,6 +305,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
 		);
 	}
+
 
 	@Override
 	@Transactional(readOnly = true)
@@ -324,6 +333,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return toDetailDto(invoice);
 	}
 
+
 	private InvoiceDetailDto toDetailDto(Invoice invoice) {
 		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
 		Estimate estimate = (unbilled != null) ? unbilled.getEstimate() : null;
@@ -344,6 +354,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setInvoiceNumber(invoice.getInvoiceNumber());
 		dto.setUnbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null);
 		dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+
+		// Optional: also add to detail view if desired
+		dto.setSolutionId(estimate != null ? estimate.getSolutionId() : null);
+		dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
 
 		dto.setCompanyName(
 				unbilled != null && unbilled.getCompany() != null
@@ -380,6 +394,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return dto;
 	}
 
+
 	private InvoiceDetailDto.LineItemDto toLineItemDto(InvoiceLineItem li) {
 		InvoiceDetailDto.LineItemDto lineDto = new InvoiceDetailDto.LineItemDto();
 
@@ -404,6 +419,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return lineDto;
 	}
+
 
 	private String getUserDisplayName(User user) {
 		if (user == null) return null;
