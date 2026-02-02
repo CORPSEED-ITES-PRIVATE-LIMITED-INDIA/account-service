@@ -9,10 +9,6 @@ import java.time.LocalDate;
 @Data
 public class EstimateRequestDto {
 
-    @NotBlank(message = "Order number is required")
-    @Size(max = 50)
-    private String orderNumber;
-
     private LocalDate purchaseDate;
 
     @NotBlank(message = "Product name is required")

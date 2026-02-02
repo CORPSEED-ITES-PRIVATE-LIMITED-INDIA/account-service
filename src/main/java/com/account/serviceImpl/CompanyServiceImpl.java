@@ -180,6 +180,7 @@ public class CompanyServiceImpl implements CompanyService {
         company.setRevenue(dto.getRevenue());
         company.setUpdatedBy(updatedBy);
         company.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
+        company.setOnboardingStatus(OnboardingStatus.INITIATED);
 
         if (dto.getUnits() != null) {
             for (CompanyUnitFullRequestDto u : dto.getUnits()) {
@@ -200,6 +201,8 @@ public class CompanyServiceImpl implements CompanyService {
                 unit.setUnitOpeningDate(u.getUnitOpeningDate());
                 unit.setUpdatedBy(updatedBy);
                 unit.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
+                unit.setOnboardingStatus(OnboardingStatus.INITIATED);
+
             }
         }
 
