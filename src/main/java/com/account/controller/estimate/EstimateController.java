@@ -141,4 +141,27 @@ public class EstimateController {
     }
 
 
+    @PostMapping("/{estimateId}/send")
+    @Operation(summary = "Send estimate to client",
+            description = "Sends estimate to the primary email of the associated contact. No body required.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Estimate sent successfully – status updated"),
+            @ApiResponse(responseCode = "400", description = "Cannot send (wrong status, no email, etc.)"),
+            @ApiResponse(responseCode = "403", description = "No permission"),
+            @ApiResponse(responseCode = "404", description = "Estimate or contact not found")
+    })
+    public ResponseEntity<EstimateResponseDto> sendEstimateToClient(
+            @PathVariable Long estimateId,
+            @RequestParam("userId") Long requestingUserId) {
+
+        EstimateResponseDto response = estimateService.sendEstimateToClient(
+                estimateId,
+                requestingUserId
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+
+
 }

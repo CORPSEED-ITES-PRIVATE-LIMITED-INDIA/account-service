@@ -148,6 +148,21 @@ public class Estimate {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    // Add these fields in Estimate class
+
+    @Column
+    private LocalDateTime sentToClientAt;
+
+    @Column(length = 255)
+    private String sentToEmail;         // the email we actually sent to
+
+    @Column(length = 100)
+    private String sentByUserName;      // optional - who triggered send
+
+    // Optional - if you want to allow resending to different email
+    @Column(length = 500)
+    private String lastSentEmails;      // comma separated if multiple
+
     @PrePersist
     protected void onCreate() {
         if (estimateDate == null) {
