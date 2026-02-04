@@ -22,6 +22,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -215,6 +217,25 @@ public class EstimateServiceImpl implements EstimateService {
         log.debug("Calculating estimate totals");
         estimate.calculateTotals();
 
+        // ---- Custom rounding rule for grandTotal ----
+        if (estimate.getGrandTotal() != null) {
+            BigDecimal grandTotal = estimate.getGrandTotal();
+
+            System.out.println("estimate.getGrandTotal() before:  "+estimate.getGrandTotal());
+
+            BigDecimal fractionalPart = grandTotal.remainder(BigDecimal.ONE);
+
+            BigDecimal roundedGrandTotal;
+            if (fractionalPart.compareTo(new BigDecimal("0.50")) >= 0) {
+                roundedGrandTotal = grandTotal.setScale(0, RoundingMode.CEILING);
+            } else {
+                roundedGrandTotal = grandTotal.setScale(0, RoundingMode.FLOOR);
+            }
+
+            estimate.setGrandTotal(roundedGrandTotal);
+        }
+
+        System.out.println("estimate.getGrandTotal() after:  "+estimate.getGrandTotal());
         // 7. Persist
         log.info("Saving estimate: number={} | publicUuid={} | company={} | total={}",
                 estimateNumber, publicUuid, company.getId(), estimate.getGrandTotal());
