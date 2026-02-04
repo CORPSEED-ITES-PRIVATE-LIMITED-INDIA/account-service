@@ -3,10 +3,12 @@ package com.account.repository;
 import com.account.domain.UnbilledInvoice;
 import com.account.domain.UnbilledStatus;
 import com.account.domain.estimate.Estimate;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -64,6 +66,11 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             @Param("unbilledNumber") String unbilledNumber,
             @Param("companyName") String companyName
     );
+
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from UnbilledInvoice u where u.estimate = :estimate")
+    Optional<UnbilledInvoice> findByEstimateForUpdate(@Param("estimate") Estimate estimate);
 
 
 

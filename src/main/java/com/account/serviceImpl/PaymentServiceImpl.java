@@ -57,6 +57,17 @@ public class PaymentServiceImpl implements PaymentService {
                 request.getEstimateId(), request.getAmount(), request.getPaymentMode(),
                 request.getTransactionReference(), salespersonUserId);
 
+        if (request.getAmount() == null) {
+            throw new ValidationException("Payment amount is required", "ERR_AMOUNT_REQUIRED", "amount");
+        }
+
+        BigDecimal reqAmount = request.getAmount().setScale(2, RoundingMode.HALF_UP);
+
+        if (paymentReceiptRepository.existsByTransactionReference(request.getTransactionReference())) {
+            throw new ValidationException("Duplicate transaction reference",
+                    "ERR_DUPLICATE_TXN_REF", "transactionReference");
+        }
+
         Estimate estimate = estimateRepository.findById(request.getEstimateId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Estimate not found with ID: " + request.getEstimateId(),
@@ -81,6 +92,8 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getPaymentTypeId()
                 ));
 
+
+
         boolean productRelatedEstimate = isProductRelatedEstimate(estimate);
         if (productRelatedEstimate) {
             validateEprFields(request);
@@ -97,21 +110,51 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setCompany(estimate.getCompany());
             unbilled.setUnit(estimate.getUnit());
             unbilled.setContact(estimate.getContact());
-            unbilled.setTotalAmount(estimate.getGrandTotal());
-            unbilled.setReceivedAmount(BigDecimal.ZERO);
-            unbilled.setOutstandingAmount(estimate.getGrandTotal());
+
+            // Ensure totals are 2 decimals
+            BigDecimal total = estimate.getGrandTotal() == null
+                    ? BigDecimal.ZERO
+                    : estimate.getGrandTotal().setScale(2, RoundingMode.HALF_UP);
+
+            unbilled.setTotalAmount(total);
+            unbilled.setReceivedAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            unbilled.setOutstandingAmount(total);
             unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
             unbilled.setCreatedBy(salesperson);
+
             unbilled = unbilledInvoiceRepository.save(unbilled);
 
             log.info("Created UnbilledInvoice {} (PENDING_APPROVAL) for estimate {}",
                     unbilled.getUnbilledNumber(), estimate.getEstimateNumber());
         }
 
+        // Enforce: payment type cannot change after first payment
+        paymentReceiptRepository.findTopByUnbilledInvoiceOrderByIdAsc(unbilled).ifPresent(firstReceipt -> {
+            String firstCode = firstReceipt.getPaymentType().getCode().trim().toUpperCase();
+            String newCode = paymentType.getCode().trim().toUpperCase();
+
+            if (!firstCode.equals(newCode)) {
+                throw new ValidationException(
+                        "Payment type cannot be changed after first payment. First type: " + firstCode,
+                        "ERR_PAYMENT_TYPE_CHANGE_NOT_ALLOWED",
+                        "paymentTypeId"
+                );
+            }
+        });
+
+
+        // Status gating (adjust as per your enums)
+        if (unbilled.getStatus() == UnbilledStatus.REJECTED) {
+            throw new ValidationException("Cannot register payment for rejected unbilled invoice",
+                    "ERR_UNBILLED_REJECTED", "unbilledStatus");
+        }
+
+        validatePaymentRules(paymentType, reqAmount, unbilled, isFirstPayment);
+
         PaymentReceipt receipt = new PaymentReceipt();
         receipt.setUnbilledInvoice(unbilled);
         receipt.setPaymentType(paymentType);
-        receipt.setAmount(request.getAmount());
+        receipt.setAmount(reqAmount);
         receipt.setPaymentDate(request.getPaymentDate());
         receipt.setPaymentMode(request.getPaymentMode());
         receipt.setTransactionReference(request.getTransactionReference());
@@ -124,8 +167,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         receipt = paymentReceiptRepository.save(receipt);
         log.info("Created PaymentReceipt {} | amount: {}", receipt.getId(), request.getAmount());
-
-        unbilled.applyPayment(request.getAmount());
+        unbilled.applyPayment(reqAmount);
         unbilledInvoiceRepository.save(unbilled);
         log.info("Updated unbilled {} | received: {}, outstanding: {}, status: {}",
                 unbilled.getUnbilledNumber(), unbilled.getReceivedAmount(),
@@ -134,7 +176,7 @@ public class PaymentServiceImpl implements PaymentService {
         String message = isFirstPayment
                 ? "First payment registered. Unbilled created – awaiting Accounts approval"
                 : String.format("Additional payment of ₹%s registered. Total received: ₹%s / ₹%s. Awaiting approval.",
-                request.getAmount(), unbilled.getReceivedAmount(), unbilled.getTotalAmount());
+                reqAmount, unbilled.getReceivedAmount(), unbilled.getTotalAmount());
 
         // Manual creation of DTO (no builder)
         PaymentRegistrationResponseDto response = new PaymentRegistrationResponseDto();
@@ -149,6 +191,81 @@ public class PaymentServiceImpl implements PaymentService {
 
         return response;
     }
+
+
+
+
+    private void validatePaymentRules(PaymentType paymentType,
+                                      BigDecimal reqAmount,
+                                      UnbilledInvoice unbilled,
+                                      boolean isFirstPayment) {
+
+        if (paymentType == null || paymentType.getCode() == null) {
+            throw new ValidationException("Invalid payment type", "ERR_PAYMENT_TYPE_INVALID", "paymentTypeId");
+        }
+
+        BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
+        BigDecimal total = safe2(unbilled.getTotalAmount());
+
+        String code = paymentType.getCode().trim().toUpperCase();
+
+        // Amount must be > 0
+        if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException("Amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
+        }
+
+        // Never allow overpayment
+        if (reqAmount.compareTo(outstanding) > 0) {
+            throw new ValidationException("Amount is greater than outstanding amount",
+                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING", "amount");
+        }
+
+        // FULL: must clear outstanding exactly
+        if ("FULL".equals(code)) {
+            if (reqAmount.compareTo(outstanding) != 0) {
+                throw new ValidationException("FULL payment must equal outstanding amount",
+                        "ERR_FULL_AMOUNT_MISMATCH", "amount");
+            }
+            return;
+        }
+
+        // PARTIAL: each payment should be 50% of total (or the final remaining outstanding due to rounding)
+        if ("PARTIAL".equals(code)) {
+            BigDecimal half = total.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+
+            // If this is the final payment and outstanding is not exactly half (rounding case),
+            // allow paying the remaining outstanding.
+            BigDecimal expected = (outstanding.compareTo(half) < 0) ? outstanding : half;
+
+            if (reqAmount.compareTo(expected) != 0) {
+                throw new ValidationException(
+                        "PARTIAL payment must be " + expected + " (50% of total or remaining outstanding)",
+                        "ERR_PARTIAL_AMOUNT_MISMATCH",
+                        "amount"
+                );
+            }
+            return;
+        }
+
+        // INSTALLMENT / PURCHASE_ORDER: any amount <= outstanding is valid
+        if ("INSTALLMENT".equals(code) || "PURCHASE_ORDER".equals(code)) {
+            return;
+        }
+
+        throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
+                "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
+    }
+
+
+
+    private BigDecimal safe2(BigDecimal val) {
+        return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
+    }
+
+
+
+
+
     @Transactional
     public UnbilledInvoiceApprovalResponseDto approveUnbilledInvoice(
             Long unbilledId,

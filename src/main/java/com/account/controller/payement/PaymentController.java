@@ -25,7 +25,6 @@ public class PaymentController {
     public ResponseEntity<PaymentRegistrationResponseDto> registerPayment(
             @Valid @RequestBody PaymentRegistrationRequestDto request,
             @RequestParam("userId") Long salespersonUserId) {
-
         PaymentRegistrationResponseDto response = paymentService.registerPayment(request, salespersonUserId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
