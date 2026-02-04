@@ -7,5 +7,4 @@ public enum EstimateStatus {
     APPROVED,
     REJECTED,
     EXPIRED,
-    CONVERTED_TO_ORDER
 }

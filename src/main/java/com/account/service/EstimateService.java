@@ -2,6 +2,7 @@ package com.account.service;
 
 import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.estimate.EstimateResponseDto;
+
 import java.util.List;
 
 
@@ -17,5 +18,7 @@ public interface EstimateService {
     List<EstimateResponseDto> getAllEstimates(Long requestingUserId, int i, int size);
 
     long getEstimatesCount(Long requestingUserId);
+
+    EstimateResponseDto sendEstimateToClient(Long estimateId, Long requestingUserId);
 }
 
