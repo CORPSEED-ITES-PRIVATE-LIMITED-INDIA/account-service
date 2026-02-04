@@ -375,7 +375,7 @@ public class PaymentServiceImpl implements PaymentService {
         // Added missing fields
         dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
         dto.setSolutionType(estimate != null && estimate.getSolutionType() != null
-                ? estimate.getSolutionType().name()
+                ? estimate.getSolutionType()
                 : null);
 
         dto.setCompanyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null);
@@ -518,15 +518,24 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private boolean isProductRelatedEstimate(Estimate estimate) {
-        if (estimate.getSolutionType() != SolutionType.SERVICE) return false;
-        String name = estimate.getSolutionName();
-        if (name == null) return false;
-        String upper = name.toUpperCase();
-        return upper.contains("EPR") || upper.contains("PLASTIC WASTE") ||
-                upper.contains("EXTENDED PRODUCER") || upper.contains("PLASTIC EPR") ||
-                upper.contains("CPCB EPR");
-    }
+        if (estimate == null) {
+            return false;
+        }
 
+        String type = estimate.getSolutionType();
+        if (type == null || !type.trim().equalsIgnoreCase("SERVICE")) {
+            return false;
+        }
+
+        String name = estimate.getSolutionName();
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+
+        String upper = name.toUpperCase();
+        return upper.contains("");
+
+    }
     private void validateEprFields(PaymentRegistrationRequestDto request) {
         if (request.getEprFinancialYear() == null || request.getEprFinancialYear().trim().isEmpty()) {
             throw new ValidationException("EPR Financial Year is required (YYYY-YYYY)", "VALIDATION_FAILED", "eprFinancialYear");

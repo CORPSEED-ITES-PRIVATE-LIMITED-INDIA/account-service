@@ -1,7 +1,6 @@
 package com.account.dto.invoice;
 
 import com.account.domain.InvoiceStatus;
-import com.account.domain.SolutionType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -19,7 +18,7 @@ public class InvoiceSummaryDto {
     private String estimateNumber;
     private Long solutionId;
     private String solutionName;
-    private SolutionType solutionType;   // optional — if you want to show type/icon
+    private String solutionType;   // optional — if you want to show type/icon
     private String companyName;
     private String contactName;
     private LocalDate invoiceDate;

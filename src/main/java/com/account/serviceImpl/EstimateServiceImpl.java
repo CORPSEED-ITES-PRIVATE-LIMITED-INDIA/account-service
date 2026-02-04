@@ -154,25 +154,7 @@ public class EstimateServiceImpl implements EstimateService {
         estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
         estimate.setLeadId(requestDto.getLeadId());
 
-        // Validate and set SolutionType
-        try {
-            SolutionType solutionType = SolutionType.valueOf(requestDto.getSolutionType());
-            estimate.setSolutionType(solutionType);
-        } catch (IllegalArgumentException e) {
-            String allowedValues = Arrays.stream(SolutionType.values())
-                    .map(Enum::name)
-                    .collect(Collectors.joining(", "));
-
-            log.error("Invalid solution type provided: '{}' | Allowed values: {}",
-                    requestDto.getSolutionType(), allowedValues);
-
-            throw new ValidationException(
-                    "Invalid solution type: " + requestDto.getSolutionType() +
-                            ". Allowed values: " + allowedValues,
-                    "ERR_INVALID_SOLUTION_TYPE",
-                    "solutionType"
-            );
-        }
+        estimate.setSolutionType(requestDto.getSolutionType());
 
         estimate.setCustomerNotes(requestDto.getCustomerNotes());
         estimate.setInternalRemarks(requestDto.getInternalRemarks());
@@ -339,7 +321,7 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setEstimateDate(estimate.getEstimateDate());
         dto.setValidUntil(estimate.getValidUntil());
         dto.setSolutionName(estimate.getSolutionName());
-        dto.setSolutionType(estimate.getSolutionType() != null ? estimate.getSolutionType().name() : null);
+        dto.setSolutionType(estimate.getSolutionType() != null ? estimate.getSolutionType() : null);
         dto.setStatus(estimate.getStatus() != null ? estimate.getStatus().name() : null);
         dto.setCurrency(estimate.getCurrency());
 

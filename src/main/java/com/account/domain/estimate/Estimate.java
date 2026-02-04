@@ -73,9 +73,8 @@ public class Estimate {
     @Column(name = "solution_id", length = 500)
     private Long solutionId;
 
-    @Enumerated(EnumType.STRING)
     @Column(length = 20)
-    private SolutionType solutionType;
+    private String solutionType;
 
     @OneToMany(mappedBy = "estimate", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @OrderColumn(name = "display_order")
