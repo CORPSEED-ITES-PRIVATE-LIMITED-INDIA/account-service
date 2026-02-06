@@ -567,14 +567,8 @@ public class EstimateServiceImpl implements EstimateService {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
 
-        search = (search != null && search.isBlank()) ? null : search;
-        status = (status != null && status.isBlank()) ? null : status;
-
-        status = ("string".equalsIgnoreCase(status)) ? null : status;
-
-
-
-
+        search = normalizeString(search);
+        status = normalizeString(status);
         Specification<Estimate> spec = Specification
                 .where(searchingQueryBuilder(search))
                 .and(statusFilter(status))
@@ -675,6 +669,16 @@ public class EstimateServiceImpl implements EstimateService {
             );
         };
     }
+    private String normalizeString(String value) {
+        if (value == null) return null;
+
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) return null;
+        if ("string".equalsIgnoreCase(trimmed)) return null;
+
+        return trimmed;
+    }
+
 
 
 
