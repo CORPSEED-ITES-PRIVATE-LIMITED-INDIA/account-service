@@ -259,7 +259,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.invoiceDate(inv.getInvoiceDate())
 				.grandTotal(inv.getGrandTotal())
 				.totalGstAmount(inv.getTotalGstAmount())
-				.irn(inv.getIrn())
 				.status(inv.getStatus())
 				.createdByName(inv.getCreatedBy() != null
 						? (inv.getCreatedBy().getFullName() != null
@@ -374,7 +373,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setInvoiceDate(invoice.getInvoiceDate());
 		dto.setCurrency(invoice.getCurrency());
 		dto.setStatus(invoice.getStatus());
-		dto.setIrn(invoice.getIrn());
 		dto.setPlaceOfSupplyStateCode(invoice.getPlaceOfSupplyStateCode());
 		dto.setBuyerGstin(invoice.getBuyerGstin());
 

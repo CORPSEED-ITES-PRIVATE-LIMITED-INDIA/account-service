@@ -54,6 +54,10 @@ public class Estimate {
     @Column(name = "valid_until")
     private LocalDate validUntil;
 
+    // Reference to originating solution(s)
+    @Column(name = "solution_id", length = 500)
+    private Long solutionId;
+
     @Column(name = "solution_name", nullable = false, length = 255)
     private String solutionName;
 
@@ -69,9 +73,7 @@ public class Estimate {
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
-    // Reference to originating solution(s)
-    @Column(name = "solution_id", length = 500)
-    private Long solutionId;
+
 
     @Column(length = 20)
     private String solutionType;

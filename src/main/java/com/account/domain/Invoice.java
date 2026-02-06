@@ -44,6 +44,12 @@ public class Invoice {
     @Column(name = "invoice_number", nullable = false, unique = true, length = 32)
     private String invoiceNumber; // e.g. INV-2026-00009876
 
+    @Column(name = "solution_id", length = 500)
+    private Long solutionId;
+
+    @Column(name = "solution_name", nullable = false, length = 255)
+    private String solutionName;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "unbilled_invoice_id", nullable = false)
     private UnbilledInvoice unbilledInvoice;
@@ -85,16 +91,6 @@ public class Invoice {
     @JoinColumn(name = "payment_receipt_id")
     private PaymentReceipt triggeringPayment;
 
-    // GST e-Invoicing Fields (NIC IRP Integration)
-    @Column(length = 64)
-    private String irn; // Invoice Reference Number (from IRP)
-
-    @Column(name = "ack_no", length = 50)
-    private String ackNo; // Acknowledgement Number
-
-    @Column(name = "ack_date")
-    private LocalDateTime ackDate; // Acknowledgement Date
-
     @Column(name = "signed_qr_code", columnDefinition = "TEXT")
     private String signedQrCode; // QR code with digital signature
 
@@ -105,9 +101,6 @@ public class Invoice {
     // === Reference GSTINs ===
     @Column(name = "buyer_gstin", length = 15)
     private String buyerGstin;
-
-//    @Column(name = "seller_gstin", length = 15)
-//    private String sellerGstin;
 
     // Auditing
     @CreatedBy
@@ -127,10 +120,4 @@ public class Invoice {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    @PrePersist
-    protected void onCreate() {
-        if (publicUuid == null) {
-            publicUuid = UUID.randomUUID().toString();
-        }
-    }
 }
