@@ -63,10 +63,10 @@ public class PaymentServiceImpl implements PaymentService {
 
         BigDecimal reqAmount = request.getAmount().setScale(2, RoundingMode.HALF_UP);
 
-        if (paymentReceiptRepository.existsByTransactionReference(request.getTransactionReference())) {
-            throw new ValidationException("Duplicate transaction reference",
-                    "ERR_DUPLICATE_TXN_REF", "transactionReference");
-        }
+//        if (paymentReceiptRepository.existsByTransactionReference(request.getTransactionReference())) {
+//            throw new ValidationException("Duplicate transaction reference",
+//                    "ERR_DUPLICATE_TXN_REF", "transactionReference");
+//        }
 
         Estimate estimate = estimateRepository.findById(request.getEstimateId())
                 .orElseThrow(() -> new ResourceNotFoundException(
