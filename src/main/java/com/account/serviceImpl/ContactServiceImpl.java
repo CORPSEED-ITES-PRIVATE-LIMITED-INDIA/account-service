@@ -28,7 +28,7 @@ public class ContactServiceImpl implements ContactService {
     @Override
     public ContactResponseDto createContact(ContactRequestDto dto) {
 
-        // Validate that the company exists
+        // 1. Validate company exists
         if (!companyRepository.existsById(dto.getCompanyId())) {
             throw new ResourceNotFoundException(
                     "Company not found with id: " + dto.getCompanyId(),
@@ -38,10 +38,19 @@ public class ContactServiceImpl implements ContactService {
             );
         }
 
-        // Prevent duplicate contact number within the same company (optional but recommended)
-        if (dto.getContactNo() != null && !dto.getContactNo().isBlank()) {
+        // 2. Check if provided ID already exists
+        if (contactRepository.existsById(dto.getId())) {
+            throw new ValidationException(
+                    "Contact with ID " + dto.getId() + " already exists",
+                    "ERR_CONTACT_ID_ALREADY_EXISTS"
+            );
+        }
+
+        // 3. Prevent duplicate contact number within the same company
+        if (dto.getContactNo() != null && !dto.getContactNo().trim().isEmpty()) {
+            String normalizedContactNo = dto.getContactNo().trim();
             if (contactRepository.existsByContactNoAndCompanyIdAndDeleteStatusFalse(
-                    dto.getContactNo(), dto.getCompanyId())) {
+                    normalizedContactNo, dto.getCompanyId())) {
                 throw new ValidationException(
                         "Contact number already exists for this company",
                         "ERR_DUPLICATE_CONTACT_NO"
@@ -49,11 +58,13 @@ public class ContactServiceImpl implements ContactService {
             }
         }
 
+        // 4. Create entity
         Contact contact = new Contact();
-        contact.setName(dto.getName());
-        contact.setEmails(dto.getEmails());
-        contact.setContactNo(dto.getContactNo());
-        contact.setWhatsappNo(dto.getWhatsappNo());
+        contact.setId(dto.getId());                    // ← client-provided ID
+        contact.setName(dto.getName().trim());
+        contact.setEmails(dto.getEmails() != null ? dto.getEmails().trim() : null);
+        contact.setContactNo(dto.getContactNo() != null ? dto.getContactNo().trim() : null);
+        contact.setWhatsappNo(dto.getWhatsappNo() != null ? dto.getWhatsappNo().trim() : null);
         contact.setCompanyId(dto.getCompanyId());
         contact.setDeleteStatus(false);
 
@@ -91,15 +102,14 @@ public class ContactServiceImpl implements ContactService {
                         id
                 ));
 
-        // Update allowed fields
-        contact.setName(dto.getName());
-        contact.setEmails(dto.getEmails());
-        contact.setContactNo(dto.getContactNo());
-        contact.setWhatsappNo(dto.getWhatsappNo());
+        // Update allowed fields (ID & companyId usually not changeable)
+        contact.setName(dto.getName() != null ? dto.getName().trim() : contact.getName());
+        contact.setEmails(dto.getEmails() != null ? dto.getEmails().trim() : contact.getEmails());
+        contact.setContactNo(dto.getContactNo() != null ? dto.getContactNo().trim() : contact.getContactNo());
+        contact.setWhatsappNo(dto.getWhatsappNo() != null ? dto.getWhatsappNo().trim() : contact.getWhatsappNo());
 
-        // WARNING: Changing companyId can break data integrity (e.g., estimates linked to old company)
-        // Only uncomment if your business logic explicitly allows transferring contacts between companies
-        // contact.setCompanyId(dto.getCompanyId());
+        // companyId change is dangerous – usually forbidden
+        // contact.setCompanyId(dto.getCompanyId());  // ← only if business allows
 
         Contact updated = contactRepository.save(contact);
         return mapToResponseDto(updated);

@@ -57,17 +57,14 @@ public class PaymentServiceImpl implements PaymentService {
                 request.getEstimateId(), request.getAmount(), request.getPaymentMode(),
                 request.getTransactionReference(), salespersonUserId);
 
+        // Basic amount validation
         if (request.getAmount() == null) {
             throw new ValidationException("Payment amount is required", "ERR_AMOUNT_REQUIRED", "amount");
         }
 
         BigDecimal reqAmount = request.getAmount().setScale(2, RoundingMode.HALF_UP);
 
-//        if (paymentReceiptRepository.existsByTransactionReference(request.getTransactionReference())) {
-//            throw new ValidationException("Duplicate transaction reference",
-//                    "ERR_DUPLICATE_TXN_REF", "transactionReference");
-//        }
-
+        // Fetch required entities
         Estimate estimate = estimateRepository.findById(request.getEstimateId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Estimate not found with ID: " + request.getEstimateId(),
@@ -92,43 +89,70 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getPaymentTypeId()
                 ));
 
+        // ────────────────────────────────────────────────
+        // Determine if this is product-related (EPR applies)
+        // ────────────────────────────────────────────────
+        boolean isProductRelated = isProductRelatedEstimate(estimate);
 
-
-        boolean productRelatedEstimate = isProductRelatedEstimate(estimate);
-        if (productRelatedEstimate) {
+        // For product-related estimates → mandatory EPR fields
+        if (isProductRelated) {
             validateEprFields(request);
+        } else {
+            // For services / others → force null (do not save any EPR data)
+            request.setEprFinancialYear(null);
+            request.setEprPortalRegistrationNumber(null);
+            request.setEprCertificateOrInvoiceNumber(null);
         }
 
+        // ────────────────────────────────────────────────
+        // Find or create Unbilled Invoice
+        // ────────────────────────────────────────────────
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findByEstimate(estimate).orElse(null);
         boolean isFirstPayment = (unbilled == null);
 
         if (isFirstPayment) {
             unbilled = new UnbilledInvoice();
+
+            // Critical: generate public UUID (matches Estimate pattern)
+            unbilled.setPublicUuid(UUID.randomUUID().toString());
+
+            // Unique number
             unbilled.setUnbilledNumber(generateUnbilledNumber());
-            unbilled.setPublicUuid(dateTimeUtil.generateUuid());  // ← Using DateTimeUtil
+
+            // Relations
             unbilled.setEstimate(estimate);
             unbilled.setCompany(estimate.getCompany());
             unbilled.setUnit(estimate.getUnit());
             unbilled.setContact(estimate.getContact());
 
-            // Ensure totals are 2 decimals
-            BigDecimal total = estimate.getGrandTotal() == null
-                    ? BigDecimal.ZERO
-                    : estimate.getGrandTotal().setScale(2, RoundingMode.HALF_UP);
+            // Financials – ensure scale 2
+            BigDecimal total = estimate.getGrandTotal() != null
+                    ? estimate.getGrandTotal().setScale(2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
 
             unbilled.setTotalAmount(total);
             unbilled.setReceivedAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
             unbilled.setOutstandingAmount(total);
-            unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
-            unbilled.setCreatedBy(salesperson);
 
+            // Status & creator (auditing should set createdBy, but explicit is safer)
+            unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
+            unbilled.setCreatedBy(salesperson);           // ← explicit – good practice
+
+            // Optional / nullable fields – explicitly null or default
+            unbilled.setApprovedBy(null);
+            unbilled.setApprovedAt(null);
+            unbilled.setApprovalRemarks(null);
+            unbilled.setRejectionReason(null);
+
+            // Save
             unbilled = unbilledInvoiceRepository.save(unbilled);
 
-            log.info("Created UnbilledInvoice {} (PENDING_APPROVAL) for estimate {}",
-                    unbilled.getUnbilledNumber(), estimate.getEstimateNumber());
+            log.info("Created UnbilledInvoice {} (PENDING_APPROVAL) for estimate {} with publicUuid {}",
+                    unbilled.getUnbilledNumber(), estimate.getEstimateNumber(), unbilled.getPublicUuid());
         }
-
-        // Enforce: payment type cannot change after first payment
+        // ────────────────────────────────────────────────
+        // Prevent changing payment type after first payment
+        // ────────────────────────────────────────────────
         paymentReceiptRepository.findTopByUnbilledInvoiceOrderByIdAsc(unbilled).ifPresent(firstReceipt -> {
             String firstCode = firstReceipt.getPaymentType().getCode().trim().toUpperCase();
             String newCode = paymentType.getCode().trim().toUpperCase();
@@ -142,15 +166,23 @@ public class PaymentServiceImpl implements PaymentService {
             }
         });
 
-
-        // Status gating (adjust as per your enums)
+        // ────────────────────────────────────────────────
+        // Status check
+        // ────────────────────────────────────────────────
         if (unbilled.getStatus() == UnbilledStatus.REJECTED) {
-            throw new ValidationException("Cannot register payment for rejected unbilled invoice",
+            throw new ValidationException(
+                    "Cannot register payment for rejected unbilled invoice",
                     "ERR_UNBILLED_REJECTED", "unbilledStatus");
         }
 
+        // ────────────────────────────────────────────────
+        // Business rules for amount vs payment type
+        // ────────────────────────────────────────────────
         validatePaymentRules(paymentType, reqAmount, unbilled, isFirstPayment);
 
+        // ────────────────────────────────────────────────
+        // Create and save payment receipt
+        // ────────────────────────────────────────────────
         PaymentReceipt receipt = new PaymentReceipt();
         receipt.setUnbilledInvoice(unbilled);
         receipt.setPaymentType(paymentType);
@@ -161,37 +193,41 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setRemarks(request.getRemarks());
         receipt.setReceivedBy(salesperson);
 
+        // EPR fields - saved only for product-related estimates (otherwise null)
         receipt.setEprFinancialYear(request.getEprFinancialYear());
         receipt.setEprPortalRegistrationNumber(request.getEprPortalRegistrationNumber());
         receipt.setEprCertificateOrInvoiceNumber(request.getEprCertificateOrInvoiceNumber());
 
         receipt = paymentReceiptRepository.save(receipt);
         log.info("Created PaymentReceipt {} | amount: {}", receipt.getId(), request.getAmount());
+
+        // Update unbilled totals
         unbilled.applyPayment(reqAmount);
         unbilledInvoiceRepository.save(unbilled);
         log.info("Updated unbilled {} | received: {}, outstanding: {}, status: {}",
                 unbilled.getUnbilledNumber(), unbilled.getReceivedAmount(),
                 unbilled.getOutstandingAmount(), unbilled.getStatus());
 
+        // ────────────────────────────────────────────────
+        // Prepare user-friendly message
+        // ────────────────────────────────────────────────
         String message = isFirstPayment
                 ? "First payment registered. Unbilled created – awaiting Accounts approval"
                 : String.format("Additional payment of ₹%s registered. Total received: ₹%s / ₹%s. Awaiting approval.",
                 reqAmount, unbilled.getReceivedAmount(), unbilled.getTotalAmount());
 
-        // Manual creation of DTO (no builder)
+        // ────────────────────────────────────────────────
+        // Build response
+        // ────────────────────────────────────────────────
         PaymentRegistrationResponseDto response = new PaymentRegistrationResponseDto();
 
         response.setPaymentReceiptId(receipt.getId());
         response.setUnbilledNumber(unbilled.getUnbilledNumber());
         response.setUnbilledStatus(unbilled.getStatus());
-        response.setInvoiceGenerated(false);
-        response.setInvoiceNumber(null);
-        response.setInvoiceAmount(null);
         response.setMessage(message);
 
         return response;
     }
-
 
 
 
@@ -335,16 +371,12 @@ public class PaymentServiceImpl implements PaymentService {
         Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(
                 unbilled, triggeringReceipt, approver);
 
-        // 11. Determine final unbilled status based on payment
-        UnbilledStatus finalStatus = (unbilled.getOutstandingAmount().compareTo(BigDecimal.ZERO) <= 0)
-                ? UnbilledStatus.FULLY_PAID
-                : UnbilledStatus.PARTIALLY_PAID;
 
-        unbilled.setStatus(finalStatus);
+
         unbilledInvoiceRepository.save(unbilled);
 
         log.info("Unbilled {} approved → final status: {}, invoice generated: {}",
-                unbilled.getUnbilledNumber(), finalStatus, generatedInvoice.getInvoiceNumber());
+                unbilled.getUnbilledNumber(), generatedInvoice.getInvoiceNumber());
 
         // 12. Build response
         Estimate estimate = unbilled.getEstimate();
@@ -388,51 +420,74 @@ public class PaymentServiceImpl implements PaymentService {
     private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
         UnbilledInvoiceSummaryDto dto = new UnbilledInvoiceSummaryDto();
 
+        // Basic unbilled fields
         dto.setId(unbilled.getId());
         dto.setUnbilledNumber(unbilled.getUnbilledNumber());
 
-        // Estimate related fields with null-safety
+        // Estimate related
         Estimate estimate = unbilled.getEstimate();
         dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
         dto.setEstimateId(estimate != null ? estimate.getId() : null);
+        dto.setSolutionId(estimate != null ? estimate.getSolutionId() : null);
+        dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
 
-        dto.setCompanyName(
-                unbilled.getCompany() != null
-                        ? unbilled.getCompany().getName()
-                        : null
-        );
+        // Company info
+        Company company = unbilled.getCompany();
+        dto.setCompanyName(company != null ? company.getName() : null);
 
-        dto.setContactName(
-                unbilled.getContact() != null
-                        ? unbilled.getContact().getName()
-                        : null
-        );
+        // Contact info (from unbilled → comes from estimate.contact)
+        Contact contact = unbilled.getContact();
+        dto.setContactName(contact != null ? contact.getName() : null);
+        dto.setEmails(contact != null ? contact.getEmails() : null);
+        dto.setContactNo(contact != null ? contact.getContactNo() : null);
 
+        // Address & GST fields → come from CompanyUnit (not Company)
+        CompanyUnit unit = unbilled.getUnit();
+        if (unit != null) {
+            dto.setAddressLine1(unit.getAddressLine1());
+            dto.setAddressLine2(unit.getAddressLine2());
+            dto.setCity(unit.getCity());
+            dto.setState(unit.getState());
+            dto.setCountry(unit.getCountry() != null ? unit.getCountry() : "India");
+            dto.setPinCode(unit.getPinCode());
+            dto.setGstNo(unit.getGstNo());
+        } else if (company != null) {
+            // Fallback: if no unit → try to use company-level address (if you ever add them)
+            // Currently Company doesn't have these fields → so most cases will be null
+            // You can leave this block empty or add comment
+        }
+
+        // Financials
         dto.setTotalAmount(unbilled.getTotalAmount());
         dto.setReceivedAmount(unbilled.getReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+
+        // Status & audit timestamps
         dto.setStatus(unbilled.getStatus());
-
         dto.setCreatedAt(unbilled.getCreatedAt());
+        dto.setApprovedAt(unbilled.getApprovedAt());
 
-        // Created by name logic
+        // Created by (salesperson)
+        User createdBy = unbilled.getCreatedBy();
         dto.setCreatedByName(
-                unbilled.getCreatedBy() != null
-                        ? (unbilled.getCreatedBy().getFullName() != null
-                        ? unbilled.getCreatedBy().getFullName()
-                        : unbilled.getCreatedBy().getEmail())
+                createdBy != null
+                        ? (createdBy.getFullName() != null ? createdBy.getFullName() : createdBy.getEmail())
                         : null
         );
 
-        dto.setApprovedAt(unbilled.getApprovedAt());
-
-        // Approved by name logic
+        // Approved by (accounts person)
+        User approvedBy = unbilled.getApprovedBy();
         dto.setApprovedByName(
-                unbilled.getApprovedBy() != null
-                        ? (unbilled.getApprovedBy().getFullName() != null
-                        ? unbilled.getApprovedBy().getFullName()
-                        : unbilled.getApprovedBy().getEmail())
+                approvedBy != null
+                        ? (approvedBy.getFullName() != null ? approvedBy.getFullName() : approvedBy.getEmail())
                         : null
+        );
+
+        // Fallback/project name
+        dto.setName(
+                estimate != null && estimate.getSolutionName() != null
+                        ? estimate.getSolutionName()
+                        : (company != null ? company.getName() + " - Project" : "Unnamed Project")
         );
 
         return dto;
@@ -635,24 +690,15 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private boolean isProductRelatedEstimate(Estimate estimate) {
-        if (estimate == null) {
+        if (estimate == null || estimate.getSolutionType() == null) {
             return false;
         }
 
-        String type = estimate.getSolutionType();
-        if (type == null || !type.trim().equalsIgnoreCase("SERVICE")) {
-            return false;
-        }
-
-        String name = estimate.getSolutionName();
-        if (name == null || name.isBlank()) {
-            return false;
-        }
-
-        String upper = name.toUpperCase();
-        return upper.contains("");
-
+        return estimate.getSolutionType().trim().equalsIgnoreCase("PRODUCT");
     }
+
+
+
     private void validateEprFields(PaymentRegistrationRequestDto request) {
         if (request.getEprFinancialYear() == null || request.getEprFinancialYear().trim().isEmpty()) {
             throw new ValidationException("EPR Financial Year is required (YYYY-YYYY)", "VALIDATION_FAILED", "eprFinancialYear");

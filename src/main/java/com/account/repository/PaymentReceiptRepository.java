@@ -11,11 +11,7 @@ import java.util.Optional;
 @Repository
 public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, Long> {
 
-    List<PaymentReceipt> findByUnbilledInvoice(UnbilledInvoice unbilledInvoice);
-
-    boolean existsByTransactionReference(String transactionReference);
     Optional<PaymentReceipt> findTopByUnbilledInvoiceOrderByIdAsc(UnbilledInvoice unbilledInvoice);
 
 
-    List<PaymentReceipt> findByUnbilledInvoiceOrderByPaymentDateDesc(UnbilledInvoice unbilledInvoice);
 }

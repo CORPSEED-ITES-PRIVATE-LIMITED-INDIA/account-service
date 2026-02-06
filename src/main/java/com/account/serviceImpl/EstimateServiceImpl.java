@@ -154,7 +154,6 @@ public class EstimateServiceImpl implements EstimateService {
         estimate.setSolutionName(requestDto.getSolutionName());
         estimate.setSolutionId(requestDto.getSolutionId());
         estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-        estimate.setLeadId(requestDto.getLeadId());
 
         estimate.setSolutionType(requestDto.getSolutionType());
 

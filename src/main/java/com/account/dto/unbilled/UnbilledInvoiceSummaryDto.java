@@ -1,6 +1,7 @@
 package com.account.dto.unbilled;
 
 import com.account.domain.UnbilledStatus;
+import jakarta.persistence.Column;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -26,4 +27,17 @@ public class UnbilledInvoiceSummaryDto {
     private String createdByName;           // Salesperson
     private LocalDateTime approvedAt;       // Null if not approved
     private String approvedByName;          // Null if not approved
+    private Long solutionId;
+    private String solutionName;
+    private String name;
+    private String emails;
+    private String contactNo;
+    private String addressLine1;
+    private String addressLine2;
+    private String city;
+    private String state;
+    private String country = "India";
+    private String pinCode;
+    private String gstNo;
+
 }

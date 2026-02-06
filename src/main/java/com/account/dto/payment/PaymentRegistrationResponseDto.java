@@ -13,10 +13,7 @@ import java.time.LocalDateTime;
 public class PaymentRegistrationResponseDto {
 
     private Long paymentReceiptId;
-    private String unbilledNumber;           // Created or existing
+    private String unbilledNumber;
     private UnbilledStatus unbilledStatus;
-    private boolean invoiceGenerated;
-    private String invoiceNumber;            // If generated
-    private BigDecimal invoiceAmount;
     private String message;
 }

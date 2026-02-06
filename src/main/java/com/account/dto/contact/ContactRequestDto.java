@@ -10,6 +10,10 @@ import lombok.*;
 @AllArgsConstructor
 public class ContactRequestDto {
 
+    // Required when creating → client must provide ID
+    @NotNull(message = "ID is required when creating a contact")
+    private Long id;
+
     @NotBlank(message = "Name is required")
     private String name;
 

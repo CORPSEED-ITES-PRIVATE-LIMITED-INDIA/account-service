@@ -83,27 +83,6 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(list);
     }
 
-
-
-    // ────────────────────────────────────────────────
-    //  Optional: Reject endpoint (you can implement later)
-    // ────────────────────────────────────────────────
-    /*
-    @Operation(summary = "Reject unbilled invoice", description = "Rejects the unbilled invoice and sets rejection reason")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully rejected"),
-            @ApiResponse(responseCode = "400", description = "Invalid request"),
-            @ApiResponse(responseCode = "404", description = "Not found")
-    })
-    @PostMapping("/{unbilledId}/reject")
-    public ResponseEntity<UnbilledInvoiceApprovalResponseDto> rejectUnbilledInvoice(
-            @PathVariable Long unbilledId,
-            @Valid @RequestBody UnbilledInvoiceRejectionRequestDto request) {
-        // TODO: implement rejection logic
-        return ResponseEntity.ok(new UnbilledInvoiceApprovalResponseDto(...));
-    }
-    */
-
     @Operation(
             summary = "Get count of unbilled invoices",
             description = "Returns only the total number of unbilled invoices matching the optional filters (status and/or userId)"
