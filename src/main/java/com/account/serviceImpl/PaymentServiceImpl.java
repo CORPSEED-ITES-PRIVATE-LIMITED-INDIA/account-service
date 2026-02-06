@@ -194,7 +194,6 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
-
     private void validatePaymentRules(PaymentType paymentType,
                                       BigDecimal reqAmount,
                                       UnbilledInvoice unbilled,
