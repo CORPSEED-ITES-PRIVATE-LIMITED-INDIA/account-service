@@ -1,6 +1,7 @@
 package com.account.controller.estimate;
 
 import com.account.dto.EstimateCreationRequestDto;
+import com.account.dto.estimate.EstimateFilterRequest;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.service.EstimateService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -9,10 +10,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Tag(name = "Estimate Management", description = "APIs for creating, viewing and listing estimates")
@@ -93,7 +96,7 @@ public class EstimateController {
         return ResponseEntity.ok(estimates);
     }
 
-    @GetMapping("/all")
+    @PostMapping("/all")
     @Operation(
             summary = "Get all estimates (paginated)",
             description = "ADMIN: sees every estimate in the system. Normal user: sees only estimates they created."
@@ -107,7 +110,8 @@ public class EstimateController {
     public ResponseEntity<List<EstimateResponseDto>> getAllEstimates(
             @RequestParam("userId") Long requestingUserId,
             @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "20") int size) {
+            @RequestParam(value = "size", defaultValue = "20") int size,
+            @RequestBody(required = false) EstimateFilterRequest filter) {
 
         if (page < 1) {
             page = 1;
@@ -116,14 +120,26 @@ public class EstimateController {
             size = 20;
         }
 
+        // Null-safe handling
+        String search = filter != null ? filter.getSearch() : null;
+        String status = filter != null ? filter.getStatus() : null;
+        LocalDate fromDate = filter != null ? filter.getFromDate() : null;
+        LocalDate toDate = filter != null ? filter.getToDate() : null;
+
         List<EstimateResponseDto> estimates = estimateService.getAllEstimates(
                 requestingUserId,
-                page - 1,   // convert to 0-based for Spring Data
+                search,
+                status,
+                fromDate,
+                toDate,
+                page - 1,
                 size
         );
 
         return ResponseEntity.ok(estimates);
     }
+
+
 
     @GetMapping("/count")
     @Operation(summary = "Get total count of estimates",
