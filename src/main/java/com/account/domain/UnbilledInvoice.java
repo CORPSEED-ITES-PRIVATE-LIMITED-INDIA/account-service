@@ -59,6 +59,7 @@ public class UnbilledInvoice {
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
+
     @Column(precision = 15, scale = 2, nullable = false)
     private BigDecimal totalAmount;
 
