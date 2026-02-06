@@ -64,6 +64,7 @@ public class EstimateResponseDto {
     private CompanySummaryDto company;
     private CompanyUnitSummaryDto unit;
 
+
     // Line items breakdown
     private List<EstimateLineItemResponseDto> lineItems;
 

@@ -12,13 +12,16 @@ import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.*;
 import com.account.service.EstimateService;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,7 +31,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -530,7 +532,15 @@ public class EstimateServiceImpl implements EstimateService {
     }
 
     @Override
-    public List<EstimateResponseDto> getAllEstimates(Long requestingUserId, int page, int size) {
+    public List<EstimateResponseDto> getAllEstimates(
+            Long requestingUserId,
+            String search,
+            String status,
+            LocalDate fromDate,
+            LocalDate toDate,
+            int page,
+            int size
+    ) {
 
         log.info("Fetching all estimates | requestedBy={} | page={} | size={}", requestingUserId, page, size);
 
@@ -557,17 +567,117 @@ public class EstimateServiceImpl implements EstimateService {
         // 3. Prepare pagination + default sorting (newest first)
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        Page<Estimate> estimatePage;
 
-        if (isAdmin) {
-            // Admin sees everything (NOTE: if you support soft-delete, prefer a repository method that filters isDeleted=false)
-            estimatePage = estimateRepository.findAll(pageable);
-        } else {
-            estimatePage = estimateRepository.findByCreatedById(requestingUserId, pageable);
+        search = (search != null && search.isBlank()) ? null : search;
+        status = (status != null && status.isBlank()) ? null : status;
+
+        status = ("string".equalsIgnoreCase(status)) ? null : status;
+
+
+
+
+        Specification<Estimate> spec = Specification
+                .where(searchingQueryBuilder(search))
+                .and(statusFilter(status))
+                .and(dateRangeFilter(fromDate, toDate))
+                .and((root, query, cb) -> cb.isFalse(root.get("isDeleted")));
+
+
+        if (!isAdmin) {
+            spec = spec.and((root, query, cb) ->
+                    cb.equal(root.get("createdBy").get("id"), requestingUserId)
+            );
         }
 
-        return estimatePage.getContent().stream()
+        return estimateRepository
+                .findAll(spec, pageable)
+                .getContent()
+                .stream()
                 .map(this::mapToResponseDto)
-                .collect(Collectors.toList());
+                .toList();
     }
+    private Specification<Estimate> searchingQueryBuilder(String search) {
+
+        return (root, query, cb) -> {
+
+            if (search == null || search.trim().isEmpty()) {
+                return cb.conjunction();
+            }
+            query.distinct(true); // 🔥 IMPORTANT
+
+            String likePattern = "%" + search.toLowerCase() + "%";
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(
+                    cb.like(cb.lower(root.get("estimateNumber")), likePattern)
+            );
+
+            Join<Estimate, Company> companyJoin =
+                    root.join("company", JoinType.INNER);
+
+            predicates.add(
+                    cb.like(cb.lower(companyJoin.get("name")), likePattern)
+            );
+
+            return cb.and(cb.or(predicates.toArray(new Predicate[0])));
+        };
+    }
+    private Specification<Estimate> statusFilter(String status) {
+
+        return (root, query, cb) -> {
+
+            if (status == null || status.isBlank()) {
+                return cb.conjunction();
+            }
+
+            EstimateStatus enumStatus;
+            try {
+                enumStatus = EstimateStatus.valueOf(status.toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                throw new ValidationException(
+                        "Invalid estimate status: " + status,
+                        "ERR_INVALID_STATUS",
+                        "status"
+                );
+            }
+
+            return cb.equal(root.get("status"), enumStatus);
+        };
+    }
+    private Specification<Estimate> dateRangeFilter(
+            LocalDate fromDate,
+            LocalDate toDate) {
+
+        return (root, query, cb) -> {
+
+            if (fromDate == null && toDate == null) {
+                return cb.conjunction();
+            }
+
+            if (fromDate != null && toDate != null) {
+                return cb.between(
+                        root.get("estimateDate"),
+                        fromDate,
+                        toDate
+                );
+            }
+
+            if (fromDate != null) {
+                return cb.greaterThanOrEqualTo(
+                        root.get("estimateDate"),
+                        fromDate
+                );
+            }
+
+            return cb.lessThanOrEqualTo(
+                    root.get("estimateDate"),
+                    toDate
+            );
+        };
+    }
+
+
+
+
 }
