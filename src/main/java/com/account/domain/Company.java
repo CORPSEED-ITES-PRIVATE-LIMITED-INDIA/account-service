@@ -36,7 +36,7 @@ public class Company {
 	@Column(name = "name", nullable = false)
 	private String name;
 
-	@Column(name = "pan_no", nullable = false, length = 10, unique = true)
+	@Column(name = "pan_no", nullable = true, length = 10, unique = true)
 	private String panNo;
 
 	@Column(name = "establish_date")
