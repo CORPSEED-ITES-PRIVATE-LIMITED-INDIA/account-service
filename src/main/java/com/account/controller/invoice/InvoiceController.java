@@ -2,6 +2,7 @@ package com.account.controller.invoice;
 
 import com.account.domain.InvoiceStatus;
 import com.account.dto.invoice.InvoiceDetailDto;
+import com.account.dto.invoice.InvoiceFilterRequest;
 import com.account.dto.invoice.InvoiceSummaryDto;
 import com.account.service.InvoiceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -53,6 +54,28 @@ public class InvoiceController {
     }
 
 
+    @PostMapping("/searchWithFilter")
+    public ResponseEntity<List<InvoiceSummaryDto>> searchInvoices(
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestBody(required = false) InvoiceFilterRequest filter
+    ) {
+        if (page < 1) page = 1;
+        if (size < 1 || size > 200) size = 20;
+
+        return ResponseEntity.ok(
+                invoiceService.searchInvoicesWithFilter(
+                        userId,
+                        filter,
+                        page - 1,
+                        size
+                )
+        );
+    }
+
+
+
     @Operation(summary = "Search invoices by invoice number and/or company name (partial match)")
     @GetMapping("/search")
     public ResponseEntity<List<InvoiceSummaryDto>> searchInvoices(
@@ -99,4 +122,8 @@ public class InvoiceController {
         InvoiceDetailDto detail = invoiceService.getInvoiceById(id, userId);
         return ResponseEntity.ok(detail);
     }
+
+
+
+
 }

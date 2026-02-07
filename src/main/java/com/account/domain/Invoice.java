@@ -22,8 +22,7 @@ import java.util.UUID;
                 @Index(name = "idx_invoice_public_uuid_unique", columnList = "public_uuid", unique = true),
                 @Index(name = "idx_invoice_unbilled_id", columnList = "unbilled_invoice_id"),
                 @Index(name = "idx_invoice_status", columnList = "status"),
-                @Index(name = "idx_invoice_date", columnList = "invoice_date"),
-                @Index(name = "idx_invoice_irn", columnList = "irn")
+                @Index(name = "idx_invoice_date", columnList = "invoice_date")
         })
 @EntityListeners(AuditingEntityListener.class)
 @Getter

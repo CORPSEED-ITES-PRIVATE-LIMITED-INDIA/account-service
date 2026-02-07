@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -143,6 +144,7 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setApprovedAt(null);
             unbilled.setApprovalRemarks(null);
             unbilled.setRejectionReason(null);
+            unbilled.setCreatedAt(LocalDateTime.now());
 
             // Save
             unbilled = unbilledInvoiceRepository.save(unbilled);

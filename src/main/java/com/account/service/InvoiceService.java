@@ -2,6 +2,7 @@ package com.account.service;
 
 import com.account.domain.*;
 import com.account.dto.invoice.InvoiceDetailDto;
+import com.account.dto.invoice.InvoiceFilterRequest;
 import com.account.dto.invoice.InvoiceSummaryDto;
 
 import java.util.List;
@@ -16,6 +17,14 @@ public interface InvoiceService {
 	);
 
 	long getInvoicesCount(Long createdById, InvoiceStatus status);
+
+	List<InvoiceSummaryDto> searchInvoicesWithFilter(
+			Long userId,
+			InvoiceFilterRequest filter,
+			int page,
+			int size
+	);
+
 
 	List<InvoiceSummaryDto> searchInvoices(String invoiceNumber, String companyName, int i, int size);
 

@@ -4,5 +4,6 @@ public enum UnbilledStatus {
     PENDING_APPROVAL,      // Waiting for Accounts approval
     APPROVED,              // Approved → ready for invoicing
     CANCELLED,
-    REJECTED
+    REJECTED,
+    FULLY_PAID
 }

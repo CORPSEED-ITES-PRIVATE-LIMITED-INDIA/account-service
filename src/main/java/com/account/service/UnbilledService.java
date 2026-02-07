@@ -1,14 +1,16 @@
 package com.account.service;
 
+import com.account.dto.unbilled.UnbilledInvoiceFilterRequest;
+import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+
 import java.util.List;
-import java.util.Map;
 
-import com.account.dto.UnbilledDTO;
-import org.springframework.stereotype.Service;
-
-@Service
 public interface UnbilledService {
 
-
-
+    List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(
+            Long userId,
+            UnbilledInvoiceFilterRequest filter,
+            int page,
+            int size
+    );
 }

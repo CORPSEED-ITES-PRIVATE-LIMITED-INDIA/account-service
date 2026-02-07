@@ -1,11 +1,9 @@
 package com.account.controller.unbilled;
 
 import com.account.domain.UnbilledStatus;
-import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
-import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
-import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
-import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+import com.account.dto.unbilled.*;
 import com.account.service.PaymentService;
+import com.account.service.UnbilledService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -28,6 +26,8 @@ import java.util.List;
 public class UnbilledInvoiceController {
 
     private final PaymentService paymentService;
+    private final UnbilledService unbilledService;
+
 
     // ────────────────────────────────────────────────
     //  Approve unbilled invoice (usually done by Accounts)
@@ -166,5 +166,27 @@ public class UnbilledInvoiceController {
     ) {
         UnbilledInvoiceDetailDto unbilledInvoiceDetailDto = paymentService.getUnbilledInvoice(id, userId);
         return ResponseEntity.ok(unbilledInvoiceDetailDto);
+    }
+
+
+
+    @PostMapping("/getUnbiledInvoices")
+    public ResponseEntity<List<UnbilledInvoiceSummaryDto>> searchUnbilledInvoices(
+            @RequestParam(required = false) Long userId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestBody(required = false) UnbilledInvoiceFilterRequest filter
+    ) {
+        if (page < 1) page = 1;
+        if (size < 1 || size > 200) size = 20;
+
+        return ResponseEntity.ok(
+                unbilledService.searchUnbilledInvoices(
+                        userId,
+                        filter,
+                        page - 1,
+                        size
+                )
+        );
     }
 }

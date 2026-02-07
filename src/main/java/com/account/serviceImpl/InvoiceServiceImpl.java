@@ -4,13 +4,17 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
 import com.account.dto.invoice.InvoiceDetailDto;
+import com.account.dto.invoice.InvoiceFilterRequest;
 import com.account.dto.invoice.InvoiceSummaryDto;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ResourceNotFoundException;
+import com.account.exception.ValidationException;
 import com.account.repository.InvoiceRepository;
 import com.account.repository.UserRepository;
 import com.account.service.InvoiceService;
 import com.account.util.DateTimeUtil;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,12 +22,15 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -294,6 +301,84 @@ public class InvoiceServiceImpl implements InvoiceService {
 	}
 
 
+
+	@Override
+	public List<InvoiceSummaryDto> searchInvoicesWithFilter(
+			Long userId,
+			InvoiceFilterRequest filter,
+			int page,
+			int size
+	) {
+
+		if (userId == null || userId <= 0) {
+			throw new ValidationException(
+					"userId is required",
+					"ERR_USER_ID_REQUIRED",
+					"userId"
+			);
+		}
+
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"User not found",
+						"USER_NOT_FOUND",
+						"User",
+						userId
+				));
+
+		boolean isAdmin = user.getUserRole() != null &&
+				user.getUserRole().stream()
+						.anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
+
+		Pageable pageable = PageRequest.of(
+				page,
+				size,
+				Sort.by(Sort.Direction.DESC, "createdAt")
+		);
+
+		Specification<Invoice> spec = (root, query, cb) -> cb.conjunction();
+
+		// 🔐 Access control
+		if (!isAdmin) {
+			spec = spec.and((root, query, cb) ->
+					cb.equal(root.get("createdBy").get("id"), userId)
+			);
+		}
+
+		if (filter != null) {
+
+			validateAmountRange(filter.getMinAmount(), filter.getMaxAmount());
+			validateDateRange(filter.getInvoiceFromDate(), filter.getInvoiceToDate(), "invoiceDate");
+			validateDateRange(filter.getCreatedFromDate(), filter.getCreatedToDate(), "createdAt");
+
+			spec = spec
+					.and(searchFilter(filter.getSearch()))
+					.and(statusFilter(filter.getStatus()))
+					.and(invoiceDateRangeFilter(
+							filter.getInvoiceFromDate(),
+							filter.getInvoiceToDate()
+					))
+					.and(createdDateRangeFilter(
+							filter.getCreatedFromDate(),
+							filter.getCreatedToDate()
+					))
+					.and(amountFilter(
+							filter.getMinAmount(),
+							filter.getMaxAmount()
+					))
+					.and(solutionFilter(filter.getSolutionId())); // FIXED
+		}
+
+		return invoiceRepository.findAll(spec, pageable)
+				.getContent()
+				.stream()
+				.map(this::toSummaryDto)
+				.toList();
+	}
+
+
+
+
 	@Override
 	public long countSearchInvoices(String invoiceNumber, String companyName) {
 		log.info("Counting search invoices | invoiceNumber={}, companyName={}",
@@ -331,7 +416,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 		}
 		return toDetailDto(invoice);
 	}
-
 
 	private InvoiceDetailDto toDetailDto(Invoice invoice) {
 		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
@@ -391,8 +475,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return dto;
 	}
-
-
 	private InvoiceDetailDto.LineItemDto toLineItemDto(InvoiceLineItem li) {
 		InvoiceDetailDto.LineItemDto lineDto = new InvoiceDetailDto.LineItemDto();
 
@@ -417,11 +499,113 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return lineDto;
 	}
-
-
 	private String getUserDisplayName(User user) {
 		if (user == null) return null;
 		return user.getFullName() != null ? user.getFullName() : user.getEmail();
+	}
+
+
+	private Specification<Invoice> searchFilter(String search) {
+		return (root, query, cb) -> {
+			if (search == null || search.isBlank()) {
+				return cb.conjunction();
+			}
+
+			query.distinct(true);
+			String pattern = "%" + search.toLowerCase() + "%";
+
+			var unbilledJoin = root.join("unbilledInvoice", JoinType.LEFT);
+			var companyJoin = unbilledJoin.join("company", JoinType.LEFT);
+
+			return cb.or(
+					cb.like(cb.lower(root.get("invoiceNumber")), pattern),
+					cb.like(cb.lower(unbilledJoin.get("unbilledNumber")), pattern),
+					cb.like(cb.lower(companyJoin.get("name")), pattern)
+			);
+		};
+	}
+	private Specification<Invoice> statusFilter(InvoiceStatus status) {
+		return (root, query, cb) ->
+				status == null ? cb.conjunction()
+						: cb.equal(root.get("status"), status);
+	}
+	private Specification<Invoice> invoiceDateRangeFilter(
+			LocalDate from,
+			LocalDate to
+	) {
+		return (root, query, cb) -> {
+			if (from == null && to == null) return cb.conjunction();
+
+			if (from != null && to != null) {
+				return cb.between(root.get("invoiceDate"), from, to);
+			}
+			if (from != null) {
+				return cb.greaterThanOrEqualTo(root.get("invoiceDate"), from);
+			}
+			return cb.lessThanOrEqualTo(root.get("invoiceDate"), to);
+		};
+	}
+	private Specification<Invoice> createdDateRangeFilter(
+			LocalDate from,
+			LocalDate to
+	) {
+		return (root, query, cb) -> {
+			if (from == null && to == null) return cb.conjunction();
+
+			LocalDateTime fromDT = from != null ? from.atStartOfDay() : null;
+			LocalDateTime toDT = to != null ? to.atTime(LocalTime.MAX) : null;
+
+			if (fromDT != null && toDT != null) {
+				return cb.between(root.get("createdAt"), fromDT, toDT);
+			}
+			if (fromDT != null) {
+				return cb.greaterThanOrEqualTo(root.get("createdAt"), fromDT);
+			}
+			return cb.lessThanOrEqualTo(root.get("createdAt"), toDT);
+		};
+	}
+	private Specification<Invoice> amountFilter(BigDecimal min, BigDecimal max) {
+		return (root, query, cb) -> {
+			if (min == null && max == null) return cb.conjunction();
+			if (min != null && max != null) {
+				return cb.between(root.get("grandTotal"), min, max);
+			}
+			if (min != null) {
+				return cb.greaterThanOrEqualTo(root.get("grandTotal"), min);
+			}
+			return cb.lessThanOrEqualTo(root.get("grandTotal"), max);
+		};
+	}
+	private Specification<Invoice> solutionFilter(Long solutionId) {
+		return (root, query, cb) -> {
+			if (solutionId == null) return cb.conjunction();
+
+			Join<Invoice, UnbilledInvoice> unbilledJoin =
+					root.join("unbilledInvoice", JoinType.LEFT);
+
+			Join<UnbilledInvoice, Estimate> estimateJoin =
+					unbilledJoin.join("estimate", JoinType.LEFT);
+
+			return cb.equal(estimateJoin.get("solutionId"), solutionId);
+		};
+	}
+	private void validateAmountRange(BigDecimal min, BigDecimal max) {
+		if (min != null && max != null && min.compareTo(max) > 0) {
+			throw new ValidationException(
+					"minAmount cannot be greater than maxAmount",
+					"ERR_INVALID_AMOUNT_RANGE",
+					"amount"
+			);
+		}
+	}
+	private void validateDateRange(LocalDate from, LocalDate to, String field) {
+		if (from != null && to != null && from.isAfter(to)) {
+			throw new ValidationException(
+					field + " fromDate cannot be after toDate",
+					"ERR_INVALID_DATE_RANGE",
+					field
+			);
+		}
 	}
 
 }
