@@ -5,6 +5,8 @@ import com.account.domain.CompanyUnit;
 import com.account.domain.OnboardingStatus;
 import com.account.domain.User;
 import com.account.dto.BasicCompanyRequestDto;
+import com.account.dto.CompanyMigrationRequestDto;
+import com.account.dto.CompanyUnitMigrationDto;
 import com.account.dto.company.request.*;
 import com.account.dto.company.response.CompanyResponseDto;
 import com.account.dto.company.response.CompanyUnitResponseDto;
@@ -383,6 +385,261 @@ public class CompanyServiceImpl implements CompanyService {
         return mapToResponseDto(company);
     }
 
+    @Override
+    public CompanyResponseDto migrateCompany(CompanyMigrationRequestDto dto) {
+
+        if (dto.getCompanyId() == null)
+            throw new ValidationException("companyId required", "ERR_COMPANY_ID_REQUIRED");
+
+        if (companyRepository.existsById(dto.getCompanyId()))
+            throw new ValidationException("Company already migrated", "ERR_COMPANY_EXISTS");
+
+        Company company = new Company();
+
+
+        // ===== Identity =====
+        company.setId(dto.getCompanyId());
+        company.setUuid(
+                StringUtils.hasText(dto.getUuid())
+                        ? dto.getUuid()
+                        : dateTimeUtil.generateUuid()
+        );
+        company.setLeadId(dto.getCompanyId());
+
+
+        // ===== Core =====
+        company.setName(dto.getName());
+        company.setPanNo(normalizeUnique(dto.getPanNo()));
+        company.setEstablishDate(dto.getEstablishDate());
+
+        // ===== Address =====
+        company.setStatus(dto.getStatus());
+
+        // ===== Industry =====
+        company.setIndustry(dto.getIndustry());
+        company.setIndustries(dto.getIndustries());
+        company.setSubIndustry(dto.getSubIndustry());
+        company.setSubsubIndustry(dto.getSubSubIndustry());
+
+        // ===== Consultant =====
+        company.setIsConsultant(Boolean.TRUE.equals(dto.getIsConsultant()));
+
+
+
+
+
+        // ===== Agreements =====
+        company.setPaymentTerm(dto.getPaymentTerm());
+        company.setAggrementPresent(dto.isAggrementPresent());
+        company.setAggrement(dto.getAggrement());
+        company.setNdaPresent(dto.isNdaPresent());
+        company.setNda(dto.getNda());
+        company.setRevenue(dto.getRevenue());
+
+        // ===== Accounts =====
+        company.setAccountsApproved(dto.isAccountsApproved());
+        company.setAccountsRemark(dto.getAccountsRemark());
+
+        company.setOnboardingStatus(
+                StringUtils.hasText(dto.getOnboardingStatus())
+                        ? OnboardingStatus.valueOf(dto.getOnboardingStatus())
+                        : OnboardingStatus.MINIMAL
+        );
+
+
+
+
+        // ===== Audit =====
+        if (dto.getCreatedById() != null) {
+            User createdBy = userRepository.findByIdAndNotDeleted(dto.getCreatedById())
+                    .orElseThrow(() -> new ValidationException("CreatedBy user not found", "ERR_USER_NOT_FOUND"));
+            company.setCreatedBy(createdBy);
+        }
+
+        if (dto.getUpdatedById() != null) {
+            User updatedBy = userRepository.findByIdAndNotDeleted(dto.getUpdatedById())
+                    .orElseThrow(() -> new ValidationException("UpdatedBy user not found", "ERR_USER_NOT_FOUND"));
+            company.setUpdatedBy(updatedBy);
+        }
+
+        company.setCreatedAt(
+                dto.getCreatedAt() != null
+                        ? dto.getCreatedAt()
+                        : dateTimeUtil.nowLocalDateTime()
+        );
+
+
+
+
+        company.setUpdatedAt(
+                dto.getUpdatedAt() != null
+                        ? dto.getUpdatedAt()
+                        : dateTimeUtil.nowLocalDateTime()
+        );
+
+        company.setDeleted(false);
+
+
+
+
+        boolean hasIncomingUnits =
+                dto.getUnits() != null && !dto.getUnits().isEmpty();
+
+        if (hasIncomingUnits) {
+
+            // ===== Existing units from Lead =====
+            for (CompanyUnitMigrationDto u : dto.getUnits()) {
+
+                if (u.getUnitId() == null)
+                    continue;
+
+                if (companyUnitRepository.existsById(u.getUnitId()))
+                    continue; // idempotent
+
+                CompanyUnit unit = new CompanyUnit();
+
+                unit.setId(u.getUnitId());
+                unit.setLeadId(u.getLeadUnitId());
+                unit.setCompany(company);
+
+                unit.setUnitName(
+                        StringUtils.hasText(u.getUnitName())
+                                ? u.getUnitName()
+                                : company.getName() + " - Unit"
+                );
+
+                // 🔴 REQUIRED FIELDS — MUST NOT BE NULL
+                unit.setAddressLine1(
+                        StringUtils.hasText(u.getAddressLine1())
+                                ? u.getAddressLine1()
+                                : "N/A"
+                );
+
+                unit.setCity(
+                        StringUtils.hasText(u.getCity())
+                                ? u.getCity()
+                                : "UNKNOWN"
+                );
+
+                unit.setState(
+                        StringUtils.hasText(u.getState())
+                                ? u.getState()
+                                : "UNKNOWN"
+                );
+
+                unit.setPinCode(
+                        StringUtils.hasText(u.getPinCode())
+                                ? u.getPinCode()
+                                : "000000"
+                );
+
+                unit.setCountry(
+                        StringUtils.hasText(u.getCountry())
+                                ? u.getCountry()
+                                : "India"
+                );
+
+                // GST
+                unit.setGstNo(u.getGstNo());
+                unit.setGstType(u.getGstType());
+                unit.setGstDocuments(u.getGstDocuments());
+                unit.setGstTypeEntity(u.getGstTypeEntity());
+                unit.setGstBusinessType(u.getGstBusinessType());
+                unit.setGstTypePrice(u.getGstTypePrice());
+
+                // Status
+                unit.setStatus(
+                        StringUtils.hasText(u.getStatus())
+                                ? u.getStatus()
+                                : "Active"
+                );
+
+                unit.setConsultantPresent(u.isConsultantPresent());
+                unit.setUnitOpeningDate(u.getUnitOpeningDate());
+
+                // Accounts
+                unit.setAccountsApproved(u.isAccountsApproved());
+                unit.setAccountsRemark(u.getAccountsRemark());
+                unit.setOnboardingStatus(
+                        StringUtils.hasText(u.getOnboardingStatus())
+                                ? OnboardingStatus.valueOf(u.getOnboardingStatus())
+                                : company.getOnboardingStatus()
+                );
+
+                unit.setDeleted(false);
+
+                company.getUnits().add(unit);
+            }
+
+        } else {
+
+            // ===============================
+            // DEFAULT UNIT (Lead has none)
+            // ===============================
+
+            // Idempotency: one unit per company
+            if (company.getUnits().isEmpty()) {
+
+                CompanyUnit unit = new CompanyUnit();
+
+                unit.setId(company.getId()); // acceptable for migration
+                unit.setLeadId(company.getLeadId());
+                unit.setCompany(company);
+
+                unit.setUnitName(company.getName() + " - Main Unit");
+
+                // 🔴 REQUIRED — derived from company or defaults
+                unit.setAddressLine1(
+                        StringUtils.hasText(dto.getAddress())
+                                ? dto.getAddress()
+                                : "N/A"
+                );
+
+                unit.setCity(
+                        StringUtils.hasText(dto.getCity())
+                                ? dto.getCity()
+                                : "UNKNOWN"
+                );
+
+                unit.setState(
+                        StringUtils.hasText(dto.getState())
+                                ? dto.getState()
+                                : "UNKNOWN"
+                );
+
+                unit.setPinCode(
+                        StringUtils.hasText(dto.getPrimaryPinCode())
+                                ? dto.getPrimaryPinCode()
+                                : "000000"
+                );
+
+                unit.setCountry(
+                        StringUtils.hasText(dto.getCountry())
+                                ? dto.getCountry()
+                                : "India"
+                );
+
+                unit.setStatus("Active");
+                unit.setConsultantPresent(company.getIsConsultant());
+                unit.setUnitOpeningDate(company.getEstablishDate());
+
+                unit.setAccountsApproved(company.isAccountsApproved());
+                unit.setAccountsRemark(company.getAccountsRemark());
+                unit.setOnboardingStatus(company.getOnboardingStatus());
+
+                unit.setDeleted(false);
+
+                company.getUnits().add(unit);
+            }
+        }
+
+
+
+        companyRepository.save(company);
+
+        return mapToResponseDto(company);
+    }
+
     private void updateCompanyOnboardingStatus(Company company) {
         if (company.getUnits().isEmpty()) {
             company.setOnboardingStatus(OnboardingStatus.MINIMAL);
@@ -462,6 +719,9 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setUpdatedAt(unit.getUpdatedAt());
 
         return dto;
+    }
+    private String normalizeUnique(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
 

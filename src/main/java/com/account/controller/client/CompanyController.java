@@ -1,6 +1,7 @@
 package com.account.controller.client;
 
 import com.account.dto.BasicCompanyRequestDto;
+import com.account.dto.CompanyMigrationRequestDto;
 import com.account.dto.company.request.ApproveRejectUnitRequestDto;
 import com.account.dto.company.request.BasicUnitCreateRequest;
 import com.account.dto.company.request.CompanyRequestDto;
@@ -36,6 +37,15 @@ public class CompanyController {
         CompanyResponseDto response = companyService.basicCreateCompany(quickRequest);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
+
+    @PostMapping("/migrateCompany")
+    public ResponseEntity<CompanyResponseDto> migrateCompany(
+            @Valid @RequestBody CompanyMigrationRequestDto dto
+    ) {
+        CompanyResponseDto response = companyService.migrateCompany(dto);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
+    }
+
 
     @Operation(summary = "Quick add minimal unit/branch (sales urgent flow)")
     @ApiResponses({
