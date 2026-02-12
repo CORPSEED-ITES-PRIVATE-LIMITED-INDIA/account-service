@@ -50,6 +50,7 @@ public class AccountServiceApplication {
 			);
 			int seededCount = 0;
 
+
 			for (PaymentType type : defaultTypes) {
 				if (!paymentTypeRepository.existsByCode(type.getCode())) {
 					paymentTypeRepository.save(type);
