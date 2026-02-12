@@ -48,9 +48,8 @@ public class AccountServiceApplication {
 					createPaymentType("PURCHASE_ORDER", "Purchase Order Payment",
 							"Payments against customer-issued Purchase Order – operations may begin early", true)
 			);
+
 			int seededCount = 0;
-
-
 			for (PaymentType type : defaultTypes) {
 				if (!paymentTypeRepository.existsByCode(type.getCode())) {
 					paymentTypeRepository.save(type);
