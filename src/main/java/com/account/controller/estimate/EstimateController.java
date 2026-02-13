@@ -1,6 +1,8 @@
 package com.account.controller.estimate;
 
 import com.account.dto.EstimateCreationRequestDto;
+import com.account.dto.dashboard.EstimateDashboardFilterRequest;
+import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.estimate.EstimateFilterRequest;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.service.EstimateService;
@@ -175,6 +177,19 @@ public class EstimateController {
                 estimateId,
                 requestingUserId
         );
+
+        return ResponseEntity.ok(response);
+    }
+
+
+
+    @PostMapping("/estimatesAnalytics")
+    public ResponseEntity<EstimateDashboardResponse> getDashboard(
+            @RequestBody EstimateDashboardFilterRequest request
+    ) {
+
+        EstimateDashboardResponse response =
+                estimateService.getEstimateDashboard(request);
 
         return ResponseEntity.ok(response);
     }

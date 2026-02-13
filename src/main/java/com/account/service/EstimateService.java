@@ -1,6 +1,8 @@
 package com.account.service;
 
 import com.account.dto.EstimateCreationRequestDto;
+import com.account.dto.dashboard.EstimateDashboardFilterRequest;
+import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.estimate.EstimateResponseDto;
 
 import java.time.LocalDate;
@@ -28,6 +30,10 @@ public interface EstimateService {
             LocalDate toDate,
             int page,
             int size
+    );
+
+    EstimateDashboardResponse getEstimateDashboard(
+            EstimateDashboardFilterRequest request
     );
 }
 

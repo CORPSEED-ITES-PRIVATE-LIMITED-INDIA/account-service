@@ -5,6 +5,10 @@ import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.EstimateCreationRequestDto;
+import com.account.dto.dashboard.CompanyRevenueDto;
+import com.account.dto.dashboard.EstimateDashboardFilterRequest;
+import com.account.dto.dashboard.EstimateDashboardResponse;
+import com.account.dto.dashboard.MonthlyTrendDto;
 import com.account.dto.estimate.CompanySummaryDto;
 import com.account.dto.estimate.CompanyUnitSummaryDto;
 import com.account.dto.estimate.EstimateResponseDto;
@@ -30,9 +34,8 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -680,6 +683,270 @@ public class EstimateServiceImpl implements EstimateService {
     }
 
 
+
+
+
+    @Override
+    public EstimateDashboardResponse getEstimateDashboard(
+            EstimateDashboardFilterRequest request
+    ) {
+
+        if (request.getUserId() == null || request.getUserId() <= 0) {
+            throw new ValidationException("Invalid userId",
+                    "ERR_INVALID_USER", "userId");
+        }
+
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found",
+                                "USER_NOT_FOUND"));
+
+        boolean isAdmin = user.getUserRole().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
+
+//        System.out.println("user.getUserRole():  "+user.getUserRole());
+
+        Specification<Estimate> spec = buildSpecification(request, isAdmin);
+
+        List<Estimate> estimates = estimateRepository.findAll(spec);
+
+        return buildDashboardResponse(estimates);
+    }
+    private Specification<Estimate> buildSpecification(
+            EstimateDashboardFilterRequest request,
+            boolean isAdmin
+    ) {
+
+        return (root, query, cb) -> {
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(cb.isFalse(root.get("isDeleted")));
+
+            if (!isAdmin) {
+                predicates.add(
+                        cb.equal(root.get("createdBy").get("id"),
+                                request.getUserId())
+                );
+            }
+
+            if (request.getFromDate() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("estimateDate"),
+                                request.getFromDate()
+                        )
+                );
+            }
+
+            if (request.getToDate() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("estimateDate"),
+                                request.getToDate()
+                        )
+                );
+            }
+
+            if (request.getStatus() != null &&
+                    !request.getStatus().isBlank()) {
+
+                EstimateStatus status =
+                        EstimateStatus.valueOf(
+                                request.getStatus().toUpperCase());
+
+                predicates.add(
+                        cb.equal(root.get("status"), status)
+                );
+            }
+
+            if (request.getMinAmount() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("grandTotal"),
+                                request.getMinAmount()
+                        )
+                );
+            }
+
+            if (request.getMaxAmount() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("grandTotal"),
+                                request.getMaxAmount()
+                        )
+                );
+            }
+
+            if (request.getCompanyId() != null) {
+                predicates.add(
+                        cb.equal(root.get("company").get("id"),
+                                request.getCompanyId())
+                );
+            }
+
+            if (request.getCompanyName() != null &&
+                    !request.getCompanyName().isBlank()) {
+
+                Join<Object, Object> company =
+                        root.join("company", JoinType.INNER);
+
+                predicates.add(
+                        cb.like(
+                                cb.lower(company.get("name")),
+                                "%" + request.getCompanyName()
+                                        .toLowerCase() + "%"
+                        )
+                );
+            }
+
+            if (request.getUnitId() != null) {
+                predicates.add(
+                        cb.equal(root.get("unit").get("id"),
+                                request.getUnitId())
+                );
+            }
+
+            if (request.getSolutionType() != null &&
+                    !request.getSolutionType().isBlank()) {
+
+                predicates.add(
+                        cb.equal(root.get("solutionType"),
+                                request.getSolutionType())
+                );
+            }
+
+            if (Boolean.TRUE.equals(request.getSentOnly())) {
+                predicates.add(
+                        cb.isNotNull(root.get("sentToClientAt"))
+                );
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+    private EstimateDashboardResponse buildDashboardResponse(
+            List<Estimate> estimates
+    ) {
+
+        long totalCount = estimates.size();
+
+        BigDecimal totalRevenue = estimates.stream()
+                .map(Estimate::getGrandTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalSubTotal = estimates.stream()
+                .map(Estimate::getSubTotalExGst)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalGst = estimates.stream()
+                .map(Estimate::getTotalGstAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal avg = totalCount > 0
+                ? totalRevenue.divide(
+                BigDecimal.valueOf(totalCount),
+                2,
+                RoundingMode.HALF_UP)
+                : BigDecimal.ZERO;
+
+        // Status breakdown
+        Map<String, Long> statusCount =
+                estimates.stream()
+                        .collect(Collectors.groupingBy(
+                                e -> e.getStatus().name(),
+                                Collectors.counting()
+                        ));
+
+        Map<String, BigDecimal> statusRevenue =
+                estimates.stream()
+                        .collect(Collectors.groupingBy(
+                                e -> e.getStatus().name(),
+                                Collectors.mapping(
+                                        Estimate::getGrandTotal,
+                                        Collectors.reducing(
+                                                BigDecimal.ZERO,
+                                                BigDecimal::add)
+                                )
+                        ));
+
+        // Monthly Trend
+        DateTimeFormatter formatter =
+                DateTimeFormatter.ofPattern("yyyy-MM");
+
+        Map<String, List<Estimate>> groupedByMonth =
+                estimates.stream()
+                        .collect(Collectors.groupingBy(
+                                e -> e.getEstimateDate()
+                                        .format(formatter)
+                        ));
+
+        List<MonthlyTrendDto> monthlyTrend =
+                groupedByMonth.entrySet().stream()
+                        .map(entry -> new MonthlyTrendDto(
+                                entry.getKey(),
+                                (long) entry.getValue().size(),
+                                entry.getValue().stream()
+                                        .map(Estimate::getGrandTotal)
+                                        .reduce(BigDecimal.ZERO,
+                                                BigDecimal::add)
+                        ))
+                        .sorted(Comparator.comparing(
+                                MonthlyTrendDto::getMonth))
+                        .toList();
+
+        // Top Companies
+        Map<String, List<Estimate>> groupedByCompany =
+                estimates.stream()
+                        .collect(Collectors.groupingBy(
+                                e -> e.getCompany().getName()
+                        ));
+
+        List<CompanyRevenueDto> topCompanies =
+                groupedByCompany.entrySet().stream()
+                        .map(entry -> new CompanyRevenueDto(
+                                entry.getKey(),
+                                (long) entry.getValue().size(),
+                                entry.getValue().stream()
+                                        .map(Estimate::getGrandTotal)
+                                        .reduce(BigDecimal.ZERO,
+                                                BigDecimal::add)
+                        ))
+                        .sorted((a, b) ->
+                                b.getRevenue()
+                                        .compareTo(a.getRevenue()))
+                        .limit(5)
+                        .toList();
+
+        long sentCount = estimates.stream()
+                .filter(e -> e.getSentToClientAt() != null)
+                .count();
+
+        long draftCount = estimates.stream()
+                .filter(e -> e.getStatus()
+                        == EstimateStatus.DRAFT)
+                .count();
+
+        long approvedCount = estimates.stream()
+                .filter(e -> e.getStatus()
+                        == EstimateStatus.APPROVED)
+                .count();
+
+        return new EstimateDashboardResponse(
+                totalCount,
+                totalRevenue,
+                totalSubTotal,
+                totalGst,
+                avg,
+                statusCount,
+                statusRevenue,
+                monthlyTrend,
+                topCompanies,
+                sentCount,
+                draftCount,
+                approvedCount
+        );
+    }
 
 
 
