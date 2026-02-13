@@ -4,6 +4,8 @@ import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.estimate.EstimateResponseDto;
+import com.account.dto.estimate.EstimateSearchRequest;
+import org.springframework.data.domain.Page;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -35,5 +37,12 @@ public interface EstimateService {
     EstimateDashboardResponse getEstimateDashboard(
             EstimateDashboardFilterRequest request
     );
+
+    Page<EstimateResponseDto> searchEstimates(
+            EstimateSearchRequest request
+    );
 }
+
+
+
 

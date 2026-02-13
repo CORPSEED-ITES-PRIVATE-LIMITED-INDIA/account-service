@@ -5,6 +5,7 @@ import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.estimate.EstimateFilterRequest;
 import com.account.dto.estimate.EstimateResponseDto;
+import com.account.dto.estimate.EstimateSearchRequest;
 import com.account.service.EstimateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -12,6 +13,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -192,6 +194,18 @@ public class EstimateController {
                 estimateService.getEstimateDashboard(request);
 
         return ResponseEntity.ok(response);
+    }
+
+
+    @PostMapping("/estimateReport")
+    public ResponseEntity<Page<EstimateResponseDto>> searchEstimates(
+            @RequestBody EstimateSearchRequest request
+    ) {
+
+        Page<EstimateResponseDto> result =
+                estimateService.searchEstimates(request);
+
+        return ResponseEntity.ok(result);
     }
 
 

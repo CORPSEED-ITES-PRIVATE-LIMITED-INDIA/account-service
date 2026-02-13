@@ -12,6 +12,7 @@ import com.account.dto.dashboard.MonthlyTrendDto;
 import com.account.dto.estimate.CompanySummaryDto;
 import com.account.dto.estimate.CompanyUnitSummaryDto;
 import com.account.dto.estimate.EstimateResponseDto;
+import com.account.dto.estimate.EstimateSearchRequest;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.*;
@@ -22,6 +23,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -252,11 +254,6 @@ public class EstimateServiceImpl implements EstimateService {
         // 8. Return response
         return mapToResponseDto(estimate);
     }
-
-
-
-
-
     private String generateEstimateNumber() {
         long count = estimateRepository.count() + 1;
         String number = String.format("EST-%d-%06d", LocalDate.now().getYear(), count);
@@ -947,6 +944,243 @@ public class EstimateServiceImpl implements EstimateService {
                 approvedCount
         );
     }
+
+
+
+    @Override
+    public Page<EstimateResponseDto> searchEstimates(
+            EstimateSearchRequest request
+    ) {
+
+        if (request.getUserId() == null || request.getUserId() <= 0) {
+            throw new ValidationException("Invalid userId",
+                    "ERR_INVALID_USER", "userId");
+        }
+
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found",
+                                "USER_NOT_FOUND"));
+
+        boolean isAdmin = user.getUserRole().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
+
+        Specification<Estimate> spec = buildSpecificationReport(request, isAdmin);
+
+        Sort sort = Sort.by(
+                Sort.Direction.fromString(request.getSortDirection()),
+                request.getSortBy()
+        );
+
+        Pageable pageable = PageRequest.of(
+                request.getPage(),
+                request.getSize(),
+                sort
+        );
+
+        Page<Estimate> pageResult =
+                estimateRepository.findAll(spec, pageable);
+
+        return pageResult.map(this::mapToEstimateResponseDto);
+    }
+    private Specification<Estimate> buildSpecificationReport(
+            EstimateSearchRequest request,
+            boolean isAdmin
+    ) {
+
+        return (root, query, cb) -> {
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(cb.isFalse(root.get("isDeleted")));
+
+            if (!isAdmin) {
+                predicates.add(
+                        cb.equal(root.get("createdBy").get("id"),
+                                request.getUserId())
+                );
+            }
+
+            if (request.getFromDate() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("estimateDate"),
+                                request.getFromDate()
+                        )
+                );
+            }
+
+            if (request.getToDate() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("estimateDate"),
+                                request.getToDate()
+                        )
+                );
+            }
+
+            if (request.getStatus() != null &&
+                    !request.getStatus().isBlank()) {
+
+                EstimateStatus status =
+                        EstimateStatus.valueOf(
+                                request.getStatus().toUpperCase());
+
+                predicates.add(
+                        cb.equal(root.get("status"), status)
+                );
+            }
+
+            if (request.getMinAmount() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("grandTotal"),
+                                request.getMinAmount()
+                        )
+                );
+            }
+
+            if (request.getMaxAmount() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("grandTotal"),
+                                request.getMaxAmount()
+                        )
+                );
+            }
+
+            if (request.getCompanyId() != null) {
+                predicates.add(
+                        cb.equal(root.get("company").get("id"),
+                                request.getCompanyId())
+                );
+            }
+
+            if (request.getCompanyName() != null &&
+                    !request.getCompanyName().isBlank()) {
+
+                Join<Object, Object> company =
+                        root.join("company", JoinType.INNER);
+
+                predicates.add(
+                        cb.like(
+                                cb.lower(company.get("name")),
+                                "%" + request.getCompanyName()
+                                        .toLowerCase() + "%"
+                        )
+                );
+            }
+
+            if (request.getUnitId() != null) {
+                predicates.add(
+                        cb.equal(root.get("unit").get("id"),
+                                request.getUnitId())
+                );
+            }
+
+            if (request.getSolutionType() != null &&
+                    !request.getSolutionType().isBlank()) {
+
+                predicates.add(
+                        cb.equal(root.get("solutionType"),
+                                request.getSolutionType())
+                );
+            }
+
+            if (Boolean.TRUE.equals(request.getSentOnly())) {
+                predicates.add(
+                        cb.isNotNull(root.get("sentToClientAt"))
+                );
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+    private EstimateResponseDto mapToEstimateResponseDto(Estimate estimate) {
+
+        EstimateResponseDto dto = new EstimateResponseDto();
+
+        dto.setId(estimate.getId());
+        dto.setPublicUuid(estimate.getPublicUuid());
+        dto.setLeadId(estimate.getLeadId());
+        dto.setEstimateNumber(estimate.getEstimateNumber());
+        dto.setEstimateDate(estimate.getEstimateDate());
+        dto.setValidUntil(estimate.getValidUntil());
+
+        dto.setSolutionName(estimate.getSolutionName());
+        dto.setSolutionType(estimate.getSolutionType());
+        dto.setStatus(estimate.getStatus() != null
+                ? estimate.getStatus().name()
+                : null);
+
+        dto.setCurrency(estimate.getCurrency());
+
+        dto.setSubTotalExGst(estimate.getSubTotalExGst());
+        dto.setTotalGstAmount(estimate.getTotalGstAmount());
+        dto.setCgstAmount(estimate.getCgstAmount());
+        dto.setSgstAmount(estimate.getSgstAmount());
+        dto.setIgstAmount(estimate.getIgstAmount());
+        dto.setGrandTotal(estimate.getGrandTotal());
+
+        dto.setCustomerNotes(estimate.getCustomerNotes());
+        dto.setInternalRemarks(estimate.getInternalRemarks());
+
+        dto.setVersion(estimate.getVersion());
+        dto.setRevisionReason(estimate.getRevisionReason());
+
+        dto.setCreatedAt(estimate.getCreatedAt());
+
+        if (estimate.getCreatedBy() != null) {
+            dto.setCreatedById(estimate.getCreatedBy().getId());
+            dto.setCreatedByName(estimate.getCreatedBy().getFullName());
+        }
+
+        if (estimate.getCompany() != null) {
+            dto.setCompany(new CompanySummaryDto(
+                    estimate.getCompany().getId(),
+                    estimate.getCompany().getName(),
+                    estimate.getCompany().getPanNo(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    estimate.getCompany().getOnboardingStatus() != null
+                            ? estimate.getCompany().getOnboardingStatus().name()
+                            : null
+            ));
+        }
+
+        if (estimate.getUnit() != null) {
+            dto.setUnit(new CompanyUnitSummaryDto(
+                    estimate.getUnit().getId(),
+                    estimate.getUnit().getUnitName(),
+                    estimate.getUnit().getAddressLine1(),
+                    estimate.getUnit().getAddressLine2(),
+                    estimate.getUnit().getCity(),
+                    estimate.getUnit().getState(),
+                    estimate.getUnit().getPinCode(),
+                    estimate.getUnit().getGstNo(),
+                    estimate.getUnit().getGstType(),
+                    estimate.getUnit().getStatus(),
+                    estimate.getUnit().getOnboardingStatus() != null
+                            ? estimate.getUnit().getOnboardingStatus().name()
+                            : null
+            ));
+        }
+
+        // ⚠ IMPORTANT:
+        // For search list API, DO NOT include lineItems unless necessary.
+        // It will cause N+1 queries.
+        dto.setLineItems(null);
+
+        return dto;
+    }
+
+
+
+
+
+
 
 
 
