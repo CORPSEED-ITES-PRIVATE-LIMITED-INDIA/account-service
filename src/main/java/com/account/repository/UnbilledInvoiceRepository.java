@@ -73,5 +73,5 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     Optional<UnbilledInvoice> findByEstimateForUpdate(@Param("estimate") Estimate estimate);
 
 
-
+    List<UnbilledInvoice> findByEstimateIdIn(List<Long> estimateIds);
 }

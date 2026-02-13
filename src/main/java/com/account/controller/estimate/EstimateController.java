@@ -6,6 +6,7 @@ import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.estimate.EstimateFilterRequest;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.dto.estimate.EstimateSearchRequest;
+import com.account.dto.estimate.EstimateSearchRequestDto;
 import com.account.service.EstimateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -198,15 +199,30 @@ public class EstimateController {
 
 
     @PostMapping("/estimateReport")
-    public ResponseEntity<Page<EstimateResponseDto>> searchEstimates(
+    public ResponseEntity<Page<EstimateResponseDto>> estimateReport(
             @RequestBody EstimateSearchRequest request
     ) {
 
         Page<EstimateResponseDto> result =
-                estimateService.searchEstimates(request);
+                estimateService.estimateReport(request);
 
         return ResponseEntity.ok(result);
     }
+
+
+    @PostMapping("/search/{userId}")
+    public ResponseEntity<Page<EstimateResponseDto>> searchEstimates(
+            @PathVariable Long userId,
+            @RequestBody EstimateSearchRequestDto request
+    ) {
+
+        Page<EstimateResponseDto> result =
+                estimateService.searchEstimates(request, userId);
+
+        return ResponseEntity.ok(result);
+    }
+
+
 
 
 

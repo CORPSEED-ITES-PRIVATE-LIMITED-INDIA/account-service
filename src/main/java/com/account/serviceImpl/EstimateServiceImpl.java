@@ -9,10 +9,7 @@ import com.account.dto.dashboard.CompanyRevenueDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.dashboard.MonthlyTrendDto;
-import com.account.dto.estimate.CompanySummaryDto;
-import com.account.dto.estimate.CompanyUnitSummaryDto;
-import com.account.dto.estimate.EstimateResponseDto;
-import com.account.dto.estimate.EstimateSearchRequest;
+import com.account.dto.estimate.*;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.*;
@@ -23,6 +20,7 @@ import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -52,6 +50,17 @@ public class EstimateServiceImpl implements EstimateService {
     private final CompanyUnitRepository companyUnitRepository;
     private final ContactRepository contactRepository;
     private final UserRepository userRepository;
+
+    @Autowired
+    private UnbilledInvoiceRepository unbilledRepository;
+
+    @Autowired
+    private InvoiceRepository invoiceRepository;
+
+    @Autowired
+    private PaymentReceiptRepository paymentRepository;
+
+
 
     @Override
     public EstimateResponseDto createEstimate(EstimateCreationRequestDto requestDto) {
@@ -827,6 +836,52 @@ public class EstimateServiceImpl implements EstimateService {
     ) {
 
         long totalCount = estimates.size();
+        List<Long> estimateIds = estimates.stream()
+                .map(Estimate::getId)
+                .toList();
+        List<UnbilledInvoice> unbilledList =
+                unbilledRepository.findByEstimateIdIn(estimateIds);
+
+        long totalUnbilledCount = unbilledList.size();
+
+        BigDecimal totalUnbilledAmount = unbilledList.stream()
+                .map(UnbilledInvoice::getTotalAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalReceivedAmount = unbilledList.stream()
+                .map(UnbilledInvoice::getReceivedAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalOutstandingAmount = unbilledList.stream()
+                .map(UnbilledInvoice::getOutstandingAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+
+        long totalInvoiceCount = unbilledList.stream()
+                .mapToLong(u -> u.getTaxInvoices().size())
+                .sum();
+
+        BigDecimal totalInvoicedAmount = unbilledList.stream()
+                .flatMap(u -> u.getTaxInvoices().stream())
+                .map(Invoice::getGrandTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+
+
+        double conversionRate = totalCount > 0
+                ? (totalUnbilledCount * 100.0) / totalCount
+                : 0.0;
+
+        double collectionEfficiency = totalUnbilledAmount.compareTo(BigDecimal.ZERO) > 0
+                ? totalReceivedAmount
+                .multiply(BigDecimal.valueOf(100))
+                .divide(totalUnbilledAmount, 2, RoundingMode.HALF_UP)
+                .doubleValue()
+                : 0.0;
+
+
+
+
 
         BigDecimal totalRevenue = estimates.stream()
                 .map(Estimate::getGrandTotal)
@@ -941,14 +996,22 @@ public class EstimateServiceImpl implements EstimateService {
                 topCompanies,
                 sentCount,
                 draftCount,
-                approvedCount
+                approvedCount,
+                totalUnbilledCount,
+                totalUnbilledAmount,
+                totalInvoiceCount,
+                totalInvoicedAmount,
+                totalReceivedAmount,
+                totalOutstandingAmount,
+                conversionRate,
+                collectionEfficiency
         );
     }
 
 
 
     @Override
-    public Page<EstimateResponseDto> searchEstimates(
+    public Page<EstimateResponseDto> estimateReport(
             EstimateSearchRequest request
     ) {
 
@@ -1178,6 +1241,192 @@ public class EstimateServiceImpl implements EstimateService {
 
 
 
+    @Override
+    public Page<EstimateResponseDto> searchEstimates(EstimateSearchRequestDto request, Long userId) {
+
+        if ( userId== null || userId <= 0) {
+            throw new ValidationException(
+                    "Invalid userId",
+                    "ERR_INVALID_USER",
+                    "userId"
+            );
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "User not found",
+                                "USER_NOT_FOUND"
+                        )
+                );
+
+
+        boolean isAdmin = user.getUserRole().stream()
+                .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
+
+        Specification<Estimate> spec =
+                buildSearchSpecification(request, isAdmin, userId);
+
+        Sort sort = Sort.by(
+                Sort.Direction.fromString(request.getSortDirection()),
+                request.getSortBy()
+        );
+
+        Pageable pageable = PageRequest.of(
+                request.getPage(),
+                request.getSize(),
+                sort
+        );
+
+
+        return estimateRepository
+                .findAll(spec, pageable)
+                .map(this::mapToResponseDto);
+    }
+    private Specification<Estimate> buildSearchSpecification(
+            EstimateSearchRequestDto request,
+            boolean isAdmin,
+            Long userId
+    ) {
+
+        return (root, query, cb) -> {
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(cb.isFalse(root.get("isDeleted")));
+
+            // 🔐 Role-based access
+            if (!isAdmin) {
+                predicates.add(
+                        cb.equal(
+                                root.get("createdBy").get("id"),
+                                userId
+                        )
+                );
+            }
+
+            // 🔍 Free text search
+            if (request.getQuery() != null && !request.getQuery().isBlank()) {
+
+                String likePattern = "%" + request.getQuery().toLowerCase() + "%";
+
+                Join<Object, Object> companyJoin =
+                        root.join("company", JoinType.LEFT);
+
+                predicates.add(
+                        cb.or(
+                                cb.like(cb.lower(root.get("estimateNumber")), likePattern),
+                                cb.like(cb.lower(root.get("solutionName")), likePattern),
+                                cb.like(cb.lower(companyJoin.get("name")), likePattern)
+                        )
+                );
+            }
+
+            // 🎯 Exact filters
+            if (request.getCompanyId() != null) {
+                predicates.add(cb.equal(root.get("company").get("id"), request.getCompanyId()));
+            }
+
+            if (request.getUnitId() != null) {
+                predicates.add(cb.equal(root.get("unit").get("id"), request.getUnitId()));
+            }
+
+            if (request.getContactId() != null) {
+                predicates.add(cb.equal(root.get("contact").get("id"), request.getContactId()));
+            }
+
+            if (request.getLeadId() != null) {
+                predicates.add(cb.equal(root.get("leadId"), request.getLeadId()));
+            }
+
+            if (request.getEstimateNumber() != null &&
+                    !request.getEstimateNumber().isBlank()) {
+
+                predicates.add(
+                        cb.like(
+                                cb.lower(root.get("estimateNumber")),
+                                "%" + request.getEstimateNumber().toLowerCase() + "%"
+                        )
+                );
+            }
+
+            if (request.getStatus() != null &&
+                    !request.getStatus().isBlank()) {
+
+                EstimateStatus status =
+                        EstimateStatus.valueOf(request.getStatus().toUpperCase());
+
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+
+            if (request.getSolutionType() != null &&
+                    !request.getSolutionType().isBlank()) {
+
+                predicates.add(
+                        cb.equal(root.get("solutionType"), request.getSolutionType())
+                );
+            }
+
+            // 📅 Created date range
+            if (request.getCreatedFrom() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("createdAt"),
+                                request.getCreatedFrom().atStartOfDay()
+                        )
+                );
+            }
+
+            if (request.getCreatedTo() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("createdAt"),
+                                request.getCreatedTo().atTime(23, 59, 59)
+                        )
+                );
+            }
+
+            // 📅 Valid until range
+            if (request.getValidUntilFrom() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("validUntil"),
+                                request.getValidUntilFrom()
+                        )
+                );
+            }
+
+            if (request.getValidUntilTo() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("validUntil"),
+                                request.getValidUntilTo()
+                        )
+                );
+            }
+
+            // 💰 Amount range
+            if (request.getMinGrandTotal() != null) {
+                predicates.add(
+                        cb.greaterThanOrEqualTo(
+                                root.get("grandTotal"),
+                                request.getMinGrandTotal()
+                        )
+                );
+            }
+
+            if (request.getMaxGrandTotal() != null) {
+                predicates.add(
+                        cb.lessThanOrEqualTo(
+                                root.get("grandTotal"),
+                                request.getMaxGrandTotal()
+                        )
+                );
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+    }
 
 
 

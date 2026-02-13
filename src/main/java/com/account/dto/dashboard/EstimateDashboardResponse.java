@@ -31,4 +31,19 @@ public class EstimateDashboardResponse {
     private long draftCount;
     private long approvedCount;
 
+
+
+    // 🔥 NEW FIELDS
+    private long totalUnbilledCount;
+    private BigDecimal totalUnbilledAmount;
+
+    private long totalInvoiceCount;
+    private BigDecimal totalInvoicedAmount;
+
+    private BigDecimal totalReceivedAmount;
+    private BigDecimal totalOutstandingAmount;
+
+    private double estimateToUnbilledConversionRate;
+    private double collectionEfficiencyPercentage;
+
 }
