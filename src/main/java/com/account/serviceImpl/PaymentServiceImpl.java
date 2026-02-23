@@ -2,6 +2,7 @@ package com.account.serviceImpl;
 
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
+import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -225,6 +226,9 @@ public class PaymentServiceImpl implements PaymentService {
         response.setUnbilledNumber(unbilled.getUnbilledNumber());
         response.setUnbilledStatus(unbilled.getStatus());
         response.setMessage(message);
+
+        estimate.setStatus(EstimateStatus.INITIATED);
+        estimateRepository.save(estimate);
 
         return response;
     }
