@@ -2,6 +2,8 @@ package com.account.controller.invoice;
 
 import com.account.domain.InvoiceStatus;
 import com.account.dto.invoice.InvoiceDetailDto;
+import com.account.dto.invoice.InvoiceReportDto;
+import com.account.dto.invoice.InvoiceSearchRequest;
 import com.account.dto.invoice.InvoiceSummaryDto;
 import com.account.service.InvoiceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -85,18 +87,25 @@ public class InvoiceController {
     }
 
 
-    @GetMapping("/{id}")
-    @Operation(summary = "Get full detailed invoice by ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Invoice details"),
-            @ApiResponse(responseCode = "403", description = "Not authorized"),
-            @ApiResponse(responseCode = "404", description = "Invoice not found")
-    })
-    public ResponseEntity<InvoiceDetailDto> getInvoiceDetail(
-            @PathVariable Long id,
-            @RequestParam Long userId   // ← in production → replace with @AuthenticationPrincipal
+        @GetMapping("/{id}")
+        @Operation(summary = "Get full detailed invoice by ID")
+        @ApiResponses({
+                @ApiResponse(responseCode = "200", description = "Invoice details"),
+                @ApiResponse(responseCode = "403", description = "Not authorized"),
+                @ApiResponse(responseCode = "404", description = "Invoice not found")
+        })
+        public ResponseEntity<InvoiceDetailDto> getInvoiceDetail(
+                @PathVariable Long id,
+                @RequestParam Long userId   // ← in production → replace with @AuthenticationPrincipal
+        ) {
+            InvoiceDetailDto detail = invoiceService.getInvoiceById(id, userId);
+            return ResponseEntity.ok(detail);
+        }
+
+    @PostMapping("/invoiceReport")
+    public ResponseEntity<InvoiceReportDto> invoiceReport(
+            @RequestBody InvoiceSearchRequest request
     ) {
-        InvoiceDetailDto detail = invoiceService.getInvoiceById(id, userId);
-        return ResponseEntity.ok(detail);
+        return ResponseEntity.ok(invoiceService.invoiceReport(request));
     }
 }

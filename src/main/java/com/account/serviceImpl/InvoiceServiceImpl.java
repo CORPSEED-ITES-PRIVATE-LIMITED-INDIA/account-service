@@ -3,21 +3,22 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
-import com.account.dto.invoice.InvoiceDetailDto;
-import com.account.dto.invoice.InvoiceSummaryDto;
+import com.account.dto.invoice.*;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.InvoiceRepository;
 import com.account.repository.UserRepository;
 import com.account.service.InvoiceService;
 import com.account.util.DateTimeUtil;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.Tuple;
+import jakarta.persistence.criteria.*;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +38,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private final InvoiceRepository invoiceRepository;
 	private final UserRepository userRepository;
 	private final DateTimeUtil dateTimeUtil;
+	@PersistenceContext
+	private EntityManager entityManager;
 
 
 	@Override
@@ -330,6 +333,193 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 		return toDetailDto(invoice);
+	}
+
+
+
+	@Override
+	@Transactional(readOnly = true)
+	public InvoiceReportDto invoiceReport(InvoiceSearchRequest request) {
+
+		CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+    /* ============================================================
+       1️⃣ INVOICE AGGREGATION (Revenue Side)
+       ============================================================ */
+
+		CriteriaQuery<Tuple> invoiceQuery = cb.createTupleQuery();
+		Root<Invoice> invoiceRoot = invoiceQuery.from(Invoice.class);
+		Join<Invoice, UnbilledInvoice> invoiceUnbilled = invoiceRoot.join("unbilledInvoice", JoinType.LEFT);
+		Join<UnbilledInvoice, Company> invoiceCompany = invoiceUnbilled.join("company", JoinType.LEFT);
+
+		List<Predicate> invoicePredicates = buildPredicates(
+				request, cb, invoiceRoot, invoiceUnbilled, invoiceCompany
+		);
+
+		Expression<Long> totalInvoicesExp = cb.count(invoiceRoot.get("id"));
+		Expression<BigDecimal> totalRevenueExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("grandTotal")), BigDecimal.ZERO);
+		Expression<BigDecimal> totalNetRevenueExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("subTotalExGst")), BigDecimal.ZERO);
+		Expression<BigDecimal> totalGstExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("totalGstAmount")), BigDecimal.ZERO);
+
+		invoiceQuery.multiselect(
+				totalInvoicesExp.alias("totalInvoices"),
+				totalRevenueExp.alias("totalRevenue"),
+				totalNetRevenueExp.alias("totalNetRevenue"),
+				totalGstExp.alias("totalGstCollected")
+		);
+
+		invoiceQuery.where(cb.and(invoicePredicates.toArray(new Predicate[0])));
+
+		Tuple invoiceResult = entityManager.createQuery(invoiceQuery).getSingleResult();
+
+		Long totalInvoices = invoiceResult.get("totalInvoices", Long.class);
+		BigDecimal totalRevenue = nz(invoiceResult.get("totalRevenue", BigDecimal.class));
+		BigDecimal totalNetRevenue = nz(invoiceResult.get("totalNetRevenue", BigDecimal.class));
+		BigDecimal totalGst = nz(invoiceResult.get("totalGstCollected", BigDecimal.class));
+
+    /* ============================================================
+       2️⃣ UNBILLED AGGREGATION (Due Side) – DISTINCT SAFE
+       ============================================================ */
+
+		CriteriaQuery<Tuple> unbilledQuery = cb.createTupleQuery();
+		Root<UnbilledInvoice> unbilledRoot = unbilledQuery.from(UnbilledInvoice.class);
+		Join<UnbilledInvoice, Invoice> invoiceJoin = unbilledRoot.join("taxInvoices", JoinType.LEFT);
+		Join<UnbilledInvoice, Company> companyJoin = unbilledRoot.join("company", JoinType.LEFT);
+
+		List<Predicate> unbilledPredicates = buildUnbilledPredicates(
+				request, cb, unbilledRoot, invoiceJoin, companyJoin
+		);
+
+		Expression<BigDecimal> totalUnbilledExp =
+				cb.coalesce(cb.sum(unbilledRoot.get("totalAmount")), BigDecimal.ZERO);
+		Expression<BigDecimal> totalReceivedExp =
+				cb.coalesce(cb.sum(unbilledRoot.get("receivedAmount")), BigDecimal.ZERO);
+		Expression<BigDecimal> totalOutstandingExp =
+				cb.coalesce(cb.sum(unbilledRoot.get("outstandingAmount")), BigDecimal.ZERO);
+
+		unbilledQuery.multiselect(
+				totalUnbilledExp.alias("totalUnbilledAmount"),
+
+				totalReceivedExp.alias("totalReceivedAmount"),
+				totalOutstandingExp.alias("totalOutstandingAmount")
+		);
+
+		unbilledQuery.where(cb.and(unbilledPredicates.toArray(new Predicate[0])));
+
+		Tuple unbilledResult = entityManager.createQuery(unbilledQuery).getSingleResult();
+
+		BigDecimal totalUnbilled = nz(unbilledResult.get("totalUnbilledAmount", BigDecimal.class));
+		BigDecimal totalReceived = nz(unbilledResult.get("totalReceivedAmount", BigDecimal.class));
+		BigDecimal totalOutstanding = nz(unbilledResult.get("totalOutstandingAmount", BigDecimal.class));
+
+    /* ============================================================
+       3️⃣ CALCULATE AVERAGE (BigDecimal SAFE)
+       ============================================================ */
+
+		BigDecimal averageInvoiceValue = (totalInvoices == null || totalInvoices == 0)
+				? BigDecimal.ZERO
+				: totalRevenue.divide(BigDecimal.valueOf(totalInvoices), 8, RoundingMode.HALF_UP);
+
+    /* ============================================================
+       4️⃣ BUILD RESPONSE
+       ============================================================ */
+
+		return InvoiceReportDto.builder()
+				.totalInvoices(totalInvoices == null ? 0L : totalInvoices)
+				.totalRevenue(totalRevenue)
+				.totalNetRevenue(totalNetRevenue)
+				.totalGstCollected(totalGst)
+				.averageInvoiceValue(averageInvoiceValue)
+				.totalUnbilledAmount(totalUnbilled)
+				.totalReceivedAmount(totalReceived)
+				.totalOutstandingAmount(totalOutstanding)
+				.build();
+	}
+
+	private List<Predicate> buildPredicates(
+			InvoiceSearchRequest request,
+			CriteriaBuilder cb,
+			Root<Invoice> root,
+			Join<Invoice, UnbilledInvoice> unbilled,
+			Join<UnbilledInvoice, Company> company
+	) {
+
+		List<Predicate> predicates = new ArrayList<>();
+
+		if (request.getCreatedById() != null) {
+			predicates.add(cb.equal(root.get("createdBy").get("id"), request.getCreatedById()));
+		}
+
+		if (request.getStatus() != null) {
+			predicates.add(cb.equal(root.get("status"), request.getStatus()));
+		}
+
+		if (request.getFromInvoiceDate() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(root.get("invoiceDate"), request.getFromInvoiceDate()));
+		}
+
+		if (request.getToInvoiceDate() != null) {
+			predicates.add(cb.lessThanOrEqualTo(root.get("invoiceDate"), request.getToInvoiceDate()));
+		}
+
+		if (request.getCompanyName() != null && !request.getCompanyName().isBlank()) {
+			predicates.add(cb.like(
+					cb.lower(company.get("name")),
+					"%" + request.getCompanyName().toLowerCase() + "%"
+			));
+		}
+
+		if (request.getSolutionId() != null) {
+			predicates.add(cb.equal(root.get("solutionId"), request.getSolutionId()));
+		}
+
+		return predicates;
+	}
+
+	private List<Predicate> buildUnbilledPredicates(
+			InvoiceSearchRequest request,
+			CriteriaBuilder cb,
+			Root<UnbilledInvoice> root,
+			Join<UnbilledInvoice, Invoice> invoiceJoin,
+			Join<UnbilledInvoice, Company> company
+	) {
+
+		List<Predicate> predicates = new ArrayList<>();
+
+		if (request.getCreatedById() != null) {
+			predicates.add(cb.equal(invoiceJoin.get("createdBy").get("id"), request.getCreatedById()));
+		}
+
+		if (request.getStatus() != null) {
+			predicates.add(cb.equal(invoiceJoin.get("status"), request.getStatus()));
+		}
+
+		if (request.getFromInvoiceDate() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(invoiceJoin.get("invoiceDate"), request.getFromInvoiceDate()));
+		}
+
+		if (request.getToInvoiceDate() != null) {
+			predicates.add(cb.lessThanOrEqualTo(invoiceJoin.get("invoiceDate"), request.getToInvoiceDate()));
+		}
+
+		if (request.getCompanyName() != null && !request.getCompanyName().isBlank()) {
+			predicates.add(cb.like(
+					cb.lower(company.get("name")),
+					"%" + request.getCompanyName().toLowerCase() + "%"
+			));
+		}
+
+		if (request.getSolutionId() != null) {
+			predicates.add(cb.equal(invoiceJoin.get("solutionId"), request.getSolutionId()));
+		}
+
+		return predicates;
+	}
+	private BigDecimal nz(BigDecimal val) {
+		return val != null ? val : BigDecimal.ZERO;
 	}
 
 

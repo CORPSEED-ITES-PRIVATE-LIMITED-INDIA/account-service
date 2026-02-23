@@ -2,6 +2,7 @@ package com.account.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.Comment;
 import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedBy;
@@ -102,14 +103,39 @@ public class Invoice {
     private String buyerGstin;
 
     // Auditing
+    /**
+     * The user who originally created/generated the invoice.
+     *
+     * Typically, this is the salesperson or staff member who:
+     * - Interacts with the client
+     * - Requests or collects the payment
+     * - Registers the payment in the system
+     *
+     * This field is automatically populated by Spring Data auditing (@CreatedBy)
+     * and is not updatable after creation.
+     */
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by", updatable = false)
+    @Comment("User who generated the invoice and registered the client payment")
     private User createdBy;
 
+
+    /**
+     * The user who last modified/approved the invoice or payment record.
+     *
+     * Typically, this is a member of the accounts or finance team who:
+     * - Verifies the payment details
+     * - Approves the payment after validation
+     * - Updates the record if required
+     *
+     * This field is automatically populated by Spring Data auditing (@LastModifiedBy)
+     * whenever the entity is updated.
+     */
     @LastModifiedBy
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
+    @Comment("Accounts team member who verified and approved the payment")
     private User updatedBy;
 
     @CreatedDate

@@ -22,7 +22,7 @@ public class AccountServiceApplication {
 	private final PaymentTypeRepository paymentTypeRepository;
 
 	public static void main(String[] args) {
-		SpringApplication.run(AccountServiceApplication.class, args);
+		SpringApplication.run(AccountServiceApplication.	class, args);
 	}
 
 	/**

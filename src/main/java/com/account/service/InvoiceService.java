@@ -2,6 +2,8 @@ package com.account.service;
 
 import com.account.domain.*;
 import com.account.dto.invoice.InvoiceDetailDto;
+import com.account.dto.invoice.InvoiceReportDto;
+import com.account.dto.invoice.InvoiceSearchRequest;
 import com.account.dto.invoice.InvoiceSummaryDto;
 
 import java.util.List;
@@ -28,4 +30,6 @@ public interface InvoiceService {
 	// Optional future methods can be added here
 	// Invoice getInvoiceDetail(Long id);
 	// void updateInvoiceStatus(Long invoiceId, InvoiceStatus newStatus);
+
+	InvoiceReportDto invoiceReport(InvoiceSearchRequest request);
 }
