@@ -367,9 +367,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         // 9. Identify the first (triggering) payment receipt
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
-                .min(Comparator.comparing(PaymentReceipt::getCreatedAt))
+                .filter(p -> p.getPaymentDate() != null)
+                .min(Comparator.comparing(PaymentReceipt::getPaymentDate))
                 .orElseThrow(() -> new IllegalStateException(
-                        "No payments found for unbilled invoice: " + unbilled.getUnbilledNumber()));
+                        "No payments found for unbilled invoice: "
+                                + unbilled.getUnbilledNumber()));
 
         // 10. Generate actual GST invoice
         Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(
