@@ -1,16 +1,22 @@
 package com.account.serviceImpl;
 
 import com.account.domain.Contact;
+import com.account.domain.contact.ContactCreationDto;
 import com.account.dto.contact.ContactRequestDto;
 import com.account.dto.contact.ContactResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
+import com.account.repository.CompanyUnitRepository;
 import com.account.repository.ContactRepository;
 import com.account.service.ContactService;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -24,6 +30,9 @@ public class ContactServiceImpl implements ContactService {
 
     @Autowired
     private CompanyRepository companyRepository;
+
+    @Autowired
+    private CompanyUnitRepository companyUnitRepository;
 
     @Override
     public ContactResponseDto createContact(ContactRequestDto dto) {
@@ -65,7 +74,6 @@ public class ContactServiceImpl implements ContactService {
         contact.setEmails(dto.getEmails() != null ? dto.getEmails().trim() : null);
         contact.setContactNo(dto.getContactNo() != null ? dto.getContactNo().trim() : null);
         contact.setWhatsappNo(dto.getWhatsappNo() != null ? dto.getWhatsappNo().trim() : null);
-        contact.setCompanyId(dto.getCompanyId());
         contact.setDeleteStatus(false);
 
         Contact saved = contactRepository.save(contact);
@@ -129,14 +137,122 @@ public class ContactServiceImpl implements ContactService {
         contactRepository.save(contact);
     }
 
-    private ContactResponseDto mapToResponseDto(Contact contact) {
-        return new ContactResponseDto(
-                contact.getId(),
-                contact.getName(),
-                contact.getEmails(),
-                contact.getContactNo(),
-                contact.getWhatsappNo(),
-                contact.getCompanyId()
-        );
+    @Override
+    public List<ContactResponseDto> getContactsByCompanyUnitId(Long companyUnitId) {
+
+        // Optional validation
+        if (!companyUnitRepository.existsById(companyUnitId)) {
+            throw new ResourceNotFoundException(
+                    "Company unit not found with id: " + companyUnitId,
+                    "ERR_UNIT_NOT_FOUND",
+                    "CompanyUnit",
+                    companyUnitId
+            );
+        }
+
+        return contactRepository
+                .findByCompanyUnitIdAndDeleteStatusFalse(companyUnitId)
+                .stream()
+                .map(this::mapToResponseDto)
+                .toList();
     }
+
+    @Override
+    public ContactResponseDto createAssociatedContact(ContactCreationDto dto) {
+
+        if (dto.getId() == null) {
+            throw new ValidationException(
+                    "Contact ID must be provided",
+                    "ERR_ID_REQUIRED"
+            );
+        }
+
+        if (contactRepository.existsById(dto.getId())) {
+            throw new ValidationException(
+                    "Contact with ID " + dto.getId() + " already exists",
+                    "ERR_CONTACT_ALREADY_EXISTS"
+            );
+        }
+
+        if (dto.getCompanyId() == null && dto.getCompanyUnitId() == null) {
+            throw new ValidationException(
+                    "Either companyId or companyUnitId must be provided",
+                    "ERR_ASSOCIATION_REQUIRED"
+            );
+        }
+
+        Contact contact = new Contact();
+        contact.setId(dto.getId());  // ← manual ID set here
+
+        contact.setName(dto.getName().trim());
+        contact.setTitle(dto.getTitle());
+        contact.setEmails(dto.getEmails());
+        contact.setContactNo(dto.getContactNo());
+        contact.setWhatsappNo(dto.getWhatsappNo());
+        contact.setDesignation(dto.getDesignation());
+
+        contact.setPrimaryForCompany(dto.isMakePrimaryForCompany());
+        contact.setSecondaryForCompany(dto.isMakeSecondaryForCompany());
+        contact.setPrimaryForUnit(dto.isMakePrimaryForUnit());
+        contact.setSecondaryForUnit(dto.isMakeSecondaryForUnit());
+
+        contact.setDeleteStatus(false);
+
+        if (dto.getCompanyId() != null) {
+            var company = companyRepository.findById(dto.getCompanyId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Company not found",
+                            "ERR_COMPANY_NOT_FOUND",
+                            "Company",
+                            dto.getCompanyId()
+                    ));
+            contact.setCompany(company);
+        }
+
+        if (dto.getCompanyUnitId() != null) {
+            var unit = companyUnitRepository.findById(dto.getCompanyUnitId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Company unit not found",
+                            "ERR_UNIT_NOT_FOUND",
+                            "CompanyUnit",
+                            dto.getCompanyUnitId()
+                    ));
+            contact.setCompanyUnit(unit);
+        }
+
+        Contact saved = contactRepository.save(contact);
+
+        return mapToResponseDto(saved);
+    }
+    private ContactResponseDto mapToResponseDto(Contact contact) {
+
+        ContactResponseDto dto = new ContactResponseDto();
+
+        dto.setId(contact.getId());
+        dto.setTitle(contact.getTitle());
+        dto.setName(contact.getName());
+        dto.setEmails(contact.getEmails());
+        dto.setContactNo(contact.getContactNo());
+        dto.setWhatsappNo(contact.getWhatsappNo());
+        dto.setDesignation(contact.getDesignation());
+
+        dto.setCompanyId(
+                contact.getCompany() != null ? contact.getCompany().getId() : null
+        );
+
+        dto.setCompanyUnitId(
+                contact.getCompanyUnit() != null ? contact.getCompanyUnit().getId() : null
+        );
+
+        dto.setPrimaryForCompany(contact.isPrimaryForCompany());
+        dto.setSecondaryForCompany(contact.isSecondaryForCompany());
+        dto.setPrimaryForUnit(contact.isPrimaryForUnit());
+        dto.setSecondaryForUnit(contact.isSecondaryForUnit());
+
+        dto.setDeleted(contact.isDeleted());
+
+        return dto;
+    }
+
+
 }

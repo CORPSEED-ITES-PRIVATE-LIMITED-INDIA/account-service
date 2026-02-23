@@ -1,5 +1,7 @@
 package com.account.controller.client;
 
+import com.account.domain.Contact;
+import com.account.domain.contact.ContactCreationDto;
 import com.account.dto.contact.ContactRequestDto;
 import com.account.dto.contact.ContactResponseDto;
 import com.account.service.ContactService;
@@ -49,4 +51,28 @@ public class ContactController {
         contactService.softDeleteContact(id);
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/contacts/associate")
+    public ResponseEntity<ContactResponseDto> createAssociatedContact(
+            @Valid @RequestBody ContactCreationDto dto) {
+
+        ContactResponseDto response = contactService.createAssociatedContact(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+
+
+    @GetMapping("/unit/{companyUnitId}")
+    public ResponseEntity<List<ContactResponseDto>> getContactsByCompanyUnitId(
+            @PathVariable Long companyUnitId) {
+
+        List<ContactResponseDto> contacts =
+                contactService.getContactsByCompanyUnitId(companyUnitId);
+
+        return ResponseEntity.ok(contacts);
+    }
+
+
+
+
 }

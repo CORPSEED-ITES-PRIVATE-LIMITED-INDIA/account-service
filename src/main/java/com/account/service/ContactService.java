@@ -1,5 +1,6 @@
 package com.account.service;
 
+import com.account.domain.contact.ContactCreationDto;
 import com.account.dto.contact.ContactRequestDto;
 import com.account.dto.contact.ContactResponseDto;
 
@@ -16,4 +17,8 @@ public interface ContactService {
     ContactResponseDto updateContact(Long id, ContactRequestDto dto);
 
     void softDeleteContact(Long id);
+
+    ContactResponseDto createAssociatedContact(ContactCreationDto dto);
+
+    List<ContactResponseDto> getContactsByCompanyUnitId(Long companyUnitId);
 }

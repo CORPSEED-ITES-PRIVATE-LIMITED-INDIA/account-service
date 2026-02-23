@@ -1,6 +1,7 @@
 package com.account.repository;
 
 import com.account.domain.Contact;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -18,4 +19,8 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
 
     // Optional: useful for create with manual ID
     boolean existsById(Long id);
+
+    List<Contact> findByCompanyUnitIdAndDeleteStatusFalse(Long companyUnitId);
+
+
 }
