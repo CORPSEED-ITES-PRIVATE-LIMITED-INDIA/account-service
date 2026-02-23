@@ -445,37 +445,53 @@ public class EstimateServiceImpl implements EstimateService {
     }
 
     @Override
-    public long getEstimatesCount(Long requestingUserId) {
-        log.info("Counting visible estimates | requestedByUserId={}", requestingUserId);
+    public long getEstimatesCount(
+            Long requestingUserId,
+            String search,
+            String status,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+
+        log.info("Counting estimates with filters | requestedBy={}", requestingUserId);
 
         if (requestingUserId == null || requestingUserId <= 0) {
-            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+            throw new ValidationException(
+                    "Invalid requestingUserId",
+                    "ERR_INVALID_REQUESTING_USER",
+                    "requestingUserId"
+            );
         }
 
-        // 1. Verify user exists
         User user = userRepository.findById(requestingUserId)
-                .orElseThrow(() -> {
-                    log.warn("User not found for count request: {}", requestingUserId);
-                    return new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
-                });
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found", "USER_NOT_FOUND")
+                );
 
-        // 2. Check admin privileges (same logic as in getAllEstimates)
         boolean isAdmin = user.getUserRole().stream()
                 .anyMatch(role ->
                         "ADMIN".equalsIgnoreCase(role.getName()) ||
                                 "SUPER_ADMIN".equalsIgnoreCase(role.getName())
                 );
 
-        long count;
-        if (isAdmin) {
-            count = estimateRepository.countByIsDeletedFalse();
-            log.debug("Admin count: {} estimates (all)", count);
-        } else {
-            count = estimateRepository.countByCreatedByIdAndIsDeletedFalse(requestingUserId);
-            log.debug("User count: {} estimates (own only)", count);
+        search = normalizeString(search);
+        status = normalizeString(status);
+
+        Specification<Estimate> spec = Specification
+                .where(searchingQueryBuilder(search))
+                .and(statusFilter(status))
+                .and(dateRangeFilter(fromDate, toDate))
+                .and((root, query, cb) ->
+                        cb.isFalse(root.get("isDeleted"))
+                );
+
+        if (!isAdmin) {
+            spec = spec.and((root, query, cb) ->
+                    cb.equal(root.get("createdBy").get("id"), requestingUserId)
+            );
         }
 
-        return count;
+        return estimateRepository.count(spec);
     }
 
     @Override

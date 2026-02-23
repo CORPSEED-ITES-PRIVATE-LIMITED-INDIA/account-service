@@ -147,18 +147,33 @@ public class EstimateController {
 
 
 
-    @GetMapping("/count")
-    @Operation(summary = "Get total count of estimates",
-            description = "ADMIN: total estimates in system | Regular user: only estimates created by the user")
+    @PostMapping("/count")
+    @Operation(
+            summary = "Get total count of estimates (with filters)",
+            description = "ADMIN: counts all estimates | Regular user: counts only own estimates | Applies search/status/date filters"
+    )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Count returned"),
-            @ApiResponse(responseCode = "400", description = "Invalid user"),
+            @ApiResponse(responseCode = "400", description = "Invalid request"),
             @ApiResponse(responseCode = "401", description = "Unauthorized")
     })
     public ResponseEntity<Long> getEstimatesCount(
-            @RequestParam("userId") Long requestingUserId) {
+            @RequestParam("userId") Long requestingUserId,
+            @RequestBody(required = false) EstimateFilterRequest filter) {
 
-        long count = estimateService.getEstimatesCount(requestingUserId);
+        String search = filter != null ? filter.getSearch() : null;
+        String status = filter != null ? filter.getStatus() : null;
+        LocalDate fromDate = filter != null ? filter.getFromDate() : null;
+        LocalDate toDate = filter != null ? filter.getToDate() : null;
+
+        long count = estimateService.getEstimatesCount(
+                requestingUserId,
+                search,
+                status,
+                fromDate,
+                toDate
+        );
+
         return ResponseEntity.ok(count);
     }
 

@@ -21,8 +21,13 @@ public interface EstimateService {
 
     List<EstimateResponseDto> getEstimatesByCompanyId(Long companyId);
 
-    long getEstimatesCount(Long requestingUserId);
-
+    long getEstimatesCount(
+            Long requestingUserId,
+            String search,
+            String status,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
     EstimateResponseDto sendEstimateToClient(Long estimateId, Long requestingUserId);
 
     List<EstimateResponseDto> getAllEstimates(
