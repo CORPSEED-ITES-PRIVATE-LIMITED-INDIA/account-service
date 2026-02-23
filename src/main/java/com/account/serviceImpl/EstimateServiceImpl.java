@@ -621,24 +621,35 @@ public class EstimateServiceImpl implements EstimateService {
             if (search == null || search.trim().isEmpty()) {
                 return cb.conjunction();
             }
-            query.distinct(true); // 🔥 IMPORTANT
+
+            query.distinct(true); // Important when joining
 
             String likePattern = "%" + search.toLowerCase() + "%";
 
             List<Predicate> predicates = new ArrayList<>();
 
+            // 1️⃣ Search by estimate number
             predicates.add(
                     cb.like(cb.lower(root.get("estimateNumber")), likePattern)
             );
 
+            // 2️⃣ Search by company name
             Join<Estimate, Company> companyJoin =
-                    root.join("company", JoinType.INNER);
+                    root.join("company", JoinType.LEFT);
 
             predicates.add(
                     cb.like(cb.lower(companyJoin.get("name")), likePattern)
             );
 
-            return cb.and(cb.or(predicates.toArray(new Predicate[0])));
+            // 3️⃣ 🔥 NEW — Search by unit name
+            Join<Estimate, CompanyUnit> unitJoin =
+                    root.join("unit", JoinType.LEFT);
+
+            predicates.add(
+                    cb.like(cb.lower(unitJoin.get("unitName")), likePattern)
+            );
+
+            return cb.or(predicates.toArray(new Predicate[0]));
         };
     }
     private Specification<Estimate> statusFilter(String status) {
