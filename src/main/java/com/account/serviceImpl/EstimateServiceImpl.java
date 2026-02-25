@@ -413,7 +413,6 @@ public class EstimateServiceImpl implements EstimateService {
             );
             dto.setUnit(unitDto);
         }
-
         // Line items
         List<EstimateResponseDto.EstimateLineItemResponseDto> itemDtos = new ArrayList<>();
         if (estimate.getLineItems() != null) {

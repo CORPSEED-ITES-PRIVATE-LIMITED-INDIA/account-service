@@ -218,28 +218,52 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     public CompanyResponseDto addBasicUnitToCompany(Long companyId, BasicUnitCreateRequest request, Long updatedById) {
 
+        // Find the company by ID and ensure it's not deleted
         Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company not found", "ERR_COMPANY_NOT_FOUND"));
 
-        if (companyUnitRepository.findById(request.getCompanyUnitId()).isPresent())
-            return mapToResponseDto(company);
+        // Try to find the existing unit by its ID
+        CompanyUnit existingUnit = company.getUnits().stream()
+                .filter(unit -> unit.getId().equals(request.getCompanyUnitId()))
+                .findFirst()
+                .orElse(null);
 
-        CompanyUnit unit = new CompanyUnit();
-        unit.setId(request.getCompanyUnitId());
-        unit.setCompany(company);
-        unit.setUnitName(request.getUnitName());
-        unit.setAddressLine1(request.getAddress());
-        unit.setCity(request.getCity());
-        unit.setState(request.getState());
-        unit.setCountry(request.getCountry());
-        unit.setPinCode(request.getPinCode());
-        unit.setGstNo(request.getGstNo());
-        unit.setStatus("Active");
-        unit.setCreatedAt(dateTimeUtil.nowLocalDateTime());
-        unit.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
+        // If the unit exists, update it. Otherwise, create a new one.
+        if (existingUnit != null) {
+            // Update the existing unit's details
+            existingUnit.setUnitName(request.getUnitName());
+            existingUnit.setAddressLine1(request.getAddress());
+            existingUnit.setCity(request.getCity());
+            existingUnit.setState(request.getState());
+            existingUnit.setCountry(request.getCountry());
+            existingUnit.setPinCode(request.getPinCode());
+            existingUnit.setGstNo(request.getGstNo());
+            existingUnit.setStatus("Active");  // Assuming status remains Active
+            existingUnit.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
+        } else {
+            // Create a new unit
+            CompanyUnit unit = new CompanyUnit();
+            unit.setId(request.getCompanyUnitId());
+            unit.setCompany(company);
+            unit.setUnitName(request.getUnitName());
+            unit.setAddressLine1(request.getAddress());
+            unit.setCity(request.getCity());
+            unit.setState(request.getState());
+            unit.setCountry(request.getCountry());
+            unit.setPinCode(request.getPinCode());
+            unit.setGstNo(request.getGstNo());
+            unit.setStatus("Active");
+            unit.setCreatedAt(dateTimeUtil.nowLocalDateTime());
+            unit.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
 
-        company.getUnits().add(unit);
+            company.getUnits().add(unit);  // Add the new unit to the company
+        }
+
+        System.out.println("Before saving company: " + company.getUnits());
         companyRepository.save(company);
+        System.out.println("After saving company: " + company.getUnits());
+
+        // Return the response DTO
         return mapToResponseDto(company);
     }
 
