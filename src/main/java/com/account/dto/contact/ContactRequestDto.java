@@ -25,4 +25,7 @@ public class ContactRequestDto {
 
     @NotNull(message = "Company ID is required")
     private Long companyId;
+
+    @NotNull(message = "Company Unit ID is required")
+    private Long companyUnitId;
 }

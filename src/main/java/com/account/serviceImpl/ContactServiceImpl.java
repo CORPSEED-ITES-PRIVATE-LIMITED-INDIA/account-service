@@ -1,5 +1,7 @@
 package com.account.serviceImpl;
 
+import com.account.domain.Company;
+import com.account.domain.CompanyUnit;
 import com.account.domain.Contact;
 import com.account.domain.contact.ContactCreationDto;
 import com.account.dto.contact.ContactRequestDto;
@@ -37,23 +39,32 @@ public class ContactServiceImpl implements ContactService {
     @Override
     public ContactResponseDto createContact(ContactRequestDto dto) {
 
-        // 1. Validate company exists
-        if (!companyRepository.existsById(dto.getCompanyId())) {
-            throw new ResourceNotFoundException(
-                    "Company not found with id: " + dto.getCompanyId(),
-                    "ERR_COMPANY_NOT_FOUND",
-                    "Company",
-                    dto.getCompanyId()
-            );
-        }
-
-        // 2. Check if provided ID already exists
-        if (contactRepository.existsById(dto.getId())) {
+        //  Check if provided ID already exists
+        if (dto.getId() != null && contactRepository.existsById(dto.getId())) {
             throw new ValidationException(
                     "Contact with ID " + dto.getId() + " already exists",
                     "ERR_CONTACT_ID_ALREADY_EXISTS"
             );
         }
+
+
+        Company company = companyRepository.findById(dto.getCompanyId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Company not found with id: " + dto.getCompanyId(),
+                        "ERR_COMPANY_NOT_FOUND",
+                        "Company",
+                        dto.getCompanyId()
+                ));
+
+
+        CompanyUnit companyUnit = companyUnitRepository.findById(dto.getCompanyUnitId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "CompanyUnit not found with id: " + dto.getCompanyUnitId(),
+                        "ERR_COMPANY_UNIT_NOT_FOUND",
+                        "CompanyUnit",
+                        dto.getCompanyUnitId()
+                ));
+
 
         // 3. Prevent duplicate contact number within the same company
         if (dto.getContactNo() != null && !dto.getContactNo().trim().isEmpty()) {
@@ -72,6 +83,8 @@ public class ContactServiceImpl implements ContactService {
         contact.setId(dto.getId());                    // ← client-provided ID
         contact.setName(dto.getName().trim());
         contact.setEmails(dto.getEmails() != null ? dto.getEmails().trim() : null);
+        contact.setCompany(company);
+        contact.setCompanyUnit(companyUnit);
         contact.setContactNo(dto.getContactNo() != null ? dto.getContactNo().trim() : null);
         contact.setWhatsappNo(dto.getWhatsappNo() != null ? dto.getWhatsappNo().trim() : null);
         contact.setDeleteStatus(false);

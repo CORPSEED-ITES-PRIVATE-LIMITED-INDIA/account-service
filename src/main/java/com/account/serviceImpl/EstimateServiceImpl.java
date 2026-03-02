@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import com.account.config.EmailServiceImpl;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
@@ -59,6 +60,9 @@ public class EstimateServiceImpl implements EstimateService {
 
     @Autowired
     private PaymentReceiptRepository paymentRepository;
+
+    @Autowired
+    private EmailServiceImpl emailService;
 
 
 
@@ -1452,6 +1456,45 @@ public class EstimateServiceImpl implements EstimateService {
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+
+
+    @Override
+    public void sendEstimate(Long estimateId, Long requestingUserId){
+
+        log.info("Sending email with  estimate | estimateId={} | requestedByUser={}", estimateId, requestingUserId);
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
+        // Basic security check
+        if (!userRepository.existsById(requestingUserId)) {
+            log.warn("User not found: userId={}", requestingUserId);
+            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        if (estimateId == null || estimateId <= 0) {
+            throw new ValidationException("Invalid estimateId", "ERR_INVALID_ESTIMATE_ID", "estimateId");
+        }
+
+        // Fetch the estimate
+        Estimate estimate = estimateRepository.findById(estimateId)
+                .orElseThrow(() -> {
+                    log.warn("Estimate not found: id={}", estimateId);
+                    return new ResourceNotFoundException("Estimate not found", "ESTIMATE_NOT_FOUND");
+                });
+
+        if(estimate.getCompany() == null){
+
+        }
+
+//        emailService.sendEmail();
+
+
+
+
     }
 
 

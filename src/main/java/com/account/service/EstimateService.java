@@ -50,6 +50,8 @@ public interface EstimateService {
 
 
     Page<EstimateResponseDto> searchEstimates(EstimateSearchRequestDto request, Long userId);
+
+    void sendEstimate(Long estimateId, Long requestingUserId);
 }
 
 

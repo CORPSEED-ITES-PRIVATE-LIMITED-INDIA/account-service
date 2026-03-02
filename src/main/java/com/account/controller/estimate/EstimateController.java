@@ -239,6 +239,17 @@ public class EstimateController {
 
 
 
+    @PostMapping("/sendEstimate/{estimateId}")
+    public ResponseEntity<?> sendEstimate(
+            @PathVariable Long estimateId,
+            @RequestParam Long requestingUserId
+    ){
+        estimateService.sendEstimate(estimateId, requestingUserId);
+        return ResponseEntity.ok("Email sent successfully! ");
+    }
+
+
+
 
 
 }
