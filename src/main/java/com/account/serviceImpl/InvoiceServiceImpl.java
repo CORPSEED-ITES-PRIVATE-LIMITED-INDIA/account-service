@@ -65,6 +65,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		Invoice invoice = new Invoice();
 		invoice.setUnbilledInvoice(unbilledInvoice);
+		invoice.setSolutionName(estimate.getSolutionName());
 		invoice.setTriggeringPayment(triggeringPayment);
 		invoice.setInvoiceNumber(generateInvoiceNumber());
 		invoice.setPublicUuid(dateTimeUtil.generateUuid());

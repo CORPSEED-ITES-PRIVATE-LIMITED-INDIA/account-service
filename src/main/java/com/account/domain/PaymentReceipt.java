@@ -74,7 +74,6 @@ public class PaymentReceipt {
     @Column(length = 100)
     private String eprCertificateOrInvoiceNumber;
 
-
     // Auditing
     @CreatedDate
     @Column(updatable = false)
