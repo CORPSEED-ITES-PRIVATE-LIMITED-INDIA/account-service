@@ -910,6 +910,8 @@ public class CompanyServiceImpl implements CompanyService {
 
         return mapToResponseDto(company);
     }
+
+
     private void createAndAssociateContact(
             FullContactCreationDto c,
             Company company,
