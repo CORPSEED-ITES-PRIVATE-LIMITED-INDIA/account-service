@@ -2,11 +2,10 @@ package com.account.feignClient;
 
 
 import com.account.dto.operationService.OperationCompanyRequestDto;
+import com.account.dto.operationService.OperationCompanyResponseDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.*;
 
 @FeignClient(name = "OPERATION-SERVICE")
 public interface OperationFeignClient {
@@ -18,6 +17,10 @@ public interface OperationFeignClient {
             @RequestBody OperationCompanyRequestDto dto,
             @RequestParam("companyId") Long companyId
     );
+
+
+    @GetMapping("/api/companies/{companyId}")
+    ResponseEntity<OperationCompanyResponseDto> getCompanyById(@PathVariable Long companyId);
 
 
 

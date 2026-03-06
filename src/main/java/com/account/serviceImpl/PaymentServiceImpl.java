@@ -4,6 +4,7 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.operationService.OperationCompanyRequestDto;
+import com.account.dto.operationService.OperationCompanyResponseDto;
 import com.account.dto.operationService.OperationCompanyUnitRequestDto;
 import com.account.dto.operationService.OperationContactRequestDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
@@ -21,6 +22,7 @@ import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
 import com.account.util.DateTimeUtil;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -28,6 +30,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -428,7 +431,36 @@ public class PaymentServiceImpl implements PaymentService {
 
         System.out.println("Operation API Callled! ");
 
-        this.operationCompanyCreationMethod(company);
+        try {
+
+            ResponseEntity<OperationCompanyResponseDto> res =
+                    operationFeignClient.getCompanyById(company.getId());
+
+            if (res.getStatusCode().is2xxSuccessful()) {
+                log.info("Company already exists in operation service | companyId={}", company.getId());
+            }
+
+        } catch (FeignException ex) {
+
+            if (ex.status() == 404) {
+
+                log.info("Company not found in operation service, creating | companyId={}", company.getId());
+                this.operationCompanyCreationMethod(company);
+
+            } else {
+
+                log.error(
+                        "Operation service error while checking company | companyId={} | status={} | message={}",
+                        company.getId(),
+                        ex.status(),
+                        ex.getMessage()
+                );
+
+                throw ex; // propagate error so transaction fails properly
+            }
+        }
+
+
         System.out.println("Operation API Completed! ");
         return response;
     }
