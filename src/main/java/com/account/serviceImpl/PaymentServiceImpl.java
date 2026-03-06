@@ -3,6 +3,9 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
+import com.account.dto.operationService.OperationCompanyRequestDto;
+import com.account.dto.operationService.OperationCompanyUnitRequestDto;
+import com.account.dto.operationService.OperationContactRequestDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -13,6 +16,7 @@ import com.account.exception.AccessDeniedException;
 import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
+import com.account.feignClient.OperationFeignClient;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
@@ -49,6 +53,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final UserRepository userRepository;
     private final InvoiceService invoiceService;
     private final DateTimeUtil dateTimeUtil;
+    private final ContactRepository contactRepository;
+    private final OperationFeignClient operationFeignClient;
 
     @Override
     @Transactional
@@ -420,6 +426,10 @@ public class PaymentServiceImpl implements PaymentService {
         response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
         response.setUpdatedBy(approver.getId());
 
+        System.out.println("Operation API Callled! ");
+
+        this.operationCompanyCreationMethod(company);
+        System.out.println("Operation API Completed! ");
         return response;
     }
 
@@ -721,5 +731,86 @@ public class PaymentServiceImpl implements PaymentService {
         long count = unbilledInvoiceRepository.count() + 1;
         int year = dateTimeUtil.nowLocalDateTime().getYear();
         return String.format("UNB-%d-%08d", year, count);
+    }
+
+
+    private void operationCompanyCreationMethod(Company company){
+
+        OperationCompanyRequestDto operationCompanyRequestDto = this.mapOperationCompanyRequestDto(company);
+
+        operationFeignClient.createCompany(operationCompanyRequestDto, company.getId());
+
+    }
+    private OperationCompanyRequestDto mapOperationCompanyRequestDto(Company company) {
+
+        OperationCompanyRequestDto dto = new OperationCompanyRequestDto();
+
+        /* ---------------- Company Basic Info ---------------- */
+
+        dto.setName(company.getName());
+        dto.setPanNo(company.getPanNo());
+        dto.setEstablishDate(company.getEstablishDate());
+        dto.setIndustry(company.getIndustry());
+        dto.setIndustries(company.getIndustries());
+        dto.setSubIndustry(company.getSubIndustry());
+        dto.setSubSubIndustry(company.getSubsubIndustry());
+
+        if (company.getCreatedBy() != null) {
+            dto.setCreatedBy(company.getCreatedBy().getId());
+        }
+
+        /* ---------------- Company Units ---------------- */
+
+        if (company.getUnits() != null && !company.getUnits().isEmpty()) {
+
+            for (CompanyUnit unit : company.getUnits()) {
+
+                OperationCompanyUnitRequestDto unitDto = new OperationCompanyUnitRequestDto();
+
+                unitDto.setUnitId(unit.getId());
+                unitDto.setUnitName(unit.getUnitName());
+                unitDto.setAddress(unit.getAddressLine1());
+                unitDto.setCity(unit.getCity());
+                unitDto.setState(unit.getState());
+                unitDto.setCountry(unit.getCountry());
+                unitDto.setPinCode(unit.getPinCode());
+                unitDto.setGstNo(unit.getGstNo());
+                unitDto.setStatus(unit.getStatus());
+
+                dto.getUnits().add(unitDto);
+
+
+                /* ---------------- Contacts From Unit ---------------- */
+
+                List<Contact> contacts = contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
+
+                for (Contact contact : contacts) {
+
+                    OperationContactRequestDto contactDto = new OperationContactRequestDto();
+
+                    contactDto.setContactId(contact.getId());
+                    contactDto.setName(contact.getName());
+                    contactDto.setTitle(contact.getTitle());
+                    contactDto.setDesignation(contact.getDesignation());
+                    contactDto.setEmail(contact.getEmails());
+                    contactDto.setContactNo(contact.getContactNo());
+                    contactDto.setWhatsappNo(contact.getWhatsappNo());
+
+                    contactDto.setCompanyId(company.getId());
+                    contactDto.setUnitId(unit.getId());
+                    contactDto.setCreatedBy(
+                            unit.getCreatedBy() != null ? unit.getCreatedBy().getId() : null
+                    );
+
+                    contactDto.setUpdatedBy(
+                            unit.getUpdatedBy() != null ? unit.getUpdatedBy().getId() : null
+                    );
+
+                    dto.getContacts().add(contactDto);
+                }
+            }
+        }
+
+        return dto;
     }
 }
