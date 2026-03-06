@@ -1,12 +1,12 @@
 package com.account.serviceImpl;
 
-import com.account.domain.Company;
-import com.account.domain.CompanyUnit;
-import com.account.domain.OnboardingStatus;
-import com.account.domain.User;
+import com.account.domain.*;
 import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.CompanyMigrationRequestDto;
 import com.account.dto.CompanyUnitMigrationDto;
+import com.account.dto.company.CompanyCreationRequestDto;
+import com.account.dto.company.FullContactCreationDto;
+import com.account.dto.company.FullUnitCreationDto;
 import com.account.dto.company.request.*;
 import com.account.dto.company.response.CompanyResponseDto;
 import com.account.dto.company.response.CompanyUnitResponseDto;
@@ -14,11 +14,13 @@ import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
+import com.account.repository.ContactRepository;
 import com.account.repository.UserRepository;
 import com.account.service.company.CompanyService;
 import com.account.util.DateTimeUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +31,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,6 +44,10 @@ public class CompanyServiceImpl implements CompanyService {
     private final CompanyUnitRepository companyUnitRepository;
     private final UserRepository userRepository;
     private final DateTimeUtil dateTimeUtil;
+    @Autowired
+    private ContactRepository contactRepository;
+
+
 
     public CompanyServiceImpl(
             CompanyRepository companyRepository,
@@ -748,6 +755,158 @@ public class CompanyServiceImpl implements CompanyService {
         return StringUtils.hasText(value) ? value.trim() : null;
     }
 
+    @Override
+    @Transactional
+    public CompanyResponseDto createFullCompanyWithUnitsAndContacts(CompanyCreationRequestDto request) {
+
+        // 1. Validate company ID uniqueness
+        if (companyRepository.existsById(request.getCompanyId())) {
+            throw new ValidationException("Company with ID " + request.getCompanyId() + " already exists", "ERR_COMPANY_ID_EXISTS");
+        }
+
+        // 2. Validate name uniqueness
+        String name = request.getName().trim();
+        if (companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(name)) {
+            throw new ValidationException("Company name already exists", "ERR_DUPLICATE_COMPANY_NAME");
+        }
+
+        // 3. PAN uniqueness (if provided)
+        String panNo = null;
+        if (StringUtils.hasText(request.getPanNo())) {
+            panNo = request.getPanNo().trim().toUpperCase();
+            if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo)) {
+                throw new ValidationException("PAN already exists", "ERR_DUPLICATE_PAN");
+            }
+        }
+
+        // 4. Create company
+        Company company = new Company();
+        company.setId(request.getCompanyId());
+        company.setUuid(UUID.randomUUID().toString());
+        company.setName(name);
+        company.setPanNo(panNo);
+        company.setEstablishDate(request.getEstablishDate());
+        company.setIndustry(request.getIndustry());
+        company.setSubIndustry(request.getSubIndustry());
+        company.setSubsubIndustry(request.getSubsubIndustry());
+        company.setPaymentTerm(request.getPaymentTerm());
+        company.setAggrementPresent(request.isAggrementPresent());
+        company.setAggrement(request.getAggrement());
+        company.setNdaPresent(request.isNdaPresent());
+        company.setNda(request.getNda());
+        company.setRevenue(request.getRevenue());
+        company.setIsConsultant(request.isConsultant());
+        company.setOnboardingStatus(OnboardingStatus.MINIMAL);
+        company.setDeleted(false);
+
+        // Created by
+        User creator = userRepository.findById(request.getCreatedById())
+                .orElseThrow(() -> new ResourceNotFoundException("Creator user not found", "ERR_USER_NOT_FOUND"));
+        company.setCreatedBy(creator);
+        company.setUpdatedBy(creator);
+        company.setCreatedAt(LocalDateTime.now());
+        company.setUpdatedAt(LocalDateTime.now());
+
+        company = companyRepository.save(company);
+
+//        // 5. Create company-level contacts (if any)
+//        if (request.getCompanyContacts() != null && !request.getCompanyContacts().isEmpty()) {
+//            for (FullContactCreationDto c : request.getCompanyContacts()) {
+//                createAndAssociateContact(c, company, null, creator);
+//            }
+//        }
+
+        // 6. Create units + their contacts
+        if (request.getUnits() != null && !request.getUnits().isEmpty()) {
+            for (FullUnitCreationDto u : request.getUnits()) {
+
+                // Unit ID uniqueness
+                if (companyUnitRepository.existsById(u.getUnitId())) {
+                    throw new ValidationException("Unit ID " + u.getUnitId() + " already exists", "ERR_UNIT_ID_EXISTS");
+                }
+
+                // GST-PAN validation
+                String gstNo = StringUtils.hasText(u.getGstNo()) ? u.getGstNo().trim().toUpperCase() : null;
+                if (gstNo != null && panNo != null && !gstNo.substring(2, 12).equals(panNo)) {
+                    throw new ValidationException("GST PAN mismatch for unit " + u.getUnitName(), "ERR_PAN_GST_MISMATCH");
+                }
+
+                CompanyUnit unit = new CompanyUnit();
+                unit.setId(u.getUnitId());
+                unit.setCompany(company);
+                unit.setUnitName(u.getUnitName().trim());
+                unit.setAddressLine1(u.getAddressLine1());
+                unit.setAddressLine2(u.getAddressLine2());
+                unit.setCity(u.getCity());
+                unit.setState(u.getState());
+                unit.setCountry(StringUtils.hasText(u.getCountry()) ? u.getCountry() : "India");
+                unit.setPinCode(u.getPinCode());
+                unit.setGstNo(gstNo);
+                unit.setGstType(u.getGstType());
+                unit.setGstDocuments(u.getGstDocuments());
+                unit.setGstTypeEntity(u.getGstTypeEntity());
+                unit.setGstBusinessType(u.getGstBusinessType());
+                unit.setGstTypePrice(u.getGstTypePrice());
+                unit.setUnitOpeningDate(u.getUnitOpeningDate());
+                unit.setStatus(StringUtils.hasText(u.getStatus()) ? u.getStatus() : "Active");
+                unit.setConsultantPresent(u.isConsultantPresent());
+                unit.setDeleted(false);
+                unit.setCreatedBy(creator);
+                unit.setUpdatedBy(creator);
+                unit.setCreatedAt(LocalDateTime.now());
+                unit.setUpdatedAt(LocalDateTime.now());
+
+                unit = companyUnitRepository.save(unit);
+                company.getUnits().add(unit);
+
+                // Unit-level contacts
+                if (u.getUnitContacts() != null && !u.getUnitContacts().isEmpty()) {
+                    for (FullContactCreationDto c : u.getUnitContacts()) {
+                        createAndAssociateContact(c, company, unit, creator);
+                    }
+                }
+            }
+        }
+
+        companyRepository.save(company); // final save to persist relationships
+
+        return mapToResponseDto(company);
+    }
+
+    private void createAndAssociateContact(
+            FullContactCreationDto c,
+            Company company,
+            CompanyUnit unit,
+            User creator
+    ) {
+        if (contactRepository.existsById(c.getContactId())) {
+            throw new ValidationException("Contact ID " + c.getContactId() + " already exists", "ERR_CONTACT_ID_EXISTS");
+        }
+
+        Contact contact = new Contact();
+        contact.setId(c.getContactId());
+        contact.setTitle(c.getTitle());
+        contact.setName(c.getName().trim());
+        contact.setEmails(c.getEmails());
+        contact.setContactNo(c.getContactNo());
+        contact.setWhatsappNo(c.getWhatsappNo());
+        contact.setClientDesignation(c.getClientDesignation());
+        contact.setDesignation(c.getDesignation());
+
+        contact.setCompany(company);
+        contact.setCompanyUnit(unit);
+
+        contact.setPrimaryForCompany(c.isPrimaryForCompany());
+        contact.setSecondaryForCompany(c.isSecondaryForCompany());
+        contact.setSecondaryForUnit(c.isPrimaryForUnit());
+        contact.setSecondaryForUnit(c.isSecondaryForUnit());
+
+        contact.setDeleted(false);
+        contact.setCreatedAt(LocalDateTime.now());
+        contact.setUpdatedAt(LocalDateTime.now());
+
+        contactRepository.save(contact);
+    }
 
 
 }

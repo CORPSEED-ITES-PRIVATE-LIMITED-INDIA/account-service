@@ -2,6 +2,7 @@ package com.account.service.company;
 
 import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.CompanyMigrationRequestDto;
+import com.account.dto.company.CompanyCreationRequestDto;
 import com.account.dto.company.request.ApproveRejectUnitRequestDto;
 import com.account.dto.company.request.BasicUnitCreateRequest;
 import com.account.dto.company.request.CompanyRequestDto;
@@ -25,4 +26,6 @@ public interface CompanyService {
     CompanyResponseDto reviewUnit(Long companyId, Long unitId, Long reviewedById, ApproveRejectUnitRequestDto request);
 
     CompanyResponseDto migrateCompany(CompanyMigrationRequestDto dto);
+
+    CompanyResponseDto createFullCompanyWithUnitsAndContacts(CompanyCreationRequestDto request);
 }
