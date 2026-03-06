@@ -154,7 +154,7 @@ public class CompanyController {
         return ResponseEntity.ok(response);
     }
 
-    @PostMapping("/full-company")
+    @PostMapping("/company")
     @Operation(summary = "Create full company with units and contacts in one call (migration/onboarding)")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Full company structure created"),
