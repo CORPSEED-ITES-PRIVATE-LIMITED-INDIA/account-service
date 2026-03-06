@@ -371,6 +371,7 @@ public class PaymentServiceImpl implements PaymentService {
         unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
         unbilled.setApprovalRemarks(request.getApprovalRemarks());
 
+
         // 9. Identify the first (triggering) payment receipt
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
                 .filter(p -> p.getPaymentDate() != null)
@@ -425,6 +426,7 @@ public class PaymentServiceImpl implements PaymentService {
         response.setApprovedById(approver.getId());
         response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
         response.setUpdatedBy(approver.getId());
+        response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
 
         System.out.println("Operation API Callled! ");
 
