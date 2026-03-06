@@ -164,7 +164,7 @@ public class CompanyController {
     public ResponseEntity<CompanyResponseDto> createFullCompany(
             @Valid @RequestBody CompanyCreationRequestDto request) {
 
-        CompanyResponseDto response = companyService.createFullCompanyWithUnitsAndContacts(request);
+        CompanyResponseDto response = companyService.createCompanyWithUnitsAndContacts(request);
         return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 

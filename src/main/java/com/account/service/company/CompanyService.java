@@ -27,5 +27,5 @@ public interface CompanyService {
 
     CompanyResponseDto migrateCompany(CompanyMigrationRequestDto dto);
 
-    CompanyResponseDto createFullCompanyWithUnitsAndContacts(CompanyCreationRequestDto request);
+    CompanyResponseDto createCompanyWithUnitsAndContacts(CompanyCreationRequestDto request);
 }
