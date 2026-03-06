@@ -23,6 +23,8 @@ public class UnbilledInvoiceApprovalResponseDto {
     private Long companyId;
     private Long companyUnitId;
 
+    private Long companyUnitId;
+
     private String unbilledNumber;
 
     private String estimateNumber;

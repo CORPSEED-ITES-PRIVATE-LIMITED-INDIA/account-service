@@ -2,6 +2,7 @@ package com.account.controller.client;
 
 import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.CompanyMigrationRequestDto;
+import com.account.dto.company.CompanyCreationRequestDto;
 import com.account.dto.company.request.ApproveRejectUnitRequestDto;
 import com.account.dto.company.request.BasicUnitCreateRequest;
 import com.account.dto.company.request.CompanyRequestDto;
@@ -151,6 +152,20 @@ public class CompanyController {
         );
 
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/company")
+    @Operation(summary = "Create full company with units and contacts in one call (migration/onboarding)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Full company structure created"),
+            @ApiResponse(responseCode = "400", description = "Validation error (duplicate IDs, PAN mismatch, etc.)"),
+            @ApiResponse(responseCode = "409", description = "ID conflict")
+    })
+    public ResponseEntity<CompanyResponseDto> createFullCompany(
+            @Valid @RequestBody CompanyCreationRequestDto request) {
+
+        CompanyResponseDto response = companyService.createFullCompanyWithUnitsAndContacts(request);
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
 }

@@ -33,6 +33,7 @@ public class ContactServiceImpl implements ContactService {
     @Autowired
     private CompanyRepository companyRepository;
 
+
     @Autowired
     private CompanyUnitRepository companyUnitRepository;
 
