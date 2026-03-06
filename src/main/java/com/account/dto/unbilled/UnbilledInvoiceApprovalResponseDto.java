@@ -21,6 +21,7 @@ public class UnbilledInvoiceApprovalResponseDto {
     private Long productId;
 
     private Long companyId;
+    private Long companyUnitId;
 
     private String unbilledNumber;
 
