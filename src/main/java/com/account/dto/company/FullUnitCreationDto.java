@@ -15,7 +15,7 @@ import java.util.List;
 public class FullUnitCreationDto {
 
     @NotNull(message = "unitId is required (manual ID)")
-    private Long unitId;
+    private Long id;
 
     @NotBlank(message = "Unit name is required")
     private String unitName;

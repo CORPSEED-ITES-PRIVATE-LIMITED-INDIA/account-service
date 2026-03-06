@@ -816,12 +816,12 @@ public class CompanyServiceImpl implements CompanyService {
         if (request.getUnits() != null && !request.getUnits().isEmpty()) {
             for (FullUnitCreationDto u : request.getUnits()) {
 
-                CompanyUnit unit = companyUnitRepository.findById(u.getUnitId()).orElse(null);
+                CompanyUnit unit = companyUnitRepository.findById(u.getId()).orElse(null);
 
                 if (unit == null) {
                     // Create new unit
                     unit = new CompanyUnit();
-                    unit.setId(u.getUnitId());
+                    unit.setId(u.getId());
                     unit.setCompany(company);
 
                     // GST-PAN validation only on new unit
