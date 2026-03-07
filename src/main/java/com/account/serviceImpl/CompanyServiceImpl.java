@@ -773,19 +773,13 @@ public class CompanyServiceImpl implements CompanyService {
         // Try to find existing company
         Company company = companyRepository.findById(companyId).orElse(null);
 
-        User creator = null;
-        if (request.getCreatedById() != null) {
-            creator = userRepository.findById(request.getCreatedById())
+        User creator = userRepository.findById(request.getCreatedById())
                     .orElseThrow(() -> {
                         logger.error("Creator user not found for createdById: {}", request.getCreatedById());
                         return new ResourceNotFoundException("Creator user not found", "ERR_USER_NOT_FOUND");
                     });
-            logger.info("Found creator user: id={}, name={}",
+        logger.info("Found creator user: id={}, name={}",
                     creator.getId(), creator.getFullName() != null ? creator.getFullName() : "N/A");
-        } else {
-            logger.warn("createdById is null in request - no creator will be set");
-        }
-
         if (company == null) {
             logger.info("Company with ID {} does not exist → creating new", companyId);
 
@@ -825,6 +819,7 @@ public class CompanyServiceImpl implements CompanyService {
             company.setRevenue(request.getRevenue());
             company.setIsConsultant(request.isConsultant());
             company.setOnboardingStatus(OnboardingStatus.MINIMAL);
+            company.setCreatedBy(creator);
             company.setDeleted(false);
 
             if (creator != null) {

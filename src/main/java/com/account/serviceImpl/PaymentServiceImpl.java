@@ -789,7 +789,7 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setIndustries(company.getIndustries());
         dto.setSubIndustry(company.getSubIndustry());
         dto.setSubSubIndustry(company.getSubsubIndustry());
-
+        System.out.println("company.getCreatedBy(): "+company.getCreatedBy());
         if (company.getCreatedBy() != null) {
             dto.setCreatedBy(company.getCreatedBy().getId());
         }
