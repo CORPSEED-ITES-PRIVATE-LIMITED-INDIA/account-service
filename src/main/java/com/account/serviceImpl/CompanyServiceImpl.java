@@ -918,13 +918,13 @@ public class CompanyServiceImpl implements CompanyService {
 
                     for (FullContactCreationDto c : u.getUnitContacts()) {
 
-                        if (c.getContactId() == null) {
+                        if (c.getId() == null) {
                             logger.error("contactId is null for contact: {}", c.getName());
                             throw new ValidationException("contactId is required for contact: " + c.getName(),
                                     "ERR_CONTACT_ID_REQUIRED");
                         }
 
-                        Long contactId = c.getContactId();
+                        Long contactId = c.getId();
                         logger.info("Processing contact with ID: {}", contactId);
 
                         Contact contact = contactRepository.findById(contactId).orElse(null);
@@ -983,12 +983,12 @@ public class CompanyServiceImpl implements CompanyService {
             CompanyUnit unit,
             User creator
     ) {
-        if (contactRepository.existsById(c.getContactId())) {
-            throw new ValidationException("Contact ID " + c.getContactId() + " already exists", "ERR_CONTACT_ID_EXISTS");
+        if (contactRepository.existsById(c.getId())) {
+            throw new ValidationException("Contact ID " + c.getId() + " already exists", "ERR_CONTACT_ID_EXISTS");
         }
 
         Contact contact = new Contact();
-        contact.setId(c.getContactId());
+        contact.setId(c.getId());
         contact.setTitle(c.getTitle());
         contact.setName(c.getName().trim());
         contact.setEmails(c.getEmails());
