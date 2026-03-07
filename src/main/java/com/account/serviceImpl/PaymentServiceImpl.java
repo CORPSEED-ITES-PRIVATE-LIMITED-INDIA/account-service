@@ -416,6 +416,7 @@ public class PaymentServiceImpl implements PaymentService {
         );
         response.setProductId(estimate != null ? estimate.getSolutionId() : null);
         response.setCompanyId(company != null ? company.getId() : null);
+        response.setCompanyUnitId(unbilled.getUnit().getId());
         response.setUnbilledNumber(unbilled.getUnbilledNumber());
         response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
         response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
