@@ -15,7 +15,7 @@ import java.time.LocalDate;
 public class FullContactCreationDto {
 
     @NotNull(message = "contactId is required (manual ID)")
-    private Long contactId;
+    private Long id;
 
     private String title;
     @NotBlank(message = "Name is required")
