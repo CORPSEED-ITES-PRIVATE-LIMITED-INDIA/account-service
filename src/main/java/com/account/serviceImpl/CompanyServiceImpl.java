@@ -774,12 +774,12 @@ public class CompanyServiceImpl implements CompanyService {
         Company company = companyRepository.findById(companyId).orElse(null);
 
         User creator = userRepository.findById(request.getCreatedById())
-                    .orElseThrow(() -> {
-                        logger.error("Creator user not found for createdById: {}", request.getCreatedById());
-                        return new ResourceNotFoundException("Creator user not found", "ERR_USER_NOT_FOUND");
-                    });
+                .orElseThrow(() -> {
+                    logger.error("Creator user not found for createdById: {}", request.getCreatedById());
+                    return new ResourceNotFoundException("Creator user not found", "ERR_USER_NOT_FOUND");
+                });
         logger.info("Found creator user: id={}, name={}",
-                    creator.getId(), creator.getFullName() != null ? creator.getFullName() : "N/A");
+                creator.getId(), creator.getFullName() != null ? creator.getFullName() : "N/A");
         if (company == null) {
             logger.info("Company with ID {} does not exist → creating new", companyId);
 
@@ -845,9 +845,8 @@ public class CompanyServiceImpl implements CompanyService {
             for (FullUnitCreationDto u : request.getUnits()) {
 
                 if (u.getId() == null) {
-                    logger.error("unitId is null in request for unit: {}", u.getUnitName());
-                    throw new ValidationException("unitId is required for unit: " + u.getUnitName(),
-                            "ERR_UNIT_ID_REQUIRED");
+                    logger.warn("unitId is null in request for unit: {} - skipping creation", u.getUnitName());
+                    continue;  // ← ONLY THIS PART CHANGED: skip instead of throw
                 }
 
                 Long unitId = u.getId();
@@ -914,9 +913,8 @@ public class CompanyServiceImpl implements CompanyService {
                     for (FullContactCreationDto c : u.getUnitContacts()) {
 
                         if (c.getId() == null) {
-                            logger.error("contactId is null for contact: {}", c.getName());
-                            throw new ValidationException("contactId is required for contact: " + c.getName(),
-                                    "ERR_CONTACT_ID_REQUIRED");
+                            logger.warn("contactId is null for contact: {} - skipping creation", c.getName());
+                            continue;  // ← ONLY THIS PART CHANGED: skip instead of throw
                         }
 
                         Long contactId = c.getId();
@@ -971,40 +969,6 @@ public class CompanyServiceImpl implements CompanyService {
                 company.getId(), company.getUnits() != null ? company.getUnits().size() : 0);
 
         return mapToResponseDto(company);
-    }
-    private void createAndAssociateContact(
-            FullContactCreationDto c,
-            Company company,
-            CompanyUnit unit,
-            User creator
-    ) {
-        if (contactRepository.existsById(c.getId())) {
-            throw new ValidationException("Contact ID " + c.getId() + " already exists", "ERR_CONTACT_ID_EXISTS");
-        }
-
-        Contact contact = new Contact();
-        contact.setId(c.getId());
-        contact.setTitle(c.getTitle());
-        contact.setName(c.getName().trim());
-        contact.setEmails(c.getEmails());
-        contact.setContactNo(c.getContactNo());
-        contact.setWhatsappNo(c.getWhatsappNo());
-        contact.setClientDesignation(c.getClientDesignation());
-        contact.setDesignation(c.getDesignation());
-
-        contact.setCompany(company);
-        contact.setCompanyUnit(unit);
-
-        contact.setPrimaryForCompany(c.isPrimaryForCompany());
-        contact.setSecondaryForCompany(c.isSecondaryForCompany());
-        contact.setSecondaryForUnit(c.isPrimaryForUnit());
-        contact.setSecondaryForUnit(c.isSecondaryForUnit());
-
-        contact.setDeleted(false);
-        contact.setCreatedAt(LocalDateTime.now());
-        contact.setUpdatedAt(LocalDateTime.now());
-
-        contactRepository.save(contact);
     }
 
 
