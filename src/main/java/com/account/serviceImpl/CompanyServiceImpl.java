@@ -774,12 +774,12 @@ public class CompanyServiceImpl implements CompanyService {
         Company company = companyRepository.findById(companyId).orElse(null);
 
         User creator = userRepository.findById(request.getCreatedById())
-                .orElseThrow(() -> {
-                    logger.error("Creator user not found for createdById: {}", request.getCreatedById());
-                    return new ResourceNotFoundException("Creator user not found", "ERR_USER_NOT_FOUND");
-                });
+                    .orElseThrow(() -> {
+                        logger.error("Creator user not found for createdById: {}", request.getCreatedById());
+                        return new ResourceNotFoundException("Creator user not found", "ERR_USER_NOT_FOUND");
+                    });
         logger.info("Found creator user: id={}, name={}",
-                creator.getId(), creator.getFullName() != null ? creator.getFullName() : "N/A");
+                    creator.getId(), creator.getFullName() != null ? creator.getFullName() : "N/A");
         if (company == null) {
             logger.info("Company with ID {} does not exist → creating new", companyId);
 
@@ -845,8 +845,9 @@ public class CompanyServiceImpl implements CompanyService {
             for (FullUnitCreationDto u : request.getUnits()) {
 
                 if (u.getId() == null) {
-                    logger.warn("unitId is null in request for unit: {} - skipping creation", u.getUnitName());
-                    continue;  // ← ONLY THIS PART CHANGED: skip instead of throw
+                    logger.error("unitId is null in request for unit: {}", u.getUnitName());
+                    throw new ValidationException("unitId is required for unit: " + u.getUnitName(),
+                            "ERR_UNIT_ID_REQUIRED");
                 }
 
                 Long unitId = u.getId();
@@ -913,8 +914,9 @@ public class CompanyServiceImpl implements CompanyService {
                     for (FullContactCreationDto c : u.getUnitContacts()) {
 
                         if (c.getId() == null) {
-                            logger.warn("contactId is null for contact: {} - skipping creation", c.getName());
-                            continue;  // ← ONLY THIS PART CHANGED: skip instead of throw
+                            logger.error("contactId is null for contact: {}", c.getName());
+                            throw new ValidationException("contactId is required for contact: " + c.getName(),
+                                    "ERR_CONTACT_ID_REQUIRED");
                         }
 
                         Long contactId = c.getId();
