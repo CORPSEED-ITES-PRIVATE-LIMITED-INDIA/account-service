@@ -31,6 +31,19 @@ public class OrganizationController {
         return ResponseEntity.ok(updated);
     }
 
+    @Operation(summary = "Update existing organization configuration (ADMIN only)")
+    @ApiResponse(responseCode = "200", description = "Organization updated successfully")
+    @ApiResponse(responseCode = "404", description = "Organization not found")
+    @PutMapping("/organizations/{id}")
+    public ResponseEntity<OrganizationResponseDto> updateOrganization(
+            @PathVariable Long id,
+            @Valid @RequestBody OrganizationRequestDto requestDto,
+            @RequestParam Long userId) {
+
+        OrganizationResponseDto updated = organizationService.updateOrganization(id, requestDto, userId);
+        return ResponseEntity.ok(updated);
+    }
+
     @Operation(summary = "Get current organization configuration")
     @ApiResponse(responseCode = "200", description = "Current organization details")
     @GetMapping
@@ -38,4 +51,8 @@ public class OrganizationController {
         OrganizationResponseDto dto = organizationService.getOrganization();
         return ResponseEntity.ok(dto);
     }
+
+
+
+
 }

@@ -8,4 +8,7 @@ public interface OrganizationService {
 	OrganizationResponseDto saveOrganization(OrganizationRequestDto requestDto, Long currentUserId);
 
 	OrganizationResponseDto getOrganization();
+
+	OrganizationResponseDto updateOrganization(Long id, OrganizationRequestDto requestDto, Long userId);
+
 }

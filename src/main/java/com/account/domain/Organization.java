@@ -127,8 +127,4 @@ public class Organization {
 		updatedAt = LocalDateTime.now();
 	}
 
-	@PreUpdate
-	protected void onUpdate() {
-		updatedAt = LocalDateTime.now();
-	}
 }
