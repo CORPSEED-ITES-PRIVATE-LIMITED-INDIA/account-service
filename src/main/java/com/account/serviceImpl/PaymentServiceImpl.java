@@ -213,6 +213,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Update unbilled totals
         unbilled.applyPayment(reqAmount);
+        unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
         unbilledInvoiceRepository.save(unbilled);
         log.info("Updated unbilled {} | received: {}, outstanding: {}, status: {}",
                 unbilled.getUnbilledNumber(), unbilled.getReceivedAmount(),
