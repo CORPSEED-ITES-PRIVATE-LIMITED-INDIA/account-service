@@ -86,6 +86,62 @@ public class OrganizationServiceImpl implements OrganizationService {
 	}
 
 	@Override
+	public OrganizationResponseDto updateOrganization(Long id, OrganizationRequestDto requestDto, Long currentUserId) {
+		log.info("Updating organization id={} by userId: {}", id, currentUserId);
+
+		User currentUser = userRepository.findById(currentUserId)
+				.orElseThrow(() -> new ResourceNotFoundException("Current user not found", "USER_NOT_FOUND"));
+
+		boolean isAdmin = currentUser.getUserRole() != null &&
+				currentUser.getUserRole().stream()
+						.anyMatch(role -> "ADMIN".equals(role.getName()));
+
+		if (!isAdmin) {
+			throw new SecurityException("Only ADMIN role can modify organization configuration");
+		}
+
+		Organization organization = organizationRepository.findById(id)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Organization not found with id: " + id, "ORG_NOT_FOUND"));
+
+		// Update fields
+		organization.setName(requestDto.getName());
+		organization.setAddressLine1(requestDto.getAddressLine1());
+		organization.setAddressLine2(requestDto.getAddressLine2());
+		organization.setCity(requestDto.getCity());
+		organization.setState(requestDto.getState());
+		organization.setCountry(requestDto.getCountry());
+		organization.setPinCode(requestDto.getPinCode());
+		organization.setGstNo(requestDto.getGstNo());
+		organization.setPanNo(requestDto.getPanNo());
+		organization.setCinNumber(requestDto.getCinNumber());
+		organization.setEstablishedDate(requestDto.getEstablishedDate());
+		organization.setOwnerName(requestDto.getOwnerName());
+		organization.setBankAccountPresent(requestDto.isBankAccountPresent());
+		organization.setAccountHolderName(requestDto.getAccountHolderName());
+		organization.setAccountNo(requestDto.getAccountNo());
+		organization.setIfscCode(requestDto.getIfscCode());
+		organization.setSwiftCode(requestDto.getSwiftCode());
+		organization.setBankName(requestDto.getBankName());
+		organization.setBranch(requestDto.getBranch());
+		organization.setUpiId(requestDto.getUpiId());
+		organization.setWebsite(requestDto.getWebsite());
+		organization.setPaymentPageLink(requestDto.getPaymentPageLink());
+		organization.setEstimateConditions(requestDto.getEstimateConditions());
+		organization.setLogoUrl(requestDto.getLogoUrl());
+		organization.setEmail(requestDto.getEmail());
+		organization.setPhone(requestDto.getPhone());
+		organization.setActive(requestDto.isActive());
+
+		organization.setUpdatedBy(currentUser);
+
+		organization = organizationRepository.save(organization);
+
+		return mapToResponseDto(organization);
+	}
+
+
+	@Override
 	public OrganizationResponseDto getOrganization() {
 		log.info("Fetching current organization configuration");
 
