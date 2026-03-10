@@ -51,6 +51,7 @@ public class EstimateServiceImpl implements EstimateService {
     private final CompanyUnitRepository companyUnitRepository;
     private final ContactRepository contactRepository;
     private final UserRepository userRepository;
+    private final UnbilledInvoiceRepository unbilledInvoiceRepository;
 
     @Autowired
     private UnbilledInvoiceRepository unbilledRepository;
@@ -443,6 +444,22 @@ public class EstimateServiceImpl implements EstimateService {
             }
         }
         dto.setLineItems(itemDtos);
+
+
+        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findByEstimate(estimate);
+
+        if (unbilledOpt.isPresent()) {
+
+            UnbilledInvoice unbilled = unbilledOpt.get();
+
+            if (!unbilled.getPayments().isEmpty()) {
+                PaymentReceipt receipt = unbilled.getPayments().get(0);
+
+                if (receipt.getPaymentType() != null) {
+                    dto.setPaymentType(receipt.getPaymentType().getCode());
+                }
+            }
+        }
 
         return dto;
     }
