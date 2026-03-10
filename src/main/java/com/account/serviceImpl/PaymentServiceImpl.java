@@ -208,11 +208,13 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setEprPortalRegistrationNumber(request.getEprPortalRegistrationNumber());
         receipt.setEprCertificateOrInvoiceNumber(request.getEprCertificateOrInvoiceNumber());
 
+
         receipt = paymentReceiptRepository.save(receipt);
         log.info("Created PaymentReceipt {} | amount: {}", receipt.getId(), request.getAmount());
 
         // Update unbilled totals
         unbilled.applyPayment(reqAmount);
+        unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
         unbilledInvoiceRepository.save(unbilled);
         log.info("Updated unbilled {} | received: {}, outstanding: {}, status: {}",
                 unbilled.getUnbilledNumber(), unbilled.getReceivedAmount(),
