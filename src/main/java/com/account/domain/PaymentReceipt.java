@@ -40,6 +40,8 @@ public class PaymentReceipt {
     @JoinColumn(name = "payment_type_id", nullable = false)
     private PaymentType paymentType;  // FULL, PARTIAL, INSTALLMENT, PURCHASE_ORDER
 
+    private String status;
+
     @Column(precision = 15, scale = 2, nullable = false)
     private BigDecimal amount;
 

@@ -446,7 +446,7 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLineItems(itemDtos);
 
 
-        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findByEstimate(estimate);
+        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findTopByEstimateOrderByCreatedAtDesc(estimate);
 
         if (unbilledOpt.isPresent()) {
 
@@ -456,7 +456,7 @@ public class EstimateServiceImpl implements EstimateService {
                 PaymentReceipt receipt = unbilled.getPayments().get(0);
 
                 if (receipt.getPaymentType() != null) {
-                    dto.setPaymentType(receipt.getPaymentType().getCode());
+                    dto.setPaymentTypeId(receipt.getPaymentType().getId());
                 }
             }
         }

@@ -43,13 +43,13 @@ public class UnbilledInvoiceController {
             @ApiResponse(responseCode = "404", description = "Unbilled invoice not found", content = @Content),
             @ApiResponse(responseCode = "409", description = "Invoice already approved / wrong status", content = @Content)
     })
-    @PostMapping("/{unbilledId}/approve")
-    public ResponseEntity<UnbilledInvoiceApprovalResponseDto> approveUnbilledInvoice(
+    @PostMapping("/{unbilledId}/updateStatus")
+    public ResponseEntity<UnbilledInvoiceApprovalResponseDto> updateUnbilledInvoiceStatus(
             @PathVariable @Parameter(description = "ID of the unbilled invoice") Long unbilledId,
             @Valid @RequestBody UnbilledInvoiceApprovalRequestDto request) {
 
         UnbilledInvoiceApprovalResponseDto response =
-                paymentService.approveUnbilledInvoice(unbilledId, request);
+                paymentService.updateUnbilledInvoiceStatus(unbilledId, request);
 
         return ResponseEntity.ok(response);
     }

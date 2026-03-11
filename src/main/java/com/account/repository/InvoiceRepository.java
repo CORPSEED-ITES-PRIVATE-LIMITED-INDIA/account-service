@@ -29,6 +29,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             Pageable pageable
     );
 
+    List<Invoice> findByUnbilledInvoiceId(Long unbilledInvoiceId);
+
     @Query("""
         SELECT COUNT(i) FROM Invoice i
         WHERE (:status IS NULL OR i.status = :status)
