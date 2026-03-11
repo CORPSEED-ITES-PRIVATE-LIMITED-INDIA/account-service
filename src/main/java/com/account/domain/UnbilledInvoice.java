@@ -21,6 +21,7 @@ import java.util.UUID;
                 @Index(name = "idx_unbilled_number_unique", columnList = "unbilled_number", unique = true),
                 @Index(name = "idx_unbilled_public_uuid_unique", columnList = "public_uuid", unique = true),
                 @Index(name = "idx_unbilled_status", columnList = "status"),
+                @Index(name = "idx_unbilled_estimate_id_unique", columnList = "estimate_id", unique = true),
                 @Index(name = "idx_unbilled_company_id", columnList = "company_id"),
                 @Index(name = "idx_unbilled_approved_by", columnList = "approved_by")
         })
@@ -42,8 +43,8 @@ public class UnbilledInvoice {
     @Column(name = "unbilled_number", nullable = false, unique = true, length = 32)
     private String unbilledNumber;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "estimate_id", nullable = false)
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "estimate_id", nullable = false, unique = true)
     private Estimate estimate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

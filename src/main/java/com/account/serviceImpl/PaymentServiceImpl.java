@@ -37,10 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -58,6 +55,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final DateTimeUtil dateTimeUtil;
     private final ContactRepository contactRepository;
     private final OperationFeignClient operationFeignClient;
+    private final InvoiceRepository invoiceRepository;
 
     @Override
     @Transactional
@@ -118,7 +116,7 @@ public class PaymentServiceImpl implements PaymentService {
         // Find or create Unbilled Invoice
         // ────────────────────────────────────────────────
         UnbilledInvoice unbilled = unbilledInvoiceRepository
-                .findByEstimateAndStatusNot(estimate, UnbilledStatus.REJECTED)
+                .findTopByEstimateOrderByCreatedAtDesc(estimate)
                 .orElse(null);
         boolean isFirstPayment = (unbilled == null);
 
@@ -181,11 +179,11 @@ public class PaymentServiceImpl implements PaymentService {
         // ────────────────────────────────────────────────
         // Status check
         // ────────────────────────────────────────────────
-        if (unbilled.getStatus() == UnbilledStatus.REJECTED) {
-            throw new ValidationException(
-                    "Cannot register payment for rejected unbilled invoice",
-                    "ERR_UNBILLED_REJECTED", "unbilledStatus");
-        }
+//        if (unbilled.getStatus() == UnbilledStatus.REJECTED) {
+//            throw new ValidationException(
+//                    "Cannot register payment for rejected unbilled invoice",
+//                    "ERR_UNBILLED_REJECTED", "unbilledStatus");
+//        }
 
         // ────────────────────────────────────────────────
         // Business rules for amount vs payment type
@@ -198,6 +196,7 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentReceipt receipt = new PaymentReceipt();
         receipt.setUnbilledInvoice(unbilled);
         receipt.setPaymentType(paymentType);
+        System.out.println("paymentType: "+paymentType.getId());
         receipt.setAmount(reqAmount);
         receipt.setPaymentDate(request.getPaymentDate());
         receipt.setPaymentMode(request.getPaymentMode());
@@ -373,9 +372,35 @@ public class PaymentServiceImpl implements PaymentService {
         Estimate estimate  = unbilled.getEstimate();
         // 8. Update unbilled invoice to APPROVED (temporary state)
         if(request.getApprovalRemarks().equals("REJECTED")) {
+
             unbilled.setStatus(UnbilledStatus.REJECTED);
 
             estimate.setStatus(EstimateStatus.REJECTED);
+
+            // Fetch all invoices for this unbilled
+            List<Invoice> invoices = invoiceRepository.findByUnbilledInvoiceId(unbilled.getId());
+
+            BigDecimal approvedTotal = invoices.stream()
+                    .map(Invoice::getGrandTotal)
+                    .filter(Objects::nonNull)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+            // Recalculate received & outstanding amounts
+            BigDecimal totalAmount = unbilled.getTotalAmount();
+
+            unbilled.setReceivedAmount(approvedTotal);
+            unbilled.setOutstandingAmount(
+                    totalAmount.subtract(approvedTotal)
+                            .max(BigDecimal.ZERO)
+                            .setScale(2, RoundingMode.HALF_UP)
+            );
+
+            log.info(
+                    "Unbilled {} rejected → recalculated amounts | received={} outstanding={}",
+                    unbilled.getUnbilledNumber(),
+                    unbilled.getReceivedAmount(),
+                    unbilled.getOutstandingAmount()
+            );
 
         }else {
             unbilled.setStatus(UnbilledStatus.APPROVED);

@@ -446,7 +446,7 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLineItems(itemDtos);
 
 
-        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findByEstimateAndStatusNot(estimate, UnbilledStatus.REJECTED);
+        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findTopByEstimateOrderByCreatedAtDesc(estimate);
 
         if (unbilledOpt.isPresent()) {
 
