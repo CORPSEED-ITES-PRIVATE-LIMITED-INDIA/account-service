@@ -64,7 +64,7 @@ public class EstimateResponseDto {
     private CompanySummaryDto company;
     private CompanyUnitSummaryDto unit;
 
-    private String paymentType;
+    private Long paymentTypeId;
 
     // Line items breakdown
     private List<EstimateLineItemResponseDto> lineItems;

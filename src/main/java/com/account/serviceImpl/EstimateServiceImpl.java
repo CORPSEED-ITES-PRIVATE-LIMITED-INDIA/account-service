@@ -456,7 +456,7 @@ public class EstimateServiceImpl implements EstimateService {
                 PaymentReceipt receipt = unbilled.getPayments().get(0);
 
                 if (receipt.getPaymentType() != null) {
-                    dto.setPaymentType(receipt.getPaymentType().getCode());
+                    dto.setPaymentTypeId(receipt.getPaymentType().getId());
                 }
             }
         }
