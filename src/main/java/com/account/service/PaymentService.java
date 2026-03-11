@@ -14,7 +14,7 @@ public interface PaymentService {
 
     PaymentRegistrationResponseDto registerPayment(PaymentRegistrationRequestDto request, Long salespersonUserId);
 
-    UnbilledInvoiceApprovalResponseDto approveUnbilledInvoice(Long unbilledId, UnbilledInvoiceApprovalRequestDto request);
+    UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(Long unbilledId, UnbilledInvoiceApprovalRequestDto request);
 
     List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size);
 

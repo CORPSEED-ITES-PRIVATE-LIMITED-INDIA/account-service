@@ -117,7 +117,9 @@ public class PaymentServiceImpl implements PaymentService {
         // ────────────────────────────────────────────────
         // Find or create Unbilled Invoice
         // ────────────────────────────────────────────────
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findByEstimate(estimate).orElse(null);
+        UnbilledInvoice unbilled = unbilledInvoiceRepository
+                .findByEstimateAndStatusNot(estimate, UnbilledStatus.REJECTED)
+                .orElse(null);
         boolean isFirstPayment = (unbilled == null);
 
         if (isFirstPayment) {
@@ -317,7 +319,7 @@ public class PaymentServiceImpl implements PaymentService {
 
 
     @Transactional
-    public UnbilledInvoiceApprovalResponseDto approveUnbilledInvoice(
+    public UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(
             Long unbilledId,
             UnbilledInvoiceApprovalRequestDto request) {
 
@@ -368,9 +370,18 @@ public class PaymentServiceImpl implements PaymentService {
                         "User",
                         request.getApproverUserId()
                 ));
-
+        Estimate estimate  = unbilled.getEstimate();
         // 8. Update unbilled invoice to APPROVED (temporary state)
-        unbilled.setStatus(UnbilledStatus.APPROVED);
+        if(request.getApprovalRemarks().equals("REJECTED")) {
+            unbilled.setStatus(UnbilledStatus.REJECTED);
+
+            estimate.setStatus(EstimateStatus.REJECTED);
+
+        }else {
+            unbilled.setStatus(UnbilledStatus.APPROVED);
+            estimate.setStatus(EstimateStatus.APPROVED);
+        }
+        estimateRepository.save(estimate);
         unbilled.setApprovedBy(approver);
         unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
         unbilled.setApprovalRemarks(request.getApprovalRemarks());
@@ -385,18 +396,19 @@ public class PaymentServiceImpl implements PaymentService {
                                 + unbilled.getUnbilledNumber()));
 
         // 10. Generate actual GST invoice
-        Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(
-                unbilled, triggeringReceipt, approver);
+        if(request.getApprovalRemarks().equals("APPROVED")) {
+            Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(
+                    unbilled, triggeringReceipt, approver);
 
-
-
+           log.info("Unbilled {} approved → final status: {}, invoice generated: {}",
+                    unbilled.getUnbilledNumber(), generatedInvoice.getInvoiceNumber());
+        }
         unbilledInvoiceRepository.save(unbilled);
 
-        log.info("Unbilled {} approved → final status: {}, invoice generated: {}",
-                unbilled.getUnbilledNumber(), generatedInvoice.getInvoiceNumber());
+
+
 
         // 12. Build response
-        Estimate estimate = unbilled.getEstimate();
 
         UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
 
