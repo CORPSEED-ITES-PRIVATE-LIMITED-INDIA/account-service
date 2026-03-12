@@ -214,6 +214,10 @@ public class EstimateServiceImpl implements EstimateService {
             lineItem.setHsnSacCode(itemDto.getHsnSacCode());
             lineItem.setQuantity(itemDto.getQuantity());
             lineItem.setUnit(itemDto.getUnit());
+            estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
+            estimate.setUpdatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
+
+
             lineItem.setUnitPriceExGst(itemDto.getUnitPriceExGst());
             lineItem.setGstRate(itemDto.getGstRate());
             lineItem.setCategoryCode(itemDto.getCategoryCode());

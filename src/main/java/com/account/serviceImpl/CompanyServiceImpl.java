@@ -7,6 +7,7 @@ import com.account.dto.CompanyUnitMigrationDto;
 import com.account.dto.company.CompanyCreationRequestDto;
 import com.account.dto.company.FullContactCreationDto;
 import com.account.dto.company.FullUnitCreationDto;
+import com.account.dto.company.migrate.ContactSyncDto;
 import com.account.dto.company.request.*;
 import com.account.dto.company.response.CompanyResponseDto;
 import com.account.dto.company.response.CompanyUnitResponseDto;
@@ -417,259 +418,222 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     @Override
+    @Transactional
     public CompanyResponseDto migrateCompany(CompanyMigrationRequestDto dto) {
 
-        if (dto.getCompanyId() == null)
-            throw new ValidationException("companyId required", "ERR_COMPANY_ID_REQUIRED");
+        if (dto.getCompanyId() == null) {
+            throw new ValidationException("companyId is required", "ERR_COMPANY_ID_REQUIRED");
+        }
 
-        if (companyRepository.existsById(dto.getCompanyId()))
-            throw new ValidationException("Company already migrated", "ERR_COMPANY_EXISTS");
+        Long companyId = dto.getCompanyId();
 
+        if (companyRepository.existsById(companyId)) {
+            throw new ValidationException("Company already migrated / exists", "ERR_COMPANY_EXISTS");
+        }
+
+        // ── 1. Create Company ───────────────────────────────────────────────
         Company company = new Company();
+        company.setId(companyId);
+        company.setLeadId(companyId);
+        company.setUuid(StringUtils.hasText(dto.getUuid()) ? dto.getUuid() : UUID.randomUUID().toString());
 
-
-        // ===== Identity =====
-        company.setId(dto.getCompanyId());
-        company.setUuid(
-                StringUtils.hasText(dto.getUuid())
-                        ? dto.getUuid()
-                        : dateTimeUtil.generateUuid()
-        );
-        company.setLeadId(dto.getCompanyId());
-
-
-        // ===== Core =====
-        company.setName(dto.getName());
+        company.setName(dto.getName().trim());
         company.setPanNo(normalizeUnique(dto.getPanNo()));
         company.setEstablishDate(dto.getEstablishDate());
 
-        // ===== Address =====
-        company.setStatus(dto.getStatus());
-
-        // ===== Industry =====
         company.setIndustry(dto.getIndustry());
-        company.setIndustries(dto.getIndustries());
         company.setSubIndustry(dto.getSubIndustry());
-        company.setSubsubIndustry(dto.getSubSubIndustry());
+        company.setSubsubIndustry(dto.getSubsubIndustry());
 
-        // ===== Consultant =====
-        company.setIsConsultant(Boolean.TRUE.equals(dto.getIsConsultant()));
-
-
-
-
-
-        // ===== Agreements =====
-        company.setPaymentTerm(dto.getPaymentTerm());
-        company.setAggrementPresent(dto.isAggrementPresent());
-        company.setAggrement(dto.getAggrement());
-        company.setNdaPresent(dto.isNdaPresent());
         company.setNda(dto.getNda());
+        company.setPaymentTerm(dto.getPaymentTerm());
         company.setRevenue(dto.getRevenue());
 
-        // ===== Accounts =====
-        company.setAccountsApproved(dto.isAccountsApproved());
+        company.setIsConsultant(Boolean.TRUE.equals(dto.getIsConsultant()));
+        company.setStatus(dto.getStatus());
         company.setAccountsRemark(dto.getAccountsRemark());
 
         company.setOnboardingStatus(
                 StringUtils.hasText(dto.getOnboardingStatus())
-                        ? OnboardingStatus.valueOf(dto.getOnboardingStatus())
+                        ? OnboardingStatus.valueOf(dto.getOnboardingStatus().toUpperCase())
                         : OnboardingStatus.MINIMAL
         );
 
+        company.setDeleted(false);
 
+        // Audit fields
+        LocalDateTime now = dateTimeUtil.nowLocalDateTime();
+        company.setCreatedAt(dto.getCreatedAt() != null ? dto.getCreatedAt() : now);
+        company.setUpdatedAt(dto.getUpdatedAt() != null ? dto.getUpdatedAt() : now);
 
-
-        // ===== Audit =====
         if (dto.getCreatedById() != null) {
             User createdBy = userRepository.findByIdAndNotDeleted(dto.getCreatedById())
                     .orElseThrow(() -> new ValidationException("CreatedBy user not found", "ERR_USER_NOT_FOUND"));
             company.setCreatedBy(createdBy);
+            company.setUpdatedBy(createdBy); // reasonable default
         }
-
         if (dto.getUpdatedById() != null) {
             User updatedBy = userRepository.findByIdAndNotDeleted(dto.getUpdatedById())
                     .orElseThrow(() -> new ValidationException("UpdatedBy user not found", "ERR_USER_NOT_FOUND"));
             company.setUpdatedBy(updatedBy);
         }
 
-        company.setCreatedAt(
-                dto.getCreatedAt() != null
-                        ? dto.getCreatedAt()
-                        : dateTimeUtil.nowLocalDateTime()
-        );
+        // ── CRITICAL: Save company FIRST ────────────────────────────────────
+        company = companyRepository.save(company);
+        // Now company.id exists in database → contacts can reference it
 
+        // ── 2. Handle Units + Contacts ──────────────────────────────────────
+        if (dto.getUnits() != null && !dto.getUnits().isEmpty()) {
 
+            for (CompanyUnitMigrationDto unitDto : dto.getUnits()) {
 
-
-        company.setUpdatedAt(
-                dto.getUpdatedAt() != null
-                        ? dto.getUpdatedAt()
-                        : dateTimeUtil.nowLocalDateTime()
-        );
-
-        company.setDeleted(false);
-
-
-
-
-        boolean hasIncomingUnits =
-                dto.getUnits() != null && !dto.getUnits().isEmpty();
-
-        if (hasIncomingUnits) {
-
-            // ===== Existing units from Lead =====
-            for (CompanyUnitMigrationDto u : dto.getUnits()) {
-
-                if (u.getUnitId() == null)
+                if (unitDto.getId() == null) {
+                    logger.warn("Skipping unit with null id");
                     continue;
+                }
 
-                if (companyUnitRepository.existsById(u.getUnitId()))
-                    continue; // idempotent
+                if (companyUnitRepository.existsById(unitDto.getId())) {
+                    logger.warn("Unit {} already exists → skipping", unitDto.getId());
+                    continue;
+                }
 
                 CompanyUnit unit = new CompanyUnit();
-
-                unit.setId(u.getUnitId());
-                unit.setLeadId(u.getLeadUnitId());
+                unit.setId(unitDto.getId());
                 unit.setCompany(company);
 
-                unit.setUnitName(
-                        StringUtils.hasText(u.getUnitName())
-                                ? u.getUnitName()
-                                : company.getName() + " - Unit"
-                );
+                unit.setUnitName(StringUtils.hasText(unitDto.getUnitName())
+                        ? unitDto.getUnitName().trim()
+                        : company.getName() + " - Unit");
 
-                // 🔴 REQUIRED FIELDS — MUST NOT BE NULL
-                unit.setAddressLine1(
-                        StringUtils.hasText(u.getAddressLine1())
-                                ? u.getAddressLine1()
-                                : "N/A"
-                );
-
-                unit.setCity(
-                        StringUtils.hasText(u.getCity())
-                                ? u.getCity()
-                                : "UNKNOWN"
-                );
-
-                unit.setState(
-                        StringUtils.hasText(u.getState())
-                                ? u.getState()
-                                : "UNKNOWN"
-                );
-
-                unit.setPinCode(
-                        StringUtils.hasText(u.getPinCode())
-                                ? u.getPinCode()
-                                : "000000"
-                );
-
-                unit.setCountry(
-                        StringUtils.hasText(u.getCountry())
-                                ? u.getCountry()
-                                : "India"
-                );
+                // Required address fields with fallback
+                unit.setAddressLine1(StringUtils.hasText(unitDto.getAddressLine1()) ? unitDto.getAddressLine1() : "N/A");
+                unit.setAddressLine2(unitDto.getAddressLine2());
+                unit.setCity(StringUtils.hasText(unitDto.getCity()) ? unitDto.getCity() : "UNKNOWN");
+                unit.setState(StringUtils.hasText(unitDto.getState()) ? unitDto.getState() : "UNKNOWN");
+                unit.setPinCode(StringUtils.hasText(unitDto.getPinCode()) ? unitDto.getPinCode() : "000000");
+                unit.setCountry(StringUtils.hasText(unitDto.getCountry()) ? unitDto.getCountry() : "India");
 
                 // GST
-                unit.setGstNo(u.getGstNo());
-                unit.setGstType(u.getGstType());
-                unit.setGstDocuments(u.getGstDocuments());
-                unit.setGstTypeEntity(u.getGstTypeEntity());
-                unit.setGstBusinessType(u.getGstBusinessType());
-                unit.setGstTypePrice(u.getGstTypePrice());
+                String gstNo = normalizeUnique(unitDto.getGstNo());
+                unit.setGstNo(gstNo);
+                unit.setGstType(unitDto.getGstType());
+                unit.setGstDocuments(unitDto.getGstDocuments());
+                unit.setGstTypeEntity(unitDto.getGstTypeEntity());
+                unit.setGstBusinessType(unitDto.getGstBusinessType());
+                unit.setGstTypePrice(unitDto.getGstTypePrice());
 
-                // Status
-                unit.setStatus(
-                        StringUtils.hasText(u.getStatus())
-                                ? u.getStatus()
-                                : "Active"
-                );
+                // GST-PAN cross validation
+                if (gstNo != null && company.getPanNo() != null) {
+                    String panFromGst = gstNo.length() >= 12 ? gstNo.substring(2, 12) : "";
+                    if (!panFromGst.equals(company.getPanNo())) {
+                        throw new ValidationException(
+                                "GST-PAN mismatch in unit '" + unitDto.getUnitName() + "'",
+                                "ERR_GST_PAN_MISMATCH_UNIT_" + unitDto.getId()
+                        );
+                    }
+                }
 
-                unit.setConsultantPresent(u.isConsultantPresent());
-                unit.setUnitOpeningDate(u.getUnitOpeningDate());
+                unit.setUnitOpeningDate(unitDto.getUnitOpeningDate());
+                unit.setStatus(StringUtils.hasText(unitDto.getStatus()) ? unitDto.getStatus() : "Active");
 
-                // Accounts
-                unit.setAccountsApproved(u.isAccountsApproved());
-                unit.setAccountsRemark(u.getAccountsRemark());
+                unit.setAccountsRemark(unitDto.getAccountsRemark());
                 unit.setOnboardingStatus(
-                        StringUtils.hasText(u.getOnboardingStatus())
-                                ? OnboardingStatus.valueOf(u.getOnboardingStatus())
+                        StringUtils.hasText(unitDto.getOnboardingStatus())
+                                ? OnboardingStatus.valueOf(unitDto.getOnboardingStatus().toUpperCase())
                                 : company.getOnboardingStatus()
                 );
 
                 unit.setDeleted(false);
+                unit.setCreatedAt(now);
+                unit.setUpdatedAt(now);
+
+                unit.setCreatedBy(company.getCreatedBy());
+                unit.setUpdatedBy(company.getUpdatedBy());
+
+                // Save unit early (recommended when there are children)
+                unit = companyUnitRepository.save(unit);
 
                 company.getUnits().add(unit);
+
+                // ── 3. Create Contacts for this unit ────────────────────────────────
+                if (unitDto.getContacts() != null && !unitDto.getContacts().isEmpty()) {
+
+                    for (ContactSyncDto contactDto : unitDto.getContacts()) {
+
+                        if (contactDto.getId() == null) {
+                            logger.warn("Skipping contact with null id");
+                            continue;
+                        }
+
+                        if (contactRepository.existsById(contactDto.getId())) {
+                            logger.warn("Contact {} already exists → skipping", contactDto.getId());
+                            continue;
+                        }
+
+                        Contact contact = new Contact();
+                        contact.setId(contactDto.getId());
+
+                        contact.setTitle(contactDto.getTitle());
+                        contact.setName(contactDto.getName() != null ? contactDto.getName().trim() : null);
+                        contact.setEmails(contactDto.getEmails());
+                        contact.setContactNo(contactDto.getContactNo());
+                        contact.setWhatsappNo(contactDto.getWhatsappNo());
+                        contact.setClientDesignation(contactDto.getClientDesignation());
+                        contact.setDesignation(contactDto.getDesignation());
+
+                        contact.setCompany(company);
+                        contact.setCompanyUnit(unit);
+
+                        contact.setPrimaryForCompany(contactDto.isPrimaryForCompany());
+                        contact.setSecondaryForCompany(contactDto.isSecondaryForCompany());
+                        contact.setPrimaryForUnit(contactDto.isPrimaryForUnit());
+                        contact.setSecondaryForUnit(contactDto.isSecondaryForUnit());
+
+                        contact.setDeleted(false);
+                        contact.setCreatedAt(now);
+                        contact.setUpdatedAt(now);
+
+                        contactRepository.save(contact);
+                    }
+                }
             }
-
         } else {
-
-            // ===============================
-            // DEFAULT UNIT (Lead has none)
-            // ===============================
-
-            // Idempotency: one unit per company
+            // Optional default unit
             if (company.getUnits().isEmpty()) {
-
-                CompanyUnit unit = new CompanyUnit();
-
-                unit.setId(company.getId()); // acceptable for migration
-                unit.setLeadId(company.getLeadId());
-                unit.setCompany(company);
-
-                unit.setUnitName(company.getName() + " - Main Unit");
-
-                unit.setAddressLine1(
-                        StringUtils.hasText(dto.getAddress())
-                                ? dto.getAddress()
-                                : "N/A"
-                );
-
-                unit.setCity(
-                        StringUtils.hasText(dto.getCity())
-                                ? dto.getCity()
-                                : "UNKNOWN"
-                );
-
-                unit.setState(
-                        StringUtils.hasText(dto.getState())
-                                ? dto.getState()
-                                : "UNKNOWN"
-                );
-
-                unit.setPinCode(
-                        StringUtils.hasText(dto.getPrimaryPinCode())
-                                ? dto.getPrimaryPinCode()
-                                : "000000"
-                );
-
-                unit.setCountry(
-                        StringUtils.hasText(dto.getCountry())
-                                ? dto.getCountry()
-                                : "India"
-                );
-
-                unit.setStatus("Active");
-                unit.setConsultantPresent(company.getIsConsultant());
-                unit.setUnitOpeningDate(company.getEstablishDate());
-
-                unit.setAccountsApproved(company.isAccountsApproved());
-                unit.setAccountsRemark(company.getAccountsRemark());
-                unit.setOnboardingStatus(company.getOnboardingStatus());
-
-                unit.setDeleted(false);
-
-                company.getUnits().add(unit);
+                CompanyUnit defaultUnit = createDefaultMainUnit(company, now);
+                company.getUnits().add(defaultUnit);
+                companyUnitRepository.save(defaultUnit);
             }
         }
 
-
-
-        companyRepository.save(company);
+        // Final save + status recalculation
+        updateCompanyOnboardingStatus(company);
+        company = companyRepository.save(company);
 
         return mapToResponseDto(company);
     }
-
+    private CompanyUnit createDefaultMainUnit(Company company, LocalDateTime now) {
+        CompanyUnit unit = new CompanyUnit();
+        unit.setId(company.getId()); // same ID strategy as before
+        unit.setLeadId(company.getLeadId());
+        unit.setCompany(company);
+        unit.setUnitName(company.getName() + " - Main Branch");
+        unit.setAddressLine1("N/A");
+        unit.setCity("UNKNOWN");
+        unit.setState("UNKNOWN");
+        unit.setPinCode("000000");
+        unit.setCountry("India");
+        unit.setStatus("Active");
+        unit.setConsultantPresent(company.getIsConsultant());
+        unit.setOnboardingStatus(company.getOnboardingStatus());
+        unit.setAccountsApproved(company.isAccountsApproved());
+        unit.setDeleted(false);
+        unit.setCreatedAt(now);
+        unit.setUpdatedAt(now);
+        unit.setCreatedBy(company.getCreatedBy());
+        unit.setUpdatedBy(company.getUpdatedBy());
+        return unit;
+    }
     private void updateCompanyOnboardingStatus(Company company) {
         if (company.getUnits().isEmpty()) {
             company.setOnboardingStatus(OnboardingStatus.MINIMAL);

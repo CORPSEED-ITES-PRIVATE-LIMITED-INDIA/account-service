@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 import java.time.LocalDate;
+import java.util.Date;
 
 @Data
 public class CompanyUnitFullRequestDto {
@@ -33,7 +34,7 @@ public class CompanyUnitFullRequestDto {
     private Long primaryContactId;    // optional
     private Long secondaryContactId;  // optional
 
-    private LocalDate unitOpeningDate;
+    private Date unitOpeningDate;
     private String status = "Active";
 
     private Boolean consultantPresent;

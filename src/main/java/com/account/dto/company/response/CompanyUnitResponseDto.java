@@ -23,7 +23,7 @@ public class CompanyUnitResponseDto {
     private String onboardingStatus;
     private boolean accountsApproved;
     private String accountsRemark;
-    private LocalDate unitOpeningDate;
+    private Date unitOpeningDate;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

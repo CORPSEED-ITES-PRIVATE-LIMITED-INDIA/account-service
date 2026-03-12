@@ -25,8 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -42,145 +44,163 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private EntityManager entityManager;
 
 
-	@Override
-	@Transactional
-	public Invoice generateInvoiceForPayment(UnbilledInvoice unbilledInvoice, PaymentReceipt triggeringPayment, User createdBy) {
+	/**
+	 * Generates a Tax Invoice for a specific payment receipt.
+	 * The invoice grand total will be EXACTLY equal to receipt.getAmount()
+	 * Line items are prorated, and any minor rounding difference is adjusted on the last line.
+	 */
+	public Invoice generateInvoiceForPayment(UnbilledInvoice unbilled, PaymentReceipt receipt, User approver) {
 
-		if (unbilledInvoice == null || triggeringPayment == null || createdBy == null) {
-			throw new IllegalArgumentException("UnbilledInvoice, PaymentReceipt, and createdBy User are required");
-		}
-
-		Estimate estimate = unbilledInvoice.getEstimate();
+		Estimate estimate = unbilled.getEstimate();
 		if (estimate == null) {
-			throw new IllegalStateException("Estimate not found for unbilled invoice");
+			throw new IllegalStateException("Estimate not found for Unbilled " + unbilled.getUnbilledNumber());
 		}
 
-		// Calculate proportion: this payment / total unbilled amount
-		BigDecimal proportion = triggeringPayment.getAmount()
-				.divide(unbilledInvoice.getTotalAmount(), 6, RoundingMode.HALF_UP);
-
-		log.info("Generating invoice for payment {} | proportion: {} | unbilled: {} | estimate: {}",
-				triggeringPayment.getId(), proportion, unbilledInvoice.getUnbilledNumber(),
-				estimate.getEstimateNumber());
+		log.info("Generating invoice for PaymentReceipt {} | amount: ₹{} | unbilled: {}",
+				receipt.getId(), receipt.getAmount(), unbilled.getUnbilledNumber());
 
 		Invoice invoice = new Invoice();
-		invoice.setUnbilledInvoice(unbilledInvoice);
-		invoice.setSolutionName(estimate.getSolutionName());
-		invoice.setTriggeringPayment(triggeringPayment);
-		invoice.setInvoiceNumber(generateInvoiceNumber());
-		invoice.setPublicUuid(dateTimeUtil.generateUuid());
-		invoice.setInvoiceDate(dateTimeUtil.nowLocalDate());
+		invoice.setPublicUuid(UUID.randomUUID().toString());
+
+		// Generate unique invoice number (customize your format)
+		invoice.setInvoiceNumber(generateInvoiceNumber());  // Implement this method as needed
+
+		invoice.setUnbilledInvoice(unbilled);
+		invoice.setTriggeringPayment(receipt);  // Critical: links exactly to this payment
+		invoice.setInvoiceDate(LocalDate.now());
 		invoice.setCurrency("INR");
 		invoice.setStatus(InvoiceStatus.GENERATED);
+		invoice.setCreatedBy(approver);
+		invoice.setUpdatedBy(approver);
+		invoice.setCreatedAt(LocalDateTime.now());
+
+		// Copy key fields from estimate
+		invoice.setSolutionId(estimate.getSolutionId());
+		invoice.setSolutionName(estimate.getSolutionName());
+
+		// Buyer GSTIN – always prefer unit-level if unit exists, fallback to null or company PAN if needed
+		String buyerGstin = null;
+
+		if (unbilled.getUnit() != null) {
+			buyerGstin = unbilled.getUnit().getGstNo();  // This exists
+		} else if (unbilled.getCompany() != null) {
+			// Company has no GST field → either leave null or fallback to PAN (not ideal for GST invoice)
+			buyerGstin = null;  // or unbilled.getCompany().getPanNo() if you want to show PAN instead
+			// Recommendation: log warning if no GST found
+			log.warn("No GSTIN found for Unbilled {} – Unit: {}, Company: {}",
+					unbilled.getUnbilledNumber(),
+					unbilled.getUnit() != null ? unbilled.getUnit().getUnitName() : "None",
+					unbilled.getCompany().getName());
+		}
+
+		invoice.setBuyerGstin(buyerGstin);
+
+		// Place of Supply (critical for CGST/SGST vs IGST)
 		invoice.setPlaceOfSupplyStateCode(estimate.getPlaceOfSupplyStateCode());
 
-		invoice.setCreatedBy(createdBy);
+		// Exact grand total = payment amount (no compromise)
+		BigDecimal exactGrandTotal = receipt.getAmount().setScale(2, RoundingMode.HALF_UP);
+		invoice.setGrandTotal(exactGrandTotal);
 
-		// Buyer GSTIN – take from the UNIT (most accurate), fallback to any valid unit
-		String buyerGstin = null;
-		if (unbilledInvoice.getUnit() != null) {
-			buyerGstin = unbilledInvoice.getUnit().getGstNo();
-		}
+		// Proration ratio
+		BigDecimal totalUnbilled = unbilled.getTotalAmount();
+		BigDecimal ratio = totalUnbilled.compareTo(BigDecimal.ZERO) > 0
+				? exactGrandTotal.divide(totalUnbilled, 10, RoundingMode.HALF_UP)
+				: BigDecimal.ZERO;
 
-		// Fallback: if no specific unit is linked, take first non-deleted unit with GSTIN
-		if (buyerGstin == null || buyerGstin.trim().isEmpty()) {
-			if (unbilledInvoice.getCompany() != null && unbilledInvoice.getCompany().getUnits() != null) {
-				buyerGstin = unbilledInvoice.getCompany().getUnits().stream()
-						.filter(unit -> !unit.isDeleted() && unit.getGstNo() != null && !unit.getGstNo().trim().isEmpty())
-						.map(CompanyUnit::getGstNo)
-						.findFirst()
-						.orElse(null);
-			}
-		}
-
-		if (buyerGstin != null && !buyerGstin.trim().isEmpty()) {
-			invoice.setBuyerGstin(buyerGstin.trim());
-		} else {
-			log.warn("No valid buyer GSTIN found for unbilled invoice {} (Company: {}, Unit: {})",
-					unbilledInvoice.getUnbilledNumber(),
-					unbilledInvoice.getCompany() != null ? unbilledInvoice.getCompany().getName() : "N/A",
-					unbilledInvoice.getUnit() != null ? unbilledInvoice.getUnit().getUnitName() : "N/A");
-		}
-
-
-		String sellerStateCode = "06"; // Example: Delhi = "07", Haryana = "06", Maharashtra = "27", etc.
-		String placeOfSupply = invoice.getPlaceOfSupplyStateCode();
-		boolean isIntraState = placeOfSupply != null && placeOfSupply.equals(sellerStateCode);
-
-		// ─────────────────────────────────────────────────────────────
-		// Line items – proportional copy + GST breakup
-		// ─────────────────────────────────────────────────────────────
 		List<InvoiceLineItem> invoiceLines = new ArrayList<>();
-		BigDecimal subTotalExGst = BigDecimal.ZERO;
-		BigDecimal totalGst = BigDecimal.ZERO;
-		BigDecimal totalCgst = BigDecimal.ZERO;
-		BigDecimal totalSgst = BigDecimal.ZERO;
-		BigDecimal totalIgst = BigDecimal.ZERO;
+		BigDecimal accumulatedWithGst = BigDecimal.ZERO;
 
-		for (EstimateLineItem estLine : estimate.getLineItems()) {
+		int lineIndex = 0;
+		List<EstimateLineItem> estimateLines = estimate.getLineItems();
+
+		for (EstimateLineItem estLine : estimateLines) {
 			InvoiceLineItem invLine = new InvoiceLineItem();
 			invLine.setInvoice(invoice);
 			invLine.setSourceEstimateLineItemId(estLine.getId());
 			invLine.setItemName(estLine.getItemName());
 			invLine.setDescription(estLine.getDescription());
 			invLine.setHsnSacCode(estLine.getHsnSacCode());
+			invLine.setQuantity(estLine.getQuantity());
 			invLine.setUnit(estLine.getUnit());
+
+			// Prorate unit price ex-GST
+			BigDecimal proratedUnitPrice = estLine.getUnitPriceExGst()
+					.multiply(ratio)
+					.setScale(2, RoundingMode.HALF_UP);
+			invLine.setUnitPriceExGst(proratedUnitPrice);
+
+			invLine.setGstRate(estLine.getGstRate());
+			invLine.setDisplayOrder(estLine.getDisplayOrder());
 			invLine.setCategoryCode(estLine.getCategoryCode());
 			invLine.setFeeType(estLine.getFeeType());
-			invLine.setDisplayOrder(estLine.getDisplayOrder());
 
-			invLine.setQuantity(estLine.getQuantity());
-			invLine.setUnitPriceExGst(estLine.getUnitPriceExGst().multiply(proportion));
-			invLine.setGstRate(estLine.getGstRate());
-
-			invLine.calculateLineTotals(); // Must recalculate totals after scaling
-
-			// Apply correct GST split (CGST+SGST or IGST)
-			BigDecimal gstAmount = invLine.getGstAmount() != null ? invLine.getGstAmount() : BigDecimal.ZERO;
-			BigDecimal halfGst = gstAmount.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
-
-			if (isIntraState) {
-				invLine.setCgstAmount(halfGst);
-				invLine.setSgstAmount(halfGst);
-				invLine.setIgstAmount(BigDecimal.ZERO);
-			} else {
-				invLine.setCgstAmount(BigDecimal.ZERO);
-				invLine.setSgstAmount(BigDecimal.ZERO);
-				invLine.setIgstAmount(gstAmount);
-			}
+			// Calculate line totals (your @PrePersist logic will run, but we call manually for control)
+			invLine.calculateLineTotals();
 
 			invoiceLines.add(invLine);
 
-			subTotalExGst = subTotalExGst.add(invLine.getLineTotalExGst());
-			totalGst = totalGst.add(gstAmount);
-			totalCgst = totalCgst.add(invLine.getCgstAmount());
-			totalSgst = totalSgst.add(invLine.getSgstAmount());
-			totalIgst = totalIgst.add(invLine.getIgstAmount());
+			accumulatedWithGst = accumulatedWithGst.add(invLine.getLineTotalWithGst());
+			lineIndex++;
 		}
 
-		// Set header totals
-		invoice.setSubTotalExGst(subTotalExGst.setScale(2, RoundingMode.HALF_UP));
-		invoice.setTotalGstAmount(totalGst.setScale(2, RoundingMode.HALF_UP));
-		invoice.setGrandTotal(invoice.getSubTotalExGst().add(invoice.getTotalGstAmount()));
+		// Fix rounding difference (almost always < 0.10 due to HALF_UP)
+		BigDecimal difference = exactGrandTotal.subtract(accumulatedWithGst);
 
-		invoice.setCgstAmount(totalCgst.setScale(2, RoundingMode.HALF_UP));
-		invoice.setSgstAmount(totalSgst.setScale(2, RoundingMode.HALF_UP));
-		invoice.setIgstAmount(totalIgst.setScale(2, RoundingMode.HALF_UP));
+		if (difference.abs().compareTo(new BigDecimal("1.00")) > 0) {
+			log.warn("Large proration difference detected: ₹{} for Payment {} - check data",
+					difference, receipt.getId());
+			// Optional: throw exception if too large
+			// throw new IllegalStateException("Proration mismatch too large: " + difference);
+		}
+
+		if (!difference.equals(BigDecimal.ZERO) && !invoiceLines.isEmpty()) {
+			// Adjust the LAST line
+			InvoiceLineItem lastLine = invoiceLines.get(invoiceLines.size() - 1);
+
+			// Add difference to line total with GST
+			BigDecimal newLineTotalWithGst = lastLine.getLineTotalWithGst().add(difference);
+
+			// Re-calculate backward to keep consistency (optional but good)
+			// Here we just set and let calculateLineTotals re-compute GST if needed
+			lastLine.setLineTotalWithGst(newLineTotalWithGst);
+
+			// Re-run calculation to update GST fields proportionally (your method will handle)
+			lastLine.calculateLineTotals();
+		}
 
 		invoice.setLineItems(invoiceLines);
 
+		// Recalculate header totals from lines (safety net)
+		invoice.setSubTotalExGst(
+				invoiceLines.stream()
+						.map(InvoiceLineItem::getLineTotalExGst)
+						.reduce(BigDecimal.ZERO, BigDecimal::add)
+		);
+
+		invoice.setTotalGstAmount(
+				invoiceLines.stream()
+						.map(InvoiceLineItem::getGstAmount)
+						.reduce(BigDecimal.ZERO, BigDecimal::add)
+		);
+
+		// CGST/SGST/IGST are already set per line in calculateLineTotals()
+		// If you have global override logic, add it here
+
+		// Optional: Generate QR code if amount > threshold
+		// if (invoice.getGrandTotal().compareTo(new BigDecimal("200000")) > 0) {
+		//     invoice.setSignedQrCode(generateEInvoiceQrCode(invoice));
+		// }
+
+		// Save and return
 		invoice = invoiceRepository.save(invoice);
 
-		log.info("Generated invoice: {} | grandTotal: {} | lines: {} | buyerGSTIN: {} | for payment: {}",
-				invoice.getInvoiceNumber(),
-				invoice.getGrandTotal(),
-				invoiceLines.size(),
-				invoice.getBuyerGstin(),
-				triggeringPayment.getId());
+		log.info("Invoice generated: {} | grandTotal: ₹{} | lines: {} | for payment: {}",
+				invoice.getInvoiceNumber(), invoice.getGrandTotal(),
+				invoiceLines.size(), receipt.getId());
 
 		return invoice;
 	}
-
 
 	@Override
 	public List<InvoiceSummaryDto> getInvoicesList(Long userId, InvoiceStatus status, int page, int size) {

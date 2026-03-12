@@ -11,6 +11,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Date;
 
 @Entity
 @Table(
@@ -88,7 +89,7 @@ public class CompanyUnit {
     private Company company;
 
     @Column(name = "unit_opening_date")
-    private LocalDate unitOpeningDate;
+    private Date unitOpeningDate;
 
     @Column(name = "status", nullable = false)
     private String status = "Active";

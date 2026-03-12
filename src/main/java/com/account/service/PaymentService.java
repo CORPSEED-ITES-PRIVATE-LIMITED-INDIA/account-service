@@ -25,4 +25,6 @@ public interface PaymentService {
     long countSearchUnbilledInvoices(String unbilledNumber, String companyName);
 
     UnbilledInvoiceDetailDto getUnbilledInvoice(Long id, Long userId);
+
+    void rejectUnbilledInvoice(Long unbilledId, String trim, Long approverUserId);
 }

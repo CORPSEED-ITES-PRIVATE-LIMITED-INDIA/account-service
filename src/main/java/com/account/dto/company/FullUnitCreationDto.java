@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.util.Date;
 import java.util.List;
 
 @Getter
@@ -46,7 +47,7 @@ public class FullUnitCreationDto {
     private String gstBusinessType;
     private String gstTypePrice;
 
-    private LocalDate unitOpeningDate;
+    private Date unitOpeningDate;
 
     private String status = "Active";
 
