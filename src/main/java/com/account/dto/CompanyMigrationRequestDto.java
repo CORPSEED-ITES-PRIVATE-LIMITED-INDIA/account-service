@@ -1,65 +1,59 @@
 package com.account.dto;
 
 
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
 @Setter
 public class CompanyMigrationRequestDto {
 
-    // ===== Identity =====
-    private Long companyId;          // Lead company ID (primary key)
-    private String uuid;
+    @NotNull(message = "companyId is mandatory")
+    private Long companyId;           // decisive ID — must always be sent
 
-    // ===== Basic Info =====
+    private String uuid;              // optional — will generate if missing
+
+    @NotBlank(message = "Company name is required")
     private String name;
+
     private String panNo;
 
-    // ===== Dates =====
     private LocalDate establishDate;
 
-    // ===== Address =====
-    private String address;
-    private String city;
-    private String state;
-    private String country;
-    private String primaryPinCode;
-
-    // ===== Industry Hierarchy =====
     private String industry;
-    private String industries;
     private String subIndustry;
-    private String subSubIndustry;
+    private String subsubIndustry;
 
-    // ===== Business / Status =====
     private String status;
-    private Boolean isConsultant;
-    private String rating;
-    private String companyAge;
 
-    // ===== Agreements =====
+    private Boolean isConsultant = false;
+
+    // ── Agreements ───────────────────────────────────────────────
     private String paymentTerm;
-    private boolean aggrementPresent;
-    private String aggrement;
-    private boolean ndaPresent;
+    private Boolean agreementPresent = false;
+    private String agreement;
+    private Boolean ndaPresent = false;
     private String nda;
     private String revenue;
 
-    // ===== Audit =====
-    private boolean accountsApproved;
+    // ── Onboarding / Accounts ────────────────────────────────────
+    private String onboardingStatus;     // string name of enum or null
+    private Boolean accountsApproved = false;
     private String accountsRemark;
-    private String onboardingStatus;
 
+    // ── Audit fields (usually managed by source system or service) ──
     private Long createdById;
     private Long updatedById;
-
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
     private List<CompanyUnitMigrationDto> units;
 
 }

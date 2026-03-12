@@ -73,9 +73,7 @@ public class Estimate {
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
-
-
-    @Column(length = 20)
+    @Column(length = 50)
     private String solutionType;
 
     @OneToMany(mappedBy = "estimate", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
