@@ -263,91 +263,6 @@ public class PaymentServiceImpl implements PaymentService {
         return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
     }
 
-    @Transactional
-    public UnbilledInvoiceApprovalResponseDto approveUnbilledInvoice(
-            Long unbilledId, String remarks, Long approverUserId) {
-
-        log.info("Approving unbilled invoice | unbilledId: {}, approverId: {}", unbilledId, approverUserId);
-
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled invoice not found with ID: " + unbilledId,
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unbilledId
-                ));
-
-        if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
-            throw new IllegalStateException(
-                    "Only PENDING_APPROVAL unbilled invoices can be approved. Current status: " + unbilled.getStatus());
-        }
-
-        Company company = unbilled.getCompany();
-        CompanyUnit unit = unbilled.getUnit();
-
-        boolean companyApproved = company != null && company.getOnboardingStatus() == OnboardingStatus.APPROVED;
-        boolean unitApproved = unit == null || unit.getOnboardingStatus() == OnboardingStatus.APPROVED;
-
-        if (!companyApproved || !unitApproved) {
-            String msg = "Cannot approve because ";
-            if (!companyApproved) msg += "company not approved. ";
-            if (!unitApproved) msg += "unit not approved.";
-            throw new ApprovalBlockedException(msg, companyApproved, unitApproved);
-        }
-
-        User approver = userRepository.findById(approverUserId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Approver not found with ID: " + approverUserId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        approverUserId
-                ));
-
-        List<PaymentReceipt> paymentsToInvoice = paymentReceiptRepository.findUninvoicedPaymentsByUnbilledId(unbilledId);
-
-        if (paymentsToInvoice.isEmpty()) {
-            throw new ValidationException("No uninvoiced payments found to generate invoice(s)", "NO_PAYMENTS_TO_INVOICE");
-        }
-
-        List<Invoice> generated = new ArrayList<>();
-        for (PaymentReceipt receipt : paymentsToInvoice) {
-            Invoice inv = invoiceService.generateInvoiceForPayment(unbilled, receipt, approver);
-            generated.add(inv);
-        }
-
-        unbilled.setStatus(UnbilledStatus.APPROVED);
-        unbilled.setApprovedBy(approver);
-        unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
-        unbilled.setApprovalRemarks(remarks != null ? remarks.trim() : "Approved");
-        unbilled.setRejectionReason(null);
-
-        Estimate estimate = unbilled.getEstimate();
-        estimate.setStatus(EstimateStatus.APPROVED);
-        estimateRepository.save(estimate);
-        unbilledInvoiceRepository.save(unbilled);
-
-        log.info("Unbilled {} approved → {} invoice(s) generated", unbilled.getUnbilledNumber(), generated.size());
-
-        // External operation service call
-        try {
-            ResponseEntity<OperationCompanyResponseDto> res = operationFeignClient.getCompanyById(company.getId());
-            if (res.getStatusCode().is2xxSuccessful()) {
-                log.info("Company already exists in operation service | companyId={}", company.getId());
-            }
-        } catch (FeignException ex) {
-            if (ex.status() == 404) {
-                log.info("Company not found in operation service, creating | companyId={}", company.getId());
-//                operationCompanyCreationMethod(company);
-            } else {
-                log.error("Operation service error | companyId={} | status={} | message={}",
-                        company.getId(), ex.status(), ex.getMessage());
-                throw ex;
-            }
-        }
-
-        return buildApprovalResponse(unbilled, approver, company, unit, estimate);
-    }
-
     @Override
     @Transactional
     public void rejectUnbilledInvoice(Long unbilledId, String rejectionReason, Long approverUserId) {
@@ -597,7 +512,7 @@ public class PaymentServiceImpl implements PaymentService {
             if (ex.status() == 404) {
 
                 log.info("Company not found in operation service, creating | companyId={}", company.getId());
-//                this.operationCompanyCreationMethod(company);
+                this.operationCompanyCreationMethod(company);
 
             } else {
 
@@ -901,9 +816,82 @@ public class PaymentServiceImpl implements PaymentService {
         return String.format("UNB-%d-%08d", year, count);
     }
 
-//    private void operationCompanyCreationMethod(Company company) {
-//        OperationCompanyRequestDto operationCompanyRequestDto = this.mapOperationCompanyRequestDto(company);
-//        operationFeignClient.createCompany(operationCompanyRequestDto, company.getId());
-//    }
+    private void operationCompanyCreationMethod(Company company) {
+        OperationCompanyRequestDto operationCompanyRequestDto = this.mapOperationCompanyRequestDto(company);
+        operationFeignClient.createCompany(operationCompanyRequestDto, company.getId());
+    }
+
+    private OperationCompanyRequestDto mapOperationCompanyRequestDto(Company company) {
+
+        OperationCompanyRequestDto dto = new OperationCompanyRequestDto();
+
+        /* ---------------- Company Basic Info ---------------- */
+
+        dto.setName(company.getName());
+        dto.setPanNo(company.getPanNo());
+        dto.setEstablishDate(company.getEstablishDate());
+        dto.setIndustry(company.getIndustry());
+        dto.setIndustries(company.getIndustries());
+        dto.setSubIndustry(company.getSubIndustry());
+        dto.setSubSubIndustry(company.getSubsubIndustry());
+
+        if (company.getCreatedBy() != null) {
+            dto.setCreatedBy(company.getCreatedBy().getId());
+        }
+
+        /* ---------------- Company Units ---------------- */
+
+        if (company.getUnits() != null && !company.getUnits().isEmpty()) {
+
+            for (CompanyUnit unit : company.getUnits()) {
+
+                OperationCompanyUnitRequestDto unitDto = new OperationCompanyUnitRequestDto();
+
+                unitDto.setUnitId(unit.getId());
+                unitDto.setUnitName(unit.getUnitName());
+                unitDto.setAddress(unit.getAddressLine1());
+                unitDto.setCity(unit.getCity());
+                unitDto.setState(unit.getState());
+                unitDto.setCountry(unit.getCountry());
+                unitDto.setPinCode(unit.getPinCode());
+                unitDto.setGstNo(unit.getGstNo());
+                unitDto.setStatus(unit.getStatus());
+
+                dto.getUnits().add(unitDto);
+
+
+                /* ---------------- Contacts From Unit ---------------- */
+
+                List<Contact> contacts = contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
+
+                for (Contact contact : contacts) {
+
+                    OperationContactRequestDto contactDto = new OperationContactRequestDto();
+
+                    contactDto.setContactId(contact.getId());
+                    contactDto.setName(contact.getName());
+                    contactDto.setTitle(contact.getTitle());
+                    contactDto.setDesignation(contact.getDesignation());
+                    contactDto.setEmail(contact.getEmails());
+                    contactDto.setContactNo(contact.getContactNo());
+                    contactDto.setWhatsappNo(contact.getWhatsappNo());
+
+                    contactDto.setCompanyId(company.getId());
+                    contactDto.setUnitId(unit.getId());
+                    contactDto.setCreatedBy(
+                            unit.getCreatedBy() != null ? unit.getCreatedBy().getId() : null
+                    );
+
+                    contactDto.setUpdatedBy(
+                            unit.getUpdatedBy() != null ? unit.getUpdatedBy().getId() : null
+                    );
+
+                    dto.getContacts().add(contactDto);
+                }
+            }
+        }
+
+        return dto;
+    }
 
 }
