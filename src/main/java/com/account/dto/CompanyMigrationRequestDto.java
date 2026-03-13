@@ -16,9 +16,9 @@ import java.util.List;
 public class CompanyMigrationRequestDto {
 
     @NotNull(message = "companyId is mandatory")
-    private Long companyId;           // decisive ID — must always be sent
+    private Long companyId;
 
-    private String uuid;              // optional — will generate if missing
+    private String uuid;
 
     @NotBlank(message = "Company name is required")
     private String name;
