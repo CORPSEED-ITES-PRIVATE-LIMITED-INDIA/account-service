@@ -11,14 +11,21 @@ import com.account.dto.company.migrate.ContactSyncDto;
 import com.account.dto.company.request.*;
 import com.account.dto.company.response.CompanyResponseDto;
 import com.account.dto.company.response.CompanyUnitResponseDto;
+import com.account.dto.operationService.OperationCompanyRequestDto;
+import com.account.dto.operationService.OperationCompanyResponseDto;
+import com.account.dto.operationService.OperationCompanyUnitRequestDto;
+import com.account.dto.operationService.OperationContactRequestDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
+import com.account.feignClient.OperationFeignClient;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
 import com.account.repository.ContactRepository;
 import com.account.repository.UserRepository;
 import com.account.service.company.CompanyService;
 import com.account.util.DateTimeUtil;
+import feign.FeignException;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,6 +33,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -48,17 +56,21 @@ public class CompanyServiceImpl implements CompanyService {
     @Autowired
     private ContactRepository contactRepository;
 
+    private final OperationFeignClient operationFeignClient;
+
+
 
 
     public CompanyServiceImpl(
             CompanyRepository companyRepository,
             CompanyUnitRepository companyUnitRepository,
             UserRepository userRepository,
-            DateTimeUtil dateTimeUtil) {
+            DateTimeUtil dateTimeUtil, OperationFeignClient operationFeignClient) {
         this.companyRepository = companyRepository;
         this.companyUnitRepository = companyUnitRepository;
         this.userRepository = userRepository;
         this.dateTimeUtil = dateTimeUtil;
+        this.operationFeignClient = operationFeignClient;
     }
 
     // =========================================================
@@ -413,6 +425,41 @@ public class CompanyServiceImpl implements CompanyService {
                 unitId, companyId,
                 request.getApprove() ? "APPROVED" : "DISAPPROVED",
                 reviewedById, company.getOnboardingStatus().name());
+
+
+        System.out.println("Operation Company Creation API Callled! ");
+
+        try {
+
+            ResponseEntity<OperationCompanyResponseDto> res =
+                    operationFeignClient.getCompanyById(company.getId());
+
+            if (res.getStatusCode().is2xxSuccessful()) {
+                logger.info("Company already exists in operation service | companyId={}", company.getId());
+            }
+
+        } catch (FeignException ex) {
+
+            if (ex.status() == 404) {
+
+                logger.info("Company not found in operation service, creating | companyId={}", company.getId());
+                this.operationCompanyCreationMethod(company);
+
+            } else {
+
+                logger.error(
+                        "Operation service error while checking company | companyId={} | status={} | message={}",
+                        company.getId(),
+                        ex.status(),
+                        ex.getMessage()
+                );
+
+                throw ex; // propagate error so transaction fails properly
+            }
+        }
+
+
+        System.out.println("Operation Company Creation API Completed! ");
 
         return mapToResponseDto(company);
     }
@@ -936,4 +983,84 @@ public class CompanyServiceImpl implements CompanyService {
 
         return mapToResponseDto(company);
     }
+
+    private void operationCompanyCreationMethod(Company company) {
+        OperationCompanyRequestDto operationCompanyRequestDto = this.mapOperationCompanyRequestDto(company);
+        operationFeignClient.createCompany(operationCompanyRequestDto, company.getId());
+    }
+
+    private OperationCompanyRequestDto mapOperationCompanyRequestDto(Company company) {
+
+        OperationCompanyRequestDto dto = new OperationCompanyRequestDto();
+
+        /* ---------------- Company Basic Info ---------------- */
+
+        dto.setName(company.getName());
+        dto.setPanNo(company.getPanNo());
+        dto.setEstablishDate(company.getEstablishDate());
+        dto.setIndustry(company.getIndustry());
+        dto.setIndustries(company.getIndustries());
+        dto.setSubIndustry(company.getSubIndustry());
+        dto.setSubSubIndustry(company.getSubsubIndustry());
+
+        if (company.getCreatedBy() != null) {
+            dto.setCreatedBy(company.getCreatedBy().getId());
+        }
+
+        /* ---------------- Company Units ---------------- */
+
+        if (company.getUnits() != null && !company.getUnits().isEmpty()) {
+
+            for (CompanyUnit unit : company.getUnits()) {
+
+                OperationCompanyUnitRequestDto unitDto = new OperationCompanyUnitRequestDto();
+
+                unitDto.setUnitId(unit.getId());
+                unitDto.setUnitName(unit.getUnitName());
+                unitDto.setAddress(unit.getAddressLine1());
+                unitDto.setCity(unit.getCity());
+                unitDto.setState(unit.getState());
+                unitDto.setCountry(unit.getCountry());
+                unitDto.setPinCode(unit.getPinCode());
+                unitDto.setGstNo(unit.getGstNo());
+                unitDto.setStatus(unit.getStatus());
+
+                dto.getUnits().add(unitDto);
+
+
+                /* ---------------- Contacts From Unit ---------------- */
+
+                List<Contact> contacts = contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
+
+                for (Contact contact : contacts) {
+
+                    OperationContactRequestDto contactDto = new OperationContactRequestDto();
+
+                    contactDto.setContactId(contact.getId());
+                    contactDto.setName(contact.getName());
+                    contactDto.setTitle(contact.getTitle());
+                    contactDto.setDesignation(contact.getDesignation());
+                    contactDto.setEmail(contact.getEmails());
+                    contactDto.setContactNo(contact.getContactNo());
+                    contactDto.setWhatsappNo(contact.getWhatsappNo());
+
+                    contactDto.setCompanyId(company.getId());
+                    contactDto.setUnitId(unit.getId());
+                    contactDto.setCreatedBy(
+                            unit.getCreatedBy() != null ? unit.getCreatedBy().getId() : null
+                    );
+
+                    contactDto.setUpdatedBy(
+                            unit.getUpdatedBy() != null ? unit.getUpdatedBy().getId() : null
+                    );
+
+                    dto.getContacts().add(contactDto);
+                }
+            }
+        }
+
+        return dto;
+    }
+
+
 }

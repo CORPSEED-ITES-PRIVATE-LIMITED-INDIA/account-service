@@ -3,10 +3,7 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
-import com.account.dto.operationService.OperationCompanyRequestDto;
-import com.account.dto.operationService.OperationCompanyResponseDto;
-import com.account.dto.operationService.OperationCompanyUnitRequestDto;
-import com.account.dto.operationService.OperationContactRequestDto;
+import com.account.dto.operationService.*;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -496,39 +493,8 @@ public class PaymentServiceImpl implements PaymentService {
         response.setUpdatedBy(approver.getId());
         response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
 
-        System.out.println("Operation API Callled! ");
+        this.operationProjectCreationMethod(unbilled, estimate, response);
 
-        try {
-
-            ResponseEntity<OperationCompanyResponseDto> res =
-                    operationFeignClient.getCompanyById(company.getId());
-
-            if (res.getStatusCode().is2xxSuccessful()) {
-                log.info("Company already exists in operation service | companyId={}", company.getId());
-            }
-
-        } catch (FeignException ex) {
-
-            if (ex.status() == 404) {
-
-                log.info("Company not found in operation service, creating | companyId={}", company.getId());
-                this.operationCompanyCreationMethod(company);
-
-            } else {
-
-                log.error(
-                        "Operation service error while checking company | companyId={} | status={} | message={}",
-                        company.getId(),
-                        ex.status(),
-                        ex.getMessage()
-                );
-
-                throw ex; // propagate error so transaction fails properly
-            }
-        }
-
-
-        System.out.println("Operation API Completed! ");
         return response;
     }
 
@@ -816,82 +782,60 @@ public class PaymentServiceImpl implements PaymentService {
         return String.format("UNB-%d-%08d", year, count);
     }
 
-    private void operationCompanyCreationMethod(Company company) {
-        OperationCompanyRequestDto operationCompanyRequestDto = this.mapOperationCompanyRequestDto(company);
-        operationFeignClient.createCompany(operationCompanyRequestDto, company.getId());
+
+
+    private void operationProjectCreationMethod(UnbilledInvoice unbilled,
+                                                Estimate estimate,
+                                                UnbilledInvoiceApprovalResponseDto response) {
+
+        try {
+            log.info("Starting operation project creation | unbilled: {}", unbilled.getUnbilledNumber());
+
+
+            OperationProjectRequestDto projectDto = new OperationProjectRequestDto();
+
+            projectDto.setName(response.getName());
+            projectDto.setProjectNo(response.getProjectNo());
+
+            projectDto.setSalesPersonId(response.getSalesPersonId());
+            projectDto.setSalesPersonName(response.getSalesPersonName());
+
+            projectDto.setProductId(response.getProductId());
+            projectDto.setCompanyId(response.getCompanyId());
+
+            projectDto.setUnbilledNumber(response.getUnbilledNumber());
+            projectDto.setEstimateNumber(response.getEstimateNumber());
+
+            projectDto.setContactId(response.getContactId());
+            projectDto.setLeadId(response.getLeadId());
+
+            projectDto.setDate(response.getDate());
+
+            projectDto.setTotalAmount(response.getTotalAmount());
+            projectDto.setPaidAmount(response.getPaidAmount());
+
+            projectDto.setPaymentTypeId(response.getPaymentTypeId());
+
+            projectDto.setApprovedById(response.getApprovedById());
+            projectDto.setCreatedBy(response.getCreatedBy());
+            projectDto.setUpdatedBy(response.getUpdatedBy());
+
+            projectDto.setUnitId(response.getCompanyUnitId());
+
+            operationFeignClient.createProject(projectDto);
+
+            log.info("Project successfully created in operation-service | projectNo={}", projectDto.getProjectNo());
+
+        } catch (Error error) {
+            // ❗ DO NOT break main transaction (invoice approval)
+            log.error("Failed to create project in operation-service | unbilled={} | error={}",
+                    unbilled.getUnbilledNumber(), error.getMessage(), error);
+
+            throw error;
+
+            // Optional: push to retry queue / event / dead-letter
+        }
     }
 
-    private OperationCompanyRequestDto mapOperationCompanyRequestDto(Company company) {
-
-        OperationCompanyRequestDto dto = new OperationCompanyRequestDto();
-
-        /* ---------------- Company Basic Info ---------------- */
-
-        dto.setName(company.getName());
-        dto.setPanNo(company.getPanNo());
-        dto.setEstablishDate(company.getEstablishDate());
-        dto.setIndustry(company.getIndustry());
-        dto.setIndustries(company.getIndustries());
-        dto.setSubIndustry(company.getSubIndustry());
-        dto.setSubSubIndustry(company.getSubsubIndustry());
-
-        if (company.getCreatedBy() != null) {
-            dto.setCreatedBy(company.getCreatedBy().getId());
-        }
-
-        /* ---------------- Company Units ---------------- */
-
-        if (company.getUnits() != null && !company.getUnits().isEmpty()) {
-
-            for (CompanyUnit unit : company.getUnits()) {
-
-                OperationCompanyUnitRequestDto unitDto = new OperationCompanyUnitRequestDto();
-
-                unitDto.setUnitId(unit.getId());
-                unitDto.setUnitName(unit.getUnitName());
-                unitDto.setAddress(unit.getAddressLine1());
-                unitDto.setCity(unit.getCity());
-                unitDto.setState(unit.getState());
-                unitDto.setCountry(unit.getCountry());
-                unitDto.setPinCode(unit.getPinCode());
-                unitDto.setGstNo(unit.getGstNo());
-                unitDto.setStatus(unit.getStatus());
-
-                dto.getUnits().add(unitDto);
-
-
-                /* ---------------- Contacts From Unit ---------------- */
-
-                List<Contact> contacts = contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
-
-                for (Contact contact : contacts) {
-
-                    OperationContactRequestDto contactDto = new OperationContactRequestDto();
-
-                    contactDto.setContactId(contact.getId());
-                    contactDto.setName(contact.getName());
-                    contactDto.setTitle(contact.getTitle());
-                    contactDto.setDesignation(contact.getDesignation());
-                    contactDto.setEmail(contact.getEmails());
-                    contactDto.setContactNo(contact.getContactNo());
-                    contactDto.setWhatsappNo(contact.getWhatsappNo());
-
-                    contactDto.setCompanyId(company.getId());
-                    contactDto.setUnitId(unit.getId());
-                    contactDto.setCreatedBy(
-                            unit.getCreatedBy() != null ? unit.getCreatedBy().getId() : null
-                    );
-
-                    contactDto.setUpdatedBy(
-                            unit.getUpdatedBy() != null ? unit.getUpdatedBy().getId() : null
-                    );
-
-                    dto.getContacts().add(contactDto);
-                }
-            }
-        }
-
-        return dto;
-    }
 
 }
