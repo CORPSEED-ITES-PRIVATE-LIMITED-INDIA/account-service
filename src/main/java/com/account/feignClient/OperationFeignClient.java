@@ -12,14 +12,14 @@ public interface OperationFeignClient {
 
 
 
-    @PostMapping("/api/companies/createCompany")
+    @PostMapping("/operationService/api/companies/createCompany")
     ResponseEntity<Void> createCompany(
             @RequestBody OperationCompanyRequestDto dto,
             @RequestParam("companyId") Long companyId
     );
 
 
-    @GetMapping("/api/companies/{companyId}")
+    @GetMapping("/operationService/api/companies/{companyId}")
     ResponseEntity<OperationCompanyResponseDto> getCompanyById(@PathVariable Long companyId);
 
 

@@ -14,7 +14,6 @@ import io.swagger.v3.oas.models.servers.Server;
 @Configuration
 public class OpenAPIConfig {
 
-
 	  private String devUrl="http://localhost:9002";
 
 	  private String prodUrl="http://localhost:9002";
