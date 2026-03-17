@@ -3,6 +3,7 @@ package com.account.feignClient;
 
 import com.account.dto.operationService.OperationCompanyRequestDto;
 import com.account.dto.operationService.OperationCompanyResponseDto;
+import com.account.dto.operationService.OperationProjectRequestDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,5 +24,8 @@ public interface OperationFeignClient {
     ResponseEntity<OperationCompanyResponseDto> getCompanyById(@PathVariable Long companyId);
 
 
+
+    @PostMapping("/api/projects")
+    ResponseEntity<?> createProject(@RequestBody OperationProjectRequestDto dto);
 
 }
