@@ -13,19 +13,23 @@ public interface OperationFeignClient {
 
 
 
-    @PostMapping("/api/companies/createCompany")
+    @PostMapping("/operationService/api/companies/createCompany")
     ResponseEntity<Void> createCompany(
             @RequestBody OperationCompanyRequestDto dto,
             @RequestParam("companyId") Long companyId
     );
 
 
-    @GetMapping("/api/companies/{companyId}")
+    @GetMapping("/operationService/api/companies/{companyId}")
     ResponseEntity<OperationCompanyResponseDto> getCompanyById(@PathVariable Long companyId);
 
 
 
-    @PostMapping("/api/projects")
+    @PostMapping("/operationService/api/projects")
     ResponseEntity<?> createProject(@RequestBody OperationProjectRequestDto dto);
+
+
+    @GetMapping("/operationService/api/projects/{unbilledNumber}")
+    ResponseEntity<?> getProjectByUnbilledNumber(@PathVariable String unbilledNumber);
 
 }

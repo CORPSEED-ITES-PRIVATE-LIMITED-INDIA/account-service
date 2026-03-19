@@ -493,7 +493,39 @@ public class PaymentServiceImpl implements PaymentService {
         response.setUpdatedBy(approver.getId());
         response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
 
-        this.operationProjectCreationMethod(unbilled, estimate, response);
+
+
+        try {
+
+            ResponseEntity<?> res =
+                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+            if (res.getStatusCode().is2xxSuccessful()) {
+                log.info("Project already exists in operation-service | unbilled={}",
+                        unbilled.getUnbilledNumber());
+            }
+
+        } catch (FeignException ex) {
+
+            if (ex.status() == 404) {
+
+                log.info("Project not found in operation-service, creating | unbilled={}",
+                        unbilled.getUnbilledNumber());
+
+                this.operationProjectCreationMethod(unbilled, estimate, response);
+
+            } else {
+
+                log.error(
+                        "Operation service error while checking project | unbilled={} | status={} | message={}",
+                        unbilled.getUnbilledNumber(),
+                        ex.status(),
+                        ex.getMessage()
+                );
+
+                throw ex;
+            }
+        }
 
         return response;
     }
