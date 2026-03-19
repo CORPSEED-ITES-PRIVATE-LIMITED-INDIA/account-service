@@ -36,6 +36,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -453,11 +454,6 @@ public class PaymentServiceImpl implements PaymentService {
         }
         unbilledInvoiceRepository.save(unbilled);
 
-
-
-
-        // 12. Build response
-
         UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
 
         // Project / Solution name fallback logic
@@ -466,7 +462,8 @@ public class PaymentServiceImpl implements PaymentService {
                         (company != null ? company.getName() + " - Project" : "Unnamed Project")
         );
 
-        response.setProjectNo("PRJ-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        response.setProjectNo(generateProjectNumber());
+
         response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
         response.setSalesPersonName(
                 unbilled.getCreatedBy() != null
@@ -475,6 +472,8 @@ public class PaymentServiceImpl implements PaymentService {
                         : unbilled.getCreatedBy().getEmail())
                         : null
         );
+
+
         response.setProductId(estimate != null ? estimate.getSolutionId() : null);
         response.setCompanyId(company != null ? company.getId() : null);
         response.setCompanyUnitId(unbilled.getUnit().getId());
@@ -493,43 +492,43 @@ public class PaymentServiceImpl implements PaymentService {
         response.setUpdatedBy(approver.getId());
         response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
 
-        this.operationProjectCreationMethod(unbilled, estimate, response);
+
+
+        try {
+
+            ResponseEntity<?> res =
+                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+            if (res.getStatusCode().is2xxSuccessful()) {
+                log.info("Project already exists in operation-service | unbilled={}",
+                        unbilled.getUnbilledNumber());
+            }
+
+        } catch (FeignException ex) {
+
+            if (ex.status() == 404) {
+
+                log.info("Project not found in operation-service, creating | unbilled={}",
+                        unbilled.getUnbilledNumber());
+
+                this.operationProjectCreationMethod(unbilled, estimate, response);
+
+            } else {
+
+                log.error(
+                        "Operation service error while checking project | unbilled={} | status={} | message={}",
+                        unbilled.getUnbilledNumber(),
+                        ex.status(),
+                        ex.getMessage()
+                );
+
+                throw ex;
+            }
+        }
 
         return response;
     }
 
-    private UnbilledInvoiceApprovalResponseDto buildApprovalResponse(
-            UnbilledInvoice unbilled, User approver, Company company, CompanyUnit unit, Estimate estimate) {
-
-        UnbilledInvoiceApprovalResponseDto dto = new UnbilledInvoiceApprovalResponseDto();
-
-        dto.setName(estimate != null ? estimate.getSolutionName() :
-                (company != null ? company.getName() + " - Project" : "Unnamed Project"));
-
-        dto.setProjectNo("PRJ-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        dto.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        dto.setSalesPersonName(getUserDisplayName(unbilled.getCreatedBy()));
-        dto.setProductId(estimate != null ? estimate.getSolutionId() : null);
-        dto.setCompanyId(company != null ? company.getId() : null);
-        dto.setCompanyUnitId(unit != null ? unit.getId() : null);
-        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
-        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
-        dto.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
-        dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
-        dto.setDate(LocalDate.now());
-        dto.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
-        dto.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
-
-        PaymentReceipt first = paymentReceiptRepository.findTopByUnbilledInvoiceOrderByIdAsc(unbilled)
-                .orElse(null);
-        dto.setPaymentTypeId(first != null && first.getPaymentType() != null ? first.getPaymentType().getId() : null);
-
-        dto.setApprovedById(approver.getId());
-        dto.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        dto.setUpdatedBy(approver.getId());
-
-        return dto;
-    }
 
     private String getUserDisplayName(User user) {
         if (user == null) return null;
@@ -835,6 +834,15 @@ public class PaymentServiceImpl implements PaymentService {
 
             // Optional: push to retry queue / event / dead-letter
         }
+    }
+
+    private String generateProjectNumber() {
+        String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+
+        long count = unbilledInvoiceRepository.count() + 1;
+        String sequence = String.format("%04d", count);
+
+        return "PRJ-" + datePart + "-" + sequence;
     }
 
 

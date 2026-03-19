@@ -28,4 +28,8 @@ public interface OperationFeignClient {
     @PostMapping("/operationService/api/projects")
     ResponseEntity<?> createProject(@RequestBody OperationProjectRequestDto dto);
 
+
+    @GetMapping("/operationService/api/projects/{unbilledNumber}")
+    ResponseEntity<?> getProjectByUnbilledNumber(@PathVariable String unbilledNumber);
+
 }
