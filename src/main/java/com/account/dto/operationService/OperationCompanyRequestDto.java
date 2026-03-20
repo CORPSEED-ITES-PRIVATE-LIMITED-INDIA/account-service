@@ -8,7 +8,7 @@ import java.util.List;
 
 
 @Data
-public class    OperationCompanyRequestDto {
+public class OperationCompanyRequestDto {
 
     // Company basic info
     private String name;

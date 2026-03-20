@@ -494,25 +494,75 @@ public class PaymentServiceImpl implements PaymentService {
         response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
 
 
+        if ("REJECTED".equals(request.getApprovalRemarks())) {
+            log.info("Skipping operation sync because invoice is REJECTED");
+            return response;
+        }
+
 
         try {
 
-            ResponseEntity<?> res =
+            ResponseEntity<OperationProjectResponseDto> res =
                     operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
 
-            if (res.getStatusCode().is2xxSuccessful()) {
-                log.info("Project already exists in operation-service | unbilled={}",
-                        unbilled.getUnbilledNumber());
+            if (res.getStatusCode().is2xxSuccessful() && res.getBody() != null) {
+
+                OperationProjectResponseDto project = res.getBody();
+
+                log.info("Project exists → syncing payment | projectId={}", project.getId());
+
+                // ===============================
+                // CALCULATE PAYMENT DELTA
+                // ===============================
+
+                double accountReceived = unbilled.getReceivedAmount() != null
+                        ? unbilled.getReceivedAmount().doubleValue()
+                        : 0.0;
+
+                double operationPaid = project.getTotalAmount() - project.getDueAmount();
+
+                double newPayment = accountReceived - operationPaid;
+
+                if (newPayment <= 0) {
+                    log.info("No new payment to sync | account={} operation={}",
+                            accountReceived, operationPaid);
+                    return response;
+                }
+
+                // ===============================
+                // CREATE PAYMENT DTO
+                // ===============================
+
+                OperationProjectPaymentTransactionDto dto = new OperationProjectPaymentTransactionDto();
+                dto.setAmount(newPayment);
+                dto.setPaymentDate(new Date());
+                dto.setCreatedBy(approver.getId());
+
+                // ===============================
+                // CALL OPERATION API
+                // ===============================
+
+                operationFeignClient.addPaymentTransaction(project.getUnbilledNumber(), dto);
+
+                log.info("Payment synced to operation | amount={}", newPayment);
             }
 
         } catch (FeignException ex) {
 
             if (ex.status() == 404) {
 
-                log.info("Project not found in operation-service, creating | unbilled={}",
-                        unbilled.getUnbilledNumber());
+                // 🚨 ONLY CREATE PROJECT (NO PAYMENT CALL HERE)
+                if (!"APPROVED".equals(request.getApprovalRemarks())) {
+                    log.info("Skipping project creation because status is not APPROVED");
+                    return response;
+                }
+
+                log.info("Project not found → creating project");
 
                 this.operationProjectCreationMethod(unbilled, estimate, response);
+
+                // ❌ DO NOT ADD PAYMENT HERE
+                // Payment already handled inside project creation
 
             } else {
 
@@ -526,6 +576,8 @@ public class PaymentServiceImpl implements PaymentService {
                 throw ex;
             }
         }
+
+
 
         return response;
     }
