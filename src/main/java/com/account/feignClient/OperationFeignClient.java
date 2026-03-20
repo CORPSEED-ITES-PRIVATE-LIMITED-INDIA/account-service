@@ -1,9 +1,8 @@
 package com.account.feignClient;
 
 
-import com.account.dto.operationService.OperationCompanyRequestDto;
-import com.account.dto.operationService.OperationCompanyResponseDto;
-import com.account.dto.operationService.OperationProjectRequestDto;
+import com.account.dto.operationService.*;
+import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +29,14 @@ public interface OperationFeignClient {
 
 
     @GetMapping("/operationService/api/projects/{unbilledNumber}")
-    ResponseEntity<?> getProjectByUnbilledNumber(@PathVariable String unbilledNumber);
+    ResponseEntity<OperationProjectResponseDto> getProjectByUnbilledNumber(@PathVariable String unbilledNumber);
+
+    @PostMapping("/operationService/api/projects/payments/unbilled/{unbilledNumber}")
+    ResponseEntity<?> addPaymentTransaction(
+            @PathVariable @Parameter(description = "Unbilled number of the project")  String unbilledNumber,
+            @RequestBody OperationProjectPaymentTransactionDto dto
+    );
+
+
 
 }
