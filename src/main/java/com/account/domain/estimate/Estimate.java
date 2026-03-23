@@ -48,6 +48,11 @@ public class Estimate {
     @Column(name = "estimate_number", nullable = false, unique = true, length = 32)
     private String estimateNumber;
 
+    @Column(name = "performance_invoice_number", nullable = false, unique = true, length = 32)
+    private String performanceInvoiceNumber;
+
+    private boolean performanceInvoiceFlag=false;
+
     @Column(name = "estimate_date", nullable = false)
     private LocalDate estimateDate = LocalDate.now();
 

@@ -19,6 +19,8 @@ import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
 import com.account.util.DateTimeUtil;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -386,12 +388,12 @@ public class PaymentServiceImpl implements PaymentService {
 
         // 7. Fetch approver
         User approver = userRepository.findById(request.getApproverUserId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Approver not found with ID: " + request.getApproverUserId(),
-                        "USER_NOT_FOUND",
-                        "User",
-                        request.getApproverUserId()
-                ));
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Approver not found with ID: " + request.getApproverUserId(),
+                            "USER_NOT_FOUND",
+                            "User",
+                            request.getApproverUserId()
+                    ));
         Estimate estimate  = unbilled.getEstimate();
         // 8. Update unbilled invoice to APPROVED (temporary state)
         if(request.getApprovalRemarks().equals("REJECTED")) {

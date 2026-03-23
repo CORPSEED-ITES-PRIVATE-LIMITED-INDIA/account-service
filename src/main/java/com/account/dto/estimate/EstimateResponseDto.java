@@ -28,6 +28,8 @@ public class EstimateResponseDto {
 
     // Human-readable estimate number
     private String estimateNumber;
+    private String performanceInvoiceNumber;
+    private boolean performanceInvoiceFlag;
 
     private LocalDate estimateDate;
     private LocalDate validUntil;

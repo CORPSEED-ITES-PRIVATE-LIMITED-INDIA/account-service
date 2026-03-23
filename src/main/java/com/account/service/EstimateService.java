@@ -51,6 +51,8 @@ public interface EstimateService {
 
     Page<EstimateResponseDto> searchEstimates(EstimateSearchRequestDto request, Long userId);
 
+    EstimateResponseDto convertIntPI(Long estimateId, Long requestingUserId);
+
     void sendEstimate(Long estimateId, Long requestingUserId);
 }
 
