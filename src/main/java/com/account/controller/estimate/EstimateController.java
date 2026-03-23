@@ -248,6 +248,15 @@ public class EstimateController {
         return ResponseEntity.ok("Email sent successfully! ");
     }
 
+    @PostMapping("/convertIntoPI/{estimateId}")
+    public ResponseEntity<EstimateResponseDto> convertIntPI(
+            @PathVariable Long estimateId,
+            @RequestParam Long requestingUserId
+    ){
+        EstimateResponseDto dto = estimateService.convertIntPI(estimateId, requestingUserId);
+        return ResponseEntity.ok(dto);
+    }
+
 
 
 

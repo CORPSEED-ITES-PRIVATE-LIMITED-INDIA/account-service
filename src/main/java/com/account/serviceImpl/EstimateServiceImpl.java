@@ -153,6 +153,8 @@ public class EstimateServiceImpl implements EstimateService {
 
         String estimateNumber = generateEstimateNumber();
         estimate.setEstimateNumber(estimateNumber);
+        estimate.setPerformanceInvoiceNumber(generatePINumber());
+        estimate.setPerformanceInvoiceFlag(false);
         estimate.setLeadId(requestDto.getLeadId());
 
         estimate.setEstimateDate(requestDto.getEstimateDate() != null
@@ -279,6 +281,13 @@ public class EstimateServiceImpl implements EstimateService {
         return number;
     }
 
+    private String generatePINumber() {
+        long count = estimateRepository.count() + 1;
+        String number = String.format("PI-%d-%06d", LocalDate.now().getYear(), count);
+        log.debug("Generated PI number: {}", number);
+        return number;
+    }
+
     @Override
     public EstimateResponseDto getEstimateById(Long estimateId, Long requestingUserId) {
         log.info("Fetching estimate | estimateId={} | requestedByUser={}", estimateId, requestingUserId);
@@ -362,6 +371,8 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLeadId(estimate.getLeadId());
         dto.setPublicUuid(estimate.getPublicUuid());
         dto.setEstimateNumber(estimate.getEstimateNumber());
+        dto.setPerformanceInvoiceNumber(estimate.getPerformanceInvoiceNumber());
+        dto.setPerformanceInvoiceFlag(estimate.isPerformanceInvoiceFlag());
         dto.setEstimateDate(estimate.getEstimateDate());
         dto.setValidUntil(estimate.getValidUntil());
         dto.setSolutionName(estimate.getSolutionName());
@@ -1218,6 +1229,8 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setPublicUuid(estimate.getPublicUuid());
         dto.setLeadId(estimate.getLeadId());
         dto.setEstimateNumber(estimate.getEstimateNumber());
+        dto.setPerformanceInvoiceNumber(estimate.getPerformanceInvoiceNumber());
+        dto.setPerformanceInvoiceFlag(estimate.isPerformanceInvoiceFlag());
         dto.setEstimateDate(estimate.getEstimateDate());
         dto.setValidUntil(estimate.getValidUntil());
 
@@ -1519,7 +1532,37 @@ public class EstimateServiceImpl implements EstimateService {
     }
 
 
+    @Override
+    public EstimateResponseDto convertIntPI(Long estimateId, Long requestingUserId){
+        log.info("Converting estimate into performace invoice", estimateId, requestingUserId);
 
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
+        // Basic security check
+        if (!userRepository.existsById(requestingUserId)) {
+            log.warn("User not found: userId={}", requestingUserId);
+            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        if (estimateId == null || estimateId <= 0) {
+            throw new ValidationException("Invalid estimateId", "ERR_INVALID_ESTIMATE_ID", "estimateId");
+        }
+
+        // Fetch the estimate
+        Estimate estimate = estimateRepository.findById(estimateId)
+                .orElseThrow(() -> {
+                    log.warn("Estimate not found: id={}", estimateId);
+                    return new ResourceNotFoundException("Estimate not found", "ESTIMATE_NOT_FOUND");
+                });
+
+
+        estimate.setPerformanceInvoiceFlag(true);
+        estimateRepository.save(estimate);
+        return mapToEstimateResponseDto(estimate);
+
+    }
 
 
 
