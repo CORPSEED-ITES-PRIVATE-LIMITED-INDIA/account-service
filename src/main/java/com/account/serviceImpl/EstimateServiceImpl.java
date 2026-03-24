@@ -461,7 +461,7 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLineItems(itemDtos);
 
 
-        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findTopByEstimateOrderByCreatedAtDesc(estimate);
+        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(estimate);
 
         if (unbilledOpt.isPresent()) {
 
@@ -902,7 +902,7 @@ public class EstimateServiceImpl implements EstimateService {
                 .map(Estimate::getId)
                 .toList();
         List<UnbilledInvoice> unbilledList =
-                unbilledRepository.findByEstimateIdIn(estimateIds);
+                unbilledRepository.findByEstimateIdInAndIsCancelledFalse(estimateIds);
 
         long totalUnbilledCount = unbilledList.size();
 

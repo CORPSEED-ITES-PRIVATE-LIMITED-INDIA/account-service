@@ -6,7 +6,6 @@ import com.account.domain.estimate.Estimate;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -19,15 +18,16 @@ import java.util.Optional;
 @Repository
 public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice, Long> {
 
-    Optional<UnbilledInvoice> findByEstimate(Estimate estimate);
+    Optional<UnbilledInvoice> findByEstimateAndIsCancelledFalse(Estimate estimate);
 
-    Optional<UnbilledInvoice> findTopByEstimateOrderByCreatedAtDesc(Estimate estimate);
+    Optional<UnbilledInvoice> findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(Estimate estimate);
 
-    Optional<UnbilledInvoice> findByEstimateAndStatusNot(Estimate estimate, UnbilledStatus status);
+    Optional<UnbilledInvoice> findByEstimateAndStatusNotAndIsCancelledFalse(Estimate estimate, UnbilledStatus status);
     @Query("""
         SELECT u
         FROM UnbilledInvoice u
-        WHERE
+        WHERE u.isCancelled = false
+        AND
             (:userId IS NULL
                 OR u.createdBy.id = :userId
                 OR u.approvedBy.id = :userId)
@@ -40,19 +40,19 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             Pageable pageable
     );
 
-    long countByCreatedByIdOrApprovedById(Long createdById, Long approvedById);
+    long countByCreatedByIdOrApprovedByIdAndIsCancelledFalse(Long createdById, Long approvedById);
 
-    long countByStatus(UnbilledStatus status);
+    long countByStatusAndIsCancelledFalse(UnbilledStatus status);
 
-    long countByCreatedByIdOrApprovedByIdAndStatus(Long createdById, Long approvedById, UnbilledStatus status);
+    long countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(Long createdById, Long approvedById, UnbilledStatus status);
 
     @Query("""
         SELECT u FROM UnbilledInvoice u
         LEFT JOIN u.company c
-        WHERE (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
+        WHERE u.isCancelled = false AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
         AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
         """)
-    Page<UnbilledInvoice> searchUnbilledInvoices(
+    Page<UnbilledInvoice> searchUnbilledInvoicesAndIsCancelledFalse(
             @Param("unbilledNumber") String unbilledNumber,
             @Param("companyName") String companyName,
             Pageable pageable
@@ -61,19 +61,19 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     @Query("""
         SELECT COUNT(u) FROM UnbilledInvoice u
         LEFT JOIN u.company c
-        WHERE (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
+        WHERE u.isCancelled = false AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
         AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
         """)
-    long countSearchUnbilledInvoices(
+    long countSearchUnbilledInvoicesAndIsCancelledFalse(
             @Param("unbilledNumber") String unbilledNumber,
             @Param("companyName") String companyName
     );
 
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select u from UnbilledInvoice u where u.estimate = :estimate")
-    Optional<UnbilledInvoice> findByEstimateForUpdate(@Param("estimate") Estimate estimate);
+    @Query("select u from UnbilledInvoice u where u.estimate = :estimate AND u.isCancelled = false")
+    Optional<UnbilledInvoice> findByEstimateAndIsCancelledFalseForUpdate(@Param("estimate") Estimate estimate);
 
 
-    List<UnbilledInvoice> findByEstimateIdIn(List<Long> estimateIds);
+    List<UnbilledInvoice> findByEstimateIdInAndIsCancelledFalse(List<Long> estimateIds);
 }

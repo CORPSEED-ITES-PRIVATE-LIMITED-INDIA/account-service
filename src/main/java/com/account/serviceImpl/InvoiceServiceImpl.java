@@ -18,7 +18,6 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.*;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -236,7 +235,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-		Page<Invoice> pageResult = invoiceRepository.findInvoices(status, createdByIdFilter, pageable);
+		Page<Invoice> pageResult = invoiceRepository.findInvoicesAndIsCancelledFalse(status, createdByIdFilter, pageable);
 
 		return pageResult.getContent().stream()
 				.map(this::toSummaryDto)

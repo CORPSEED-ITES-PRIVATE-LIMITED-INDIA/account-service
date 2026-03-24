@@ -84,6 +84,8 @@ public class Invoice {
     @Column(length = 3, nullable = false)
     private String currency = "INR";
 
+    private boolean isCancelled = false;
+
     @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<InvoiceLineItem> lineItems = new ArrayList<>();
 

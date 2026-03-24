@@ -80,6 +80,7 @@ public class InvoiceLineItem {
 
     @Column(length = 100)
     private String categoryCode;
+    private boolean isCancelled = false;
 
     @Column(length = 50)
     private String feeType;
