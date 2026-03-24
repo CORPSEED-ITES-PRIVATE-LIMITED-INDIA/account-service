@@ -651,6 +651,7 @@ public class PaymentServiceImpl implements PaymentService {
             dto.setGstNo(unit.getGstNo());
         }
 
+
         dto.setTotalAmount(unbilled.getTotalAmount());
         dto.setReceivedAmount(unbilled.getReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
