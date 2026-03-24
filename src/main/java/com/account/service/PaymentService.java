@@ -27,4 +27,6 @@ public interface PaymentService {
     UnbilledInvoiceDetailDto getUnbilledInvoice(Long id, Long userId);
 
     void rejectUnbilledInvoice(Long unbilledId, String trim, Long approverUserId);
+
+    void cancelUnbilled(Long id,String reason);
 }

@@ -167,4 +167,17 @@ public class UnbilledInvoiceController {
         UnbilledInvoiceDetailDto unbilledInvoiceDetailDto = paymentService.getUnbilledInvoice(id, userId);
         return ResponseEntity.ok(unbilledInvoiceDetailDto);
     }
+
+
+    @PutMapping("/cancel/{id}")
+    public ResponseEntity<?> cancelUnbilled(
+            @PathVariable Long id,
+            @RequestParam String reason) {
+
+        paymentService.cancelUnbilled(id, reason);
+
+        return ResponseEntity.ok("Unbilled cancelled successfully");
+    }
+
+
 }

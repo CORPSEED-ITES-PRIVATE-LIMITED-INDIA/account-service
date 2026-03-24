@@ -18,7 +18,7 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSp
 
     @Query("""
         SELECT e FROM Estimate e
-        WHERE e.leadId = :leadId
+        WHERE e.isCancelled=false AND e.leadId = :leadId
           AND e.isDeleted = false
         ORDER BY e.createdAt DESC
         """)
@@ -27,21 +27,21 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSp
     // Keep the exact same method name as before
     @Query("""
         SELECT e FROM Estimate e
-        WHERE e.company.id = :companyId
+        WHERE e.isCancelled=false AND e.company.id = :companyId
           AND e.isDeleted = false
         ORDER BY e.createdAt DESC
         """)
     List<Estimate> findByCompanyIdAndIsDeletedFalseOrderByCreatedAtDesc(@Param("companyId") Long companyId);
 
-    Page<Estimate> findByCreatedById(Long requestingUserId, Pageable pageable);
+    Page<Estimate> findByCreatedByIdAndIsDeletedFalseAndIsCancelledFalse(Long requestingUserId, Pageable pageable);
 
     /**
      * Count all non-deleted estimates (for admins)
      */
-    long countByIsDeletedFalse();
+    long countByIsDeletedFalseAndIsCancelledFalse();
 
     /**
      * Count non-deleted estimates created by a specific user
      */
-    long countByCreatedByIdAndIsDeletedFalse(Long createdById);
+    long countByCreatedByIdAndIsDeletedFalseAndIsCancelledFalse(Long createdById);
 }

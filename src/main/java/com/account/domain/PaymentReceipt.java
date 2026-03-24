@@ -48,6 +48,8 @@ public class PaymentReceipt {
     @Column(name = "payment_date", nullable = false)
     private LocalDate paymentDate;
 
+    private boolean isCancelled = false;
+
     @Column(length = 50)
     private String paymentMode;  // UPI, NEFT, RTGS, CASH, CARD, CHEQUE, etc.
 

@@ -13,15 +13,19 @@ import java.util.Optional;
 @Repository
 public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, Long> {
 
-    Optional<PaymentReceipt> findTopByUnbilledInvoiceOrderByIdAsc(UnbilledInvoice unbilledInvoice);
+    Optional<PaymentReceipt> findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(UnbilledInvoice unbilledInvoice);
 
-    @Query("SELECT pr FROM PaymentReceipt pr " +
-            "WHERE pr.unbilledInvoice.id = :unbilledId " +
-            "AND NOT EXISTS (" +
-            "   SELECT i FROM Invoice i " +
-            "   WHERE i.triggeringPayment.id = pr.id" +
-            ") " +
-            "ORDER BY pr.paymentDate ASC")
+    @Query("""
+    SELECT pr FROM PaymentReceipt pr
+    WHERE pr.unbilledInvoice.id = :unbilledId
+    AND pr.isCancelled = false
+    AND NOT EXISTS (
+        SELECT i FROM Invoice i
+        WHERE i.triggeringPayment.id = pr.id
+        AND i.isCancelled = false
+    )
+    ORDER BY pr.paymentDate ASC
+    """)
     List<PaymentReceipt> findUninvoicedPaymentsByUnbilledId(@Param("unbilledId") Long unbilledId);
 
 

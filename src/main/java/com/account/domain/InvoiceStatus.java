@@ -1,6 +1,8 @@
 package com.account.domain;
 
 public enum InvoiceStatus {
-    GENERATED
+    GENERATED,
+    CANCELLED,
+    REFUNDED
 
 }

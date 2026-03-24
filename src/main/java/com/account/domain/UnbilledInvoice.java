@@ -81,6 +81,8 @@ public class UnbilledInvoice {
     @Column(columnDefinition = "TEXT")
     private String approvalRemarks;
 
+    private boolean isCancelled = false;
+
     @Column(columnDefinition = "TEXT")
     private String rejectionReason;
 

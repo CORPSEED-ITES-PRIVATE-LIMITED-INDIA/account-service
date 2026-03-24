@@ -133,6 +133,7 @@ public class Estimate {
     private String revisionReason;
 
     private boolean isDeleted = false;
+    private boolean isCancelled = false;
 
     // Auditing
     @CreatedBy

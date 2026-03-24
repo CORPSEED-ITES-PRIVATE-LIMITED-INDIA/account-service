@@ -37,6 +37,8 @@ public interface OperationFeignClient {
             @RequestBody OperationProjectPaymentTransactionDto dto
     );
 
+    @PutMapping("/operationService/api/projects/cancel/{unbilledNumber}")
+    ResponseEntity<OperationProjectResponseDto> cancelProjectByUnbilledNumber(@PathVariable String unbilledNumber);
 
 
 }

@@ -19,8 +19,6 @@ import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
 import com.account.util.DateTimeUtil;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -115,7 +113,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // Find or create Unbilled Invoice
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findByEstimate(estimate).orElse(null);
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findByEstimateAndIsCancelledFalse(estimate).orElse(null);
         boolean isFirstPayment = (unbilled == null);
 
         if (isFirstPayment) {
@@ -152,7 +150,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // Prevent changing payment type after first payment
-        paymentReceiptRepository.findTopByUnbilledInvoiceOrderByIdAsc(unbilled).ifPresent(firstReceipt -> {
+        paymentReceiptRepository.findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(unbilled).ifPresent(firstReceipt -> {
             String firstCode = firstReceipt.getPaymentType().getCode().trim().toUpperCase();
             String newCode = paymentType.getCode().trim().toUpperCase();
 
@@ -312,7 +310,7 @@ public class PaymentServiceImpl implements PaymentService {
         estimate.setStatus(EstimateStatus.REJECTED);
         estimateRepository.save(estimate);
 
-        List<Invoice> existingInvoices = invoiceRepository.findByUnbilledInvoiceId(unbilled.getId());
+        List<Invoice> existingInvoices = invoiceRepository.findByUnbilledInvoiceIdAndIsCancelledFalse(unbilled.getId());
         BigDecimal invoicedTotal = existingInvoices.stream()
                 .map(Invoice::getGrandTotal)
                 .filter(Objects::nonNull)
@@ -403,7 +401,7 @@ public class PaymentServiceImpl implements PaymentService {
             estimate.setStatus(EstimateStatus.REJECTED);
 
             // Fetch all invoices for this unbilled
-            List<Invoice> invoices = invoiceRepository.findByUnbilledInvoiceId(unbilled.getId());
+            List<Invoice> invoices = invoiceRepository.findByUnbilledInvoiceIdAndIsCancelledFalse(unbilled.getId());
 
             BigDecimal approvedTotal = invoices.stream()
                     .map(Invoice::getGrandTotal)
@@ -606,7 +604,7 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
         dto.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
 
-        PaymentReceipt first = paymentReceiptRepository.findTopByUnbilledInvoiceOrderByIdAsc(unbilled)
+        PaymentReceipt first = paymentReceiptRepository.findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(unbilled)
                 .orElse(null);
         dto.setPaymentTypeId(first != null && first.getPaymentType() != null ? first.getPaymentType().getId() : null);
 
@@ -798,11 +796,11 @@ public class PaymentServiceImpl implements PaymentService {
                 status != null ? status : "all");
 
         if (userId != null && status != null) {
-            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndStatus(userId, userId, status);
+            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(userId, userId, status);
         } else if (userId != null) {
-            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedById(userId, userId);
+            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndIsCancelledFalse(userId, userId);
         } else if (status != null) {
-            return unbilledInvoiceRepository.countByStatus(status);
+            return unbilledInvoiceRepository.countByStatusAndIsCancelledFalse(status);
         } else {
             return unbilledInvoiceRepository.count();
         }
@@ -820,7 +818,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
-        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.searchUnbilledInvoices(
+        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.searchUnbilledInvoicesAndIsCancelledFalse(
                 unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
                 companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null,
                 pageable
@@ -836,7 +834,7 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Counting search unbilled invoices | unbilledNumber={}, companyName={}",
                 unbilledNumber, companyName);
 
-        return unbilledInvoiceRepository.countSearchUnbilledInvoices(
+        return unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
                 unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
                 companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
         );
@@ -924,4 +922,88 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
+
+    @Override
+    @Transactional
+    public void cancelUnbilled(Long unbilledId, String reason) {
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
+
+        // ===============================
+        // VALIDATION
+        // ===============================
+
+        if (unbilled.isCancelled()) {
+            throw new IllegalStateException("Unbilled already cancelled");
+        }
+
+        // ===============================
+        // CANCEL UNBILLED
+        // ===============================
+
+        unbilled.setCancelled(true);
+        unbilled.setStatus(UnbilledStatus.CANCELLED);
+        unbilled.setRejectionReason(reason);
+
+        // ===============================
+        // CANCEL ESTIMATE
+        // ===============================
+
+        Estimate estimate = unbilled.getEstimate();
+        if (estimate != null) {
+            estimate.setCancelled(true);
+            estimate.setStatus(EstimateStatus.REJECTED); // or CANCELLED if you add
+            estimateRepository.save(estimate);
+        }
+
+        // ===============================
+        // CANCEL INVOICES
+        // ===============================
+
+        List<Invoice> invoices = unbilled.getTaxInvoices();
+
+        for (Invoice invoice : invoices) {
+            invoice.setCancelled(true);
+            invoice.setStatus(InvoiceStatus.CANCELLED);
+
+            // cancel line items
+            if (invoice.getLineItems() != null) {
+                invoice.getLineItems().forEach(item -> item.setCancelled(true));
+            }
+        }
+
+        invoiceRepository.saveAll(invoices);
+
+        // ===============================
+        // CANCEL PAYMENTS
+        // ===============================
+
+        List<PaymentReceipt> payments = unbilled.getPayments();
+
+        for (PaymentReceipt payment : payments) {
+            payment.setCancelled(true);
+        }
+
+        paymentReceiptRepository.saveAll(payments);
+
+        // ===============================
+        // SAVE UNBILLED
+        // ===============================
+
+        unbilledInvoiceRepository.save(unbilled);
+
+        // ===============================
+        // CALL OPERATION SERVICE
+        // ===============================
+
+        operationFeignClient.cancelProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+        log.info("Project cancelled in operation service");
+
+    }
 }
