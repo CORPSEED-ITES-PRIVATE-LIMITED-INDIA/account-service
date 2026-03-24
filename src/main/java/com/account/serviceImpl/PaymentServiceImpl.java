@@ -1006,4 +1006,170 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Project cancelled in operation service");
 
     }
+
+
+    @Override
+    @Transactional
+    public Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId, Pageable pageable) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: " + userId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        userId
+                ));
+
+        // ===============================
+        // FETCH UNBILLED
+        // ===============================
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
+
+        // ===============================
+        // VALIDATION
+        // ===============================
+        if (unbilled.isCancelled()) {
+            throw new IllegalStateException("Unbilled already cancelled");
+        }
+
+        // ===============================
+        // FETCH PROJECT FROM OPERATION
+        // ===============================
+        OperationProjectResponseDto project;
+
+        try {
+            ResponseEntity<OperationProjectResponseDto> res =
+                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
+                throw new RuntimeException("Failed to fetch project from operation service");
+            }
+
+            project = res.getBody();
+
+        } catch (FeignException ex) {
+
+
+            log.error("Error fetching project | unbilled={}",
+                    unbilled.getUnbilledNumber()
+            );
+
+            throw new RuntimeException(ex);
+        }
+
+        // ===============================
+        // FETCH EXPENSE ACTIVITIES
+        // ===============================
+        try {
+            ResponseEntity<Page<OperationProjectActivityResponseDto>> activityRes =
+                    operationFeignClient.getActivitiesByType(
+                            project.getId(),
+                            ActivityType.EXPENSE,
+                            pageable
+                    );
+
+            if (!activityRes.getStatusCode().is2xxSuccessful() || activityRes.getBody() == null) {
+                throw new RuntimeException("Failed to fetch expenses from operation service");
+            }
+
+            return activityRes.getBody();
+
+        } catch (FeignException ex) {
+
+
+            log.error("Error fetching expenses..... ");
+
+            throw new RuntimeException(ex);
+        }
+    }
+
+
+
+    @Override
+    @Transactional
+    public void approveExpense(Long userId, Long unbilledId, Long expenseId) {
+
+        // ===============================
+        // VALIDATE USER
+        // ===============================
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: " + userId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        userId
+                ));
+
+        // ===============================
+        // FETCH UNBILLED
+        // ===============================
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
+
+        if (unbilled.isCancelled()) {
+            throw new IllegalStateException("Unbilled already cancelled");
+        }
+
+        // ===============================
+        // FETCH PROJECT FROM OPERATION
+        // ===============================
+        OperationProjectResponseDto project;
+
+        try {
+            ResponseEntity<OperationProjectResponseDto> res =
+                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
+                throw new RuntimeException("Failed to fetch project from operation service");
+            }
+
+            project = res.getBody();
+
+        } catch (FeignException ex) {
+
+
+            log.error("Error fetching project, while approve expenses | unbilled={} ",unbilled.getUnbilledNumber());
+
+            throw new RuntimeException(ex);
+        }
+
+        // ===============================
+        // CALL APPROVE EXPENSE API
+        // ===============================
+        try {
+
+            operationFeignClient.approveExpense(
+                    project.getId(),
+                    user.getId(),
+                    expenseId
+            );
+
+            log.info("Expense approved successfully | projectId={} expenseId={}",
+                    project.getId(),
+                    expenseId
+            );
+
+        } catch (FeignException ex) {
+
+
+            log.error("Error approving expense | projectId={} expenseId={}",
+                    project.getId(),
+                    expenseId
+            );
+
+            throw new RuntimeException(ex);
+        }
+    }
+
 }
