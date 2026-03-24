@@ -1,6 +1,7 @@
 package com.account.controller.unbilled;
 
 import com.account.domain.UnbilledStatus;
+import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
@@ -14,6 +15,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -178,6 +182,30 @@ public class UnbilledInvoiceController {
         paymentService.cancelUnbilled(id, reason);
 
         return ResponseEntity.ok("Unbilled cancelled successfully");
+    }
+
+    @GetMapping("/getExpences/{userId}/{unbilledId}")
+    public ResponseEntity<Page<OperationProjectActivityResponseDto>> getExpences(
+            @PathVariable Long userId,
+            @PathVariable Long unbilledId,
+            Pageable pageable
+    ){
+        Page<OperationProjectActivityResponseDto> response  = paymentService.getExpences(userId, unbilledId, pageable);
+
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+
+    @PutMapping("/approveExpense/{userId}/{unbilledId}/{expenseId}")
+    public ResponseEntity<?> approveExpense(
+            @PathVariable Long userId,
+            @PathVariable Long unbilledId,
+            @PathVariable Long expenseId
+    ) {
+
+        paymentService.approveExpense(userId, unbilledId, expenseId);
+
+        return new ResponseEntity<>("Expense approved successfully", HttpStatus.OK);
     }
 
 

@@ -1,12 +1,15 @@
 package com.account.service;
 
 import com.account.domain.UnbilledStatus;
+import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 
@@ -29,4 +32,9 @@ public interface PaymentService {
     void rejectUnbilledInvoice(Long unbilledId, String trim, Long approverUserId);
 
     void cancelUnbilled(Long id,String reason);
+
+    Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId,  Pageable pageable);
+
+    void approveExpense(Long userId, Long unbilledId, Long expenseId);
+
 }

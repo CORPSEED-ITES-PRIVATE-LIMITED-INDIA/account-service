@@ -4,6 +4,8 @@ package com.account.feignClient;
 import com.account.dto.operationService.*;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -40,5 +42,18 @@ public interface OperationFeignClient {
     @PutMapping("/operationService/api/projects/cancel/{unbilledNumber}")
     ResponseEntity<OperationProjectResponseDto> cancelProjectByUnbilledNumber(@PathVariable String unbilledNumber);
 
+    @PutMapping("/operationService/api/projects/{projectId}/activities/approveExpense/{userId}/{expenseId}")
+    ResponseEntity<?> approveExpense(
+            @PathVariable("projectId") Long projectId,
+            @PathVariable("userId") Long userId,
+            @PathVariable("expenseId") Long expenseId
+    );
+
+    @GetMapping("/operationService/api/projects/{projectId}/activities/type/{type}")
+    ResponseEntity<Page<OperationProjectActivityResponseDto>> getActivitiesByType(
+            @PathVariable Long projectId,
+            @PathVariable ActivityType type,
+            Pageable pageable
+    );
 
 }
