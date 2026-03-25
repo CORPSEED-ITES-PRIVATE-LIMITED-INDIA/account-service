@@ -35,6 +35,6 @@ public interface PaymentService {
 
     Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId,  Pageable pageable);
 
-    void approveExpense(Long userId, Long unbilledId, Long expenseId);
+    void approveExpense(Long userId, Long unbilledId, Long expenseId, String status);
 
 }

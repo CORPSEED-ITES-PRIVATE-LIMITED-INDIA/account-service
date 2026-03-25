@@ -1102,7 +1102,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public void approveExpense(Long userId, Long unbilledId, Long expenseId) {
+    public void approveExpense(Long userId, Long unbilledId, Long expenseId, String status) {
 
         // ===============================
         // VALIDATE USER
@@ -1161,7 +1161,8 @@ public class PaymentServiceImpl implements PaymentService {
             operationFeignClient.approveExpense(
                     project.getId(),
                     user.getId(),
-                    expenseId
+                    expenseId,
+                    status
             );
 
             log.info("Expense approved successfully | projectId={} expenseId={}",

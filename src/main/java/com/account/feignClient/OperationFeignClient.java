@@ -49,7 +49,8 @@ public interface OperationFeignClient {
     ResponseEntity<?> approveExpense(
             @PathVariable("projectId") Long projectId,
             @PathVariable("userId") Long userId,
-            @PathVariable("expenseId") Long expenseId
+            @PathVariable("expenseId") Long expenseId,
+            @RequestParam String status
     );
 
     @GetMapping("/operationService/api/projects/{projectId}/activities/type/{type}")
