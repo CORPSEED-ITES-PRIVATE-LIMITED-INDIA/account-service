@@ -925,7 +925,16 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public void cancelUnbilled(Long unbilledId, String reason) {
+    public void cancelUnbilled(Long userId, Long unbilledId, String reason) {
+
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Approver not found with ID: " + userId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        userId
+                ));
 
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -1002,7 +1011,7 @@ public class PaymentServiceImpl implements PaymentService {
         // CALL OPERATION SERVICE
         // ===============================
 
-        operationFeignClient.cancelProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+        operationFeignClient.cancelProjectByUnbilledNumber(userId, unbilled.getUnbilledNumber());
         log.info("Project cancelled in operation service");
 
     }

@@ -39,8 +39,11 @@ public interface OperationFeignClient {
             @RequestBody OperationProjectPaymentTransactionDto dto
     );
 
-    @PutMapping("/operationService/api/projects/cancel/{unbilledNumber}")
-    ResponseEntity<OperationProjectResponseDto> cancelProjectByUnbilledNumber(@PathVariable String unbilledNumber);
+    @PutMapping("/operationService/api/projects/cancel/{userId}/{unbilledNumber}")
+    ResponseEntity<OperationProjectResponseDto> cancelProjectByUnbilledNumber(
+            @PathVariable Long userId,
+            @PathVariable String unbilledNumber
+    );
 
     @PutMapping("/operationService/api/projects/{projectId}/activities/approveExpense/{userId}/{expenseId}")
     ResponseEntity<?> approveExpense(

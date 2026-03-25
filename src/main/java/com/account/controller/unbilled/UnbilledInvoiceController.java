@@ -173,12 +173,13 @@ public class UnbilledInvoiceController {
     }
 
 
-    @PutMapping("/cancel/{id}")
+    @PutMapping("/cancel/{userId}/{id}")
     public ResponseEntity<?> cancelUnbilled(
+            @PathVariable Long userId,
             @PathVariable Long id,
             @RequestParam String reason) {
 
-        paymentService.cancelUnbilled(id, reason);
+        paymentService.cancelUnbilled(userId, id, reason);
 
         return ResponseEntity.ok("Unbilled cancelled successfully");
     }

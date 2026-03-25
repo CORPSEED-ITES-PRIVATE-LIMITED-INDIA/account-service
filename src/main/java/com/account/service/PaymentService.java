@@ -31,7 +31,7 @@ public interface PaymentService {
 
     void rejectUnbilledInvoice(Long unbilledId, String trim, Long approverUserId);
 
-    void cancelUnbilled(Long id,String reason);
+    void cancelUnbilled(Long userId, Long id,String reason);
 
     Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId,  Pageable pageable);
 
