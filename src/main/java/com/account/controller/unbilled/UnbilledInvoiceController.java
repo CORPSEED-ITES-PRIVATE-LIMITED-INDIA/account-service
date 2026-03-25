@@ -200,10 +200,11 @@ public class UnbilledInvoiceController {
     public ResponseEntity<?> approveExpense(
             @PathVariable Long userId,
             @PathVariable Long unbilledId,
-            @PathVariable Long expenseId
+            @PathVariable Long expenseId,
+            @RequestParam String status
     ) {
 
-        paymentService.approveExpense(userId, unbilledId, expenseId);
+        paymentService.approveExpense(userId, unbilledId, expenseId, status);
 
         return new ResponseEntity<>("Expense approved successfully", HttpStatus.OK);
     }
