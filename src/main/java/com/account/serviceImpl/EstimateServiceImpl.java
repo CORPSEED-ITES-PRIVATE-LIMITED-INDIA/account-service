@@ -52,6 +52,7 @@ public class EstimateServiceImpl implements EstimateService {
     private final ContactRepository contactRepository;
     private final UserRepository userRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
+    private final OrganizationRepository organizationRepository;
 
     @Autowired
     private UnbilledInvoiceRepository unbilledRepository;
@@ -192,6 +193,34 @@ public class EstimateServiceImpl implements EstimateService {
         log.debug("Processing {} line items", requestDto.getLineItems().size());
         List<EstimateLineItem> lineItems = new ArrayList<>();
 
+        boolean igstFlag = true;
+
+        if (unit != null) {
+
+            Optional<Organization> orgOpt = organizationRepository
+                    .findTopOrganization();
+
+            String unitState = unit.getState();
+
+            if (orgOpt.isPresent()) {
+                Organization org = orgOpt.get();
+
+                String orgState = org.getState();
+
+                if (orgState != null && unitState != null
+                        && orgState.equalsIgnoreCase(unitState)) {
+
+                    igstFlag = false; // CGST + SGST
+                } else {
+                    igstFlag = true;  // IGST
+                }
+
+            } else {
+                // Org not found → IGST
+                igstFlag = true;
+            }
+        }
+
         for (int i = 0; i < requestDto.getLineItems().size(); i++) {
             EstimateCreationRequestDto.EstimateLineItemDto itemDto = requestDto.getLineItems().get(i);
 
@@ -222,6 +251,7 @@ public class EstimateServiceImpl implements EstimateService {
 
             lineItem.setUnitPriceExGst(itemDto.getUnitPriceExGst());
             lineItem.setGstRate(itemDto.getGstRate());
+            lineItem.setIgstFlag(igstFlag);
             lineItem.setCategoryCode(itemDto.getCategoryCode());
             lineItem.setFeeType(itemDto.getFeeType());
             lineItem.setDisplayOrder(i + 1);
@@ -449,6 +479,10 @@ public class EstimateServiceImpl implements EstimateService {
                 itemDto.setUnit(item.getUnit());
                 itemDto.setUnitPriceExGst(item.getUnitPriceExGst());
                 itemDto.setGstRate(item.getGstRate());
+                itemDto.setIgstFlag(item.getIgstFlag());
+                itemDto.setIgstRate(item.getIgstRate());
+                itemDto.setSgstRate(item.getSgstRate());
+                itemDto.setCgstRate(item.getCgstRate());
                 itemDto.setLineTotalExGst(item.getLineTotalExGst());
                 itemDto.setGstAmount(item.getGstAmount());
                 itemDto.setDisplayOrder(item.getDisplayOrder());

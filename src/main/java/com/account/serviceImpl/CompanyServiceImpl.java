@@ -177,6 +177,7 @@ public class CompanyServiceImpl implements CompanyService {
     // UPDATE COMPANY + UNITS (FULL)
     // =========================================================
     @Override
+    @Transactional
     public CompanyResponseDto updateFullCompanyDetails(Long companyId, CompanyRequestDto dto, Long updatedById) {
 
         Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)

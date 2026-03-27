@@ -1,5 +1,6 @@
 package com.account.dto.estimate;
 
+import jakarta.persistence.Column;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -92,6 +93,11 @@ public class EstimateResponseDto {
 
         private BigDecimal unitPriceExGst;
         private BigDecimal gstRate;
+
+        private BigDecimal igstRate ;
+        private BigDecimal cgstRate;
+        private BigDecimal sgstRate;
+        private Boolean igstFlag;
 
         private BigDecimal lineTotalExGst;
         private BigDecimal gstAmount;
