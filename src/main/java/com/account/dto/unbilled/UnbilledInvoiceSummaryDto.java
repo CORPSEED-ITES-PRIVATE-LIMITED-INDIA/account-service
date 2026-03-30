@@ -15,6 +15,8 @@ public class UnbilledInvoiceSummaryDto {
 
     private Long id;
     private String unbilledNumber;
+    private String advanceInvoiceNumber;
+    private boolean advanceInvoiceFlag;
     private String estimateNumber;          // From linked estimate
     private Long estimateId;
     private String companyName;             // Summary

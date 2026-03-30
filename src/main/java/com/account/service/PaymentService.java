@@ -37,4 +37,6 @@ public interface PaymentService {
 
     void approveExpense(Long userId, Long unbilledId, Long expenseId, String status);
 
+    UnbilledInvoiceDetailDto convertIntoADI(Long unbilledId,Long requestingUserId);
+
 }

@@ -1567,7 +1567,7 @@ public class EstimateServiceImpl implements EstimateService {
 
 
     @Override
-    public EstimateResponseDto convertIntPI(Long estimateId, Long requestingUserId){
+    public EstimateResponseDto convertIntoPI(Long estimateId, Long requestingUserId){
         log.info("Converting estimate into performace invoice", estimateId, requestingUserId);
 
         if (requestingUserId == null || requestingUserId <= 0) {
@@ -1576,7 +1576,7 @@ public class EstimateServiceImpl implements EstimateService {
 
         // Basic security check
         if (!userRepository.existsById(requestingUserId)) {
-            log.warn("User not found: userId={}", requestingUserId);
+            log.warn("User not found: with userId={}", requestingUserId);
             throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
         }
 

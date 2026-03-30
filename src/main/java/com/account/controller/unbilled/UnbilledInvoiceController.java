@@ -1,6 +1,7 @@
 package com.account.controller.unbilled;
 
 import com.account.domain.UnbilledStatus;
+import com.account.dto.estimate.EstimateResponseDto;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
@@ -207,6 +208,16 @@ public class UnbilledInvoiceController {
         paymentService.approveExpense(userId, unbilledId, expenseId, status);
 
         return new ResponseEntity<>("Expense approved successfully", HttpStatus.OK);
+    }
+
+
+    @PostMapping("/convertIntoADI/{unbilledId}")
+    public ResponseEntity<UnbilledInvoiceDetailDto> convertIntoADI(
+            @PathVariable Long unbilledId,
+            @RequestParam Long requestingUserId
+    ){
+        UnbilledInvoiceDetailDto dto = paymentService.convertIntoADI(unbilledId, requestingUserId);
+        return ResponseEntity.ok(dto);
     }
 
 

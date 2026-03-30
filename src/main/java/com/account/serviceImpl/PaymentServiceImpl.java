@@ -121,6 +121,7 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled = new UnbilledInvoice();
             unbilled.setPublicUuid(UUID.randomUUID().toString());
             unbilled.setUnbilledNumber(generateUnbilledNumber());
+            unbilled.setAdvanceInvoiceNumber(generateAdvanceInvoiceNumber());
             unbilled.setEstimate(estimate);
             unbilled.setCompany(estimate.getCompany());
             unbilled.setUnit(estimate.getUnit());
@@ -478,6 +479,8 @@ public class PaymentServiceImpl implements PaymentService {
         response.setCompanyId(company != null ? company.getId() : null);
         response.setCompanyUnitId(unbilled.getUnit().getId());
         response.setUnbilledNumber(unbilled.getUnbilledNumber());
+        response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+        response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
         response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
         response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
         response.setLeadId(estimate != null ? estimate.getLeadId() : null);
@@ -597,6 +600,8 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setCompanyId(company != null ? company.getId() : null);
         dto.setCompanyUnitId(unit != null ? unit.getId() : null);
         dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
         dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
         dto.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
         dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
@@ -625,6 +630,8 @@ public class PaymentServiceImpl implements PaymentService {
 
         dto.setId(unbilled.getId());
         dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
 
         Estimate estimate = unbilled.getEstimate();
         dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
@@ -721,6 +728,8 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setId(unbilled.getId());
         dto.setPublicUuid(unbilled.getPublicUuid());
         dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
         dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
         dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
         dto.setSolutionType(estimate != null ? estimate.getSolutionType() : null);
@@ -865,6 +874,12 @@ public class PaymentServiceImpl implements PaymentService {
         long count = unbilledInvoiceRepository.count() + 1;
         int year = dateTimeUtil.nowLocalDateTime().getYear();
         return String.format("UNB-%d-%08d", year, count);
+    }
+
+    private String generateAdvanceInvoiceNumber() {
+        long count = unbilledInvoiceRepository.count() + 1;
+        int year = dateTimeUtil.nowLocalDateTime().getYear();
+        return String.format("ADI-%d-%08d", year, count);
     }
 
 
@@ -1192,4 +1207,38 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
+
+    @Override
+    @Transactional
+    public UnbilledInvoiceDetailDto convertIntoADI(Long unbilledId,Long requestingUserId){
+
+
+        log.info("Converting unbilled into advance invoice", unbilledId, requestingUserId);
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
+        // Basic security check
+        if (!userRepository.existsById(requestingUserId)) {
+            log.warn("User not found: userId={}", requestingUserId);
+            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        if (unbilledId == null || unbilledId <= 0) {
+            throw new ValidationException("Invalid unbilledId", "ERR_INVALID_UNBILLED_ID", "unbilledId");
+        }
+
+        // Fetch the estimate
+        UnbilledInvoice unbilledInvoice = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> {
+                    log.warn("Unbilled not found: id={}", unbilledId);
+                    return new ResourceNotFoundException("Unbilled not found", "UNBILLED_NOT_FOUND");
+                });
+
+
+        unbilledInvoice.setAdvanceInvoiceFlag(true);
+        unbilledInvoiceRepository.save(unbilledInvoice);
+        return mapToDetailDto(unbilledInvoice);
+    }
 }

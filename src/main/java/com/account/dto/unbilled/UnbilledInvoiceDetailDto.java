@@ -15,6 +15,8 @@ public class UnbilledInvoiceDetailDto {
     private Long id;
     private String publicUuid;
     private String unbilledNumber;
+    private String advanceInvoiceNumber;
+    private boolean advanceInvoiceFlag;
     private String estimateNumber;
     private String companyName;
     private String contactName;

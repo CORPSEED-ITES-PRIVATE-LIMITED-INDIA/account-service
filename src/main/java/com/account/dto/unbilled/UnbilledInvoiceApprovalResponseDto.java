@@ -25,6 +25,9 @@ public class UnbilledInvoiceApprovalResponseDto {
 
 
     private String unbilledNumber;
+    private String advanceInvoiceNumber;
+
+    private boolean advanceInvoiceFlag;
 
     private String estimateNumber;
 

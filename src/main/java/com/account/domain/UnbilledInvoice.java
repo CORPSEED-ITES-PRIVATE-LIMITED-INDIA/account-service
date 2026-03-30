@@ -43,6 +43,12 @@ public class UnbilledInvoice {
     @Column(name = "unbilled_number", nullable = false, unique = true, length = 32)
     private String unbilledNumber;
 
+    @Column(name = "advance_invoice_number", nullable = false, unique = true, length = 32)
+    private String advanceInvoiceNumber;
+
+    private boolean advanceInvoiceFlag=false;
+
+
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "estimate_id", nullable = false, unique = true)
     private Estimate estimate;
