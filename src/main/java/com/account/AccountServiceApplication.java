@@ -29,6 +29,7 @@ public class AccountServiceApplication {
 	 * Seeds the 4 default Payment Types when the application starts,
 	 * only if they do not already exist (checked by 'code').
 	 */
+
 	@Bean
 	public CommandLineRunner seedPaymentTypes() {
 		return args -> {
