@@ -671,6 +671,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         dto.setTotalAmount(unbilled.getTotalAmount());
         dto.setReceivedAmount(unbilled.getReceivedAmount());
+        dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
 
         dto.setStatus(unbilled.getStatus());
@@ -755,6 +756,7 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setIgstAmount(estimate != null ? estimate.getIgstAmount() : null);
         dto.setGrandTotal(unbilled.getTotalAmount());
         dto.setReceivedAmount(unbilled.getReceivedAmount());
+        dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
         dto.setCreatedByName(getUserDisplayName(unbilled.getCreatedBy()));
         dto.setCreatedAt(unbilled.getCreatedAt());
