@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.*;
 public interface OperationFeignClient {
 
 
-
     @PostMapping("/operationService/api/companies/createCompany")
     ResponseEntity<Void> createCompany(
             @RequestBody OperationCompanyRequestDto dto,
