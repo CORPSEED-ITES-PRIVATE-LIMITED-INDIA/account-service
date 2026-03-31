@@ -70,6 +70,9 @@ public class UnbilledInvoice {
     @Column(precision = 15, scale = 2, nullable = false)
     private BigDecimal receivedAmount = BigDecimal.ZERO;
 
+    private BigDecimal currentReceivedAmount = BigDecimal.ZERO;
+
+
     @Column(precision = 15, scale = 2, nullable = false)
     private BigDecimal outstandingAmount = BigDecimal.ZERO;
 
@@ -124,8 +127,11 @@ public class UnbilledInvoice {
             throw new IllegalArgumentException("Payment amount must be positive");
         }
 
-        this.receivedAmount = this.receivedAmount.add(amount);
-        this.outstandingAmount = this.totalAmount.subtract(this.receivedAmount);
+        // Only track pending amount
+        this.currentReceivedAmount = this.currentReceivedAmount.add(amount);
 
+        // ❗ DO NOT touch outstanding based on pending money
+        // Outstanding should reflect only approved amount
+        this.outstandingAmount = this.totalAmount.subtract(this.receivedAmount);
     }
 }
