@@ -117,7 +117,7 @@ public class UnbilledInvoiceController {
             @ApiResponse(responseCode = "200", description = "Search results returned successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid pagination or search parameters", content = @Content)
     })
-    @GetMapping("/search")
+    @PostMapping("/search")
     public ResponseEntity<List<UnbilledInvoiceSummaryDto>> searchUnbilledInvoices(
             @RequestParam(value = "unbilledNumber", required = false)
             @Parameter(description = "Partial unbilled number to search for") String unbilledNumber,
