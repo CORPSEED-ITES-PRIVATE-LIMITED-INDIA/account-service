@@ -3,10 +3,7 @@ package com.account.controller.unbilled;
 import com.account.domain.UnbilledStatus;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
-import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
-import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
-import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
-import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+import com.account.dto.unbilled.*;
 import com.account.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -117,23 +114,24 @@ public class UnbilledInvoiceController {
             @ApiResponse(responseCode = "200", description = "Search results returned successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid pagination or search parameters", content = @Content)
     })
+
     @PostMapping("/search")
     public ResponseEntity<List<UnbilledInvoiceSummaryDto>> searchUnbilledInvoices(
-            @RequestParam(value = "unbilledNumber", required = false)
-            @Parameter(description = "Partial unbilled number to search for") String unbilledNumber,
-
-            @RequestParam(value = "companyName", required = false)
-            @Parameter(description = "Partial company name to search for") String companyName,
-
-            @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size
+            @RequestBody UnbilledInvoiceSearchRequest request
     ) {
-        if (page < 1 || size < 1) {
-            throw new IllegalArgumentException("Page and size must be greater than 0");
-        }
+        int page = request.getPage();
+        int size = request.getSize();
+
+        // Normalize page: frontend (1-based) → backend (0-based)
+        int normalizedPage = page - 1;
 
         List<UnbilledInvoiceSummaryDto> list =
-                paymentService.searchUnbilledInvoices(unbilledNumber, companyName, page - 1, size);
+                paymentService.searchUnbilledInvoices(
+                        request.getUnbilledNumber(),
+                        request.getCompanyName(),
+                        normalizedPage,
+                        size
+                );
 
         return ResponseEntity.ok(list);
     }
