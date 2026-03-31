@@ -396,41 +396,51 @@ public class PaymentServiceImpl implements PaymentService {
                     ));
         Estimate estimate  = unbilled.getEstimate();
         // 8. Update unbilled invoice to APPROVED (temporary state)
-        if(request.getApprovalRemarks().equals("REJECTED")) {
+
+        if ("REJECTED".equals(request.getApprovalRemarks())) {
 
             unbilled.setStatus(UnbilledStatus.REJECTED);
-
             estimate.setStatus(EstimateStatus.REJECTED);
 
-            // Fetch all invoices for this unbilled
-            List<Invoice> invoices = invoiceRepository.findByUnbilledInvoiceIdAndIsCancelledFalse(unbilled.getId());
+            // ❗ Just discard pending amount
+            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
 
-            BigDecimal approvedTotal = invoices.stream()
-                    .map(Invoice::getGrandTotal)
-                    .filter(Objects::nonNull)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            log.info(
+                    "Unbilled {} rejected → pending amount discarded, no financial impact",
+                    unbilled.getUnbilledNumber()
+            );
 
-            // Recalculate received & outstanding amounts
-            BigDecimal totalAmount = unbilled.getTotalAmount();
+        } else {
 
-            unbilled.setReceivedAmount(approvedTotal);
+            // ✅ APPROVED FLOW
+            unbilled.setStatus(UnbilledStatus.APPROVED);
+            estimate.setStatus(EstimateStatus.APPROVED);
+
+            // 🔥 Move pending → actual received
+            BigDecimal updatedReceived = unbilled.getReceivedAmount()
+                    .add(unbilled.getCurrentReceivedAmount());
+
+            unbilled.setReceivedAmount(updatedReceived);
+
+            // Reset pending buffer
+            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
+
+            // Recalculate outstanding ONLY from approved amount
             unbilled.setOutstandingAmount(
-                    totalAmount.subtract(approvedTotal)
+                    unbilled.getTotalAmount()
+                            .subtract(updatedReceived)
                             .max(BigDecimal.ZERO)
                             .setScale(2, RoundingMode.HALF_UP)
             );
 
             log.info(
-                    "Unbilled {} rejected → recalculated amounts | received={} outstanding={}",
+                    "Unbilled {} approved → received={} outstanding={}",
                     unbilled.getUnbilledNumber(),
                     unbilled.getReceivedAmount(),
                     unbilled.getOutstandingAmount()
             );
-
-        }else {
-            unbilled.setStatus(UnbilledStatus.APPROVED);
-            estimate.setStatus(EstimateStatus.APPROVED);
         }
+
         estimateRepository.save(estimate);
         unbilled.setApprovedBy(approver);
         unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
