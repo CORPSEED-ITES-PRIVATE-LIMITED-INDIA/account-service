@@ -289,7 +289,6 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
 
-
     @Override
     @Transactional(readOnly = true)
     public List<CompanyResponseDto> fetchCompanies(
