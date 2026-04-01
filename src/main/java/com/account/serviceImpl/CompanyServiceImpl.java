@@ -233,23 +233,17 @@ public class CompanyServiceImpl implements CompanyService {
         return mapToResponseDto(company);
     }
 
-    // =========================================================
-    // ADD BASIC UNIT (manual ID)
-    // =========================================================
     @Override
     public CompanyResponseDto addBasicUnitToCompany(Long companyId, BasicUnitCreateRequest request, Long updatedById) {
 
-        // Find the company by ID and ensure it's not deleted
         Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Company not found", "ERR_COMPANY_NOT_FOUND"));
 
-        // Try to find the existing unit by its ID
         CompanyUnit existingUnit = company.getUnits().stream()
                 .filter(unit -> unit.getId().equals(request.getCompanyUnitId()))
                 .findFirst()
                 .orElse(null);
 
-        // If the unit exists, update it. Otherwise, create a new one.
         if (existingUnit != null) {
             // Update the existing unit's details
             existingUnit.setUnitName(request.getUnitName());
@@ -365,7 +359,6 @@ public class CompanyServiceImpl implements CompanyService {
         company.setAccountsReviewedAt(LocalDateTime.now());
         company.setAccountsRemark(request.getApprove() ? null : request.getRemark().trim());
 
-        // Update onboarding status based on approval
         company.setOnboardingStatus(request.getApprove() ? OnboardingStatus.APPROVED : OnboardingStatus.DISAPPROVED);
 
         company.setUpdatedBy(reviewedBy);
@@ -405,7 +398,6 @@ public class CompanyServiceImpl implements CompanyService {
             throw new ValidationException("Remark is required when rejecting/disapproving", "ERR_REMARK_REQUIRED");
         }
 
-        // Apply review
         unit.setAccountsApproved(request.getApprove());
         unit.setAccountsReviewedBy(reviewedBy);
         unit.setAccountsReviewedAt(LocalDateTime.now());
@@ -415,7 +407,6 @@ public class CompanyServiceImpl implements CompanyService {
 
         companyUnitRepository.save(unit);
 
-        // Re-calculate company onboarding status
         updateCompanyOnboardingStatus(company);
 
         company.setUpdatedBy(reviewedBy);
@@ -454,7 +445,7 @@ public class CompanyServiceImpl implements CompanyService {
                         ex.getMessage()
                 );
 
-                throw ex; // propagate error so transaction fails properly
+                throw ex;
             }
         }
 
@@ -469,7 +460,6 @@ public class CompanyServiceImpl implements CompanyService {
     public CompanyResponseDto migrateCompany(CompanyMigrationRequestDto dto) {
         logger.info("migrateCompany started | companyId = {}", dto.getCompanyId());
 
-        // 1. Basic validation of companyId
         if (dto.getCompanyId() == null) {
             logger.error("Migration failed: companyId is null");
             throw new ValidationException("companyId is required", "ERR_COMPANY_ID_REQUIRED");
@@ -484,7 +474,6 @@ public class CompanyServiceImpl implements CompanyService {
 
         logger.debug("Creating new company with ID: {}", companyId);
 
-        // ── 1. Create Company ───────────────────────────────────────────────
         Company company = new Company();
         company.setId(companyId);
         company.setLeadId(companyId);

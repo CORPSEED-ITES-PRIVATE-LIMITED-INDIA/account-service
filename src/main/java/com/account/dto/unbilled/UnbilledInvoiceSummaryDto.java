@@ -17,18 +17,18 @@ public class UnbilledInvoiceSummaryDto {
     private String unbilledNumber;
     private String advanceInvoiceNumber;
     private boolean advanceInvoiceFlag;
-    private String estimateNumber;          // From linked estimate
+    private String estimateNumber;
     private Long estimateId;
-    private String companyName;             // Summary
-    private String contactName;             // Summary
+    private String companyName;
+    private String contactName;
     private BigDecimal totalAmount;
     private BigDecimal receivedAmount;
     private BigDecimal outstandingAmount;
     private UnbilledStatus status;
     private LocalDateTime createdAt;
-    private String createdByName;           // Salesperson
-    private LocalDateTime approvedAt;       // Null if not approved
-    private String approvedByName;          // Null if not approved
+    private String createdByName;
+    private LocalDateTime approvedAt;
+    private String approvedByName;
     private Long solutionId;
     private String solutionName;
     private String name;
@@ -41,5 +41,6 @@ public class UnbilledInvoiceSummaryDto {
     private String country = "India";
     private String pinCode;
     private String gstNo;
+    private Long searchCount;
 
 }

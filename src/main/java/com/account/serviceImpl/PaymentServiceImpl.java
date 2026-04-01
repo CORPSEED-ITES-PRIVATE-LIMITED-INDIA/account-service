@@ -845,11 +845,21 @@ public class PaymentServiceImpl implements PaymentService {
                 pageable
         );
 
-        return pageResult.getContent().stream()
+        List<UnbilledInvoiceSummaryDto> dtos = pageResult.getContent().stream()
                 .map(this::mapToSummaryDto)
                 .collect(Collectors.toList());
-    }
 
+        long totalCount = unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
+                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
+                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
+        );
+
+        for (UnbilledInvoiceSummaryDto dto : dtos) {
+            dto.setSearchCount(totalCount);
+        }
+
+        return dtos;
+    }
     @Override
     public long countSearchUnbilledInvoices(String unbilledNumber, String companyName) {
         log.info("Counting search unbilled invoices | unbilledNumber={}, companyName={}",
