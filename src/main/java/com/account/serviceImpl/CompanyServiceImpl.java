@@ -455,6 +455,7 @@ public class CompanyServiceImpl implements CompanyService {
         return mapToResponseDto(company);
     }
 
+
     @Override
     @Transactional
     public CompanyResponseDto migrateCompany(CompanyMigrationRequestDto dto) {
