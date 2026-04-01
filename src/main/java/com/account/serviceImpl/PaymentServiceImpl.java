@@ -461,12 +461,51 @@ public class PaymentServiceImpl implements PaymentService {
         unbilled.setApprovalRemarks(request.getApprovalRemarks());
 
 
+        log.info("========== PAYMENT DEBUG START ==========");
+
+        List<PaymentReceipt> allPayments = unbilled.getPayments();
+
+        log.info("Total payments: {}", allPayments.size());
+
+        allPayments.forEach(p -> {
+            log.info("Payment -> id: {}, status: {}, amount: {}, createdAt: {}",
+                    p.getId(),
+                    p.getStatus(),
+                    p.getAmount(),
+                    p.getCreatedAt());
+        });
+
+        List<PaymentReceipt> pendingPayments = allPayments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                .toList();
+
+        log.info("Pending payments count: {}", pendingPayments.size());
+
+        pendingPayments.forEach(p -> {
+            log.info("PENDING -> id: {}, createdAt: {}", p.getId(), p.getCreatedAt());
+        });
+
+        List<PaymentReceipt> approvedPayments = allPayments.stream()
+                .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
+                .toList();
+
+        log.info("Approved payments count: {}", approvedPayments.size());
+
+        approvedPayments.forEach(p -> {
+            log.info("APPROVED -> id: {}, createdAt: {}", p.getId(), p.getCreatedAt());
+        });
+
+        log.info("========== PAYMENT DEBUG END ==========");
+
+
+
         // 9. Identify the first (triggering) payment receipt
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
                 .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
-                .max(Comparator.comparing(PaymentReceipt::getCreatedAt)) // latest approved payment
+                .filter(p -> p.getCreatedAt() != null) // 🔥 IMPORTANT
+                .max(Comparator.comparing(PaymentReceipt::getCreatedAt))
                 .orElseThrow(() -> new IllegalStateException(
-                        "No APPROVED payments found for unbilled invoice: "
+                        "No valid APPROVED payments found for unbilled invoice: "
                                 + unbilled.getUnbilledNumber()));
 
         // 10. Generate actual GST invoice
