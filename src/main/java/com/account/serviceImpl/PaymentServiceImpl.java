@@ -183,6 +183,7 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setEprFinancialYear(request.getEprFinancialYear());
         receipt.setEprPortalRegistrationNumber(request.getEprPortalRegistrationNumber());
         receipt.setEprCertificateOrInvoiceNumber(request.getEprCertificateOrInvoiceNumber());
+        receipt.setStatus(PaymentStatus.PENDING);
 
         receipt = paymentReceiptRepository.save(receipt);
         log.info("Created PaymentReceipt {} | amount: {}", receipt.getId(), request.getAmount());
@@ -402,6 +403,13 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setStatus(UnbilledStatus.REJECTED);
             estimate.setStatus(EstimateStatus.REJECTED);
 
+            // ❌ Mark all pending payments as REJECTED
+            unbilled.getPayments().forEach(p -> {
+                if (p.getStatus() == PaymentStatus.PENDING) {
+                    p.setStatus(PaymentStatus.REJECTED);
+                }
+            });
+
             // ❗ Just discard pending amount
             unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
 
@@ -415,6 +423,12 @@ public class PaymentServiceImpl implements PaymentService {
             // ✅ APPROVED FLOW
             unbilled.setStatus(UnbilledStatus.APPROVED);
             estimate.setStatus(EstimateStatus.APPROVED);
+            // ✅ Mark ALL pending payments as APPROVED
+            unbilled.getPayments().forEach(p -> {
+                if (p.getStatus() == PaymentStatus.PENDING) {
+                    p.setStatus(PaymentStatus.APPROVED);
+                }
+            });
 
             // 🔥 Move pending → actual received
             BigDecimal updatedReceived = unbilled.getReceivedAmount()
@@ -449,19 +463,20 @@ public class PaymentServiceImpl implements PaymentService {
 
         // 9. Identify the first (triggering) payment receipt
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
-                .filter(p -> p.getPaymentDate() != null)
-                .min(Comparator.comparing(PaymentReceipt::getPaymentDate))
+                .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
+                .max(Comparator.comparing(PaymentReceipt::getCreatedAt)) // latest approved payment
                 .orElseThrow(() -> new IllegalStateException(
-                        "No payments found for unbilled invoice: "
+                        "No APPROVED payments found for unbilled invoice: "
                                 + unbilled.getUnbilledNumber()));
 
         // 10. Generate actual GST invoice
         if(request.getApprovalRemarks().equals("APPROVED")) {
-            Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(
-                    unbilled, triggeringReceipt, approver);
-
-            log.info("Unbilled {} approved → final status: {}, invoice generated: {}",
-                    unbilled.getUnbilledNumber(), generatedInvoice.getInvoiceNumber());
+            unbilled.getPayments().stream()
+                    .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
+                    .filter(p -> !invoiceRepository.existsByTriggeringPayment(p))
+                    .forEach(p -> {
+                        invoiceService.generateInvoiceForPayment(unbilled, p, approver);
+                    });
         }
         unbilledInvoiceRepository.save(unbilled);
 

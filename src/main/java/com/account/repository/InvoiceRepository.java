@@ -2,6 +2,7 @@ package com.account.repository;
 
 import com.account.domain.Invoice;
 import com.account.domain.InvoiceStatus;
+import com.account.domain.PaymentReceipt;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -65,4 +66,6 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("invoiceNumber") String invoiceNumber,
             @Param("companyName") String companyName
     );
+
+    boolean existsByTriggeringPayment(PaymentReceipt p);
 }
