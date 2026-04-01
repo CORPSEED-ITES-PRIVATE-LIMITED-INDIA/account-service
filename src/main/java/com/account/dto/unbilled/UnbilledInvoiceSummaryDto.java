@@ -23,6 +23,7 @@ public class UnbilledInvoiceSummaryDto {
     private String contactName;
     private BigDecimal totalAmount;
     private BigDecimal receivedAmount;
+    private BigDecimal currentReceivedAmount;
     private BigDecimal outstandingAmount;
     private UnbilledStatus status;
     private LocalDateTime createdAt;

@@ -34,6 +34,7 @@ public class UnbilledInvoiceDetailDto {
     private BigDecimal igstAmount;
     private BigDecimal grandTotal;
     private BigDecimal receivedAmount;
+    private BigDecimal currentReceivedAmount;
     private BigDecimal outstandingAmount;
 
     private String createdByName;
