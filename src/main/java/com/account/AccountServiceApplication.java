@@ -27,6 +27,7 @@ public class AccountServiceApplication {
 		SpringApplication.run(AccountServiceApplication.	class, args);
 	}
 
+
 	/**
 	 * Seeds the 4 default Payment Types when the application starts,
 	 * only if they do not already exist (checked by 'code').
