@@ -307,322 +307,322 @@ public class UnbilledServiceImpl implements UnbilledService {
         return response;
     }
 
-    @Override
-    public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size) {
-
-        log.info("Fetching unbilled invoices list (paginated) | userId={}, status={}, page={}, size={}",
-                userId != null ? userId : "all",
-                status != null ? status : "all",
-                page + 1,
-                size);
-
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-
-        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.findUnbilledInvoices(userId, status, pageable);
-
-        return pageResult.getContent().stream()
-                .map(this::mapToSummaryDto)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public long getUnbilledInvoicesCount(Long userId, UnbilledStatus status) {
-        log.info("Counting unbilled invoices | userId={}, status={}",
-                userId != null ? userId : "all",
-                status != null ? status : "all");
-
-        if (userId != null && status != null) {
-            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(userId, userId, status);
-        } else if (userId != null) {
-            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndIsCancelledFalse(userId, userId);
-        } else if (status != null) {
-            return unbilledInvoiceRepository.countByStatusAndIsCancelledFalse(status);
-        } else {
-            return unbilledInvoiceRepository.count();
-        }
-    }
-
-
-    @Override
-    public List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(
-            String unbilledNumber,
-            String companyName,
-            int page,
-            int size
-    ) {
-        log.info("Searching unbilled invoices | unbilledNumber={}, companyName={}, page={}, size={}",
-                unbilledNumber, companyName, page, size);
-
+//    @Override
+//    public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size) {
+//
+//        log.info("Fetching unbilled invoices list (paginated) | userId={}, status={}, page={}, size={}",
+//                userId != null ? userId : "all",
+//                status != null ? status : "all",
+//                page + 1,
+//                size);
+//
 //        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Pageable pageable = PageRequest.of(page, size);
-
-        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.searchUnbilledInvoicesAndIsCancelledFalse(
-                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
-                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null,
-                pageable
-        );
-
-        List<UnbilledInvoiceSummaryDto> dtos = pageResult.getContent().stream()
-                .map(this::mapToSummaryDto)
-                .collect(Collectors.toList());
-
-        long totalCount = unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
-                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
-                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
-        );
-
-        for (UnbilledInvoiceSummaryDto dto : dtos) {
-            dto.setSearchCount(totalCount);
-        }
-
-        return dtos;
-    }
-
-    @Override
-    public long countSearchUnbilledInvoices(String unbilledNumber, String companyName) {
-        log.info("Counting search unbilled invoices | unbilledNumber={}, companyName={}",
-                unbilledNumber, companyName);
-
-        return unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
-                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
-                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
-        );
-    }
-
-    @Override
-    @Transactional
-    public void cancelUnbilled(Long userId, Long unbilledId, String reason) {
-
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Approver not found with ID: " + userId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        userId
-                ));
-
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled not found with ID: " + unbilledId,
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unbilledId
-                ));
-
-        // ===============================
-        // VALIDATION
-        // ===============================
-
-        if (unbilled.isCancelled()) {
-            throw new IllegalStateException("Unbilled already cancelled");
-        }
-
-        // ===============================
-        // CANCEL UNBILLED
-        // ===============================
-
-        unbilled.setCancelled(true);
-        unbilled.setStatus(UnbilledStatus.CANCELLED);
-        unbilled.setRejectionReason(reason);
-
-        // ===============================
-        // CANCEL ESTIMATE
-        // ===============================
-
-        Estimate estimate = unbilled.getEstimate();
-        if (estimate != null) {
-            estimate.setCancelled(true);
-            estimate.setStatus(EstimateStatus.REJECTED); // or CANCELLED if you add
-            estimateRepository.save(estimate);
-        }
-
-        // ===============================
-        // CANCEL INVOICES
-        // ===============================
-
-        List<Invoice> invoices = unbilled.getTaxInvoices();
-
-        for (Invoice invoice : invoices) {
-            invoice.setCancelled(true);
-            invoice.setStatus(InvoiceStatus.CANCELLED);
-
-            // cancel line items
-            if (invoice.getLineItems() != null) {
-                invoice.getLineItems().forEach(item -> item.setCancelled(true));
-            }
-        }
-
-        invoiceRepository.saveAll(invoices);
-
-        // ===============================
-        // CANCEL PAYMENTS
-        // ===============================
-
-        List<PaymentReceipt> payments = unbilled.getPayments();
-
-        for (PaymentReceipt payment : payments) {
-            payment.setCancelled(true);
-        }
-
-        paymentReceiptRepository.saveAll(payments);
-
-        // ===============================
-        // SAVE UNBILLED
-        // ===============================
-
-        unbilledInvoiceRepository.save(unbilled);
-
-        // ===============================
-        // CALL OPERATION SERVICE
-        // ===============================
-
-        operationFeignClient.cancelProjectByUnbilledNumber(userId, unbilled.getUnbilledNumber());
-        log.info("Project cancelled in operation service");
-
-    }
-
-
-
-    @Override
-    @Transactional
-    public UnbilledInvoiceDetailDto convertIntoADI(Long unbilledId,Long requestingUserId){
-
-
-        log.info("Converting unbilled into advance invoice", unbilledId, requestingUserId);
-
-        if (requestingUserId == null || requestingUserId <= 0) {
-            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
-        }
-
-        // Basic security check
-        if (!userRepository.existsById(requestingUserId)) {
-            log.warn("User not found: userId={}", requestingUserId);
-            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
-        }
-
-        if (unbilledId == null || unbilledId <= 0) {
-            throw new ValidationException("Invalid unbilledId", "ERR_INVALID_UNBILLED_ID", "unbilledId");
-        }
-
-        // Fetch the estimate
-        UnbilledInvoice unbilledInvoice = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> {
-                    log.warn("Unbilled not found: id={}", unbilledId);
-                    return new ResourceNotFoundException("Unbilled not found", "UNBILLED_NOT_FOUND");
-                });
-
-
-        unbilledInvoice.setAdvanceInvoiceFlag(true);
-        unbilledInvoiceRepository.save(unbilledInvoice);
-        return mapToDetailDto(unbilledInvoice);
-    }
-
-    @Override
-    @Transactional
-    public Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId, Pageable pageable) {
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "User not found with ID: " + userId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        userId
-                ));
-
-        // ===============================
-        // FETCH UNBILLED
-        // ===============================
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled not found with ID: " + unbilledId,
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unbilledId
-                ));
-
-        // ===============================
-        // VALIDATION
-        // ===============================
-        if (unbilled.isCancelled()) {
-            throw new IllegalStateException("Unbilled already cancelled");
-        }
-
-        // ===============================
-        // FETCH PROJECT FROM OPERATION
-        // ===============================
-        OperationProjectResponseDto project;
-
-        try {
-            ResponseEntity<OperationProjectResponseDto> res =
-                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
-
-            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
-                throw new RuntimeException("Failed to fetch project from operation service");
-            }
-
-            project = res.getBody();
-
-        } catch (FeignException ex) {
-
-
-            log.error("Error fetching project | unbilled={}",
-                    unbilled.getUnbilledNumber()
-            );
-
-            throw new RuntimeException(ex);
-        }
-
-        // ===============================
-        // FETCH EXPENSE ACTIVITIES
-        // ===============================
-        try {
-            ResponseEntity<Page<OperationProjectActivityResponseDto>> activityRes =
-                    operationFeignClient.getActivitiesByType(
-                            project.getId(),
-                            ActivityType.EXPENSE,
-                            pageable
-                    );
-
-            if (!activityRes.getStatusCode().is2xxSuccessful() || activityRes.getBody() == null) {
-                throw new RuntimeException("Failed to fetch expenses from operation service");
-            }
-
-            return activityRes.getBody();
-
-        } catch (FeignException ex) {
-
-
-            log.error("Error fetching expenses..... ");
-
-            throw new RuntimeException(ex);
-        }
-    }
-
-
-    @Override
-    public UnbilledInvoiceDetailDto getUnbilledInvoice(Long unBilledId, Long requestingUserId) {
-        if (unBilledId == null || requestingUserId == null) {
-            throw new IllegalArgumentException("Invoice ID and requesting user ID are required");
-        }
-
-        UnbilledInvoice unbilledInvoice = unbilledInvoiceRepository.findById(unBilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled Invoice not found with ID: " + unBilledId,
-                        "INVOICE_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unBilledId
-                ));
-
-        if (unbilledInvoice.getCreatedBy() == null ||
-                !unbilledInvoice.getCreatedBy().getId().equals(requestingUserId)) {
-            throw new AccessDeniedException(
-                    "You are not authorized to view this invoice",
-                    "ACCESS_DENIED_INVOICE"
-            );
-        }
-        return mapToDetailDto(unbilledInvoice);
-    }
+//
+//        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.findUnbilledInvoices(userId, status, pageable);
+//
+//        return pageResult.getContent().stream()
+//                .map(this::mapToSummaryDto)
+//                .collect(Collectors.toList());
+//    }
+//
+//    @Override
+//    public long getUnbilledInvoicesCount(Long userId, UnbilledStatus status) {
+//        log.info("Counting unbilled invoices | userId={}, status={}",
+//                userId != null ? userId : "all",
+//                status != null ? status : "all");
+//
+//        if (userId != null && status != null) {
+//            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(userId, userId, status);
+//        } else if (userId != null) {
+//            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndIsCancelledFalse(userId, userId);
+//        } else if (status != null) {
+//            return unbilledInvoiceRepository.countByStatusAndIsCancelledFalse(status);
+//        } else {
+//            return unbilledInvoiceRepository.count();
+//        }
+//    }
+
+
+//    @Override
+//    public List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(
+//            String unbilledNumber,
+//            String companyName,
+//            int page,
+//            int size
+//    ) {
+//        log.info("Searching unbilled invoices | unbilledNumber={}, companyName={}, page={}, size={}",
+//                unbilledNumber, companyName, page, size);
+//
+////        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+//        Pageable pageable = PageRequest.of(page, size);
+//
+//        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.searchUnbilledInvoicesAndIsCancelledFalse(
+//                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
+//                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null,
+//                pageable
+//        );
+//
+//        List<UnbilledInvoiceSummaryDto> dtos = pageResult.getContent().stream()
+//                .map(this::mapToSummaryDto)
+//                .collect(Collectors.toList());
+//
+//        long totalCount = unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
+//                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
+//                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
+//        );
+//
+//        for (UnbilledInvoiceSummaryDto dto : dtos) {
+//            dto.setSearchCount(totalCount);
+//        }
+//
+//        return dtos;
+//    }
+
+//    @Override
+//    public long countSearchUnbilledInvoices(String unbilledNumber, String companyName) {
+//        log.info("Counting search unbilled invoices | unbilledNumber={}, companyName={}",
+//                unbilledNumber, companyName);
+//
+//        return unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
+//                unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
+//                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
+//        );
+//    }
+//
+//    @Override
+//    @Transactional
+//    public void cancelUnbilled(Long userId, Long unbilledId, String reason) {
+//
+//
+//        User user = userRepository.findById(userId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Approver not found with ID: " + userId,
+//                        "USER_NOT_FOUND",
+//                        "User",
+//                        userId
+//                ));
+//
+//        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Unbilled not found with ID: " + unbilledId,
+//                        "UNBILLED_NOT_FOUND",
+//                        "UnbilledInvoice",
+//                        unbilledId
+//                ));
+//
+//        // ===============================
+//        // VALIDATION
+//        // ===============================
+//
+//        if (unbilled.isCancelled()) {
+//            throw new IllegalStateException("Unbilled already cancelled");
+//        }
+//
+//        // ===============================
+//        // CANCEL UNBILLED
+//        // ===============================
+//
+//        unbilled.setCancelled(true);
+//        unbilled.setStatus(UnbilledStatus.CANCELLED);
+//        unbilled.setRejectionReason(reason);
+//
+//        // ===============================
+//        // CANCEL ESTIMATE
+//        // ===============================
+//
+//        Estimate estimate = unbilled.getEstimate();
+//        if (estimate != null) {
+//            estimate.setCancelled(true);
+//            estimate.setStatus(EstimateStatus.REJECTED); // or CANCELLED if you add
+//            estimateRepository.save(estimate);
+//        }
+//
+//        // ===============================
+//        // CANCEL INVOICES
+//        // ===============================
+//
+//        List<Invoice> invoices = unbilled.getTaxInvoices();
+//
+//        for (Invoice invoice : invoices) {
+//            invoice.setCancelled(true);
+//            invoice.setStatus(InvoiceStatus.CANCELLED);
+//
+//            // cancel line items
+//            if (invoice.getLineItems() != null) {
+//                invoice.getLineItems().forEach(item -> item.setCancelled(true));
+//            }
+//        }
+//
+//        invoiceRepository.saveAll(invoices);
+//
+//        // ===============================
+//        // CANCEL PAYMENTS
+//        // ===============================
+//
+//        List<PaymentReceipt> payments = unbilled.getPayments();
+//
+//        for (PaymentReceipt payment : payments) {
+//            payment.setCancelled(true);
+//        }
+//
+//        paymentReceiptRepository.saveAll(payments);
+//
+//        // ===============================
+//        // SAVE UNBILLED
+//        // ===============================
+//
+//        unbilledInvoiceRepository.save(unbilled);
+//
+//        // ===============================
+//        // CALL OPERATION SERVICE
+//        // ===============================
+//
+//        operationFeignClient.cancelProjectByUnbilledNumber(userId, unbilled.getUnbilledNumber());
+//        log.info("Project cancelled in operation service");
+//
+//    }
+//
+//
+//
+//    @Override
+//    @Transactional
+//    public UnbilledInvoiceDetailDto convertIntoADI(Long unbilledId,Long requestingUserId){
+//
+//
+//        log.info("Converting unbilled into advance invoice", unbilledId, requestingUserId);
+//
+//        if (requestingUserId == null || requestingUserId <= 0) {
+//            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+//        }
+//
+//        // Basic security check
+//        if (!userRepository.existsById(requestingUserId)) {
+//            log.warn("User not found: userId={}", requestingUserId);
+//            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+//        }
+//
+//        if (unbilledId == null || unbilledId <= 0) {
+//            throw new ValidationException("Invalid unbilledId", "ERR_INVALID_UNBILLED_ID", "unbilledId");
+//        }
+//
+//        // Fetch the estimate
+//        UnbilledInvoice unbilledInvoice = unbilledInvoiceRepository.findById(unbilledId)
+//                .orElseThrow(() -> {
+//                    log.warn("Unbilled not found: id={}", unbilledId);
+//                    return new ResourceNotFoundException("Unbilled not found", "UNBILLED_NOT_FOUND");
+//                });
+//
+//
+//        unbilledInvoice.setAdvanceInvoiceFlag(true);
+//        unbilledInvoiceRepository.save(unbilledInvoice);
+//        return mapToDetailDto(unbilledInvoice);
+//    }
+
+//    @Override
+//    @Transactional
+//    public Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId, Pageable pageable) {
+//
+//        User user = userRepository.findById(userId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "User not found with ID: " + userId,
+//                        "USER_NOT_FOUND",
+//                        "User",
+//                        userId
+//                ));
+//
+//        // ===============================
+//        // FETCH UNBILLED
+//        // ===============================
+//        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Unbilled not found with ID: " + unbilledId,
+//                        "UNBILLED_NOT_FOUND",
+//                        "UnbilledInvoice",
+//                        unbilledId
+//                ));
+//
+//        // ===============================
+//        // VALIDATION
+//        // ===============================
+//        if (unbilled.isCancelled()) {
+//            throw new IllegalStateException("Unbilled already cancelled");
+//        }
+//
+//        // ===============================
+//        // FETCH PROJECT FROM OPERATION
+//        // ===============================
+//        OperationProjectResponseDto project;
+//
+//        try {
+//            ResponseEntity<OperationProjectResponseDto> res =
+//                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+//
+//            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
+//                throw new RuntimeException("Failed to fetch project from operation service");
+//            }
+//
+//            project = res.getBody();
+//
+//        } catch (FeignException ex) {
+//
+//
+//            log.error("Error fetching project | unbilled={}",
+//                    unbilled.getUnbilledNumber()
+//            );
+//
+//            throw new RuntimeException(ex);
+//        }
+//
+//        // ===============================
+//        // FETCH EXPENSE ACTIVITIES
+//        // ===============================
+//        try {
+//            ResponseEntity<Page<OperationProjectActivityResponseDto>> activityRes =
+//                    operationFeignClient.getActivitiesByType(
+//                            project.getId(),
+//                            ActivityType.EXPENSE,
+//                            pageable
+//                    );
+//
+//            if (!activityRes.getStatusCode().is2xxSuccessful() || activityRes.getBody() == null) {
+//                throw new RuntimeException("Failed to fetch expenses from operation service");
+//            }
+//
+//            return activityRes.getBody();
+//
+//        } catch (FeignException ex) {
+//
+//
+//            log.error("Error fetching expenses..... ");
+//
+//            throw new RuntimeException(ex);
+//        }
+//    }
+//
+//
+//    @Override
+//    public UnbilledInvoiceDetailDto getUnbilledInvoice(Long unBilledId, Long requestingUserId) {
+//        if (unBilledId == null || requestingUserId == null) {
+//            throw new IllegalArgumentException("Invoice ID and requesting user ID are required");
+//        }
+//
+//        UnbilledInvoice unbilledInvoice = unbilledInvoiceRepository.findById(unBilledId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Unbilled Invoice not found with ID: " + unBilledId,
+//                        "INVOICE_NOT_FOUND",
+//                        "UnbilledInvoice",
+//                        unBilledId
+//                ));
+//
+//        if (unbilledInvoice.getCreatedBy() == null ||
+//                !unbilledInvoice.getCreatedBy().getId().equals(requestingUserId)) {
+//            throw new AccessDeniedException(
+//                    "You are not authorized to view this invoice",
+//                    "ACCESS_DENIED_INVOICE"
+//            );
+//        }
+//        return mapToDetailDto(unbilledInvoice);
+//    }
 
 
 
@@ -684,88 +684,88 @@ public class UnbilledServiceImpl implements UnbilledService {
         return dto;
     }
 
-    @Override
-    @Transactional
-    public void approveExpense(Long userId, Long unbilledId, Long expenseId, String status) {
-
-        // ===============================
-        // VALIDATE USER
-        // ===============================
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "User not found with ID: " + userId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        userId
-                ));
-
-        // ===============================
-        // FETCH UNBILLED
-        // ===============================
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled not found with ID: " + unbilledId,
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unbilledId
-                ));
-
-        if (unbilled.isCancelled()) {
-            throw new IllegalStateException("Unbilled already cancelled");
-        }
-
-        // ===============================
-        // FETCH PROJECT FROM OPERATION
-        // ===============================
-        OperationProjectResponseDto project;
-
-        try {
-            ResponseEntity<OperationProjectResponseDto> res =
-                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
-
-            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
-                throw new RuntimeException("Failed to fetch project from operation service");
-            }
-
-            project = res.getBody();
-
-        } catch (FeignException ex) {
-
-
-            log.error("Error fetching project, while approve expenses | unbilled={} ",unbilled.getUnbilledNumber());
-
-            throw new RuntimeException(ex);
-        }
-
-        // ===============================
-        // CALL APPROVE EXPENSE API
-        // ===============================
-        try {
-
-            operationFeignClient.approveExpense(
-                    project.getId(),
-                    user.getId(),
-                    expenseId,
-                    status
-            );
-
-            log.info("Expense approved successfully | projectId={} expenseId={}",
-                    project.getId(),
-                    expenseId
-            );
-
-        } catch (FeignException ex) {
-
-
-            log.error("Error approving expense | projectId={} expenseId={}",
-                    project.getId(),
-                    expenseId
-            );
-
-            throw new RuntimeException(ex);
-        }
-    }
-
+//    @Override
+//    @Transactional
+//    public void approveExpense(Long userId, Long unbilledId, Long expenseId, String status) {
+//
+//        // ===============================
+//        // VALIDATE USER
+//        // ===============================
+//        User user = userRepository.findById(userId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "User not found with ID: " + userId,
+//                        "USER_NOT_FOUND",
+//                        "User",
+//                        userId
+//                ));
+//
+//        // ===============================
+//        // FETCH UNBILLED
+//        // ===============================
+//        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Unbilled not found with ID: " + unbilledId,
+//                        "UNBILLED_NOT_FOUND",
+//                        "UnbilledInvoice",
+//                        unbilledId
+//                ));
+//
+//        if (unbilled.isCancelled()) {
+//            throw new IllegalStateException("Unbilled already cancelled");
+//        }
+//
+//        // ===============================
+//        // FETCH PROJECT FROM OPERATION
+//        // ===============================
+//        OperationProjectResponseDto project;
+//
+//        try {
+//            ResponseEntity<OperationProjectResponseDto> res =
+//                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+//
+//            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
+//                throw new RuntimeException("Failed to fetch project from operation service");
+//            }
+//
+//            project = res.getBody();
+//
+//        } catch (FeignException ex) {
+//
+//
+//            log.error("Error fetching project, while approve expenses | unbilled={} ",unbilled.getUnbilledNumber());
+//
+//            throw new RuntimeException(ex);
+//        }
+//
+//        // ===============================
+//        // CALL APPROVE EXPENSE API
+//        // ===============================
+//        try {
+//
+//            operationFeignClient.approveExpense(
+//                    project.getId(),
+//                    user.getId(),
+//                    expenseId,
+//                    status
+//            );
+//
+//            log.info("Expense approved successfully | projectId={} expenseId={}",
+//                    project.getId(),
+//                    expenseId
+//            );
+//
+//        } catch (FeignException ex) {
+//
+//
+//            log.error("Error approving expense | projectId={} expenseId={}",
+//                    project.getId(),
+//                    expenseId
+//            );
+//
+//            throw new RuntimeException(ex);
+//        }
+//    }
+//
 
     private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
         Estimate estimate = unbilled.getEstimate();
