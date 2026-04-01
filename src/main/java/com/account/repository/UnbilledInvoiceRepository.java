@@ -47,17 +47,18 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     long countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(Long createdById, Long approvedById, UnbilledStatus status);
 
     @Query("""
-        SELECT u FROM UnbilledInvoice u
-        LEFT JOIN u.company c
-        WHERE u.isCancelled = false AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
-        AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
-        """)
+    SELECT u FROM UnbilledInvoice u
+    LEFT JOIN u.company c
+    WHERE u.isCancelled = false 
+      AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
+      AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+    ORDER BY u.createdAt DESC
+""")
     Page<UnbilledInvoice> searchUnbilledInvoicesAndIsCancelledFalse(
             @Param("unbilledNumber") String unbilledNumber,
             @Param("companyName") String companyName,
             Pageable pageable
     );
-
     @Query("""
         SELECT COUNT(u) FROM UnbilledInvoice u
         LEFT JOIN u.company c
