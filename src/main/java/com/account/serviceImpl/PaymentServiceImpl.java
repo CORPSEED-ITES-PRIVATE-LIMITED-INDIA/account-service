@@ -1147,8 +1147,40 @@ public class PaymentServiceImpl implements PaymentService {
         // CALL OPERATION SERVICE
         // ===============================
 
-        operationFeignClient.cancelProjectByUnbilledNumber(userId, unbilled.getUnbilledNumber());
-        log.info("Project cancelled in operation service");
+        try {
+            ResponseEntity<OperationProjectResponseDto> res =
+                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+            if (res.getStatusCode().is2xxSuccessful() && res.getBody() != null) {
+                OperationProjectResponseDto project = res.getBody();
+
+                log.info("Project exists → cancelling project | projectId={}", project.getId());
+
+                // ✅ CANCEL ONLY IF EXISTS
+                operationFeignClient.cancelProjectByUnbilledNumber(
+                        userId,
+                        unbilled.getUnbilledNumber()
+                );
+
+                log.info("Project cancelled in operation service");
+            }
+
+        } catch (FeignException ex) {
+
+            if (ex.status() == 404) {
+                // ✅ Project does NOT exist → do nothing
+                log.info("Project not found → nothing to cancel");
+
+            } else {
+                log.error(
+                        "Operation service error while checking project to cancel | unbilled={} | status={} | message={}",
+                        unbilled.getUnbilledNumber(),
+                        ex.status(),
+                        ex.getMessage()
+                );
+                throw ex;
+            }
+        }
 
     }
 
