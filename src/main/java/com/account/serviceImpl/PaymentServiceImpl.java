@@ -1156,13 +1156,24 @@ public class PaymentServiceImpl implements PaymentService {
 
                 log.info("Project exists → cancelling project | projectId={}", project.getId());
 
-                // ✅ CANCEL ONLY IF EXISTS
-                operationFeignClient.cancelProjectByUnbilledNumber(
-                        userId,
-                        unbilled.getUnbilledNumber()
-                );
+                try {
+                    operationFeignClient.cancelProjectByUnbilledNumber(
+                            userId,
+                            unbilled.getUnbilledNumber()
+                    );
 
-                log.info("Project cancelled in operation service");
+                    log.info("Project cancelled in operation service");
+
+                } catch (FeignException cancelEx) {
+
+                    // ✅ Handle "already cancelled"
+                    if (cancelEx.status() == 400 || cancelEx.status() == 409) {
+                        log.info("Project already cancelled → skipping | unbilled={}",
+                                unbilled.getUnbilledNumber());
+                    } else {
+                        throw cancelEx;
+                    }
+                }
             }
 
         } catch (FeignException ex) {
