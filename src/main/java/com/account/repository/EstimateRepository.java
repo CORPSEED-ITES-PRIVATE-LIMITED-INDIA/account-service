@@ -1,6 +1,7 @@
 package com.account.repository;
 
 import com.account.domain.estimate.Estimate;
+import com.account.domain.estimate.EstimateStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -35,6 +36,9 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSp
 
     Page<Estimate> findByCreatedByIdAndIsDeletedFalseAndIsCancelledFalse(Long requestingUserId, Pageable pageable);
 
+    List<Estimate> findByLeadIdAndIsDeletedFalseAndIsCancelledFalse(Long leadId);
+
+    boolean existsByLeadIdAndIsDeletedFalseAndIsCancelledFalseAndStatusNot(Long leadId, EstimateStatus status);
     /**
      * Count all non-deleted estimates (for admins)
      */

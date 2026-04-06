@@ -153,6 +153,16 @@ public class Estimate {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    @Column(columnDefinition = "TEXT")
+    private String rejectionReason;
+
+    private LocalDateTime rejectedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "rejected_by")
+    private User rejectedBy;
+
+
     // Add these fields in Estimate class
 
     @Column
@@ -187,7 +197,6 @@ public class Estimate {
      * Call this before saving if line items change.
      */
     public void calculateTotals() {
-        // Core totals
         this.subTotalExGst = lineItems.stream()
                 .map(EstimateLineItem::getLineTotalExGst)
                 .filter(java.util.Objects::nonNull)
@@ -195,28 +204,36 @@ public class Estimate {
 
         this.totalGstAmount = lineItems.stream()
                 .map(EstimateLineItem::getGstAmount)
+                .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        this.grandTotal = subTotalExGst.add(totalGstAmount);
+        this.cgstAmount = BigDecimal.ZERO;
+        this.sgstAmount = BigDecimal.ZERO;
+        this.igstAmount = BigDecimal.ZERO;
 
-        // GST breakup logic (simplified - enhance with real state comparison later)
-        if (totalGstAmount.compareTo(BigDecimal.ZERO) > 0) {
-            // For same state: CGST + SGST (50-50 split)
-            // For different state: IGST
-            // In real system, compare seller state vs placeOfSupplyStateCode
-            BigDecimal halfGst = totalGstAmount.divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
+        if (lineItems != null && !lineItems.isEmpty()) {
+            for (EstimateLineItem item : lineItems) {
+                if (item == null || item.getGstAmount() == null) {
+                    continue;
+                }
 
-            // Default assumption: same state (CGST + SGST)
-            this.cgstAmount = halfGst;
-            this.sgstAmount = halfGst;
-            this.igstAmount = BigDecimal.ZERO;
+                BigDecimal itemGstAmount = item.getGstAmount();
 
-            // Example override for IGST (uncomment/enhance with real logic)
-            // if (!"06".equals(placeOfSupplyStateCode)) { // if not Haryana
-            //     this.igstAmount = totalGstAmount;
-            //     this.cgstAmount = BigDecimal.ZERO;
-            //     this.sgstAmount = BigDecimal.ZERO;
-            // }
+                if (Boolean.TRUE.equals(item.getIgstFlag())) {
+                    this.igstAmount = this.igstAmount.add(itemGstAmount);
+                } else {
+                    BigDecimal halfGstAmount = itemGstAmount.divide(
+                            BigDecimal.valueOf(2),
+                            2,
+                            java.math.RoundingMode.HALF_UP
+                    );
+
+                    this.cgstAmount = this.cgstAmount.add(halfGstAmount);
+                    this.sgstAmount = this.sgstAmount.add(halfGstAmount);
+                }
+            }
         }
+
+        this.grandTotal = this.subTotalExGst.add(this.totalGstAmount);
     }
 }

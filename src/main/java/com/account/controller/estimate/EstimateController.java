@@ -3,10 +3,8 @@ package com.account.controller.estimate;
 import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
-import com.account.dto.estimate.EstimateFilterRequest;
-import com.account.dto.estimate.EstimateResponseDto;
-import com.account.dto.estimate.EstimateSearchRequest;
-import com.account.dto.estimate.EstimateSearchRequestDto;
+import com.account.dto.estimate.*;
+import com.account.dto.estimate.response.EstimateStatusResponseDto;
 import com.account.service.EstimateService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -256,6 +254,15 @@ public class EstimateController {
     ){
         EstimateResponseDto dto = estimateService.convertIntoPI(estimateId, requestingUserId);
         return ResponseEntity.ok(dto);
+    }
+
+    @PatchMapping("/{estimateId}/reject")
+    public ResponseEntity<EstimateStatusResponseDto> rejectEstimate(
+            @PathVariable Long estimateId,
+            @Valid @RequestBody EstimateRejectRequestDto requestDto) {
+
+        EstimateStatusResponseDto response = estimateService.rejectEstimate(estimateId, requestDto);
+        return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
 

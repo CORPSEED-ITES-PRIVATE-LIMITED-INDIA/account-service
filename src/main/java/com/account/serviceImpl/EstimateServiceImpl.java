@@ -11,6 +11,7 @@ import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.dashboard.MonthlyTrendDto;
 import com.account.dto.estimate.*;
+import com.account.dto.estimate.response.EstimateStatusResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.*;
@@ -94,6 +95,11 @@ public class EstimateServiceImpl implements EstimateService {
             throw new ValidationException("solutionType is required", "ERR_SOLUTION_TYPE_REQUIRED", "solutionType");
         }
 
+        if (requestDto.getLeadId() == null || requestDto.getLeadId() <= 0) {
+            throw new ValidationException("Invalid leadId", "ERR_INVALID_LEAD_ID", "leadId");
+        }
+
+
         if (requestDto.getSolutionName() == null || requestDto.getSolutionName().trim().isEmpty()) {
             throw new ValidationException("solutionName is required", "ERR_SOLUTION_NAME_REQUIRED", "solutionName");
         }
@@ -102,6 +108,22 @@ public class EstimateServiceImpl implements EstimateService {
         if (requestDto.getLineItems() == null || requestDto.getLineItems().isEmpty()) {
             log.warn("Validation failed: No line items provided for estimate creation");
             throw new ValidationException("At least one line item is required", "ERR_NO_LINE_ITEMS", "lineItems");
+        }
+
+
+        // ---- Lead estimate rule ----
+        boolean existsNonRejectedEstimate = estimateRepository
+                .existsByLeadIdAndIsDeletedFalseAndIsCancelledFalseAndStatusNot(
+                        requestDto.getLeadId(),
+                        EstimateStatus.REJECTED
+                );
+
+        if (existsNonRejectedEstimate) {
+            throw new ValidationException(
+                    "Estimate already exists for this lead. First reject the already created estimate(s).",
+                    "ERR_ESTIMATE_ALREADY_EXISTS_FOR_LEAD",
+                    "leadId"
+            );
         }
 
         // 2. Validate creator exists
@@ -1598,6 +1620,69 @@ public class EstimateServiceImpl implements EstimateService {
 
     }
 
+    @Override
+    public EstimateStatusResponseDto rejectEstimate(Long estimateId, EstimateRejectRequestDto requestDto) {
+
+        if (estimateId == null || estimateId <= 0) {
+            throw new ValidationException("Invalid estimate id", "ERR_INVALID_ESTIMATE_ID", "estimateId");
+        }
+
+        if (requestDto == null) {
+            throw new ValidationException("Request body is required", "ERR_REQUEST_REQUIRED");
+        }
+
+        if (requestDto.getRejectionReason() == null || requestDto.getRejectionReason().trim().isEmpty()) {
+            throw new ValidationException("Rejection reason is required", "ERR_REJECTION_REASON_REQUIRED", "rejectionReason");
+        }
+
+        if (requestDto.getRejectedByUserId() == null || requestDto.getRejectedByUserId() <= 0) {
+            throw new ValidationException("Invalid rejectedByUserId", "ERR_INVALID_REJECTED_BY", "rejectedByUserId");
+        }
+
+        Estimate estimate = estimateRepository.findById(estimateId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Estimate not found with id: " + estimateId,
+                        "ESTIMATE_NOT_FOUND"
+                ));
+
+        if (estimate.isDeleted()) {
+            throw new ValidationException("Estimate is deleted", "ERR_ESTIMATE_DELETED");
+        }
+
+        if (estimate.isCancelled()) {
+            throw new ValidationException("Cancelled estimate cannot be rejected", "ERR_ESTIMATE_CANCELLED");
+        }
+
+        if (estimate.getStatus() == EstimateStatus.REJECTED) {
+            throw new ValidationException("Estimate is already rejected", "ERR_ESTIMATE_ALREADY_REJECTED");
+        }
+
+        if (estimate.getStatus() == EstimateStatus.APPROVED) {
+            throw new ValidationException("Approved estimate cannot be rejected", "ERR_ESTIMATE_ALREADY_APPROVED");
+        }
+
+        User rejectedBy = userRepository.findById(requestDto.getRejectedByUserId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with id: " + requestDto.getRejectedByUserId(),
+                        "USER_NOT_FOUND"
+                ));
+
+        estimate.setStatus(EstimateStatus.REJECTED);
+        estimate.setRejectionReason(requestDto.getRejectionReason().trim());
+        estimate.setRejectedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
+        estimate.setRejectedBy(rejectedBy);
+        estimate.setUpdatedBy(rejectedBy);
+        estimate.setRevisionReason("Estimate rejected");
+
+        estimateRepository.save(estimate);
+
+        return new EstimateStatusResponseDto(
+                estimate.getId(),
+                estimate.getEstimateNumber(),
+                estimate.getStatus().name(),
+                "Estimate rejected successfully"
+        );
+    }
 
 
 }

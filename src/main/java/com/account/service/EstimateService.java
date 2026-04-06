@@ -3,9 +3,11 @@ package com.account.service;
 import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
+import com.account.dto.estimate.EstimateRejectRequestDto;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.dto.estimate.EstimateSearchRequest;
 import com.account.dto.estimate.EstimateSearchRequestDto;
+import com.account.dto.estimate.response.EstimateStatusResponseDto;
 import org.springframework.data.domain.Page;
 
 import java.time.LocalDate;
@@ -54,6 +56,10 @@ public interface EstimateService {
     EstimateResponseDto convertIntoPI(Long estimateId, Long requestingUserId);
 
     void sendEstimate(Long estimateId, Long requestingUserId);
+
+    EstimateStatusResponseDto rejectEstimate(Long estimateId, EstimateRejectRequestDto requestDto);
+
+
 }
 
 
