@@ -168,6 +168,39 @@ public class PaymentServiceImpl implements PaymentService {
         // Business rules for amount vs payment type
         validatePaymentRules(paymentType, reqAmount, unbilled, isFirstPayment);
 
+
+// Prevent approved + pending + current request from exceeding total amount
+        BigDecimal approvedAmount = safe2(unbilled.getReceivedAmount());
+        BigDecimal pendingAmount = safe2(unbilled.getCurrentReceivedAmount());
+        BigDecimal totalAmount = safe2(unbilled.getTotalAmount());
+
+        BigDecimal totalAfterThisRegistration = approvedAmount
+                .add(pendingAmount)
+                .add(reqAmount);
+
+        if (totalAfterThisRegistration.compareTo(totalAmount) > 0) {
+            BigDecimal remainingAllowed = totalAmount.subtract(approvedAmount.add(pendingAmount))
+                    .max(BigDecimal.ZERO)
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal excessAmount = reqAmount.subtract(remainingAllowed)
+                    .max(BigDecimal.ZERO)
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            throw new ValidationException(
+                    String.format(
+                            "Payment exceeds allowed amount. Approved amount is ₹%s, pending approval amount is ₹%s, remaining payable amount is ₹%s, and the current payment of ₹%s exceeds it by ₹%s.",
+                            approvedAmount,
+                            pendingAmount,
+                            remainingAllowed,
+                            reqAmount,
+                            excessAmount
+                    ),
+                    "ERR_PAYMENT_EXCEEDS_TOTAL_AMOUNT",
+                    "amount"
+            );
+        }
+
         // Create and save payment receipt
         PaymentReceipt receipt = new PaymentReceipt();
         receipt.setUnbilledInvoice(unbilled);
