@@ -1431,11 +1431,16 @@ public class EstimateServiceImpl implements EstimateService {
                 Join<Object, Object> companyJoin =
                         root.join("company", JoinType.LEFT);
 
+                Join<Object, Object> unitJoin =
+                        root.join("unit", JoinType.LEFT);
+
                 predicates.add(
                         cb.or(
                                 cb.like(cb.lower(root.get("estimateNumber")), likePattern),
                                 cb.like(cb.lower(root.get("solutionName")), likePattern),
-                                cb.like(cb.lower(companyJoin.get("name")), likePattern)
+                                cb.like(cb.lower(companyJoin.get("name")), likePattern),
+                                cb.like(cb.lower(unitJoin.get("gstNo")), likePattern),
+                                cb.like(cb.lower(unitJoin.get("unitName")), likePattern)
                         )
                 );
             }
