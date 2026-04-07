@@ -1670,6 +1670,29 @@ public class EstimateServiceImpl implements EstimateService {
                         "USER_NOT_FOUND"
                 ));
 
+        // ===============================
+        // BLOCK IF UNBILLED EXISTS
+        // ===============================
+        Optional<UnbilledInvoice> unbilledOpt =
+                unbilledInvoiceRepository.findByEstimateAndIsCancelledFalse(estimate);
+
+        if (unbilledOpt.isPresent()) {
+
+            UnbilledInvoice unbilled = unbilledOpt.get();
+
+            // 🚨 STRICT CHECK (recommended)
+            if (unbilled.getStatus() == UnbilledStatus.PENDING_APPROVAL
+                    || unbilled.getStatus() == UnbilledStatus.APPROVED
+                    || (unbilled.getReceivedAmount() != null
+                    && unbilled.getReceivedAmount().compareTo(BigDecimal.ZERO) > 0)) {
+
+                throw new ValidationException(
+                        "Estimate cannot be rejected because payment/unbilled invoice already exists against it",
+                        "ERR_ESTIMATE_HAS_PAYMENT"
+                );
+            }
+        }
+
         estimate.setStatus(EstimateStatus.REJECTED);
         estimate.setRejectionReason(requestDto.getRejectionReason().trim());
         estimate.setRejectedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
