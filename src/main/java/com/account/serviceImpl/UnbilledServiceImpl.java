@@ -128,7 +128,7 @@ public class UnbilledServiceImpl implements UnbilledService {
             unbilled.setStatus(UnbilledStatus.APPROVED);
             estimate.setStatus(EstimateStatus.APPROVED);
 
-            // 🔥 Move pending → actual received
+            //  Move pending → actual received
             BigDecimal updatedReceived = unbilled.getReceivedAmount()
                     .add(unbilled.getCurrentReceivedAmount());
 

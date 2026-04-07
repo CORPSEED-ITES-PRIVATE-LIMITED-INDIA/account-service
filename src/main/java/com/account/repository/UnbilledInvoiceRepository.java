@@ -21,8 +21,6 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     Optional<UnbilledInvoice> findByEstimateAndIsCancelledFalse(Estimate estimate);
 
     Optional<UnbilledInvoice> findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(Estimate estimate);
-
-    Optional<UnbilledInvoice> findByEstimateAndStatusNotAndIsCancelledFalse(Estimate estimate, UnbilledStatus status);
     @Query("""
         SELECT u
         FROM UnbilledInvoice u
@@ -69,11 +67,6 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             @Param("unbilledNumber") String unbilledNumber,
             @Param("companyName") String companyName
     );
-
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select u from UnbilledInvoice u where u.estimate = :estimate AND u.isCancelled = false")
-    Optional<UnbilledInvoice> findByEstimateAndIsCancelledFalseForUpdate(@Param("estimate") Estimate estimate);
 
 
     List<UnbilledInvoice> findByEstimateIdInAndIsCancelledFalse(List<Long> estimateIds);

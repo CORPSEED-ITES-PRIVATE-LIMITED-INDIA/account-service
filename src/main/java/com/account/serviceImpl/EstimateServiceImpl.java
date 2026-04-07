@@ -732,7 +732,7 @@ public class EstimateServiceImpl implements EstimateService {
                     cb.like(cb.lower(companyJoin.get("name")), likePattern)
             );
 
-            // 3️⃣ 🔥 NEW — Search by unit name
+            // 3️⃣  NEW — Search by unit name
             Join<Estimate, CompanyUnit> unitJoin =
                     root.join("unit", JoinType.LEFT);
 

@@ -84,6 +84,16 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getEstimateId()
                 ));
 
+        //  NEW VALIDATION: Prevent payment registration on REJECTED estimate
+        if (estimate.getStatus() == EstimateStatus.REJECTED) {
+            throw new ValidationException(
+                    "Cannot register payment against a REJECTED estimate. " +
+                            "Estimate " + estimate.getEstimateNumber() + " has been rejected.",
+                    "ERR_PAYMENT_ON_REJECTED_ESTIMATE",
+                    "estimateId"
+            );
+        }
+
         User salesperson = userRepository.findById(salespersonUserId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Salesperson not found with ID: " + salespersonUserId,
@@ -463,7 +473,7 @@ public class PaymentServiceImpl implements PaymentService {
                 }
             });
 
-            // 🔥 Move pending → actual received
+            //  Move pending → actual received
             BigDecimal updatedReceived = unbilled.getReceivedAmount()
                     .add(unbilled.getCurrentReceivedAmount());
 
@@ -535,7 +545,7 @@ public class PaymentServiceImpl implements PaymentService {
         // 9. Identify the first (triggering) payment receipt
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
                 .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
-                .filter(p -> p.getCreatedAt() != null) // 🔥 IMPORTANT
+                .filter(p -> p.getCreatedAt() != null) //  IMPORTANT
                 .max(Comparator.comparing(PaymentReceipt::getCreatedAt))
                 .orElseThrow(() -> new IllegalStateException(
                         "No valid APPROVED payments found for unbilled invoice: "
