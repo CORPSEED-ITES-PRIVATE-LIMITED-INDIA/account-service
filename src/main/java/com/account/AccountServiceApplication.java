@@ -33,7 +33,6 @@ public class AccountServiceApplication {
 	 * only if they do not already exist (checked by 'code').
 	 */
 
-
 	@Bean
 	public CommandLineRunner seedPaymentTypes() {
 		return args -> {
