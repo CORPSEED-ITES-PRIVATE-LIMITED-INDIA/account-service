@@ -57,6 +57,8 @@ public class EstimateServiceImpl implements EstimateService {
 
     @Autowired
     private UnbilledInvoiceRepository unbilledRepository;
+    @Autowired
+    private EmailServiceImpl emailServiceImpl;
 
     @Autowired
     private InvoiceRepository invoiceRepository;
@@ -589,16 +591,13 @@ public class EstimateServiceImpl implements EstimateService {
     @Transactional
     public EstimateResponseDto sendEstimateToClient(Long estimateId, Long requestingUserId) {
 
-        // 1. Load estimate
         Estimate estimate = estimateRepository.findById(estimateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Estimate not found", "EST_NOT_FOUND"));
 
-        // 2. Very basic permission check (improve later)
         if (!estimate.getCreatedBy().getId().equals(requestingUserId)) {
             throw new ValidationException("Only the creator can send this estimate right now", "FORBIDDEN");
         }
 
-        // 3. Status guard
         if (estimate.getStatus() != EstimateStatus.DRAFT) {
             throw new ValidationException(
                     "Can only send estimates in DRAFT status. Current: " + estimate.getStatus(),
@@ -606,46 +605,34 @@ public class EstimateServiceImpl implements EstimateService {
             );
         }
 
-        // 4. Get contact & email
-        Contact contact = estimate.getContact();
-        if (contact == null) {
-            throw new ValidationException("No contact linked to this estimate", "ERR_NO_CONTACT");
+        if (estimate.getUnit() == null || estimate.getUnit().getId() == null) {
+            throw new ValidationException("No company unit linked to this estimate", "ERR_NO_COMPANY_UNIT");
         }
 
-        if (contact.getEmails() == null || contact.getEmails().trim().isEmpty()) {
-            throw new ValidationException("Contact has no email addresses", "ERR_NO_EMAIL");
+        List<String> sentEmails = emailServiceImpl.sendEstimateEmailToUnitContacts(estimate);
+
+        if (sentEmails == null || sentEmails.isEmpty()) {
+            throw new ValidationException("No valid emails found to send estimate", "ERR_NO_EMAIL");
         }
 
-        // Take **first** email as primary
-        String primaryEmail = contact.getEmails().split(",")[0].trim();
-        if (primaryEmail.isEmpty()) {
-            throw new ValidationException("Primary email is empty/invalid", "ERR_INVALID_EMAIL");
-        }
+        String primaryEmail = sentEmails.get(0);
+        String allEmails = String.join(",", sentEmails);
 
-        // 5. Here: real email sending should happen
-        // For now → just log (replace with actual email code later)
-        log.info("Sending estimate {} to primary email: {} | triggered by user: {}",
-                estimate.getEstimateNumber(), primaryEmail, requestingUserId);
-
-        // -------------------------------
-        //   REAL EMAIL SENDING GOES HERE
-        //   emailService.sendEstimateEmail(estimate, primaryEmail, defaultSubject, defaultBody);
-        //   or: emailTemplateService.sendEstimate(estimateId, primaryEmail);
-        // -------------------------------
-
-        // 6. Update entity
         estimate.setStatus(EstimateStatus.SENT_TO_CLIENT);
         estimate.setSentToClientAt(LocalDateTime.now());
         estimate.setSentToEmail(primaryEmail);
+        estimate.setLastSentEmails(allEmails);
+        estimate.setSentByUserName(
+                estimate.getCreatedBy() != null ? estimate.getCreatedBy().getFullName() : null
+        );
 
         estimate = estimateRepository.save(estimate);
 
-        log.info("Estimate sent & status updated | id={} | email={} | sentBy={}",
-                estimateId, primaryEmail, requestingUserId);
+        log.info("Estimate sent successfully | estimateId={} | recipients={} | triggeredBy={}",
+                estimateId, allEmails, requestingUserId);
 
         return mapToResponseDto(estimate);
     }
-
     @Override
     public List<EstimateResponseDto> getAllEstimates(
             Long requestingUserId,
