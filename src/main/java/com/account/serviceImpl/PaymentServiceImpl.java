@@ -444,7 +444,6 @@ public class PaymentServiceImpl implements PaymentService {
         if ("REJECTED".equals(request.getApprovalRemarks())) {
 
             unbilled.setStatus(UnbilledStatus.REJECTED);
-            estimate.setStatus(EstimateStatus.REJECTED);
 
             // ❌ Mark all pending payments as REJECTED
             unbilled.getPayments().forEach(p -> {
@@ -551,8 +550,16 @@ public class PaymentServiceImpl implements PaymentService {
                         "No valid APPROVED payments found for unbilled invoice: "
                                 + unbilled.getUnbilledNumber()));
 
+
         // 10. Generate actual GST invoice
         if(request.getApprovalRemarks().equals("APPROVED")) {
+            triggeringReceipt = unbilled.getPayments().stream()
+                    .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
+                    .filter(p -> p.getCreatedAt() != null)
+                    .max(Comparator.comparing(PaymentReceipt::getCreatedAt))
+                    .orElseThrow(() -> new IllegalStateException(
+                            "No valid APPROVED payments found for unbilled invoice: "
+                                    + unbilled.getUnbilledNumber()));
             unbilled.getPayments().stream()
                     .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
                     .filter(p -> !invoiceRepository.existsByTriggeringPayment(p))
@@ -595,7 +602,9 @@ public class PaymentServiceImpl implements PaymentService {
         response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
         response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
         response.setPaymentTypeId(
-                triggeringReceipt.getPaymentType() != null ? triggeringReceipt.getPaymentType().getId() : null
+                triggeringReceipt != null && triggeringReceipt.getPaymentType() != null
+                        ? triggeringReceipt.getPaymentType().getId()
+                        : null
         );
         response.setApprovedById(approver.getId());
         response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
