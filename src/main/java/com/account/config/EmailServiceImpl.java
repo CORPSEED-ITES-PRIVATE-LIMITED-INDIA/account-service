@@ -42,6 +42,7 @@ public class EmailServiceImpl {
             Pattern.CASE_INSENSITIVE
     );
 
+
     public void sendEmail(String[] emailTo, String[] ccPersons, String[] bccPersons) {
         try {
             MimeMessage mimeMessage = javaMailSender.createMimeMessage();
