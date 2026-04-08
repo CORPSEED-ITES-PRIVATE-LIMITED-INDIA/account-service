@@ -434,7 +434,6 @@ public class PaymentServiceImpl implements PaymentService {
         if ("REJECTED".equals(request.getApprovalRemarks())) {
 
             unbilled.setStatus(UnbilledStatus.REJECTED);
-            estimate.setStatus(EstimateStatus.REJECTED);
 
             // ❌ Mark all pending payments as REJECTED
             unbilled.getPayments().forEach(p -> {
