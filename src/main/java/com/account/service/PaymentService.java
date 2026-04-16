@@ -2,6 +2,7 @@ package com.account.service;
 
 import com.account.domain.UnbilledStatus;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
+import com.account.dto.payment.GovernmentFeeResponseDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -38,5 +39,7 @@ public interface PaymentService {
     void approveExpense(Long userId, Long unbilledId, Long expenseId, String status);
 
     UnbilledInvoiceDetailDto convertIntoADI(Long unbilledId,Long requestingUserId);
+
+    GovernmentFeeResponseDto getGovernmentFee(Long unbilledId, Long estimateId);
 
 }

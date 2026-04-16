@@ -3,7 +3,9 @@ package com.account.controller.unbilled;
 import com.account.domain.UnbilledStatus;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
+import com.account.dto.payment.GovernmentFeeResponseDto;
 import com.account.dto.unbilled.*;
+import com.account.exception.ResourceNotFoundException;
 import com.account.service.PaymentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.ValidationException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -216,6 +219,22 @@ public class UnbilledInvoiceController {
     ){
         UnbilledInvoiceDetailDto dto = paymentService.convertIntoADI(unbilledId, requestingUserId);
         return ResponseEntity.ok(dto);
+    }
+
+    @GetMapping("/government-fee")
+    public ResponseEntity<?> getGovernmentFee(
+            @RequestParam(required = false) Long unbilledId,
+            @RequestParam(required = false) Long estimateId) {
+        try {
+            GovernmentFeeResponseDto response = paymentService.getGovernmentFee(unbilledId, estimateId);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (ValidationException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        } catch (ResourceNotFoundException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
 

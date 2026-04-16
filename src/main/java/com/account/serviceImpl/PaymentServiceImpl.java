@@ -5,6 +5,7 @@ import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.operationService.*;
 import com.account.dto.payment.GovernmentFeeRequestDto;
+import com.account.dto.payment.GovernmentFeeResponseDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -1643,5 +1644,86 @@ public class PaymentServiceImpl implements PaymentService {
         unbilledInvoice.setAdvanceInvoiceFlag(true);
         unbilledInvoiceRepository.save(unbilledInvoice);
         return mapToDetailDto(unbilledInvoice);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public GovernmentFeeResponseDto getGovernmentFee(Long unbilledId, Long estimateId) {
+
+        if (unbilledId == null && estimateId == null) {
+            throw new ValidationException(
+                    "Either unbilledId or estimateId is required",
+                    "ERR_GOV_FEE_FILTER_REQUIRED",
+                    "unbilledId/estimateId"
+            );
+        }
+
+
+        GovernmentFee governmentFee;
+
+        if (unbilledId != null) {
+            governmentFee = governmentFeeRepository.findByUnbilledInvoiceId(unbilledId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Government fee not found for unbilled invoice ID: " + unbilledId,
+                            "GOVERNMENT_FEE_NOT_FOUND",
+                            "GovernmentFee",
+                            unbilledId
+                    ));
+        } else {
+            governmentFee = governmentFeeRepository.findByEstimateId(estimateId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Government fee not found for estimate ID: " + estimateId,
+                            "GOVERNMENT_FEE_NOT_FOUND",
+                            "GovernmentFee",
+                            estimateId
+                    ));
+        }
+
+        return mapToGovernmentFeeResponseDto(governmentFee);
+    }
+    private GovernmentFeeResponseDto mapToGovernmentFeeResponseDto(GovernmentFee governmentFee) {
+        return GovernmentFeeResponseDto.builder()
+                .id(governmentFee.getId())
+                .publicUuid(governmentFee.getPublicUuid())
+
+                .estimateId(governmentFee.getEstimate() != null ? governmentFee.getEstimate().getId() : null)
+                .estimateNumber(governmentFee.getEstimate() != null ? governmentFee.getEstimate().getEstimateNumber() : null)
+
+                .unbilledInvoiceId(governmentFee.getUnbilledInvoice() != null ? governmentFee.getUnbilledInvoice().getId() : null)
+                .unbilledNumber(governmentFee.getUnbilledInvoice() != null ? governmentFee.getUnbilledInvoice().getUnbilledNumber() : null)
+
+                .companyId(governmentFee.getCompany() != null ? governmentFee.getCompany().getId() : null)
+                .companyName(governmentFee.getCompany() != null ? governmentFee.getCompany().getName() : null)
+
+                .unitId(governmentFee.getUnit() != null ? governmentFee.getUnit().getId() : null)
+                .unitName(governmentFee.getUnit() != null ? governmentFee.getUnit().getName() : null)
+
+                .contactId(governmentFee.getContact() != null ? governmentFee.getContact().getId() : null)
+                .contactName(governmentFee.getContact() != null ? governmentFee.getContact().getName() : null)
+
+                .feeReferenceNumber(governmentFee.getFeeReferenceNumber())
+                .departmentName(governmentFee.getDepartmentName())
+                .feeType(governmentFee.getFeeType())
+
+                .totalAmount(governmentFee.getTotalAmount())
+                .receivedAmount(governmentFee.getReceivedAmount())
+                .outstandingAmount(governmentFee.getOutstandingAmount())
+
+                .paymentDate(governmentFee.getPaymentDate())
+                .dueDate(governmentFee.getDueDate())
+
+                .status(governmentFee.getStatus())
+                .remarks(governmentFee.getRemarks())
+
+                .createdById(governmentFee.getCreatedBy() != null ? governmentFee.getCreatedBy().getId() : null)
+                .createdByName(governmentFee.getCreatedBy() != null
+                        ? (governmentFee.getCreatedBy().getFullName() != null
+                        ? governmentFee.getCreatedBy().getFullName()
+                        : governmentFee.getCreatedBy().getEmail())
+                        : null)
+
+                .createdAt(governmentFee.getCreatedAt())
+                .updatedAt(governmentFee.getUpdatedAt())
+                .build();
     }
 }

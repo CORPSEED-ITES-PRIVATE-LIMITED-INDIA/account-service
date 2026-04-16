@@ -16,4 +16,8 @@ public interface GovernmentFeeRepository extends JpaRepository<GovernmentFee, Lo
     boolean existsByEstimate(Estimate estimate);
 
     boolean existsByUnbilledInvoice(UnbilledInvoice unbilledInvoice);
+
+    Optional<GovernmentFee> findByEstimateId(Long estimateId);
+
+    Optional<GovernmentFee> findByUnbilledInvoiceId(Long unbilledInvoiceId);
 }
