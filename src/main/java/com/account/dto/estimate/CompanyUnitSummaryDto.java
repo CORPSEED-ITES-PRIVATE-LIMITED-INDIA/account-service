@@ -18,7 +18,6 @@ public class CompanyUnitSummaryDto {
     private String state;
     private String pinCode;
     private String gstNo;
-    private String gstType;
     private String status;
     private String onboardingStatus;
 

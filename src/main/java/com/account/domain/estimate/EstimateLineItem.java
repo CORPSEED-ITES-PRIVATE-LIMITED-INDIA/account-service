@@ -55,7 +55,6 @@ public class EstimateLineItem {
     @Column(precision = 5, scale = 2)
     private BigDecimal gstRate = BigDecimal.ZERO;
 
-
     @Column(precision = 5, scale = 2)
     private BigDecimal igstRate = BigDecimal.ZERO;
     @Column(precision = 5, scale = 2)
@@ -126,9 +125,6 @@ public class EstimateLineItem {
                 this.igstRate = BigDecimal.ZERO;
             }
 
-            // ===============================
-            // 3. GST AMOUNT CALCULATION
-            // ===============================
             this.gstAmount = lineTotalExGst.multiply(
                     gstRate.divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
             ).setScale(2, java.math.RoundingMode.HALF_UP);

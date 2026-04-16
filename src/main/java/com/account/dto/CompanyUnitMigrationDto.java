@@ -43,12 +43,7 @@ public class CompanyUnitMigrationDto {
 
     // ── GST related ──────────────────────────────────────────────
     private String gstNo;
-    private String gstType;
-    private String gstDocuments;           // JSON / comma separated / base64
-    private String gstTypeEntity;
-    private String gstBusinessType;
-    private String gstTypePrice;
-
+    private String gstDocuments;
     private Date unitOpeningDate;
 
     private String status = "Active";

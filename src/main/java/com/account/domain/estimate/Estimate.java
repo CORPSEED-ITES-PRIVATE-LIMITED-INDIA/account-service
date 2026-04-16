@@ -102,7 +102,6 @@ public class Estimate {
     @Column(precision = 15, scale = 2, nullable = false)
     private BigDecimal igstAmount = BigDecimal.ZERO;
 
-    // State code (2 digits) for GST place of supply (determines CGST/SGST vs IGST)
     @Column(length = 2)
     private String placeOfSupplyStateCode;  // e.g. "06" for Haryana
 
@@ -161,9 +160,6 @@ public class Estimate {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "rejected_by")
     private User rejectedBy;
-
-
-    // Add these fields in Estimate class
 
     @Column
     private LocalDateTime sentToClientAt;

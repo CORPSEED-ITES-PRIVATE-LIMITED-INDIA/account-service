@@ -60,22 +60,9 @@ public class CompanyUnit {
     @Column(name = "gst_no", length = 15)
     private String gstNo;
 
-    @Column(name = "gst_type")
-    private String gstType;
-
     @Column(name = "gst_documents", columnDefinition = "TEXT")
     private String gstDocuments;
 
-    @Column(name = "gst_type_entity")
-    private String gstTypeEntity;
-
-    @Column(name = "gst_business_type")
-    private String gstBusinessType;
-
-    @Column(name = "gst_type_price")
-    private String gstTypePrice;
-
-    // Contacts
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "primary_contact_id")
     private Contact primaryContact;

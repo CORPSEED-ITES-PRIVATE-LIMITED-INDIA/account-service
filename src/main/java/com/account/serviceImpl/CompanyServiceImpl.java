@@ -220,7 +220,6 @@ public class CompanyServiceImpl implements CompanyService {
                 unit.setCountry(u.getCountry());
                 unit.setPinCode(u.getPinCode());
                 unit.setGstNo(u.getGstNo());
-                unit.setGstBusinessType(u.getGstBusinessType());
                 unit.setUnitOpeningDate(u.getUnitOpeningDate());
                 unit.setUpdatedBy(updatedBy);
                 unit.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
@@ -404,9 +403,7 @@ public class CompanyServiceImpl implements CompanyService {
         unit.setAccountsRemark(request.getApprove() ? null : request.getRemark().trim());
         unit.setOnboardingStatus(request.getApprove() ? OnboardingStatus.APPROVED : OnboardingStatus.DISAPPROVED);
 
-
         companyUnitRepository.save(unit);
-
         updateCompanyOnboardingStatus(company);
 
         company.setUpdatedBy(reviewedBy);
@@ -577,12 +574,7 @@ public class CompanyServiceImpl implements CompanyService {
             // GST handling + validation
             String gstNo = normalizeUnique(unitDto.getGstNo());
             unit.setGstNo(gstNo);
-            unit.setGstType(unitDto.getGstType());
             unit.setGstDocuments(unitDto.getGstDocuments());
-            unit.setGstTypeEntity(unitDto.getGstTypeEntity());
-            unit.setGstBusinessType(unitDto.getGstBusinessType());
-            unit.setGstTypePrice(unitDto.getGstTypePrice());
-
             if (gstNo != null && company.getPanNo() != null) {
                 String panFromGst = gstNo.length() >= 12 ? gstNo.substring(2, 12) : "";
                 if (!panFromGst.equals(company.getPanNo())) {
@@ -881,11 +873,7 @@ public class CompanyServiceImpl implements CompanyService {
                     unit.setCountry(StringUtils.hasText(u.getCountry()) ? u.getCountry() : "India");
                     unit.setPinCode(u.getPinCode());
                     unit.setGstNo(gstNo);
-                    unit.setGstType(u.getGstType());
                     unit.setGstDocuments(u.getGstDocuments());
-                    unit.setGstTypeEntity(u.getGstTypeEntity());
-                    unit.setGstBusinessType(u.getGstBusinessType());
-                    unit.setGstTypePrice(u.getGstTypePrice());
                     unit.setUnitOpeningDate(u.getUnitOpeningDate());
                     unit.setStatus(StringUtils.hasText(u.getStatus()) ? u.getStatus() : "Active");
                     unit.setConsultantPresent(u.isConsultantPresent());

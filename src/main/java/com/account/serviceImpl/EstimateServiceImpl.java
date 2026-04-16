@@ -479,7 +479,6 @@ public class EstimateServiceImpl implements EstimateService {
             unitDto.setState(unit.getState());
             unitDto.setPinCode(unit.getPinCode());
             unitDto.setGstNo(unit.getGstNo());
-            unitDto.setGstType(unit.getGstType());
             unitDto.setStatus(unit.getStatus());
             unitDto.setOnboardingStatus(
                     unit.getOnboardingStatus() != null ?
@@ -1328,7 +1327,6 @@ public class EstimateServiceImpl implements EstimateService {
                     estimate.getUnit().getState(),
                     estimate.getUnit().getPinCode(),
                     estimate.getUnit().getGstNo(),
-                    estimate.getUnit().getGstType(),
                     estimate.getUnit().getStatus(),
                     estimate.getUnit().getOnboardingStatus() != null
                             ? estimate.getUnit().getOnboardingStatus().name()
@@ -1336,9 +1334,6 @@ public class EstimateServiceImpl implements EstimateService {
             ));
         }
 
-        // ⚠ IMPORTANT:
-        // For search list API, DO NOT include lineItems unless necessary.
-        // It will cause N+1 queries.
         dto.setLineItems(null);
 
         return dto;
@@ -1624,7 +1619,7 @@ public class EstimateServiceImpl implements EstimateService {
         if (requestDto.getRejectionReason() == null || requestDto.getRejectionReason().trim().isEmpty()) {
             throw new ValidationException("Rejection reason is required", "ERR_REJECTION_REASON_REQUIRED", "rejectionReason");
         }
-
+        System.out.println("requestDto.getRejectedByUserId(): "+requestDto.getRejectedByUserId());
         if (requestDto.getRejectedByUserId() == null || requestDto.getRejectedByUserId() <= 0) {
             throw new ValidationException("Invalid rejectedByUserId", "ERR_INVALID_REJECTED_BY", "rejectedByUserId");
         }
