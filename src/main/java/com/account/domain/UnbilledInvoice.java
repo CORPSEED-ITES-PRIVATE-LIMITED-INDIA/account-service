@@ -48,6 +48,8 @@ public class UnbilledInvoice {
 
     private boolean advanceInvoiceFlag=false;
 
+    private boolean governmentFeeActive = false;
+
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "estimate_id", nullable = false, unique = true)

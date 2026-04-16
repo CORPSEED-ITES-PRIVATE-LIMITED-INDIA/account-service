@@ -4,6 +4,7 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.operationService.*;
+import com.account.dto.payment.GovernmentFeeRequestDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -56,6 +57,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final ContactRepository contactRepository;
     private final OperationFeignClient operationFeignClient;
     private final InvoiceRepository invoiceRepository;
+    private final GovernmentFeeRepository governmentFeeRepository;
 
     @Override
     @Transactional
@@ -74,6 +76,11 @@ public class PaymentServiceImpl implements PaymentService {
         if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException("Payment amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
         }
+
+        // ===============================
+        // GOVERNMENT FEE VALIDATION
+        // ===============================
+        validateGovernmentFeeRequest(request);
 
         // Fetch required entities
         Estimate estimate = estimateRepository.findById(request.getEstimateId())
@@ -155,10 +162,51 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setApprovalRemarks(null);
             unbilled.setRejectionReason(null);
 
+            // GOVERNMENT FEE FLAG
+            unbilled.setGovernmentFeeActive(Boolean.TRUE.equals(request.getGovernmentFeeActive()));
+
             unbilled = unbilledInvoiceRepository.save(unbilled);
 
             log.info("Created new UnbilledInvoice {} (PENDING_APPROVAL) for estimate {} with publicUuid {}",
                     unbilled.getUnbilledNumber(), estimate.getEstimateNumber(), unbilled.getPublicUuid());
+        }
+
+        // ===============================
+        // GOVERNMENT FEE DUPLICATE CHECK
+        // ===============================
+        if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
+            if (!isFirstPayment) {
+                Optional<GovernmentFee> existingByEstimate = governmentFeeRepository.findByEstimate(estimate);
+                Optional<GovernmentFee> existingByUnbilled = governmentFeeRepository.findByUnbilledInvoice(unbilled);
+
+                GovernmentFee existingGovernmentFee = existingByUnbilled.orElse(existingByEstimate.orElse(null));
+
+                if (existingGovernmentFee != null) {
+                    if (existingGovernmentFee.getStatus() == GovernmentFeeStatus.PENDING) {
+                        throw new ValidationException(
+                                "Government fee is already registered and pending approval for this estimate/unbilled invoice",
+                                "ERR_GOV_FEE_ALREADY_PENDING",
+                                "governmentFee"
+                        );
+                    }
+
+                    if (existingGovernmentFee.getStatus() == GovernmentFeeStatus.APPROVED) {
+                        throw new ValidationException(
+                                "Government fee is already approved for this estimate/unbilled invoice and cannot be added again",
+                                "ERR_GOV_FEE_ALREADY_APPROVED",
+                                "governmentFee"
+                        );
+                    }
+
+                    throw new ValidationException(
+                            "Government fee already exists for this estimate/unbilled invoice",
+                            "ERR_GOV_FEE_ALREADY_EXISTS",
+                            "governmentFee"
+                    );
+                }
+
+                unbilled.setGovernmentFeeActive(true);
+            }
         }
 
         // Prevent changing payment type after first payment
@@ -178,8 +226,7 @@ public class PaymentServiceImpl implements PaymentService {
         // Business rules for amount vs payment type
         validatePaymentRules(paymentType, reqAmount, unbilled, isFirstPayment);
 
-
-// Prevent approved + pending + current request from exceeding total amount
+        // Prevent approved + pending + current request from exceeding total amount
         BigDecimal approvedAmount = safe2(unbilled.getReceivedAmount());
         BigDecimal pendingAmount = safe2(unbilled.getCurrentReceivedAmount());
         BigDecimal totalAmount = safe2(unbilled.getTotalAmount());
@@ -231,6 +278,11 @@ public class PaymentServiceImpl implements PaymentService {
         receipt = paymentReceiptRepository.save(receipt);
         log.info("Created PaymentReceipt {} | amount: {}", receipt.getId(), request.getAmount());
 
+        // ===============================
+        // CREATE GOVERNMENT FEE IF REQUIRED
+        // ===============================
+        createGovernmentFeeIfRequired(request, estimate, unbilled, salesperson);
+
         // Update unbilled totals
         unbilled.applyPayment(reqAmount);
         unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
@@ -248,6 +300,10 @@ public class PaymentServiceImpl implements PaymentService {
                 ? "First payment registered. Unbilled created – awaiting Accounts approval"
                 : String.format("Additional payment of ₹%s registered. Total received: ₹%s / ₹%s. Awaiting approval.",
                 reqAmount, unbilled.getReceivedAmount(), unbilled.getTotalAmount());
+
+        if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
+            message += " Government fee registered in full and awaiting Accounts approval.";
+        }
 
         // Build response
         PaymentRegistrationResponseDto response = new PaymentRegistrationResponseDto();
@@ -300,6 +356,121 @@ public class PaymentServiceImpl implements PaymentService {
         }
         throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
                 "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
+    }
+
+    private void validateGovernmentFeeRequest(PaymentRegistrationRequestDto request) {
+        if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
+            if (request.getGovernmentFee() == null) {
+                throw new ValidationException(
+                        "Government fee details are required when governmentFeeActive is true",
+                        "ERR_GOV_FEE_DETAILS_REQUIRED",
+                        "governmentFee"
+                );
+            }
+
+            BigDecimal total = safe2(request.getGovernmentFee().getTotalAmount());
+            BigDecimal received = safe2(request.getGovernmentFee().getReceivedAmount());
+
+            if (total.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "Government fee total amount must be positive",
+                        "ERR_GOV_FEE_TOTAL_INVALID",
+                        "governmentFee.totalAmount"
+                );
+            }
+
+            if (received.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "Government fee received amount must be positive",
+                        "ERR_GOV_FEE_RECEIVED_INVALID",
+                        "governmentFee.receivedAmount"
+                );
+            }
+
+            if (total.compareTo(received) != 0) {
+                throw new ValidationException(
+                        "Government fee must be paid fully in one time. totalAmount and receivedAmount must be equal",
+                        "ERR_GOV_FEE_MUST_BE_FULLY_PAID",
+                        "governmentFee.receivedAmount"
+                );
+            }
+        } else {
+            if (request.getGovernmentFee() != null) {
+                throw new ValidationException(
+                        "Government fee details should not be sent when governmentFeeActive is false",
+                        "ERR_GOV_FEE_NOT_ALLOWED",
+                        "governmentFee"
+                );
+            }
+        }
+    }
+
+    private void createGovernmentFeeIfRequired(
+            PaymentRegistrationRequestDto request,
+            Estimate estimate,
+            UnbilledInvoice unbilled,
+            User salesperson
+    ) {
+        if (!Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
+            return;
+        }
+
+        Optional<GovernmentFee> existingByEstimate = governmentFeeRepository.findByEstimate(estimate);
+        Optional<GovernmentFee> existingByUnbilled = governmentFeeRepository.findByUnbilledInvoice(unbilled);
+
+        GovernmentFee existingGovernmentFee = existingByUnbilled.orElse(existingByEstimate.orElse(null));
+
+        if (existingGovernmentFee != null) {
+            if (existingGovernmentFee.getStatus() == GovernmentFeeStatus.PENDING) {
+                throw new ValidationException(
+                        "Government fee is already registered and pending approval for this estimate/unbilled invoice",
+                        "ERR_GOV_FEE_ALREADY_PENDING",
+                        "governmentFee"
+                );
+            }
+
+            if (existingGovernmentFee.getStatus() == GovernmentFeeStatus.APPROVED) {
+                throw new ValidationException(
+                        "Government fee is already approved for this estimate/unbilled invoice and cannot be added again",
+                        "ERR_GOV_FEE_ALREADY_APPROVED",
+                        "governmentFee"
+                );
+            }
+
+            throw new ValidationException(
+                    "Government fee already exists for this estimate/unbilled invoice",
+                    "ERR_GOV_FEE_ALREADY_EXISTS",
+                    "governmentFee"
+            );
+        }
+
+        GovernmentFeeRequestDto govReq = request.getGovernmentFee();
+
+        GovernmentFee governmentFee = new GovernmentFee();
+        governmentFee.setPublicUuid(UUID.randomUUID().toString());
+        governmentFee.setEstimate(estimate);
+        governmentFee.setUnbilledInvoice(unbilled);
+        governmentFee.setCompany(unbilled.getCompany());
+        governmentFee.setUnit(unbilled.getUnit());
+        governmentFee.setContact(unbilled.getContact());
+
+        governmentFee.setFeeReferenceNumber(govReq.getFeeReferenceNumber());
+        governmentFee.setDepartmentName(govReq.getDepartmentName());
+        governmentFee.setFeeType(govReq.getFeeType());
+
+        governmentFee.setTotalAmount(safe2(govReq.getTotalAmount()));
+        governmentFee.setReceivedAmount(safe2(govReq.getReceivedAmount()));
+        governmentFee.setOutstandingAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+
+        governmentFee.setPaymentDate(govReq.getPaymentDate());
+        governmentFee.setRemarks(govReq.getRemarks());
+
+        governmentFee.setStatus(GovernmentFeeStatus.PENDING);
+        governmentFee.setCreatedBy(salesperson);
+
+        governmentFeeRepository.save(governmentFee);
+
+        unbilled.setGovernmentFeeActive(true);
     }
 
     private BigDecimal safe2(BigDecimal val) {
@@ -386,6 +557,8 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
+
+    @Override
     @Transactional
     public UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(
             Long unbilledId,
@@ -429,18 +602,17 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-
         // 7. Fetch approver
         User approver = userRepository.findById(request.getApproverUserId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Approver not found with ID: " + request.getApproverUserId(),
-                            "USER_NOT_FOUND",
-                            "User",
-                            request.getApproverUserId()
-                    ));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Approver not found with ID: " + request.getApproverUserId(),
+                        "USER_NOT_FOUND",
+                        "User",
+                        request.getApproverUserId()
+                ));
         Estimate estimate  = unbilled.getEstimate();
-        // 8. Update unbilled invoice to APPROVED (temporary state)
 
+        // 8. Update unbilled invoice to APPROVED (temporary state)
         if ("REJECTED".equals(request.getApprovalRemarks())) {
 
             unbilled.setStatus(UnbilledStatus.REJECTED);
@@ -455,6 +627,21 @@ public class PaymentServiceImpl implements PaymentService {
             // ❗ Just discard pending amount
             unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
 
+            // ===============================
+            // DELETE GOVERNMENT FEE ON REJECTION
+            // ===============================
+            governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(governmentFee -> {
+                if (governmentFee.getStatus() == GovernmentFeeStatus.PENDING) {
+                    log.info("Deleting PENDING government fee {} because parent unbilled {} was rejected",
+                            governmentFee.getId(), unbilled.getUnbilledNumber());
+                    governmentFeeRepository.delete(governmentFee);
+                    unbilled.setGovernmentFeeActive(false);
+                } else if (governmentFee.getStatus() == GovernmentFeeStatus.APPROVED) {
+                    log.info("Government fee {} is already APPROVED for unbilled {}. Skipping delete on rejection.",
+                            governmentFee.getId(), unbilled.getUnbilledNumber());
+                }
+            });
+
             log.info(
                     "Unbilled {} rejected → pending amount discarded, no financial impact",
                     unbilled.getUnbilledNumber()
@@ -465,6 +652,7 @@ public class PaymentServiceImpl implements PaymentService {
             // ✅ APPROVED FLOW
             unbilled.setStatus(UnbilledStatus.APPROVED);
             estimate.setStatus(EstimateStatus.APPROVED);
+
             // ✅ Mark ALL pending payments as APPROVED
             unbilled.getPayments().forEach(p -> {
                 if (p.getStatus() == PaymentStatus.PENDING) {
@@ -489,6 +677,16 @@ public class PaymentServiceImpl implements PaymentService {
                             .setScale(2, RoundingMode.HALF_UP)
             );
 
+            // ===============================
+            // APPROVE GOVERNMENT FEE IF EXISTS
+            // ===============================
+            governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(governmentFee -> {
+                governmentFee.setStatus(GovernmentFeeStatus.APPROVED);
+                governmentFeeRepository.save(governmentFee);
+                log.info("Government fee {} approved for unbilled {}",
+                        governmentFee.getId(), unbilled.getUnbilledNumber());
+            });
+
             log.info(
                     "Unbilled {} approved → received={} outstanding={}",
                     unbilled.getUnbilledNumber(),
@@ -502,6 +700,51 @@ public class PaymentServiceImpl implements PaymentService {
         unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
         unbilled.setApprovalRemarks(request.getApprovalRemarks());
 
+        // ===============================
+        // EARLY RETURN FOR REJECTION
+        // ===============================
+        if ("REJECTED".equals(request.getApprovalRemarks())) {
+            unbilledInvoiceRepository.save(unbilled);
+
+            UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
+
+            response.setName(
+                    estimate != null ? estimate.getSolutionName() :
+                            (company != null ? company.getName() + " - Project" : "Unnamed Project")
+            );
+
+            response.setProjectNo(generateProjectNumber());
+
+            response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
+            response.setSalesPersonName(
+                    unbilled.getCreatedBy() != null
+                            ? (unbilled.getCreatedBy().getFullName() != null
+                            ? unbilled.getCreatedBy().getFullName()
+                            : unbilled.getCreatedBy().getEmail())
+                            : null
+            );
+
+            response.setProductId(estimate != null ? estimate.getSolutionId() : null);
+            response.setCompanyId(company != null ? company.getId() : null);
+            response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
+            response.setUnbilledNumber(unbilled.getUnbilledNumber());
+            response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+            response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
+            response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+            response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
+            response.setLeadId(estimate != null ? estimate.getLeadId() : null);
+            response.setDate(LocalDate.now());
+            response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
+            response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
+            response.setPaymentTypeId(null);
+            response.setApprovedById(approver.getId());
+            response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
+            response.setUpdatedBy(approver.getId());
+            response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
+
+            log.info("Skipping invoice generation and operation sync because invoice is REJECTED");
+            return response;
+        }
 
         log.info("========== PAYMENT DEBUG START ==========");
 
@@ -539,20 +782,17 @@ public class PaymentServiceImpl implements PaymentService {
 
         log.info("========== PAYMENT DEBUG END ==========");
 
-
-
         // 9. Identify the first (triggering) payment receipt
         PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
                 .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
-                .filter(p -> p.getCreatedAt() != null) //  IMPORTANT
+                .filter(p -> p.getCreatedAt() != null) // IMPORTANT
                 .max(Comparator.comparing(PaymentReceipt::getCreatedAt))
                 .orElseThrow(() -> new IllegalStateException(
                         "No valid APPROVED payments found for unbilled invoice: "
                                 + unbilled.getUnbilledNumber()));
 
-
         // 10. Generate actual GST invoice
-        if(request.getApprovalRemarks().equals("APPROVED")) {
+        if (request.getApprovalRemarks().equals("APPROVED")) {
             triggeringReceipt = unbilled.getPayments().stream()
                     .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
                     .filter(p -> p.getCreatedAt() != null)
@@ -567,6 +807,7 @@ public class PaymentServiceImpl implements PaymentService {
                         invoiceService.generateInvoiceForPayment(unbilled, p, approver);
                     });
         }
+
         unbilledInvoiceRepository.save(unbilled);
 
         UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
@@ -587,7 +828,6 @@ public class PaymentServiceImpl implements PaymentService {
                         : unbilled.getCreatedBy().getEmail())
                         : null
         );
-
 
         response.setProductId(estimate != null ? estimate.getSolutionId() : null);
         response.setCompanyId(company != null ? company.getId() : null);
@@ -610,14 +850,6 @@ public class PaymentServiceImpl implements PaymentService {
         response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
         response.setUpdatedBy(approver.getId());
         response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
-
-
-        if ("REJECTED".equals(request.getApprovalRemarks())) {
-            log.info("Skipping operation sync because invoice is REJECTED");
-            return response;
-        }
-
-
 
         try {
 
@@ -695,8 +927,6 @@ public class PaymentServiceImpl implements PaymentService {
                 throw ex;
             }
         }
-
-
 
         return response;
     }

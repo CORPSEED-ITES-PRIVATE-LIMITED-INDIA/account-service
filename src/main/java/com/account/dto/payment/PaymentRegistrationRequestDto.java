@@ -5,7 +5,6 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 
 @Data
 @Builder
@@ -24,7 +23,7 @@ public class PaymentRegistrationRequestDto {
     private LocalDate paymentDate;
 
     @NotBlank(message = "Payment mode is required")
-    private String paymentMode; // UPI, NEFT, CASH, etc.
+    private String paymentMode;
 
     @NotBlank(message = "Transaction reference is required")
     private String transactionReference;
@@ -34,24 +33,11 @@ public class PaymentRegistrationRequestDto {
     @NotNull(message = "Payment type ID is required")
     private Long paymentTypeId;
 
-    /**
-     * Financial year the payment relates to (for EPR compliance tracking)
-     * Format: "2025-2026"
-     * Example: "2025-2026"
-     */
-    private String eprFinancialYear;  // e.g. "2025-2026" – accounts can see which year's obligation this payment covers
-
-    /**
-     * CPCB EPR Portal Registration Number of the client/PIBO
-     * This is the unique ID issued after registration on https://eprplastic.cpcb.gov.in
-     */
+    private String eprFinancialYear;
     private String eprPortalRegistrationNumber;
-
-    /**
-     * Optional: EPR Certificate Number or EPR Invoice Number (if payment is against certificate purchase/transfer)
-     * From portal – helps trace specific compliance transaction
-     */
     private String eprCertificateOrInvoiceNumber;
 
+    private Boolean governmentFeeActive = false;
 
+    private GovernmentFeeRequestDto governmentFee;
 }
