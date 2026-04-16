@@ -926,6 +926,7 @@ public class CompanyServiceImpl implements CompanyService {
                             contact.setClientDesignation(c.getClientDesignation());
                             contact.setDesignation(c.getDesignation());
 
+
                             contact.setCompany(company);
                             contact.setCompanyUnit(unit);
 
