@@ -349,6 +349,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.invoiceDate(inv.getInvoiceDate())
 				.grandTotal(inv.getGrandTotal())
 				.totalGstAmount(inv.getTotalGstAmount())
+				.cgstAmount(inv.getCgstAmount())
+				.sgstAmount(inv.getSgstAmount())
+				.igstAmount(inv.getIgstAmount())
 				.status(inv.getStatus())
 				.createdByName(inv.getCreatedBy() != null
 						? (inv.getCreatedBy().getFullName() != null

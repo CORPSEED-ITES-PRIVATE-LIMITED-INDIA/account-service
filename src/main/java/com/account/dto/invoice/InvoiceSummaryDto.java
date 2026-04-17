@@ -24,6 +24,9 @@ public class InvoiceSummaryDto {
     private LocalDate invoiceDate;
     private BigDecimal grandTotal;
     private BigDecimal totalGstAmount;
+    private BigDecimal cgstAmount;
+    private BigDecimal sgstAmount;
+    private BigDecimal igstAmount;
     private String irn;                  // null if not e-invoiced yet
     private InvoiceStatus status;        // using your enum
     private String createdByName;
