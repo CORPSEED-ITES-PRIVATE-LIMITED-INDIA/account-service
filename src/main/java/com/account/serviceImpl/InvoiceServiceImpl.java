@@ -7,6 +7,7 @@ import com.account.dto.invoice.*;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.InvoiceRepository;
+import com.account.repository.OrganizationRepository;
 import com.account.repository.UserRepository;
 import com.account.service.InvoiceService;
 import com.account.util.DateTimeUtil;
@@ -17,6 +18,7 @@ import jakarta.persistence.criteria.*;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -41,6 +44,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private final DateTimeUtil dateTimeUtil;
 	@PersistenceContext
 	private EntityManager entityManager;
+
+	@Autowired
+	private final OrganizationRepository organizationRepository;
 
 
 	/**
@@ -186,6 +192,32 @@ public class InvoiceServiceImpl implements InvoiceService {
 		// CGST/SGST/IGST are already set per line in calculateLineTotals()
 		// If you have global override logic, add it here
 
+
+		// ==========================================
+		// HEADER LEVEL GST SPLIT (IGST vs CGST/SGST)
+		// ==========================================
+		BigDecimal totalGst = safeMoney(invoice.getTotalGstAmount());
+		boolean igstApplicable = isIgstApplicable(unbilled);
+
+		if (igstApplicable) {
+			invoice.setIgstAmount(totalGst);
+			invoice.setCgstAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+			invoice.setSgstAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+
+			log.info("IGST applied for invoice {} | orgState != unitState or fallback condition met | totalGst={}",
+					invoice.getInvoiceNumber(), totalGst);
+		} else {
+			BigDecimal halfGst = totalGst
+					.divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP);
+
+			invoice.setIgstAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+			invoice.setCgstAmount(halfGst);
+			invoice.setSgstAmount(halfGst);
+
+			log.info("CGST/SGST applied for invoice {} | orgState == unitState | cgst={} sgst={}",
+					invoice.getInvoiceNumber(), halfGst, halfGst);
+		}
+
 		// Optional: Generate QR code if amount > threshold
 		// if (invoice.getGrandTotal().compareTo(new BigDecimal("200000")) > 0) {
 		//     invoice.setSignedQrCode(generateEInvoiceQrCode(invoice));
@@ -201,6 +233,41 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return invoice;
 	}
 
+
+	private boolean isIgstApplicable(UnbilledInvoice unbilled) {
+		Optional<Organization> organizationOpt = organizationRepository.findById(1L);
+
+		if (organizationOpt.isEmpty()) {
+			log.warn("Organization not found. Defaulting invoice {} to IGST logic.",
+					unbilled.getUnbilledNumber());
+			return true;
+		}
+
+		Organization organization = organizationOpt.get();
+
+		String orgState = organization.getState();
+		String unitState = unbilled.getUnit() != null ? unbilled.getUnit().getState() : null;
+
+		if (orgState == null || orgState.trim().isEmpty()) {
+			log.warn("Organization state is blank. Defaulting invoice {} to IGST logic.",
+					unbilled.getUnbilledNumber());
+			return true;
+		}
+
+		if (unitState == null || unitState.trim().isEmpty()) {
+			log.warn("Company unit/state missing for unbilled {}. Defaulting to IGST logic.",
+					unbilled.getUnbilledNumber());
+			return true;
+		}
+
+		return !orgState.trim().equalsIgnoreCase(unitState.trim());
+	}
+
+	private BigDecimal safeMoney(BigDecimal value) {
+		return value == null
+				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+				: value.setScale(2, RoundingMode.HALF_UP);
+	}
 	@Override
 	public List<InvoiceSummaryDto> getInvoicesList(Long userId, InvoiceStatus status, int page, int size) {
 
