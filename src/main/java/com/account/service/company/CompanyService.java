@@ -12,7 +12,6 @@ import java.util.List;
 
 public interface CompanyService {
 
-
     CompanyResponseDto basicCreateCompany(BasicCompanyRequestDto quickRequest);
 
     CompanyResponseDto addBasicUnitToCompany(Long companyId, BasicUnitCreateRequest request, Long updatedById);
