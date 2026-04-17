@@ -20,4 +20,7 @@ public class InvoiceReportDto {
     private BigDecimal totalUnbilledAmount;
     private BigDecimal totalReceivedAmount;
     private BigDecimal totalOutstandingAmount;
+    private BigDecimal totalIgstCollectedAmount;
+    private BigDecimal totalSgstCollectedAmount;
+    private BigDecimal totalCgstCollectedAmount;
 }
