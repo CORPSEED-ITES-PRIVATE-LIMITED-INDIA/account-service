@@ -1696,7 +1696,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .companyName(governmentFee.getCompany() != null ? governmentFee.getCompany().getName() : null)
 
                 .unitId(governmentFee.getUnit() != null ? governmentFee.getUnit().getId() : null)
-                .unitName(governmentFee.getUnit() != null ? governmentFee.getUnit().getName() : null)
+                .unitName(governmentFee.getUnit() != null ? governmentFee.getUnit().getUnitName() : null)
 
                 .contactId(governmentFee.getContact() != null ? governmentFee.getContact().getId() : null)
                 .contactName(governmentFee.getContact() != null ? governmentFee.getContact().getName() : null)
