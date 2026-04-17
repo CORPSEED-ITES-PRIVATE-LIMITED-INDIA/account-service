@@ -451,11 +451,21 @@ public class InvoiceServiceImpl implements InvoiceService {
 		Expression<BigDecimal> totalGstExp =
 				cb.coalesce(cb.sum(invoiceRoot.get("totalGstAmount")), BigDecimal.ZERO);
 
+		Expression<BigDecimal> totalIgstExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("igstAmount")), BigDecimal.ZERO);
+		Expression<BigDecimal> totalSgstExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("sgstAmount")), BigDecimal.ZERO);
+		Expression<BigDecimal> totalCgstExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("cgstAmount")), BigDecimal.ZERO);
+
 		invoiceQuery.multiselect(
 				totalInvoicesExp.alias("totalInvoices"),
 				totalRevenueExp.alias("totalRevenue"),
 				totalNetRevenueExp.alias("totalNetRevenue"),
-				totalGstExp.alias("totalGstCollected")
+				totalGstExp.alias("totalGstCollected"),
+				totalIgstExp.alias("totalIgstCollectedAmount"),
+				totalSgstExp.alias("totalSgstCollectedAmount"),
+				totalCgstExp.alias("totalCgstCollectedAmount")
 		);
 
 		invoiceQuery.where(cb.and(invoicePredicates.toArray(new Predicate[0])));
@@ -510,6 +520,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 				? BigDecimal.ZERO
 				: totalRevenue.divide(BigDecimal.valueOf(totalInvoices), 8, RoundingMode.HALF_UP);
 
+		BigDecimal totalIgstCollectedAmount = nz(invoiceResult.get("totalIgstCollectedAmount", BigDecimal.class));
+		BigDecimal totalSgstCollectedAmount = nz(invoiceResult.get("totalSgstCollectedAmount", BigDecimal.class));
+		BigDecimal totalCgstCollectedAmount = nz(invoiceResult.get("totalCgstCollectedAmount", BigDecimal.class));
+
     /* ============================================================
        4️⃣ BUILD RESPONSE
        ============================================================ */
@@ -523,6 +537,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.totalUnbilledAmount(totalUnbilled)
 				.totalReceivedAmount(totalReceived)
 				.totalOutstandingAmount(totalOutstanding)
+				.totalIgstCollectedAmount(totalIgstCollectedAmount)
+				.totalSgstCollectedAmount(totalSgstCollectedAmount)
+				.totalCgstCollectedAmount(totalCgstCollectedAmount)
 				.build();
 	}
 
