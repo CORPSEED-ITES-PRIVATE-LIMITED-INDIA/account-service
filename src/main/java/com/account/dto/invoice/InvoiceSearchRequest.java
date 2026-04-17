@@ -9,10 +9,6 @@ import java.time.LocalDate;
 @Data
 public class InvoiceSearchRequest {
 
-    // Pagination
-    private Integer page = 0;
-    private Integer size = 20;
-
     // Core filters
     private Long createdById;
     private InvoiceStatus status;
