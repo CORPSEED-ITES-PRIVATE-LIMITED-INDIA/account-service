@@ -916,6 +916,7 @@ public class CompanyServiceImpl implements CompanyService {
                         if (contact == null) {
                             logger.info("Contact {} does not exist → creating new", contactId);
 
+
                             contact = new Contact();
                             contact.setId(contactId);
                             contact.setTitle(c.getTitle());
