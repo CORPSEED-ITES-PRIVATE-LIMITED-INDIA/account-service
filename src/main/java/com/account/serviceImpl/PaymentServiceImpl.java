@@ -1658,7 +1658,6 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-
         GovernmentFee governmentFee;
 
         if (unbilledId != null) {
@@ -1726,4 +1725,6 @@ public class PaymentServiceImpl implements PaymentService {
                 .updatedAt(governmentFee.getUpdatedAt())
                 .build();
     }
+
+
 }
