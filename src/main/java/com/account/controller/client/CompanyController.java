@@ -26,7 +26,6 @@ public class CompanyController {
     @Autowired
     private CompanyService companyService;
 
-
     @Operation(summary = "Quick create company for urgent estimate (minimal details)")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Quick company created successfully"),
