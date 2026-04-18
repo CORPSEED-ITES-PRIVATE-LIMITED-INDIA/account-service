@@ -1011,6 +1011,7 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setReceivedAmount(unbilled.getReceivedAmount());
         dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+        dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
 
         dto.setStatus(unbilled.getStatus());
         dto.setCreatedAt(unbilled.getCreatedAt());
