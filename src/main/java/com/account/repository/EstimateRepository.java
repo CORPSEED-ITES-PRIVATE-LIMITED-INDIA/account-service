@@ -48,4 +48,9 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSp
      * Count non-deleted estimates created by a specific user
      */
     long countByCreatedByIdAndIsDeletedFalseAndIsCancelledFalse(Long createdById);
+
+    List<Estimate> findByCompanyIdAndUnitIdAndIsDeletedFalseAndIsCancelledFalseOrderByCreatedAtDesc(
+            Long companyId,
+            Long unitId
+    );
 }
