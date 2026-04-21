@@ -47,6 +47,7 @@ import java.util.stream.Collectors;
 @Transactional
 public class CompanyServiceImpl implements CompanyService {
 
+
     private static final Logger logger = LoggerFactory.getLogger(CompanyServiceImpl.class);
 
     private final CompanyRepository companyRepository;
