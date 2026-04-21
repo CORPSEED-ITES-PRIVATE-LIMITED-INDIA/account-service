@@ -1,6 +1,8 @@
 package com.account.controller.estimate;
 
 import com.account.dto.EstimateCreationRequestDto;
+import com.account.dto.company.request.CompanyUnitProjectOverviewRequestDto;
+import com.account.dto.company.response.CompanyUnitProjectOverviewResponseDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.estimate.*;
@@ -264,6 +266,15 @@ public class EstimateController {
 
         EstimateStatusResponseDto response = estimateService.rejectEstimate(estimateId, requestDto);
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+
+    @Operation(summary = "Get company-unit overview with estimate, unbilled, and project data")
+    @PostMapping("/company-unit/getFullDetails")
+    public ResponseEntity<CompanyUnitProjectOverviewResponseDto> getCompanyUnitProjectOverview(
+            @Valid @RequestBody CompanyUnitProjectOverviewRequestDto request
+    ) {
+        return ResponseEntity.ok(estimateService.getCompanyUnitProjectOverview(request));
     }
 
 

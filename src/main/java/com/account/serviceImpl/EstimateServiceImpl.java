@@ -6,16 +6,24 @@ import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.EstimateCreationRequestDto;
+import com.account.dto.company.request.CompanyUnitProjectOverviewRequestDto;
+import com.account.dto.company.response.CompanyUnitOverviewDto;
+import com.account.dto.company.response.CompanyUnitProjectOverviewResponseDto;
+import com.account.dto.company.response.UnitBusinessRecordDto;
 import com.account.dto.dashboard.CompanyRevenueDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.dashboard.MonthlyTrendDto;
 import com.account.dto.estimate.*;
 import com.account.dto.estimate.response.EstimateStatusResponseDto;
+import com.account.dto.operationService.OperationProjectActivityResponseDto;
+import com.account.dto.operationService.OperationProjectResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
+import com.account.feignClient.OperationFeignClient;
 import com.account.repository.*;
 import com.account.service.EstimateService;
+import feign.FeignException;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
@@ -28,6 +36,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -54,6 +63,8 @@ public class EstimateServiceImpl implements EstimateService {
     private final UserRepository userRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
     private final OrganizationRepository organizationRepository;
+    private final OperationFeignClient operationFeignClient;
+
 
     @Autowired
     private UnbilledInvoiceRepository unbilledRepository;
@@ -1692,5 +1703,108 @@ public class EstimateServiceImpl implements EstimateService {
         );
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public CompanyUnitProjectOverviewResponseDto getCompanyUnitProjectOverview(
+            CompanyUnitProjectOverviewRequestDto request
+    ) {
+
+        Company company = companyRepository.findById(request.getCompanyId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Company not found with ID: " + request.getCompanyId(),
+                        "COMPANY_NOT_FOUND",
+                        "Company",
+                        request.getCompanyId()
+                ));
+
+        CompanyUnit unit = companyUnitRepository.findByIdAndCompanyIdAndIsDeletedFalse(
+                        request.getCompanyUnitId(),
+                        request.getCompanyId()
+                )
+                .orElseThrow(() -> new ValidationException(
+                        "Company unit does not exist for the given company",
+                        "ERR_INVALID_COMPANY_UNIT_FOR_COMPANY",
+                        "companyUnitId"
+                ));
+
+        List<Estimate> estimates = estimateRepository
+                .findByCompanyIdAndUnitIdAndIsDeletedFalseAndIsCancelledFalseOrderByCreatedAtDesc(
+                        company.getId(),
+                        unit.getId()
+                );
+
+        List<UnitBusinessRecordDto> records = estimates.stream()
+                .map(estimate -> {
+                    UnbilledInvoice unbilled = unbilledInvoiceRepository
+                            .findByEstimateAndIsCancelledFalse(estimate)
+                            .orElse(null);
+
+                    OperationProjectResponseDto project = null;
+
+                    if (unbilled != null && unbilled.getUnbilledNumber() != null) {
+                        try {
+                            ResponseEntity<OperationProjectResponseDto> projectResponse =
+                                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+                            if (projectResponse.getStatusCode().is2xxSuccessful()) {
+                                project = projectResponse.getBody();
+                            }
+                        } catch (FeignException.NotFound ex) {
+                            log.info("No project found in operation service for unbilledNumber={}",
+                                    unbilled.getUnbilledNumber());
+                        } catch (FeignException ex) {
+                            log.error("Operation service error while fetching project for unbilledNumber={} status={} message={}",
+                                    unbilled.getUnbilledNumber(), ex.status(), ex.getMessage());
+                        }
+                    }
+
+                    return UnitBusinessRecordDto.builder()
+                            .estimateId(estimate.getId())
+                            .estimateNumber(estimate.getEstimateNumber())
+                            .estimatePublicUuid(estimate.getPublicUuid())
+                            .solutionName(estimate.getSolutionName())
+                            .solutionId(estimate.getSolutionId())
+                            .solutionType(estimate.getSolutionType())
+                            .estimateStatus(estimate.getStatus() != null ? estimate.getStatus().name() : null)
+                            .estimateDate(estimate.getEstimateDate())
+                            .estimateGrandTotal(estimate.getGrandTotal())
+
+                            .unbilledId(unbilled != null ? unbilled.getId() : null)
+                            .unbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null)
+                            .unbilledPublicUuid(unbilled != null ? unbilled.getPublicUuid() : null)
+                            .unbilledStatus(unbilled != null && unbilled.getStatus() != null ? unbilled.getStatus().name() : null)
+                            .unbilledTotalAmount(unbilled != null ? unbilled.getTotalAmount() : null)
+                            .receivedAmount(unbilled != null ? unbilled.getReceivedAmount() : null)
+                            .outstandingAmount(unbilled != null ? unbilled.getOutstandingAmount() : null)
+                            .governmentFeeActive(unbilled != null ? unbilled.isGovernmentFeeActive() : null)
+
+                            .operationProjectId(project != null ? project.getId() : null)
+                            .operationProjectName(project != null ? project.getName() : null)
+                            .operationProjectStatus(project != null ? project.getStatusName() : null)
+                            .projectUnbilledNumber(project != null ? project.getUnbilledNumber() : null)
+                            .projectTotalAmount(project != null ? project.getTotalAmount() : null)
+                            .projectDueAmount(project != null ? project.getDueAmount() : null)
+                            .build();
+                })
+                .toList();
+
+        CompanyUnitOverviewDto unitOverview = CompanyUnitOverviewDto.builder()
+                .unitId(unit.getId())
+                .unitName(unit.getUnitName())
+                .city(unit.getCity())
+                .state(unit.getState())
+                .gstNo(unit.getGstNo())
+                .onboardingStatus(unit.getOnboardingStatus() != null ? unit.getOnboardingStatus().name() : null)
+                .records(records)
+                .build();
+
+        return CompanyUnitProjectOverviewResponseDto.builder()
+                .companyId(company.getId())
+                .companyName(company.getName())
+                .panNo(company.getPanNo())
+                .onboardingStatus(company.getOnboardingStatus() != null ? company.getOnboardingStatus().name() : null)
+                .companyUnits(List.of(unitOverview))
+                .build();
+    }
 
 }

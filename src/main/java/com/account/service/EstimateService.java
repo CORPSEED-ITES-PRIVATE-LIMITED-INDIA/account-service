@@ -1,6 +1,8 @@
 package com.account.service;
 
 import com.account.dto.EstimateCreationRequestDto;
+import com.account.dto.company.request.CompanyUnitProjectOverviewRequestDto;
+import com.account.dto.company.response.CompanyUnitProjectOverviewResponseDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
 import com.account.dto.estimate.EstimateRejectRequestDto;
@@ -59,7 +61,9 @@ public interface EstimateService {
 
     EstimateStatusResponseDto rejectEstimate(Long estimateId, EstimateRejectRequestDto requestDto);
 
-
+    CompanyUnitProjectOverviewResponseDto getCompanyUnitProjectOverview(
+            CompanyUnitProjectOverviewRequestDto request
+    );
 }
 
 
