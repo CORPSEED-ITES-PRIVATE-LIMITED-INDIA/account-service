@@ -183,7 +183,7 @@ public class Estimate {
             validUntil = estimateDate.plusDays(30);
         }
         if (publicUuid == null) {
-            publicUuid = UUID.randomUUID().toString();  // Auto-generate secure public ID
+            publicUuid = UUID.randomUUID().toString();
         }
         isDeleted = false;
     }

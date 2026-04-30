@@ -1034,9 +1034,10 @@ public class CompanyServiceImpl implements CompanyService {
                     contactDto.setUpdatedBy(
                             unit.getUpdatedBy() != null ? unit.getUpdatedBy().getId() : null
                     );
-
+                    System.out.println("Contact id: "+contactDto.getContactId());
                     dto.getContacts().add(contactDto);
                 }
+                System.out.println("COntact length: "+ dto.getContacts().size());
             }
         }
 
