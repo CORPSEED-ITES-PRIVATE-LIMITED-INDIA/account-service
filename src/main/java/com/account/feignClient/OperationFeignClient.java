@@ -19,11 +19,8 @@ public interface OperationFeignClient {
             @RequestParam("companyId") Long companyId
     );
 
-
     @GetMapping("/operationService/api/companies/{companyId}")
     ResponseEntity<OperationCompanyResponseDto> getCompanyById(@PathVariable Long companyId);
-
-
 
     @PostMapping("/operationService/api/projects")
     ResponseEntity<?> createProject(@RequestBody OperationProjectRequestDto dto);
