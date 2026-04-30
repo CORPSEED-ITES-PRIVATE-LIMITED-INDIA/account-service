@@ -852,6 +852,8 @@ public class PaymentServiceImpl implements PaymentService {
         response.setUpdatedBy(approver.getId());
         response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
 
+        System.out.println("response.getContactId(): "+response.getContactId());
+
         try {
 
             ResponseEntity<OperationProjectResponseDto> res =
