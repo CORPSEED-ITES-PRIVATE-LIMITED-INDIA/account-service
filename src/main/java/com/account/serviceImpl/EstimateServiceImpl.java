@@ -1673,7 +1673,7 @@ public class EstimateServiceImpl implements EstimateService {
 
             UnbilledInvoice unbilled = unbilledOpt.get();
 
-            // 🚨 STRICT CHECK (recommended)
+            //   STRICT CHECK (recommended)
             if (unbilled.getStatus() == UnbilledStatus.PENDING_APPROVAL
                     || unbilled.getStatus() == UnbilledStatus.APPROVED
                     || (unbilled.getReceivedAmount() != null

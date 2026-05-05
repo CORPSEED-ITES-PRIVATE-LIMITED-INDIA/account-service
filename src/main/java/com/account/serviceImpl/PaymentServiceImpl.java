@@ -618,7 +618,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             unbilled.setStatus(UnbilledStatus.REJECTED);
 
-            // ❌ Mark all pending payments as REJECTED
+            //   Mark all pending payments as REJECTED
             unbilled.getPayments().forEach(p -> {
                 if (p.getStatus() == PaymentStatus.PENDING) {
                     p.setStatus(PaymentStatus.REJECTED);
@@ -650,11 +650,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         } else {
 
-            // ✅ APPROVED FLOW
+            //   APPROVED FLOW
             unbilled.setStatus(UnbilledStatus.APPROVED);
             estimate.setStatus(EstimateStatus.APPROVED);
 
-            // ✅ Mark ALL pending payments as APPROVED
+            //   Mark ALL pending payments as APPROVED
             unbilled.getPayments().forEach(p -> {
                 if (p.getStatus() == PaymentStatus.PENDING) {
                     p.setStatus(PaymentStatus.APPROVED);
@@ -905,7 +905,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             if (ex.status() == 404) {
 
-                // 🚨 ONLY CREATE PROJECT (NO PAYMENT CALL HERE)
+                //   ONLY CREATE PROJECT (NO PAYMENT CALL HERE)
                 if (!"APPROVED".equals(request.getApprovalRemarks())) {
                     log.info("Skipping project creation because status is not APPROVED");
                     return response;
@@ -915,7 +915,7 @@ public class PaymentServiceImpl implements PaymentService {
 
                 this.operationProjectCreationMethod(unbilled, estimate, response);
 
-                // ❌ DO NOT ADD PAYMENT HERE
+                //   DO NOT ADD PAYMENT HERE
                 // Payment already handled inside project creation
 
             } else {
@@ -1419,7 +1419,7 @@ public class PaymentServiceImpl implements PaymentService {
 
                 } catch (FeignException cancelEx) {
 
-                    // ✅ Handle "already cancelled"
+                    //   Handle "already cancelled"
                     if (cancelEx.status() == 400 || cancelEx.status() == 409) {
                         log.info("Project already cancelled → skipping | unbilled={}",
                                 unbilled.getUnbilledNumber());
@@ -1432,7 +1432,7 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (FeignException ex) {
 
             if (ex.status() == 404) {
-                // ✅ Project does NOT exist → do nothing
+                //   Project does NOT exist → do nothing
                 log.info("Project not found → nothing to cancel");
 
             } else {
