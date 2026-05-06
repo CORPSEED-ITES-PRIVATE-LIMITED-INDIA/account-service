@@ -4,6 +4,7 @@ import com.account.domain.UnbilledStatus;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.payment.GovernmentFeeResponseDto;
+import com.account.dto.payment.TdsResponseDto;
 import com.account.dto.unbilled.*;
 import com.account.exception.ResourceNotFoundException;
 import com.account.service.PaymentService;
@@ -227,6 +228,22 @@ public class UnbilledInvoiceController {
             @RequestParam(required = false) Long estimateId) {
         try {
             GovernmentFeeResponseDto response = paymentService.getGovernmentFee(unbilledId, estimateId);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (ValidationException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+        } catch (ResourceNotFoundException e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return new ResponseEntity<>(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @GetMapping("/tds")
+    public ResponseEntity<?> getTds(
+            @RequestParam(required = false) Long unbilledId,
+            @RequestParam(required = false) Long estimateId) {
+        try {
+            TdsResponseDto response = paymentService.getTds(unbilledId, estimateId);
             return new ResponseEntity<>(response, HttpStatus.OK);
         } catch (ValidationException e) {
             return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
