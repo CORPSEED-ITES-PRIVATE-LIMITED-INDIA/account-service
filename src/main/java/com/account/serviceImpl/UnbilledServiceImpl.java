@@ -88,7 +88,6 @@ public class UnbilledServiceImpl implements UnbilledService {
             );
         }
 
-
         // 7. Fetch approver
         User approver = userRepository.findById(request.getApproverUserId())
                 .orElseThrow(() -> new ResourceNotFoundException(
