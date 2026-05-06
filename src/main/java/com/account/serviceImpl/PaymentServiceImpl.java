@@ -166,6 +166,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             // GOVERNMENT FEE FLAG
             unbilled.setGovernmentFeeActive(Boolean.TRUE.equals(request.getGovernmentFeeActive()));
+            unbilled.setTdsActive(Boolean.TRUE.equals(request.getTdsActive()));
 
             unbilled = unbilledInvoiceRepository.save(unbilled);
 
@@ -622,6 +623,8 @@ public class PaymentServiceImpl implements PaymentService {
 
         tdsRegistrationRepository.save(tds);
 
+        unbilled.setTdsActive(true);
+
         log.info(
                 "TDS registered | unbilled={} | taxableAmount={} | percentage={} | tdsAmount={}",
                 unbilled.getUnbilledNumber(),
@@ -843,6 +846,10 @@ public class PaymentServiceImpl implements PaymentService {
                              * This allows rejected first-payment cycle to register TDS again.
                              */
                             tdsRegistrationRepository.delete(tds);
+
+                            // DISPLAY FLAG RESET
+                            unbilled.setTdsActive(false);
+
                         } else if (tds.getStatus() == TdsStatus.APPROVED) {
                             log.info(
                                     "TDS {} is already APPROVED for unbilled {}. Skipping delete on rejection.",
@@ -902,6 +909,8 @@ public class PaymentServiceImpl implements PaymentService {
                         tds.setStatus(TdsStatus.APPROVED);
                         tds.setUpdatedBy(approver);
                         tdsRegistrationRepository.save(tds);
+
+                        unbilled.setTdsActive(true);
 
                         log.info("TDS {} approved for unbilled {}",
                                 tds.getId(), unbilled.getUnbilledNumber());
@@ -1233,6 +1242,7 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
         dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
+        dto.setTdsActiveFlag(unbilled.isTdsActive());
 
         dto.setStatus(unbilled.getStatus());
         dto.setCreatedAt(unbilled.getCreatedAt());
@@ -1318,6 +1328,7 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setReceivedAmount(unbilled.getReceivedAmount());
         dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+        dto.setTdsActiveFlag(unbilled.isTdsActive());
         dto.setCreatedByName(getUserDisplayName(unbilled.getCreatedBy()));
         dto.setCreatedAt(unbilled.getCreatedAt());
         dto.setUpdatedAt(unbilled.getUpdatedAt());

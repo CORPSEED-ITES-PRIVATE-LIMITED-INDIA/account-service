@@ -49,6 +49,7 @@ public class UnbilledInvoice {
     private boolean advanceInvoiceFlag=false;
 
     private boolean governmentFeeActive = false;
+    private boolean tdsActive = false;
 
 
     @OneToOne(fetch = FetchType.LAZY)

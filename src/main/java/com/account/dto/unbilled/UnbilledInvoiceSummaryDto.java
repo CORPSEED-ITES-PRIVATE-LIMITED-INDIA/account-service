@@ -18,6 +18,7 @@ public class UnbilledInvoiceSummaryDto {
     private String advanceInvoiceNumber;
     private boolean advanceInvoiceFlag;
     private boolean governmentFeeActiveFlag = false;
+    private boolean tdsActiveFlag;
     private String estimateNumber;
     private Long estimateId;
     private String companyName;

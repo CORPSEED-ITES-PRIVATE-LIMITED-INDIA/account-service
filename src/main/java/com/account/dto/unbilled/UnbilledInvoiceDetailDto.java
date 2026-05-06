@@ -17,6 +17,7 @@ public class UnbilledInvoiceDetailDto {
     private String unbilledNumber;
     private String advanceInvoiceNumber;
     private boolean advanceInvoiceFlag;
+    private boolean tdsActiveFlag;
     private String estimateNumber;
     private String companyName;
     private String contactName;
