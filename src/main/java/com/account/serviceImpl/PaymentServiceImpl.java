@@ -4,10 +4,7 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.operationService.*;
-import com.account.dto.payment.GovernmentFeeRequestDto;
-import com.account.dto.payment.GovernmentFeeResponseDto;
-import com.account.dto.payment.PaymentRegistrationRequestDto;
-import com.account.dto.payment.PaymentRegistrationResponseDto;
+import com.account.dto.payment.*;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
@@ -59,6 +56,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final OperationFeignClient operationFeignClient;
     private final InvoiceRepository invoiceRepository;
     private final GovernmentFeeRepository governmentFeeRepository;
+    private final TdsRegistrationRepository tdsRegistrationRepository;
 
     @Override
     @Transactional
@@ -117,6 +115,9 @@ public class PaymentServiceImpl implements PaymentService {
                         "PaymentType",
                         request.getPaymentTypeId()
                 ));
+
+
+        validateTdsRequest(request, paymentType);
 
         // Determine if this is product-related (EPR applies)
         boolean isProductRelated = isProductRelatedEstimate(estimate);
@@ -223,9 +224,10 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
         });
-
         // Business rules for amount vs payment type
         validatePaymentRules(paymentType, reqAmount, unbilled, isFirstPayment);
+
+        createTdsIfRequired(request, estimate, unbilled, paymentType, salesperson);
 
         // Prevent approved + pending + current request from exceeding total amount
         BigDecimal approvedAmount = safe2(unbilled.getReceivedAmount());
@@ -474,6 +476,187 @@ public class PaymentServiceImpl implements PaymentService {
         unbilled.setGovernmentFeeActive(true);
     }
 
+    private void validateTdsRequest(PaymentRegistrationRequestDto request, PaymentType paymentType) {
+
+        boolean tdsActive = Boolean.TRUE.equals(request.getTdsActive());
+
+        if (!tdsActive) {
+            if (request.getTds() != null) {
+                throw new ValidationException(
+                        "TDS details should not be sent when tdsActive is false",
+                        "ERR_TDS_NOT_ALLOWED",
+                        "tds"
+                );
+            }
+            return;
+        }
+
+        if (request.getTds() == null) {
+            throw new ValidationException(
+                    "TDS details are required when tdsActive is true",
+                    "ERR_TDS_DETAILS_REQUIRED",
+                    "tds"
+            );
+        }
+
+        if (paymentType == null || paymentType.getCode() == null) {
+            throw new ValidationException(
+                    "Invalid payment type for TDS",
+                    "ERR_TDS_PAYMENT_TYPE_INVALID",
+                    "paymentTypeId"
+            );
+        }
+
+        String paymentTypeCode = paymentType.getCode().trim().toUpperCase();
+
+        if (!"FULL".equals(paymentTypeCode) && !"PURCHASE_ORDER".equals(paymentTypeCode)) {
+            throw new ValidationException(
+                    "TDS can be registered only for FULL or PURCHASE_ORDER payment type",
+                    "ERR_TDS_NOT_ALLOWED_FOR_PAYMENT_TYPE",
+                    "tds"
+            );
+        }
+
+        BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
+
+        if (
+                tdsPercentage.compareTo(new BigDecimal("2.00")) != 0
+                        && tdsPercentage.compareTo(new BigDecimal("10.00")) != 0
+        ) {
+            throw new ValidationException(
+                    "TDS percentage must be either 2 or 10",
+                    "ERR_INVALID_TDS_PERCENTAGE",
+                    "tds.tdsPercentage"
+            );
+        }
+    }
+    private void createTdsIfRequired(
+            PaymentRegistrationRequestDto request,
+            Estimate estimate,
+            UnbilledInvoice unbilled,
+            PaymentType paymentType,
+            User salesperson
+    ) {
+        if (!Boolean.TRUE.equals(request.getTdsActive())) {
+            return;
+        }
+
+        String paymentTypeCode = paymentType.getCode().trim().toUpperCase();
+
+        if (!"FULL".equals(paymentTypeCode) && !"PURCHASE_ORDER".equals(paymentTypeCode)) {
+            throw new ValidationException(
+                    "TDS can be registered only for FULL or PURCHASE_ORDER payment type",
+                    "ERR_TDS_NOT_ALLOWED_FOR_PAYMENT_TYPE",
+                    "tds"
+            );
+        }
+
+        /*
+         * TDS is only for first successful payment cycle.
+         *
+         * Do NOT depend only on isFirstPayment.
+         * Because if first payment is rejected, unbilled already exists.
+         *
+         * Correct rule:
+         * - If any APPROVED payment already exists, TDS cannot be newly added.
+         * - If only rejected/pending discarded payments exist, TDS can be added.
+         */
+        boolean hasApprovedPayment = unbilled.getPayments() != null
+                && unbilled.getPayments().stream()
+                .anyMatch(p -> p.getStatus() == PaymentStatus.APPROVED && !p.isCancelled());
+
+        if (hasApprovedPayment) {
+            throw new ValidationException(
+                    "TDS can be registered only before first payment approval",
+                    "ERR_TDS_ONLY_BEFORE_FIRST_APPROVAL",
+                    "tds"
+            );
+        }
+
+        Optional<TdsRegistration> existingTdsOpt =
+                tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled);
+
+        if (existingTdsOpt.isPresent()) {
+            TdsRegistration existingTds = existingTdsOpt.get();
+
+            if (existingTds.getStatus() == TdsStatus.PENDING) {
+                throw new ValidationException(
+                        "TDS is already registered and pending approval for this unbilled invoice",
+                        "ERR_TDS_ALREADY_PENDING",
+                        "tds"
+                );
+            }
+
+            if (existingTds.getStatus() == TdsStatus.APPROVED) {
+                throw new ValidationException(
+                        "TDS is already approved for this unbilled invoice and cannot be added again",
+                        "ERR_TDS_ALREADY_APPROVED",
+                        "tds"
+                );
+            }
+
+            throw new ValidationException(
+                    "TDS already exists for this unbilled invoice",
+                    "ERR_TDS_ALREADY_EXISTS",
+                    "tds"
+            );
+        }
+
+        BigDecimal taxableAmount = calculateTdsTaxableAmount(estimate, unbilled);
+        BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
+
+        BigDecimal tdsAmount = taxableAmount
+                .multiply(tdsPercentage)
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+
+        TdsRegistration tds = new TdsRegistration();
+        tds.setPublicUuid(UUID.randomUUID().toString());
+        tds.setEstimate(estimate);
+        tds.setUnbilledInvoice(unbilled);
+        tds.setTdsPercentage(tdsPercentage);
+        tds.setTaxableAmount(taxableAmount);
+        tds.setTdsAmount(tdsAmount);
+        tds.setStatus(TdsStatus.PENDING);
+        tds.setDeleted(false);
+        tds.setCreatedBy(salesperson);
+
+        tdsRegistrationRepository.save(tds);
+
+        log.info(
+                "TDS registered | unbilled={} | taxableAmount={} | percentage={} | tdsAmount={}",
+                unbilled.getUnbilledNumber(),
+                taxableAmount,
+                tdsPercentage,
+                tdsAmount
+        );
+    }
+    private BigDecimal calculateTdsTaxableAmount(Estimate estimate, UnbilledInvoice unbilled) {
+
+        /*
+         * TDS should be calculated on amount excluding GST.
+         *
+         * Example:
+         * Service cost = 500
+         * GST 18% = 90
+         * Total = 590
+         *
+         * TDS base = 590 - 90 = 500
+         */
+
+        if (estimate != null && estimate.getSubTotalExGst() != null) {
+            return safe2(estimate.getSubTotalExGst());
+        }
+
+        BigDecimal totalAmount = safe2(unbilled.getTotalAmount());
+
+        BigDecimal gstAmount = estimate != null && estimate.getTotalGstAmount() != null
+                ? safe2(estimate.getTotalGstAmount())
+                : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        return totalAmount.subtract(gstAmount)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
     private BigDecimal safe2(BigDecimal val) {
         return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
     }
@@ -643,6 +826,32 @@ public class PaymentServiceImpl implements PaymentService {
                 }
             });
 
+            // ===============================
+            // DELETE PENDING TDS ON REJECTION
+            // ===============================
+            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                    .ifPresent(tds -> {
+                        if (tds.getStatus() == TdsStatus.PENDING) {
+                            log.info(
+                                    "Deleting PENDING TDS {} because parent unbilled {} was rejected",
+                                    tds.getId(),
+                                    unbilled.getUnbilledNumber()
+                            );
+
+                            /*
+                             * Hard delete because TDS is unique against unbilled_invoice_id.
+                             * This allows rejected first-payment cycle to register TDS again.
+                             */
+                            tdsRegistrationRepository.delete(tds);
+                        } else if (tds.getStatus() == TdsStatus.APPROVED) {
+                            log.info(
+                                    "TDS {} is already APPROVED for unbilled {}. Skipping delete on rejection.",
+                                    tds.getId(),
+                                    unbilled.getUnbilledNumber()
+                            );
+                        }
+                    });
+
             log.info(
                     "Unbilled {} rejected → pending amount discarded, no financial impact",
                     unbilled.getUnbilledNumber()
@@ -687,6 +896,16 @@ public class PaymentServiceImpl implements PaymentService {
                 log.info("Government fee {} approved for unbilled {}",
                         governmentFee.getId(), unbilled.getUnbilledNumber());
             });
+
+            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                    .ifPresent(tds -> {
+                        tds.setStatus(TdsStatus.APPROVED);
+                        tds.setUpdatedBy(approver);
+                        tdsRegistrationRepository.save(tds);
+
+                        log.info("TDS {} approved for unbilled {}",
+                                tds.getId(), unbilled.getUnbilledNumber());
+                    });
 
             log.info(
                     "Unbilled {} approved → received={} outstanding={}",
@@ -1729,5 +1948,84 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public TdsResponseDto getTds(Long unbilledId, Long estimateId) {
+
+        if (unbilledId == null && estimateId == null) {
+            throw new ValidationException(
+                    "Either unbilledId or estimateId is required",
+                    "ERR_TDS_FILTER_REQUIRED",
+                    "unbilledId/estimateId"
+            );
+        }
+
+        TdsRegistration tds;
+
+        if (unbilledId != null) {
+            UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Unbilled invoice not found with ID: " + unbilledId,
+                            "UNBILLED_NOT_FOUND",
+                            "UnbilledInvoice",
+                            unbilledId
+                    ));
+
+            tds = tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "TDS not found for unbilled invoice ID: " + unbilledId,
+                            "TDS_NOT_FOUND",
+                            "TdsRegistration",
+                            unbilledId
+                    ));
+        } else {
+            Estimate estimate = estimateRepository.findById(estimateId)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Estimate not found with ID: " + estimateId,
+                            "ESTIMATE_NOT_FOUND",
+                            "Estimate",
+                            estimateId
+                    ));
+
+            tds = tdsRegistrationRepository.findByEstimateAndIsDeletedFalse(estimate)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "TDS not found for estimate ID: " + estimateId,
+                            "TDS_NOT_FOUND",
+                            "TdsRegistration",
+                            estimateId
+                    ));
+        }
+
+        return mapToTdsResponseDto(tds);
+    }
+
+    private TdsResponseDto mapToTdsResponseDto(TdsRegistration tds) {
+        return TdsResponseDto.builder()
+                .id(tds.getId())
+                .publicUuid(tds.getPublicUuid())
+
+                .estimateId(tds.getEstimate() != null ? tds.getEstimate().getId() : null)
+                .estimateNumber(tds.getEstimate() != null ? tds.getEstimate().getEstimateNumber() : null)
+
+                .unbilledInvoiceId(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getId() : null)
+                .unbilledNumber(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getUnbilledNumber() : null)
+
+                .tdsPercentage(tds.getTdsPercentage())
+                .taxableAmount(tds.getTaxableAmount())
+                .tdsAmount(tds.getTdsAmount())
+
+                .status(tds.getStatus())
+
+                .createdById(tds.getCreatedBy() != null ? tds.getCreatedBy().getId() : null)
+                .createdByName(tds.getCreatedBy() != null
+                        ? (tds.getCreatedBy().getFullName() != null
+                        ? tds.getCreatedBy().getFullName()
+                        : tds.getCreatedBy().getEmail())
+                        : null)
+
+                .createdAt(tds.getCreatedAt())
+                .updatedAt(tds.getUpdatedAt())
+                .build();
+    }
 
 }

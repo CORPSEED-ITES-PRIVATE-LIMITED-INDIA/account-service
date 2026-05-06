@@ -40,4 +40,8 @@ public class PaymentRegistrationRequestDto {
     private Boolean governmentFeeActive = false;
 
     private GovernmentFeeRequestDto governmentFee;
+
+    private Boolean tdsActive = false;
+
+    private TdsRequestDto tds;
 }

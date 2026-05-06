@@ -5,6 +5,7 @@ import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.payment.GovernmentFeeResponseDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;
 import com.account.dto.payment.PaymentRegistrationResponseDto;
+import com.account.dto.payment.TdsResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalResponseDto;
 import com.account.dto.unbilled.UnbilledInvoiceDetailDto;
@@ -42,4 +43,5 @@ public interface PaymentService {
 
     GovernmentFeeResponseDto getGovernmentFee(Long unbilledId, Long estimateId);
 
+    TdsResponseDto getTds(Long unbilledId, Long estimateId);
 }
