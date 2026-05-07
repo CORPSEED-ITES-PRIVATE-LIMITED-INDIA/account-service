@@ -61,6 +61,8 @@ public interface EstimateService {
 
     EstimateStatusResponseDto rejectEstimate(Long estimateId, EstimateRejectRequestDto requestDto);
 
+    EstimateStatusResponseDto rejectEstimateByProposalId(Long proposalId, EstimateRejectRequestDto requestDto);
+
     CompanyUnitProjectOverviewResponseDto getCompanyUnitProjectOverview(
             CompanyUnitProjectOverviewRequestDto request
     );

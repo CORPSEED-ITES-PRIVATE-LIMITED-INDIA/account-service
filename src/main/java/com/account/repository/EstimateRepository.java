@@ -53,4 +53,5 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSp
             Long companyId,
             Long unitId
     );
-}
+
+    Optional<Estimate> findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(Long proposalId);}

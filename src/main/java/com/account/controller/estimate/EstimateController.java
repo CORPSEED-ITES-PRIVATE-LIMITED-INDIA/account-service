@@ -268,6 +268,14 @@ public class EstimateController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
+    @PatchMapping("/{proposalId}/reject")
+    public ResponseEntity<EstimateStatusResponseDto> rejectEstimateByProposalId(
+            @PathVariable Long proposalId,
+            @Valid @RequestBody EstimateRejectRequestDto requestDto) {
+
+        EstimateStatusResponseDto response = estimateService.rejectEstimateByProposalId(proposalId, requestDto);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
 
     @Operation(summary = "Get company-unit overview with estimate, unbilled, and project data")
     @PostMapping("/company-unit/getFullDetails")
