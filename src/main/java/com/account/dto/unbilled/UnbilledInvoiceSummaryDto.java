@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 public class UnbilledInvoiceSummaryDto {
 
     private Long id;
+    private Long leadId;
     private String unbilledNumber;
     private String advanceInvoiceNumber;
     private boolean advanceInvoiceFlag;

@@ -1208,6 +1208,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         dto.setId(unbilled.getId());
         dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+
         dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
         dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
 
@@ -1216,6 +1217,7 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setEstimateId(estimate != null ? estimate.getId() : null);
         dto.setSolutionId(estimate != null ? estimate.getSolutionId() : null);
         dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
+        dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
 
         Company company = unbilled.getCompany();
         dto.setCompanyName(company != null ? company.getName() : null);
