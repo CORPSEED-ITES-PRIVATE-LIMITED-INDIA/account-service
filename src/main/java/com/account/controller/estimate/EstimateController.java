@@ -268,7 +268,7 @@ public class EstimateController {
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
 
-    @PatchMapping("/{proposalId}/rejectEstimateByProposalId")
+    @PutMapping("/{proposalId}/rejectEstimateByProposalId")
     public ResponseEntity<EstimateStatusResponseDto> rejectEstimateByProposalId(
             @PathVariable Long proposalId,
             @Valid @RequestBody EstimateRejectRequestDto requestDto) {
