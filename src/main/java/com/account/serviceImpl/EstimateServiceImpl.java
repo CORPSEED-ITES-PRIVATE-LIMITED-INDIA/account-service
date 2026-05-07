@@ -210,6 +210,7 @@ public class EstimateServiceImpl implements EstimateService {
         estimate.setCompany(company);
         estimate.setUnit(unit);
         estimate.setContact(contact);
+        estimate.setProposalId(requestDto.getProposalId());
         estimate.setSolutionName(requestDto.getSolutionName());
         estimate.setSolutionId(requestDto.getSolutionId());
         estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
@@ -1701,6 +1702,26 @@ public class EstimateServiceImpl implements EstimateService {
                 estimate.getStatus().name(),
                 "Estimate rejected successfully"
         );
+    }
+
+    @Override
+    public EstimateStatusResponseDto rejectEstimateByProposalId(Long proposalId, EstimateRejectRequestDto requestDto) {
+
+        if (proposalId == null || proposalId <= 0) {
+            throw new ValidationException(
+                    "Invalid proposal id",
+                    "ERR_INVALID_PROPOSAL_ID",
+                    "proposalId"
+            );
+        }
+
+        Estimate estimate = estimateRepository.findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(proposalId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Estimate not found with proposal id: " + proposalId,
+                        "ESTIMATE_NOT_FOUND"
+                ));
+
+        return rejectEstimate(estimate.getId(), requestDto);
     }
 
     @Override

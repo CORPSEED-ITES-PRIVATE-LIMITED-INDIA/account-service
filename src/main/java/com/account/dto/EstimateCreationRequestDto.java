@@ -19,6 +19,8 @@ public class EstimateCreationRequestDto {
 
     private Long leadId;
 
+    private Long proposalId;
+
 
     private Long contactId; // Optional
 

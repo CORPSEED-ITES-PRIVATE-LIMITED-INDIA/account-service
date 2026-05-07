@@ -26,6 +26,7 @@ public class EstimateResponseDto {
     private String publicUuid;  // UUID v4 - safe for public exposure
 
     private Long leadId;
+    private Long proposalId;
 
     // Human-readable estimate number
     private String estimateNumber;
