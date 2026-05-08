@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.Date;
@@ -302,12 +303,13 @@ public class UnbilledServiceImpl implements UnbilledService {
 
 
     private String generateProjectNumber() {
-        String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String dateTimePart = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
 
         long count = unbilledInvoiceRepository.count() + 1;
         String sequence = String.format("%04d", count);
 
-        return "PRJ-" + datePart + "-" + sequence;
+        return "PRJ-" + dateTimePart + "-" + sequence;
     }
 
     private void operationProjectCreationMethod(UnbilledInvoice unbilled,
