@@ -50,7 +50,7 @@ public interface EstimateService {
 
     Page<EstimateResponseDto> estimateReport(
             EstimateSearchRequest request
-    );
+     );
 
 
     Page<EstimateResponseDto> searchEstimates(EstimateSearchRequestDto request, Long userId);
@@ -58,6 +58,7 @@ public interface EstimateService {
     EstimateResponseDto convertIntoPI(Long estimateId, Long requestingUserId);
 
     void sendEstimate(Long estimateId, Long requestingUserId);
+
 
     EstimateStatusResponseDto rejectEstimate(Long estimateId, EstimateRejectRequestDto requestDto);
 
