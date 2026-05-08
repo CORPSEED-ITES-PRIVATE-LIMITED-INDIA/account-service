@@ -536,12 +536,28 @@ public class EstimateServiceImpl implements EstimateService {
 
             UnbilledInvoice unbilled = unbilledOpt.get();
 
-            if (!unbilled.getPayments().isEmpty()) {
-                PaymentReceipt receipt = unbilled.getPayments().get(0);
+            /*
+             * Set paymentTypeId only when unbilled has approved received amount.
+             * receivedAmount = approved payment amount
+             * currentReceivedAmount = pending payment amount
+             */
+            if (unbilled.getReceivedAmount() != null
+                    && unbilled.getReceivedAmount().compareTo(BigDecimal.ZERO) > 0) {
 
-                if (receipt.getPaymentType() != null) {
-                    dto.setPaymentTypeId(receipt.getPaymentType().getId());
+                if (unbilled.getPayments() != null && !unbilled.getPayments().isEmpty()) {
+                    PaymentReceipt receipt = unbilled.getPayments().get(0);
+
+                    if (receipt.getPaymentType() != null) {
+                        dto.setPaymentTypeId(receipt.getPaymentType().getId());
+                    } else {
+                        dto.setPaymentTypeId(null);
+                    }
+                } else {
+                    dto.setPaymentTypeId(null);
                 }
+
+            } else {
+                dto.setPaymentTypeId(null);
             }
         }
 
