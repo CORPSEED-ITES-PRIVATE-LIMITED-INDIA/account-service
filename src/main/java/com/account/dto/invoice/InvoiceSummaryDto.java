@@ -16,6 +16,7 @@ public class InvoiceSummaryDto {
     private String invoiceNumber;
     private String unbilledNumber;
     private String estimateNumber;
+    private Long estimateId;
     private Long solutionId;
     private String solutionName;
     private String solutionType;   // optional — if you want to show type/icon
