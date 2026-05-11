@@ -338,6 +338,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.invoiceNumber(inv.getInvoiceNumber())
 				.unbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null)
 				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
+				.estimateId(estimate != null ? estimate.getId() : null)
 				// ─── Added solution fields ────────────────────────────────
 				.solutionId(estimate != null ? estimate.getSolutionId() : null)
 				.solutionName(estimate != null ? estimate.getSolutionName() : null)
