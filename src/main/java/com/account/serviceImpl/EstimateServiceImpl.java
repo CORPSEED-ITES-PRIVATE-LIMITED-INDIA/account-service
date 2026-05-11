@@ -549,15 +549,19 @@ public class EstimateServiceImpl implements EstimateService {
 
                     if (receipt.getPaymentType() != null) {
                         dto.setPaymentTypeId(receipt.getPaymentType().getId());
+                        dto.setPaymentTypeMode(receipt.getPaymentMode());
                     } else {
                         dto.setPaymentTypeId(null);
+                        dto.setPaymentTypeMode(null);
                     }
                 } else {
                     dto.setPaymentTypeId(null);
+                    dto.setPaymentTypeMode(null);
                 }
 
             } else {
                 dto.setPaymentTypeId(null);
+                dto.setPaymentTypeMode(null);
             }
         }
 
