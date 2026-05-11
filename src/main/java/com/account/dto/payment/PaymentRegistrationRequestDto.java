@@ -16,7 +16,7 @@ public class PaymentRegistrationRequestDto {
     private Long estimateId;
 
     @NotNull(message = "Payment amount is required")
-    @Positive(message = "Amount must be positive")
+    @PositiveOrZero(message = "Amount must be zero or positive")
     private BigDecimal amount;
 
     @NotNull(message = "Payment date is required")

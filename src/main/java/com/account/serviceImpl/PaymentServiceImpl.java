@@ -116,6 +116,7 @@ public class PaymentServiceImpl implements PaymentService {
         // ===================================================================
         // ALLOW ZERO AMOUNT ONLY FOR PURCHASE_ORDER PAYMENT TYPE
         // ===================================================================
+        // In registerPayment() — this runs BEFORE validatePaymentRules
         if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
             String code = paymentType.getCode() != null
                     ? paymentType.getCode().trim().toUpperCase()
