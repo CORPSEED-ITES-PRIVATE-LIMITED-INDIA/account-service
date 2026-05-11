@@ -10,6 +10,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -126,15 +127,21 @@ public class UnbilledInvoice {
      * Does NOT change status — status is controlled only by approval workflow.
      */
     public void applyPayment(BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Payment amount must be positive");
+        if (amount == null) {
+            throw new IllegalArgumentException("Payment amount cannot be null");
+        }
+
+        BigDecimal safeAmount = amount.setScale(2, RoundingMode.HALF_UP);
+
+        // Allow zero (for PURCHASE_ORDER) but block negative amounts
+        if (safeAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Payment amount cannot be negative");
         }
 
         // Only track pending amount
-        this.currentReceivedAmount = this.currentReceivedAmount.add(amount);
+        this.currentReceivedAmount = this.currentReceivedAmount.add(safeAmount);
 
-        // ❗ DO NOT touch outstanding based on pending money
-        // Outstanding should reflect only approved amount
+        // Outstanding should reflect only APPROVED amount
         this.outstandingAmount = this.totalAmount.subtract(this.receivedAmount);
     }
 }
