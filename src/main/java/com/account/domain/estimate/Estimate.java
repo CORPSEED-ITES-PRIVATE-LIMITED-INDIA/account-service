@@ -36,9 +36,7 @@ public class Estimate {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;  // Internal database ID - NEVER expose publicly
-
-    // Public safe identifier for sharing links/PDF/email (UUID v4)
+    private Long id;
     @Column(name = "public_uuid", nullable = false, unique = true, length = 36)
     private String publicUuid;
 

@@ -72,9 +72,6 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal reqAmount = request.getAmount().setScale(2, RoundingMode.HALF_UP);
-        if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException("Payment amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
-        }
 
         // ===============================
         // GOVERNMENT FEE VALIDATION
@@ -90,7 +87,7 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getEstimateId()
                 ));
 
-        //  NEW VALIDATION: Prevent payment registration on REJECTED estimate
+        // NEW VALIDATION: Prevent payment registration on REJECTED estimate
         if (estimate.getStatus() == EstimateStatus.REJECTED) {
             throw new ValidationException(
                     "Cannot register payment against a REJECTED estimate. " +
@@ -116,6 +113,20 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getPaymentTypeId()
                 ));
 
+        // ===================================================================
+        // ALLOW ZERO AMOUNT ONLY FOR PURCHASE_ORDER PAYMENT TYPE
+        // ===================================================================
+        if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            String code = paymentType.getCode() != null
+                    ? paymentType.getCode().trim().toUpperCase()
+                    : "";
+
+            if (!"PURCHASE_ORDER".equals(code)) {
+                throw new ValidationException("Payment amount must be positive",
+                        "ERR_AMOUNT_NOT_POSITIVE", "amount");
+            }
+        }
+        // ===================================================================
 
         validateTdsRequest(request, paymentType);
 
@@ -320,18 +331,25 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void validatePaymentRules(PaymentType paymentType,
-                                      BigDecimal reqAmount,
-                                      UnbilledInvoice unbilled,
-                                      boolean isFirstPayment) {
+                                       BigDecimal reqAmount,
+                                       UnbilledInvoice unbilled,
+                                       boolean isFirstPayment) {
         if (paymentType == null || paymentType.getCode() == null) {
             throw new ValidationException("Invalid payment type", "ERR_PAYMENT_TYPE_INVALID", "paymentTypeId");
         }
         BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
         BigDecimal total = safe2(unbilled.getTotalAmount());
         String code = paymentType.getCode().trim().toUpperCase();
-        if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+
+        // ==================== MODIFIED CONDITION ====================
+        // Allow ZERO amount only for PURCHASE_ORDER payment type
+        boolean isPurchaseOrder = "PURCHASE_ORDER".equals(code);
+
+        if (!isPurchaseOrder && reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException("Amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
         }
+        // ============================================================
+
         if (reqAmount.compareTo(outstanding) > 0) {
             throw new ValidationException("Amount is greater than outstanding amount",
                     "ERR_AMOUNT_EXCEEDS_OUTSTANDING", "amount");
@@ -361,6 +379,51 @@ public class PaymentServiceImpl implements PaymentService {
         throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
                 "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
     }
+
+
+
+//    private void validatePaymentRules(PaymentType paymentType,
+//                                      BigDecimal reqAmount,
+//                                      UnbilledInvoice unbilled,
+//                                      boolean isFirstPayment) {
+//        if (paymentType == null || paymentType.getCode() == null) {
+//            throw new ValidationException("Invalid payment type", "ERR_PAYMENT_TYPE_INVALID", "paymentTypeId");
+//        }
+//        BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
+//        BigDecimal total = safe2(unbilled.getTotalAmount());
+//        String code = paymentType.getCode().trim().toUpperCase();
+//        if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+//            throw new ValidationException("Amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
+//        }
+//        if (reqAmount.compareTo(outstanding) > 0) {
+//            throw new ValidationException("Amount is greater than outstanding amount",
+//                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING", "amount");
+//        }
+//        if ("FULL".equals(code)) {
+//            if (reqAmount.compareTo(outstanding) != 0) {
+//                throw new ValidationException("FULL payment must equal outstanding amount",
+//                        "ERR_FULL_AMOUNT_MISMATCH", "amount");
+//            }
+//            return;
+//        }
+//        if ("PARTIAL".equals(code)) {
+//            BigDecimal half = total.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
+//            BigDecimal expected = (outstanding.compareTo(half) < 0) ? outstanding : half;
+//            if (reqAmount.compareTo(expected) != 0) {
+//                throw new ValidationException(
+//                        "PARTIAL payment must be " + expected + " (50% of total or remaining outstanding)",
+//                        "ERR_PARTIAL_AMOUNT_MISMATCH",
+//                        "amount"
+//                );
+//            }
+//            return;
+//        }
+//        if ("INSTALLMENT".equals(code) || "PURCHASE_ORDER".equals(code)) {
+//            return;
+//        }
+//        throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
+//                "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
+//    }
 
     private void validateGovernmentFeeRequest(PaymentRegistrationRequestDto request) {
         if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {

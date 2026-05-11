@@ -45,3 +45,4 @@ public class PaymentRegistrationRequestDto {
 
     private TdsRequestDto tds;
 }
+
