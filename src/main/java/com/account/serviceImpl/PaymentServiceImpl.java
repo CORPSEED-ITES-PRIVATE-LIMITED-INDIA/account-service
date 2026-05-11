@@ -1301,6 +1301,29 @@ public class PaymentServiceImpl implements PaymentService {
             dto.setGstNo(unit.getGstNo());
         }
 
+        if (unbilled.getReceivedAmount() != null
+                && unbilled.getReceivedAmount().compareTo(BigDecimal.ZERO) > 0) {
+
+            if (unbilled.getPayments() != null && !unbilled.getPayments().isEmpty()) {
+                PaymentReceipt receipt = unbilled.getPayments().get(0);
+
+                if (receipt.getPaymentType() != null) {
+                    dto.setPaymentTypeId(receipt.getPaymentType().getId());
+                    dto.setPaymentTypeCode(receipt.getPaymentType().getCode());
+                } else {
+                    dto.setPaymentTypeId(null);
+                    dto.setPaymentTypeCode(null);
+                }
+            } else {
+                dto.setPaymentTypeId(null);
+                dto.setPaymentTypeCode(null);
+            }
+
+        } else {
+            dto.setPaymentTypeId(null);
+            dto.setPaymentTypeCode(null);
+        }
+
 
         dto.setTotalAmount(unbilled.getTotalAmount());
         dto.setReceivedAmount(unbilled.getReceivedAmount());

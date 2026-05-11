@@ -329,8 +329,31 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 
 	private InvoiceSummaryDto toSummaryDto(Invoice inv) {
+
 		UnbilledInvoice unbilled = inv.getUnbilledInvoice();
 		Estimate estimate = (unbilled != null) ? unbilled.getEstimate() : null;
+
+		Long paymentTypeId = null;
+		String paymentTypeCode = null;
+
+		/*
+		 * Set paymentTypeId/paymentTypeCode only when unbilled has approved received amount.
+		 * receivedAmount = approved payment amount
+		 * currentReceivedAmount = pending payment amount
+		 */
+		if (unbilled != null
+				&& unbilled.getReceivedAmount() != null
+				&& unbilled.getReceivedAmount().compareTo(BigDecimal.ZERO) > 0) {
+
+			if (unbilled.getPayments() != null && !unbilled.getPayments().isEmpty()) {
+				PaymentReceipt receipt = unbilled.getPayments().get(0);
+
+				if (receipt.getPaymentType() != null) {
+					paymentTypeId = receipt.getPaymentType().getId();
+					paymentTypeCode = receipt.getPaymentType().getCode();
+				}
+			}
+		}
 
 		return InvoiceSummaryDto.builder()
 				.id(inv.getId())
@@ -339,14 +362,21 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.unbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null)
 				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
 				.estimateId(estimate != null ? estimate.getId() : null)
-				// ─── Added solution fields ────────────────────────────────
+
+				.paymentTypeId(paymentTypeId)
+				.paymentTypeCode(paymentTypeCode)
+
 				.solutionId(estimate != null ? estimate.getSolutionId() : null)
 				.solutionName(estimate != null ? estimate.getSolutionName() : null)
-				// ───────────────────────────────────────────────────────────
+
 				.companyName(unbilled != null && unbilled.getCompany() != null
-						? unbilled.getCompany().getName() : null)
+						? unbilled.getCompany().getName()
+						: null)
+
 				.contactName(unbilled != null && unbilled.getContact() != null
-						? unbilled.getContact().getName() : null)
+						? unbilled.getContact().getName()
+						: null)
+
 				.invoiceDate(inv.getInvoiceDate())
 				.grandTotal(inv.getGrandTotal())
 				.totalGstAmount(inv.getTotalGstAmount())
@@ -354,11 +384,13 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.sgstAmount(inv.getSgstAmount())
 				.igstAmount(inv.getIgstAmount())
 				.status(inv.getStatus())
+
 				.createdByName(inv.getCreatedBy() != null
 						? (inv.getCreatedBy().getFullName() != null
 						? inv.getCreatedBy().getFullName()
 						: inv.getCreatedBy().getEmail())
 						: null)
+
 				.createdAt(inv.getCreatedAt())
 				.build();
 	}
