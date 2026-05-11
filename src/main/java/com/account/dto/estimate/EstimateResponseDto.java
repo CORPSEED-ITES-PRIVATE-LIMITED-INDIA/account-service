@@ -69,7 +69,7 @@ public class EstimateResponseDto {
     private CompanyUnitSummaryDto unit;
 
     private Long paymentTypeId;
-    private String paymentTypeMode;
+    private String paymentTypeCode;
 
     // Line items breakdown
     private List<EstimateLineItemResponseDto> lineItems;

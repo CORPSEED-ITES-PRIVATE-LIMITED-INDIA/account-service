@@ -11,26 +11,35 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class InvoiceSummaryDto {
+
     private Long id;
-    private String publicUuid;           // safer than exposing internal id
+    private String publicUuid;
     private String invoiceNumber;
     private String unbilledNumber;
     private String estimateNumber;
+
+    private Long paymentTypeId;
+    private String paymentTypeCode;
+
     private Long estimateId;
     private Long solutionId;
     private String solutionName;
-    private String solutionType;   // optional — if you want to show type/icon
+    private String solutionType;
+
     private String companyName;
     private String contactName;
+
     private LocalDate invoiceDate;
     private BigDecimal grandTotal;
     private BigDecimal totalGstAmount;
     private BigDecimal cgstAmount;
     private BigDecimal sgstAmount;
     private BigDecimal igstAmount;
-    private String irn;                  // null if not e-invoiced yet
-    private InvoiceStatus status;        // using your enum
+
+    private String irn;
+    private InvoiceStatus status;
+
     private String createdByName;
     private LocalDateTime createdAt;
-    private LocalDateTime sentAt;        // optional – if you track SENT_TO_CLIENT time
+    private LocalDateTime sentAt;
 }

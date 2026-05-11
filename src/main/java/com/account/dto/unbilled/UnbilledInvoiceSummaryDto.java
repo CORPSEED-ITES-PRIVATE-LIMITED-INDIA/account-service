@@ -22,6 +22,8 @@ public class UnbilledInvoiceSummaryDto {
     private boolean tdsActiveFlag;
     private String estimateNumber;
     private Long estimateId;
+    private Long paymentTypeId;
+    private String paymentTypeCode;
     private String companyName;
     private String contactName;
     private BigDecimal totalAmount;
