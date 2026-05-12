@@ -82,6 +82,7 @@ public class EstimateServiceImpl implements EstimateService {
 
 
 
+
     @Override
     public EstimateResponseDto createEstimate(EstimateCreationRequestDto requestDto) {
 
@@ -435,6 +436,8 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setId(estimate.getId());
         dto.setLeadId(estimate.getLeadId());
         dto.setPublicUuid(estimate.getPublicUuid());
+        dto.setProposalId(estimate.getProposalId());
+
         dto.setEstimateNumber(estimate.getEstimateNumber());
         dto.setPerformanceInvoiceNumber(estimate.getPerformanceInvoiceNumber());
         dto.setPerformanceInvoiceFlag(estimate.isPerformanceInvoiceFlag());
@@ -1300,6 +1303,7 @@ public class EstimateServiceImpl implements EstimateService {
 
         dto.setId(estimate.getId());
         dto.setPublicUuid(estimate.getPublicUuid());
+        dto.setProposalId(estimate.getProposalId());
         dto.setLeadId(estimate.getLeadId());
         dto.setEstimateNumber(estimate.getEstimateNumber());
         dto.setPerformanceInvoiceNumber(estimate.getPerformanceInvoiceNumber());
