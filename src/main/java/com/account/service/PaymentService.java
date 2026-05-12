@@ -44,4 +44,6 @@ public interface PaymentService {
     GovernmentFeeResponseDto getGovernmentFee(Long unbilledId, Long estimateId);
 
     TdsResponseDto getTds(Long unbilledId, Long estimateId);
+
+    UnbilledInvoiceDetailDto getUnbilledInvoiceByNumber(String unbilledNumber, Long requestingUserId);
 }

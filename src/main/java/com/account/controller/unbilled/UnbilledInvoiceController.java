@@ -247,5 +247,21 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/number/{unbilledNumber}")
+    @Operation(summary = "Get unbilled invoice by Unbilled Number",
+            description = "Fetches full details of unbilled invoice using its unique number (e.g. UNB-2026-00001234)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Unbilled invoice found"),
+            @ApiResponse(responseCode = "404", description = "Unbilled invoice not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
+    })
+    public ResponseEntity<UnbilledInvoiceDetailDto> getUnbilledInvoiceByNumber(
+            @PathVariable String unbilledNumber,
+            @RequestParam("userId") Long userId) {
+
+        UnbilledInvoiceDetailDto dto = paymentService.getUnbilledInvoiceByNumber(unbilledNumber, userId);
+        return ResponseEntity.ok(dto);
+    }
 
 }

@@ -1851,6 +1851,41 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
+    @Override
+    @Transactional(readOnly = true)
+    public UnbilledInvoiceDetailDto getUnbilledInvoiceByNumber(String unbilledNumber, Long requestingUserId) {
+        log.info("Fetching unbilled invoice by number: {} | requestedByUser={}", unbilledNumber, requestingUserId);
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
+        if (unbilledNumber == null || unbilledNumber.trim().isEmpty()) {
+            throw new ValidationException("Unbilled number is required", "ERR_INVALID_UNBILLED_NUMBER", "unbilledNumber");
+        }
+
+        // Validate user exists
+        if (!userRepository.existsById(requestingUserId)) {
+            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository
+                .findByUnbilledNumberAndIsCancelledFalse(unbilledNumber.trim())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled invoice not found with number: " + unbilledNumber,
+                        "UNBILLED_NOT_FOUND"
+                ));
+
+        // Security: Only creator or approver can view
+        if (!unbilled.getCreatedBy().getId().equals(requestingUserId) &&
+                (unbilled.getApprovedBy() == null || !unbilled.getApprovedBy().getId().equals(requestingUserId))) {
+            throw new AccessDeniedException("You are not authorized to view this unbilled invoice", "ACCESS_DENIED_UNBILLED");
+        }
+
+        log.info("Unbilled invoice found | number={} | id={}", unbilled.getUnbilledNumber(), unbilled.getId());
+
+        return mapToDetailDto(unbilled);
+    }
 
     @Override
     @Transactional
@@ -2128,5 +2163,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .updatedAt(tds.getUpdatedAt())
                 .build();
     }
+
+
 
 }

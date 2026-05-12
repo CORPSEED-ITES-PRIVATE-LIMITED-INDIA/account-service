@@ -70,4 +70,18 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
 
 
     List<UnbilledInvoice> findByEstimateIdInAndIsCancelledFalse(List<Long> estimateIds);
+
+    /**
+     * Find Unbilled Invoice by Unbilled Number using Native Query
+     */
+    @Query(value = """
+    SELECT * FROM unbilled_invoice 
+    WHERE unbilled_number = :unbilledNumber 
+      AND is_cancelled = false 
+    LIMIT 1
+    """,
+            nativeQuery = true)
+    Optional<UnbilledInvoice> findByUnbilledNumberAndIsCancelledFalse(@Param("unbilledNumber") String unbilledNumber);
+
+
 }
