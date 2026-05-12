@@ -27,9 +27,7 @@ public interface InvoiceService {
 
 	Invoice generateInvoiceForPayment(UnbilledInvoice unbilled, PaymentReceipt triggeringReceipt, User approver);
 
-	// Optional future methods can be added here
-	// Invoice getInvoiceDetail(Long id);
-	// void updateInvoiceStatus(Long invoiceId, InvoiceStatus newStatus);
-
 	InvoiceReportDto invoiceReport(InvoiceSearchRequest request);
+
+	InvoiceDetailDto getInvoiceByInvoiceNumber(String invoiceNumber, Long requestingUserId);
 }

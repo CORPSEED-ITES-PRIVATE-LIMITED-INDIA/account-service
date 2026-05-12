@@ -108,4 +108,21 @@ public class InvoiceController {
     ) {
         return ResponseEntity.ok(invoiceService.invoiceReport(request));
     }
+
+    @GetMapping("/number/{invoiceNumber}")
+    @Operation(summary = "Get invoice by Invoice Number",
+            description = "Fetches full details of tax invoice using its unique number (e.g. INV-2026-00012345)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invoice found"),
+            @ApiResponse(responseCode = "404", description = "Invoice not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
+    })
+    public ResponseEntity<InvoiceDetailDto> getInvoiceByInvoiceNumber(
+            @PathVariable String invoiceNumber,
+            @RequestParam("userId") Long userId) {
+
+        InvoiceDetailDto dto = invoiceService.getInvoiceByInvoiceNumber(invoiceNumber, userId);
+        return ResponseEntity.ok(dto);
+    }
 }

@@ -6,6 +6,7 @@ import com.account.domain.estimate.EstimateLineItem;
 import com.account.dto.invoice.*;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ResourceNotFoundException;
+import com.account.exception.ValidationException;
 import com.account.repository.InvoiceRepository;
 import com.account.repository.OrganizationRepository;
 import com.account.repository.UserRepository;
@@ -458,6 +459,44 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return toDetailDto(invoice);
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public InvoiceDetailDto getInvoiceByInvoiceNumber(String invoiceNumber, Long requestingUserId) {
+		log.info("Fetching invoice by invoiceNumber: {} | requestedByUser={}", invoiceNumber, requestingUserId);
+
+		if (requestingUserId == null || requestingUserId <= 0) {
+			throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+		}
+
+		if (invoiceNumber == null || invoiceNumber.trim().isEmpty()) {
+			throw new ValidationException("Invoice number is required", "ERR_INVALID_INVOICE_NUMBER", "invoiceNumber");
+		}
+
+		// Validate user exists
+		if (!userRepository.existsById(requestingUserId)) {
+			throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+		}
+
+		Invoice invoice = invoiceRepository
+				.findByInvoiceNumberAndIsCancelledFalse(invoiceNumber.trim())
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Invoice not found with number: " + invoiceNumber,
+						"INVOICE_NOT_FOUND"
+				));
+
+		// Security check: Only creator can view
+		if (invoice.getCreatedBy() == null ||
+				!invoice.getCreatedBy().getId().equals(requestingUserId)) {
+			throw new AccessDeniedException(
+					"You are not authorized to view this invoice",
+					"ACCESS_DENIED_INVOICE"
+			);
+		}
+
+		log.info("Invoice found | number={} | id={}", invoice.getInvoiceNumber(), invoice.getId());
+
+		return toDetailDto(invoice);
+	}
 
 
 	@Override
@@ -466,9 +505,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		CriteriaBuilder cb = entityManager.getCriteriaBuilder();
 
-    /* ============================================================
-       1️⃣ INVOICE AGGREGATION (Revenue Side)
-       ============================================================ */
 
 		CriteriaQuery<Tuple> invoiceQuery = cb.createTupleQuery();
 		Root<Invoice> invoiceRoot = invoiceQuery.from(Invoice.class);

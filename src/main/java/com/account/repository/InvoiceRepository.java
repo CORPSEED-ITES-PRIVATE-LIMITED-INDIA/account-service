@@ -12,6 +12,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpecificationExecutor<Invoice> {
@@ -70,4 +71,16 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
     );
 
     boolean existsByTriggeringPayment(PaymentReceipt p);
+
+    /**
+     * Find Invoice by Invoice Number using Native Query
+     */
+    @Query(value = """
+    SELECT * FROM invoice 
+    WHERE invoice_number = :invoiceNumber 
+      AND is_cancelled = false 
+    LIMIT 1
+    """,
+            nativeQuery = true)
+    Optional<Invoice> findByInvoiceNumberAndIsCancelledFalse(@Param("invoiceNumber") String invoiceNumber);
 }

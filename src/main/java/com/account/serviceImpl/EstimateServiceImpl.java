@@ -737,7 +737,7 @@ public class EstimateServiceImpl implements EstimateService {
 
             List<Predicate> predicates = new ArrayList<>();
 
-            // 1️⃣ Search by estimate number
+            //  Search by estimate number
             predicates.add(
                     cb.like(cb.lower(root.get("estimateNumber")), likePattern)
             );
