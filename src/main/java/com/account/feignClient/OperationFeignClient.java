@@ -23,7 +23,7 @@ public interface OperationFeignClient {
     ResponseEntity<OperationCompanyResponseDto> getCompanyById(@PathVariable Long companyId);
 
     @PostMapping("/operationService/api/projects")
-    ResponseEntity<?> createProject(@RequestBody OperationProjectRequestDto dto);
+    ResponseEntity<?> createProject(@RequestBody OperationProjectRequestDto operationProjectRequestDto);
 
 
     @GetMapping("/operationService/api/projects/{unbilledNumber}")

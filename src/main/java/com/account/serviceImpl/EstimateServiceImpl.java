@@ -1848,4 +1848,33 @@ public class EstimateServiceImpl implements EstimateService {
                 .build();
     }
 
+    @Override
+    public EstimateResponseDto getEstimateByEstimateNumber(String estimateNumber, Long requestingUserId) {
+        log.info("Fetching estimate by estimateNumber: {} | requestedByUser={}", estimateNumber, requestingUserId);
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
+        if (estimateNumber == null || estimateNumber.trim().isEmpty()) {
+            throw new ValidationException("Estimate number is required", "ERR_INVALID_ESTIMATE_NUMBER", "estimateNumber");
+        }
+
+        // Basic user existence check
+        if (!userRepository.existsById(requestingUserId)) {
+            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        Estimate estimate = estimateRepository
+                .findByEstimateNumberAndIsDeletedFalse(estimateNumber.trim())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Estimate not found with number: " + estimateNumber,
+                        "ESTIMATE_NOT_FOUND"
+                ));
+
+        log.info("Estimate found | id={} | number={}", estimate.getId(), estimate.getEstimateNumber());
+
+        return mapToResponseDto(estimate);
+    }
+
 }

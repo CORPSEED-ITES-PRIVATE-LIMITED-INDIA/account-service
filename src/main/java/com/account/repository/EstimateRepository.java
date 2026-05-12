@@ -34,24 +34,28 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSp
         """)
     List<Estimate> findByCompanyIdAndIsDeletedFalseOrderByCreatedAtDesc(@Param("companyId") Long companyId);
 
-    Page<Estimate> findByCreatedByIdAndIsDeletedFalseAndIsCancelledFalse(Long requestingUserId, Pageable pageable);
-
-    List<Estimate> findByLeadIdAndIsDeletedFalseAndIsCancelledFalse(Long leadId);
-
     boolean existsByLeadIdAndIsDeletedFalseAndIsCancelledFalseAndStatusNot(Long leadId, EstimateStatus status);
-    /**
-     * Count all non-deleted estimates (for admins)
-     */
-    long countByIsDeletedFalseAndIsCancelledFalse();
 
-    /**
-     * Count non-deleted estimates created by a specific user
-     */
-    long countByCreatedByIdAndIsDeletedFalseAndIsCancelledFalse(Long createdById);
 
     List<Estimate> findByCompanyIdAndUnitIdAndIsDeletedFalseAndIsCancelledFalseOrderByCreatedAtDesc(
             Long companyId,
             Long unitId
     );
 
-    Optional<Estimate> findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(Long proposalId);}
+    Optional<Estimate> findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(Long proposalId);
+
+    /**
+     * Find Estimate by Estimate Number using Native Query
+     */
+    @Query(value = """
+    SELECT * FROM estimate 
+    WHERE estimate_number = :estimateNumber 
+      AND is_deleted = false 
+    LIMIT 1
+    """,
+            nativeQuery = true)
+    Optional<Estimate> findByEstimateNumberAndIsDeletedFalse(@Param("estimateNumber") String estimateNumber);
+
+
+
+}

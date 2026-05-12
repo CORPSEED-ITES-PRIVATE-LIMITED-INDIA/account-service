@@ -285,6 +285,22 @@ public class EstimateController {
         return ResponseEntity.ok(estimateService.getCompanyUnitProjectOverview(request));
     }
 
+    @GetMapping("/number/{estimateNumber}")
+    @Operation(summary = "Get estimate by Estimate Number",
+            description = "Fetches a single estimate using its unique estimate number (e.g. EST-2026-000123)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Estimate found"),
+            @ApiResponse(responseCode = "404", description = "Estimate not found"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
+    })
+    public ResponseEntity<EstimateResponseDto> getEstimateByEstimateNumber(
+            @PathVariable String estimateNumber,
+            @RequestParam("userId") Long userId) {
+
+        EstimateResponseDto response = estimateService.getEstimateByEstimateNumber(estimateNumber, userId);
+        return ResponseEntity.ok(response);
+    }
+
 
 
 

@@ -68,6 +68,8 @@ public interface EstimateService {
     CompanyUnitProjectOverviewResponseDto getCompanyUnitProjectOverview(
             CompanyUnitProjectOverviewRequestDto request
     );
+
+    EstimateResponseDto getEstimateByEstimateNumber(String estimateNumber, Long requestingUserId);
 }
 
 
