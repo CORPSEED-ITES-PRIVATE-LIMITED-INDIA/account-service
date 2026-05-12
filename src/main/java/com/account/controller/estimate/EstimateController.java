@@ -259,6 +259,24 @@ public class EstimateController {
         return ResponseEntity.ok(dto);
     }
 
+    @PutMapping("/{estimateId}/cancel")
+    @Operation(summary = "Cancel an estimate by Estimate ID",
+            description = "Cancels the estimate and linked unbilled invoice (if eligible). "
+                    + "Allowed only if no payment received and no invoice generated.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Estimate cancelled successfully"),
+            @ApiResponse(responseCode = "400", description = "Cannot cancel due to business rules (payment/invoice exists)"),
+            @ApiResponse(responseCode = "404", description = "Estimate not found"),
+            @ApiResponse(responseCode = "422", description = "Validation error")
+    })
+    public ResponseEntity<EstimateStatusResponseDto> cancelEstimate(
+            @PathVariable Long estimateId,
+            @Valid @RequestBody EstimateCancelRequestDto requestDto) {
+
+        EstimateStatusResponseDto response = estimateService.cancelEstimate(estimateId, requestDto);
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
     @PutMapping("/{proposalId}/cancelEstimateByProposalId")
     public ResponseEntity<EstimateStatusResponseDto> cancelEstimateByProposalId(
             @PathVariable Long proposalId,
@@ -267,8 +285,6 @@ public class EstimateController {
         EstimateStatusResponseDto response = estimateService.cancelEstimateByProposalId(proposalId, requestDto);
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
-
-
 
     @Operation(summary = "Get company-unit overview with estimate, unbilled, and project data")
     @PostMapping("/company-unit/getFullDetails")
