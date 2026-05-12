@@ -1,8 +1,9 @@
 package com.account.domain;
 
 public enum UnbilledStatus {
-    PENDING_APPROVAL,      // Waiting for Accounts approval
-    APPROVED,              // Approved → ready for invoicing
+    PENDING_APPROVAL,
+
+    APPROVED,
     CANCELLED,
     REJECTED,
     REFUNDED

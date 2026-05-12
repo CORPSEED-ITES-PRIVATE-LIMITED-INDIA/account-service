@@ -3,9 +3,9 @@ package com.account.domain.estimate;
 public enum EstimateStatus {
     DRAFT,
     SENT_TO_CLIENT,
+    CANCELLED,
 
     APPROVED,
     REJECTED,
-    EXPIRED,
     INITIATED
 }

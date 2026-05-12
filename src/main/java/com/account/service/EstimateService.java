@@ -5,7 +5,7 @@ import com.account.dto.company.request.CompanyUnitProjectOverviewRequestDto;
 import com.account.dto.company.response.CompanyUnitProjectOverviewResponseDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
-import com.account.dto.estimate.EstimateRejectRequestDto;
+import com.account.dto.estimate.EstimateCancelRequestDto;
 import com.account.dto.estimate.EstimateResponseDto;
 import com.account.dto.estimate.EstimateSearchRequest;
 import com.account.dto.estimate.EstimateSearchRequestDto;
@@ -60,16 +60,18 @@ public interface EstimateService {
 
     void sendEstimate(Long estimateId, Long requestingUserId);
 
-
-    EstimateStatusResponseDto rejectEstimate(Long estimateId, EstimateRejectRequestDto requestDto);
-
-    EstimateStatusResponseDto rejectEstimateByProposalId(Long proposalId, EstimateRejectRequestDto requestDto);
-
     CompanyUnitProjectOverviewResponseDto getCompanyUnitProjectOverview(
             CompanyUnitProjectOverviewRequestDto request
     );
 
     EstimateResponseDto getEstimateByEstimateNumber(String estimateNumber, Long requestingUserId);
+
+    EstimateStatusResponseDto cancelEstimateByProposalId(Long proposalId, EstimateCancelRequestDto requestDto);
+
+    EstimateStatusResponseDto cancelEstimate(Long estimateId, EstimateCancelRequestDto requestDto);
+
+
+
 }
 
 

@@ -141,7 +141,7 @@ public class EstimateServiceImpl implements EstimateService {
 
         // 2. Validate creator exists
         log.debug("Fetching creator user with id: {}", requestDto.getCreatedByUserId());
-        User creator = userRepository.findById(requestDto.getCreatedByUserId())
+        User creator = userRepository.findByIdAndNotDeleted(requestDto.getCreatedByUserId())
                 .orElseThrow(() -> {
                     log.error("User not found for id: {}", requestDto.getCreatedByUserId());
                     return new ResourceNotFoundException(
@@ -149,7 +149,6 @@ public class EstimateServiceImpl implements EstimateService {
                             "USER_NOT_FOUND"
                     );
                 });
-
         // 3. Fetch referenced entities
         log.debug("Fetching company with id: {}", requestDto.getCompanyId());
         Company company = companyRepository.findById(requestDto.getCompanyId())
@@ -587,7 +586,7 @@ public class EstimateServiceImpl implements EstimateService {
             );
         }
 
-        User user = userRepository.findById(requestingUserId)
+        User user = userRepository.findByIdAndNotDeleted(requestingUserId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("User not found", "USER_NOT_FOUND")
                 );
@@ -688,8 +687,9 @@ public class EstimateServiceImpl implements EstimateService {
         }
 
         // 1. Validate user exists
-        User user = userRepository.findById(requestingUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
+        User user = userRepository.findByIdAndNotDeleted(requestingUserId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
 
         // 2. Check if user has admin privileges
         boolean isAdmin = user.getUserRole().stream()
@@ -1154,10 +1154,11 @@ public class EstimateServiceImpl implements EstimateService {
                     "ERR_INVALID_USER", "userId");
         }
 
-        User user = userRepository.findById(request.getUserId())
+        User user = userRepository.findByIdAndNotDeleted(request.getUserId())
                 .orElseThrow(() ->
-                        new ResourceNotFoundException("User not found",
-                                "USER_NOT_FOUND"));
+                        new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
+
+
 
         boolean isAdmin = user.getUserRole().stream()
                 .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
@@ -1384,7 +1385,7 @@ public class EstimateServiceImpl implements EstimateService {
             );
         }
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdAndNotDeleted(userId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "User not found",
@@ -1637,8 +1638,44 @@ public class EstimateServiceImpl implements EstimateService {
 
     }
 
+
     @Override
-    public EstimateStatusResponseDto rejectEstimate(Long estimateId, EstimateRejectRequestDto requestDto) {
+    @Transactional
+    public EstimateStatusResponseDto cancelEstimateByProposalId(Long proposalId, EstimateCancelRequestDto requestDto) {
+
+        if (proposalId == null || proposalId <= 0) {
+            throw new ValidationException(
+                    "Invalid proposal id",
+                    "ERR_INVALID_PROPOSAL_ID",
+                    "proposalId"
+            );
+        }
+
+        if (requestDto == null) {
+            throw new ValidationException("Request body is required", "ERR_REQUEST_REQUIRED");
+        }
+
+        if (requestDto.getCancelledByUserId() == null || requestDto.getCancelledByUserId() <= 0) {
+            throw new ValidationException("Invalid cancelledByUserId", "ERR_INVALID_CANCELLED_BY", "cancelledByUserId");
+        }
+
+        if (requestDto.getCancellationReason() == null || requestDto.getCancellationReason().trim().isEmpty()) {
+            throw new ValidationException("Cancellation reason is required", "ERR_CANCELLATION_REASON_REQUIRED", "cancellationReason");
+        }
+
+        // Fetch estimate
+        Estimate estimate = estimateRepository.findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(proposalId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Estimate not found with proposal id: " + proposalId,
+                        "ESTIMATE_NOT_FOUND"
+                ));
+
+        return cancelEstimate(estimate.getId(), requestDto);
+    }
+
+    @Override
+    @Transactional
+    public EstimateStatusResponseDto cancelEstimate(Long estimateId, EstimateCancelRequestDto requestDto) {
 
         if (estimateId == null || estimateId <= 0) {
             throw new ValidationException("Invalid estimate id", "ERR_INVALID_ESTIMATE_ID", "estimateId");
@@ -1648,14 +1685,15 @@ public class EstimateServiceImpl implements EstimateService {
             throw new ValidationException("Request body is required", "ERR_REQUEST_REQUIRED");
         }
 
-        if (requestDto.getRejectionReason() == null || requestDto.getRejectionReason().trim().isEmpty()) {
-            throw new ValidationException("Rejection reason is required", "ERR_REJECTION_REASON_REQUIRED", "rejectionReason");
-        }
-        System.out.println("requestDto.getRejectedByUserId(): "+requestDto.getRejectedByUserId());
-        if (requestDto.getRejectedByUserId() == null || requestDto.getRejectedByUserId() <= 0) {
-            throw new ValidationException("Invalid rejectedByUserId", "ERR_INVALID_REJECTED_BY", "rejectedByUserId");
+        if (requestDto.getCancelledByUserId() == null || requestDto.getCancelledByUserId() <= 0) {
+            throw new ValidationException("Invalid cancelledByUserId", "ERR_INVALID_CANCELLED_BY", "cancelledByUserId");
         }
 
+        if (requestDto.getCancellationReason() == null || requestDto.getCancellationReason().trim().isEmpty()) {
+            throw new ValidationException("Cancellation reason is required", "ERR_CANCELLATION_REASON_REQUIRED", "cancellationReason");
+        }
+
+        // Fetch Estimate
         Estimate estimate = estimateRepository.findById(estimateId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Estimate not found with id: " + estimateId,
@@ -1667,81 +1705,67 @@ public class EstimateServiceImpl implements EstimateService {
         }
 
         if (estimate.isCancelled()) {
-            throw new ValidationException("Cancelled estimate cannot be rejected", "ERR_ESTIMATE_CANCELLED");
-        }
-
-        if (estimate.getStatus() == EstimateStatus.REJECTED) {
-            throw new ValidationException("Estimate is already rejected", "ERR_ESTIMATE_ALREADY_REJECTED");
+            throw new ValidationException("Estimate is already cancelled", "ERR_ESTIMATE_ALREADY_CANCELLED");
         }
 
         if (estimate.getStatus() == EstimateStatus.APPROVED) {
-            throw new ValidationException("Approved estimate cannot be rejected", "ERR_ESTIMATE_ALREADY_APPROVED");
+            throw new ValidationException("Approved estimate cannot be cancelled", "ERR_ESTIMATE_ALREADY_APPROVED");
         }
 
-        User rejectedBy = userRepository.findById(requestDto.getRejectedByUserId())
+        // Fetch user who is cancelling
+        User cancelledBy = userRepository.findById(requestDto.getCancelledByUserId())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "User not found with id: " + requestDto.getRejectedByUserId(),
+                        "User not found with id: " + requestDto.getCancelledByUserId(),
                         "USER_NOT_FOUND"
                 ));
 
-        // ===============================
-        // BLOCK IF UNBILLED EXISTS
-        // ===============================
-        Optional<UnbilledInvoice> unbilledOpt =
-                unbilledInvoiceRepository.findByEstimateAndIsCancelledFalse(estimate);
+        // Handle Unbilled Invoice (if exists)
+        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findByEstimateAndIsCancelledFalse(estimate);
 
         if (unbilledOpt.isPresent()) {
-
             UnbilledInvoice unbilled = unbilledOpt.get();
 
-            //   STRICT CHECK (recommended)
-            if (unbilled.getStatus() == UnbilledStatus.PENDING_APPROVAL
-                    || unbilled.getStatus() == UnbilledStatus.APPROVED
-                    || (unbilled.getReceivedAmount() != null
-                    && unbilled.getReceivedAmount().compareTo(BigDecimal.ZERO) > 0)) {
+            boolean hasReceivedPayment = unbilled.getReceivedAmount() != null
+                    && unbilled.getReceivedAmount().compareTo(BigDecimal.ZERO) > 0;
 
+            boolean hasGeneratedInvoices = !unbilled.getTaxInvoices().isEmpty();
+
+            // Block cancellation only if payment received or invoice generated
+            if (hasReceivedPayment || hasGeneratedInvoices || unbilled.getStatus() == UnbilledStatus.APPROVED) {
                 throw new ValidationException(
-                        "Estimate cannot be rejected because payment/unbilled invoice already exists against it",
-                        "ERR_ESTIMATE_HAS_PAYMENT"
+                        "Cannot cancel estimate because payment has been received or invoice has been generated",
+                        "ERR_CANNOT_CANCEL_PAID_ESTIMATE"
                 );
             }
+
+            // Cancel the unbilled invoice as well
+            unbilled.setCancelled(true);
+            unbilled.setStatus(UnbilledStatus.CANCELLED);
+            unbilled.setRejectionReason("Cancelled along with estimate: " + requestDto.getCancellationReason());
+            unbilled.setUpdatedBy(cancelledBy);
+            unbilled.setUpdatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
         }
 
-        estimate.setStatus(EstimateStatus.REJECTED);
-        estimate.setRejectionReason(requestDto.getRejectionReason().trim());
+        // Cancel the Estimate
+        estimate.setCancelled(true);
+        estimate.setStatus(EstimateStatus.CANCELLED);
+        estimate.setRejectionReason(requestDto.getCancellationReason().trim());
         estimate.setRejectedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-        estimate.setRejectedBy(rejectedBy);
-        estimate.setUpdatedBy(rejectedBy);
-        estimate.setRevisionReason("Estimate rejected");
+        estimate.setRejectedBy(cancelledBy);
+        estimate.setUpdatedBy(cancelledBy);
+        estimate.setRevisionReason("Estimate cancelled");
 
         estimateRepository.save(estimate);
+
+        log.info("Estimate cancelled successfully | estimateId={} | cancelledBy={} | reason={}",
+                estimate.getId(), cancelledBy.getId(), requestDto.getCancellationReason());
 
         return new EstimateStatusResponseDto(
                 estimate.getId(),
                 estimate.getEstimateNumber(),
                 estimate.getStatus().name(),
-                "Estimate rejected successfully"
+                "Estimate cancelled successfully"
         );
-    }
-
-    @Override
-    public EstimateStatusResponseDto rejectEstimateByProposalId(Long proposalId, EstimateRejectRequestDto requestDto) {
-
-        if (proposalId == null || proposalId <= 0) {
-            throw new ValidationException(
-                    "Invalid proposal id",
-                    "ERR_INVALID_PROPOSAL_ID",
-                    "proposalId"
-            );
-        }
-
-        Estimate estimate = estimateRepository.findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(proposalId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Estimate not found with proposal id: " + proposalId,
-                        "ESTIMATE_NOT_FOUND"
-                ));
-
-        return rejectEstimate(estimate.getId(), requestDto);
     }
 
     @Override
