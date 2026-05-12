@@ -17,15 +17,33 @@ import java.util.Optional;
 @Repository
 public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSpecificationExecutor <Estimate> {
 
+//    @Query("""
+//        SELECT e FROM Estimate e
+//        WHERE e.isCancelled=false AND e.leadId = :leadId
+//          AND e.isDeleted = false
+//        ORDER BY e.createdAt DESC
+//        """)
+//    List<Estimate> findByLeadIdAndIsDeletedFalseOrderByCreatedAtDesc(@Param("leadId") Long leadId);
+
+    // 1. All estimates (including cancelled) - Use this in getEstimatesByLeadId
     @Query("""
-        SELECT e FROM Estimate e
-        WHERE e.isCancelled=false AND e.leadId = :leadId
-          AND e.isDeleted = false
-        ORDER BY e.createdAt DESC
-        """)
+    SELECT e FROM Estimate e
+    WHERE e.leadId = :leadId
+      AND e.isDeleted = false
+    ORDER BY e.createdAt DESC
+    """)
     List<Estimate> findByLeadIdAndIsDeletedFalseOrderByCreatedAtDesc(@Param("leadId") Long leadId);
 
-    // Keep the exact same method name as before
+    // 2. Only active estimates (optional, for other use cases)
+    @Query("""
+    SELECT e FROM Estimate e
+    WHERE e.leadId = :leadId
+      AND e.isCancelled = false
+      AND e.isDeleted = false
+    ORDER BY e.createdAt DESC
+    """)
+    List<Estimate> findActiveByLeadId(@Param("leadId") Long leadId);
+
     @Query("""
         SELECT e FROM Estimate e
         WHERE e.isCancelled=false AND e.company.id = :companyId
