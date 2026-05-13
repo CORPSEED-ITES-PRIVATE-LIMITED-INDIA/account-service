@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/payment-types")
+@RequestMapping("/accountService/api/payment-types")
 @Validated
 public class PaymentTypeController {
 
