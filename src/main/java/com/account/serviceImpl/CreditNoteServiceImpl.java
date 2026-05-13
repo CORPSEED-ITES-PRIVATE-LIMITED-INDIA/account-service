@@ -55,13 +55,9 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                         request.getCreatedByUserId()
                 ));
 
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(request.getUnbilledId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled not found with ID: " + request.getUnbilledId(),
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        request.getUnbilledId()
-                ));
+
+        UnbilledInvoice unbilled = resolveUnbilledForRefund(request);
+
 
         if (unbilled.isCancelled() || unbilled.getStatus() == UnbilledStatus.CANCELLED) {
             throw new ValidationException(
@@ -346,14 +342,45 @@ public class CreditNoteServiceImpl implements CreditNoteService {
             throw new ValidationException("Request body is required", "ERR_REQUEST_REQUIRED");
         }
 
-        if (request.getUnbilledId() == null) {
-            throw new ValidationException("unbilledId is required", "ERR_UNBILLED_ID_REQUIRED");
+        if (request.getEstimateNumber() == null || request.getEstimateNumber().isBlank()) {
+            throw new ValidationException("estimateNumber is required", "ERR_ESTIMATE_NUMBER_REQUIRED");
         }
 
         if (request.getCreatedByUserId() == null) {
             throw new ValidationException("createdByUserId is required", "ERR_CREATED_BY_REQUIRED");
         }
     }
+
+    private UnbilledInvoice resolveUnbilledForRefund(CreateCreditNoteRefundRequestDto request) {
+
+        if (request.getEstimateNumber() != null && !request.getEstimateNumber().isBlank()) {
+            String estimateNumber = request.getEstimateNumber().trim();
+
+            return unbilledInvoiceRepository.findByEstimateEstimateNumber(estimateNumber)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Unbilled invoice not found for estimate number: " + estimateNumber,
+                            "UNBILLED_NOT_FOUND_FOR_ESTIMATE",
+                            "UnbilledInvoice",
+                            estimateNumber
+                    ));
+        }
+
+        if (request.getUnbilledId() != null) {
+            return unbilledInvoiceRepository.findById(request.getUnbilledId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Unbilled not found with ID: " + request.getUnbilledId(),
+                            "UNBILLED_NOT_FOUND",
+                            "UnbilledInvoice",
+                            request.getUnbilledId()
+                    ));
+        }
+
+        throw new ValidationException(
+                "Either estimateNumber or unbilledId is required",
+                "ERR_ESTIMATE_NUMBER_OR_UNBILLED_ID_REQUIRED"
+        );
+    }
+
 
     private List<Invoice> fetchInvoicesForCreditNote(UnbilledInvoice unbilled, List<Long> invoiceIds) {
 

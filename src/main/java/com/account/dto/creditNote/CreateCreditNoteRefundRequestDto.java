@@ -10,15 +10,13 @@ public class CreateCreditNoteRefundRequestDto {
 
     private Long unbilledId;
 
+    private String estimateNumber;
+
     private Long createdByUserId;
 
     private BigDecimal refundAmount;
 
     private String reason;
 
-    /*
-     * Optional.
-     * If not passed, system will attach all invoices against unbilled.
-     */
     private List<Long> invoiceIds;
 }

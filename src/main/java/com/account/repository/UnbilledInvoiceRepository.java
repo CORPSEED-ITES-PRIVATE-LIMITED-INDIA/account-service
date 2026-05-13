@@ -38,6 +38,8 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             Pageable pageable
     );
 
+    Optional<UnbilledInvoice> findByEstimateEstimateNumber(String estimateNumber);
+
     long countByCreatedByIdOrApprovedByIdAndIsCancelledFalse(Long createdById, Long approvedById);
 
     long countByStatusAndIsCancelledFalse(UnbilledStatus status);
