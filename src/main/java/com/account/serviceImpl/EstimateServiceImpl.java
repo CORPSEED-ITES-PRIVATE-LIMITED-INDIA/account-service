@@ -1645,7 +1645,9 @@ public class EstimateServiceImpl implements EstimateService {
 
     @Override
     @Transactional
-    public EstimateStatusResponseDto cancelEstimateByProposalId(Long proposalId, EstimateCancelRequestDto requestDto) {
+    public EstimateStatusResponseDto cancelEstimateByProposalId(
+            Long proposalId,
+            EstimateCancelRequestDto requestDto) {
 
         if (proposalId == null || proposalId <= 0) {
             throw new ValidationException(
@@ -1667,15 +1669,47 @@ public class EstimateServiceImpl implements EstimateService {
             throw new ValidationException("Cancellation reason is required", "ERR_CANCELLATION_REASON_REQUIRED", "cancellationReason");
         }
 
-        // Fetch estimate
-        Estimate estimate = estimateRepository.findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(proposalId)
+        // Fetch estimate linked to proposal
+        Estimate estimate = estimateRepository
+                .findByProposalIdAndIsDeletedFalseAndIsCancelledFalse(proposalId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Estimate not found with proposal id: " + proposalId,
                         "ESTIMATE_NOT_FOUND"
                 ));
 
+        // === NEW: STRICT CHECK FOR GENERATED INVOICE ===
+        boolean hasGeneratedInvoice = hasAnyGeneratedTaxInvoice(estimate);
+
+        if (hasGeneratedInvoice) {
+            throw new ValidationException(
+                    "Cannot cancel this proposal/estimate because tax invoice(s) have already been generated. " +
+                            "Please contact Accounts/Admin team to cancel from the Account module.",
+                    "ERR_CANNOT_CANCEL_ESTIMATE_WITH_INVOICE"
+            );
+        }
+
         return cancelEstimate(estimate.getId(), requestDto);
     }
+
+    /**
+     * Checks if any tax invoice has been generated against this estimate
+     */
+    private boolean hasAnyGeneratedTaxInvoice(Estimate estimate) {
+        if (estimate == null) {
+            return false;
+        }
+
+        Optional<UnbilledInvoice> unbilledOpt =
+                unbilledInvoiceRepository.findByEstimateAndIsCancelledFalse(estimate);
+
+        if (unbilledOpt.isPresent()) {
+            UnbilledInvoice unbilled = unbilledOpt.get();
+            return unbilled.getTaxInvoices() != null && !unbilled.getTaxInvoices().isEmpty();
+        }
+
+        return false;
+    }
+
 
     @Override
     @Transactional

@@ -43,7 +43,6 @@ public class OperationProjectResponseDto {
     private Long statusId;
     private String statusName;
 
-    // Assume this class exists – add:
     private Long unitId;
     private String unitName;
 
