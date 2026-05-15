@@ -28,6 +28,14 @@ public class PaymentRegistrationRequestDto {
     @NotBlank(message = "Transaction reference is required")
     private String transactionReference;
 
+    // PO Payment Terms
+    // Required only when payment type = PURCHASE_ORDER
+    private Integer paymentTermsDays;
+
+    // Optional from frontend.
+    // Backend should save final value as: "Net " + paymentTermsDays + " Days"
+    private String paymentTerms;
+
     private String remarks;
 
     @NotNull(message = "Payment type ID is required")

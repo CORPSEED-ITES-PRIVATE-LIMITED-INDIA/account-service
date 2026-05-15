@@ -79,7 +79,6 @@ public class PaymentReceipt {
     @Column(length = 100)
     private String eprCertificateOrInvoiceNumber;
 
-    // Auditing
     @CreatedDate
     @Column(updatable = false)
     private LocalDateTime createdAt;
@@ -92,22 +91,17 @@ public class PaymentReceipt {
     @JoinColumn(name = "updated_by")
     private User updatedBy;
 
+    // ==================== NEW FIELDS FOR PO PAYMENT TERMS ====================
+    @Column(name = "payment_terms_days")
+    private Integer paymentTermsDays;        // e.g. 90, 180
 
-    @PrePersist
-    public void prePersist() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
-        }
-        if (updatedAt == null) {
-            updatedAt = LocalDateTime.now();
-        }
-    }
+    @Column(name = "next_payment_due_date")
+    private LocalDate nextPaymentDueDate;    // Most important for reminders
 
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = LocalDateTime.now();
-    }
+    @Column(length = 100)
+    private String paymentTerms;             // e.g. "Net 90 Days", "Immediate"
 
+    // =====================================================================
 
 
 }

@@ -238,9 +238,12 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
         });
-        // Business rules for amount vs payment type
-        validatePaymentRules(paymentType, reqAmount, unbilled, isFirstPayment);
-
+        validatePaymentRules(
+                paymentType,
+                reqAmount,
+                unbilled,
+                request.getPaymentTermsDays()
+        );
         createTdsIfRequired(request, estimate, unbilled, paymentType, salesperson);
 
         // Prevent approved + pending + current request from exceeding total amount
@@ -333,39 +336,76 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void validatePaymentRules(PaymentType paymentType,
-                                       BigDecimal reqAmount,
-                                       UnbilledInvoice unbilled,
-                                       boolean isFirstPayment) {
+                                      BigDecimal reqAmount,
+                                      UnbilledInvoice unbilled,
+                                      Integer paymentTermsDays) {
+
         if (paymentType == null || paymentType.getCode() == null) {
-            throw new ValidationException("Invalid payment type", "ERR_PAYMENT_TYPE_INVALID", "paymentTypeId");
+            throw new ValidationException(
+                    "Invalid payment type",
+                    "ERR_PAYMENT_TYPE_INVALID",
+                    "paymentTypeId"
+            );
         }
+
         BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
         BigDecimal total = safe2(unbilled.getTotalAmount());
         String code = paymentType.getCode().trim().toUpperCase();
 
-        // ==================== MODIFIED CONDITION ====================
+        // ==================== OLD LOGIC - SAME ====================
         // Allow ZERO amount only for PURCHASE_ORDER payment type
         boolean isPurchaseOrder = "PURCHASE_ORDER".equals(code);
 
         if (!isPurchaseOrder && reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException("Amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
+            throw new ValidationException(
+                    "Amount must be positive",
+                    "ERR_AMOUNT_NOT_POSITIVE",
+                    "amount"
+            );
         }
-        // ============================================================
+        // ==========================================================
+
+        // ==================== NEW PO TERMS VALIDATION ====================
+        // For PURCHASE_ORDER, payment terms days is mandatory
+        if (isPurchaseOrder) {
+            if (paymentTermsDays == null || paymentTermsDays <= 0) {
+                throw new ValidationException(
+                        "Payment terms days is required for Purchase Order payment type",
+                        "ERR_PAYMENT_TERMS_DAYS_REQUIRED",
+                        "paymentTermsDays"
+                );
+            }
+        }
+        // =================================================================
 
         if (reqAmount.compareTo(outstanding) > 0) {
-            throw new ValidationException("Amount is greater than outstanding amount",
-                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING", "amount");
+            throw new ValidationException(
+                    "Amount is greater than outstanding amount",
+                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING",
+                    "amount"
+            );
         }
+
         if ("FULL".equals(code)) {
             if (reqAmount.compareTo(outstanding) != 0) {
-                throw new ValidationException("FULL payment must equal outstanding amount",
-                        "ERR_FULL_AMOUNT_MISMATCH", "amount");
+                throw new ValidationException(
+                        "FULL payment must equal outstanding amount",
+                        "ERR_FULL_AMOUNT_MISMATCH",
+                        "amount"
+                );
             }
             return;
         }
+
         if ("PARTIAL".equals(code)) {
-            BigDecimal half = total.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal expected = (outstanding.compareTo(half) < 0) ? outstanding : half;
+            BigDecimal half = total
+                    .multiply(new BigDecimal("0.50"))
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal expected = (outstanding.compareTo(half) < 0)
+                    ? outstanding
+                    : half;
+
             if (reqAmount.compareTo(expected) != 0) {
                 throw new ValidationException(
                         "PARTIAL payment must be " + expected + " (50% of total or remaining outstanding)",
@@ -375,57 +415,19 @@ public class PaymentServiceImpl implements PaymentService {
             }
             return;
         }
+
         if ("INSTALLMENT".equals(code) || "PURCHASE_ORDER".equals(code)) {
             return;
         }
-        throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
-                "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
+
+        throw new ValidationException(
+                "Unsupported payment type: " + paymentType.getCode(),
+                "ERR_UNSUPPORTED_PAYMENT_TYPE",
+                "paymentTypeId"
+        );
     }
 
 
-
-//    private void validatePaymentRules(PaymentType paymentType,
-//                                      BigDecimal reqAmount,
-//                                      UnbilledInvoice unbilled,
-//                                      boolean isFirstPayment) {
-//        if (paymentType == null || paymentType.getCode() == null) {
-//            throw new ValidationException("Invalid payment type", "ERR_PAYMENT_TYPE_INVALID", "paymentTypeId");
-//        }
-//        BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
-//        BigDecimal total = safe2(unbilled.getTotalAmount());
-//        String code = paymentType.getCode().trim().toUpperCase();
-//        if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
-//            throw new ValidationException("Amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
-//        }
-//        if (reqAmount.compareTo(outstanding) > 0) {
-//            throw new ValidationException("Amount is greater than outstanding amount",
-//                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING", "amount");
-//        }
-//        if ("FULL".equals(code)) {
-//            if (reqAmount.compareTo(outstanding) != 0) {
-//                throw new ValidationException("FULL payment must equal outstanding amount",
-//                        "ERR_FULL_AMOUNT_MISMATCH", "amount");
-//            }
-//            return;
-//        }
-//        if ("PARTIAL".equals(code)) {
-//            BigDecimal half = total.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-//            BigDecimal expected = (outstanding.compareTo(half) < 0) ? outstanding : half;
-//            if (reqAmount.compareTo(expected) != 0) {
-//                throw new ValidationException(
-//                        "PARTIAL payment must be " + expected + " (50% of total or remaining outstanding)",
-//                        "ERR_PARTIAL_AMOUNT_MISMATCH",
-//                        "amount"
-//                );
-//            }
-//            return;
-//        }
-//        if ("INSTALLMENT".equals(code) || "PURCHASE_ORDER".equals(code)) {
-//            return;
-//        }
-//        throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
-//                "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
-//    }
 
     private void validateGovernmentFeeRequest(PaymentRegistrationRequestDto request) {
         if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
