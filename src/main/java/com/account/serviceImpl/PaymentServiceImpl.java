@@ -731,86 +731,6 @@ public class PaymentServiceImpl implements PaymentService {
         return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
     }
 
-    @Override
-    @Transactional
-    public void rejectUnbilledInvoice(Long unbilledId, String rejectionReason, Long approverUserId) {
-
-        log.info("Rejecting Unbilled Invoice | unbilledId: {}, approverId: {}, reason: {}",
-                unbilledId, approverUserId, rejectionReason);
-
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled invoice not found with ID: " + unbilledId,
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unbilledId
-                ));
-
-        if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
-            throw new ValidationException(
-                    "Only PENDING_APPROVAL unbilled invoices can be rejected. Current status: " + unbilled.getStatus(),
-                    "ERR_INVALID_STATUS_FOR_REJECTION",
-                    "status"
-            );
-        }
-
-        if (rejectionReason == null || rejectionReason.trim().isEmpty()) {
-            throw new ValidationException(
-                    "Rejection reason is required",
-                    "ERR_REJECTION_REASON_REQUIRED",
-                    "rejectionReason"
-            );
-        }
-        String trimmedReason = rejectionReason.trim();
-
-        User approver = userRepository.findById(approverUserId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Approver/Rejector not found with ID: " + approverUserId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        approverUserId
-                ));
-
-        unbilled.setStatus(UnbilledStatus.REJECTED);
-        unbilled.setRejectionReason(trimmedReason);
-        unbilled.setApprovedBy(approver);
-        unbilled.setApprovedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-        unbilled.setApprovalRemarks(null);
-
-        Estimate estimate = unbilled.getEstimate();
-        estimate.setStatus(EstimateStatus.REJECTED);
-        estimateRepository.save(estimate);
-
-        List<Invoice> existingInvoices = invoiceRepository.findByUnbilledInvoiceIdAndIsCancelledFalse(unbilled.getId());
-        BigDecimal invoicedTotal = existingInvoices.stream()
-                .map(Invoice::getGrandTotal)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        unbilled.setReceivedAmount(invoicedTotal);
-        unbilled.setOutstandingAmount(
-                unbilled.getTotalAmount()
-                        .subtract(invoicedTotal)
-                        .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP)
-        );
-
-        unbilledInvoiceRepository.save(unbilled);
-
-        log.warn("Unbilled {} REJECTED | reason: '{}' | by user: {}", unbilled.getUnbilledNumber(), trimmedReason, approver.getId());
-
-        // Send notification to salesperson (future enhancement)
-        if (unbilled.getCreatedBy() != null && unbilled.getCreatedBy().getEmail() != null) {
-            // emailService.sendRejectionNotification(
-            //         unbilled.getCreatedBy().getEmail(),
-            //         unbilled.getUnbilledNumber(),
-            //         trimmedReason,
-            //         approver.getFullName() != null ? approver.getFullName() : approver.getEmail()
-            // );
-            log.info("Notification should be sent to salesperson {} about rejection", unbilled.getCreatedBy().getEmail());
-        }
-    }
-
 
     @Override
     @Transactional
@@ -1230,40 +1150,6 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
-    private UnbilledInvoiceApprovalResponseDto buildApprovalResponse(
-            UnbilledInvoice unbilled, User approver, Company company, CompanyUnit unit, Estimate estimate) {
-
-        UnbilledInvoiceApprovalResponseDto dto = new UnbilledInvoiceApprovalResponseDto();
-
-        dto.setName(estimate != null ? estimate.getSolutionName() :
-                (company != null ? company.getName() + " - Project" : "Unnamed Project"));
-
-        dto.setProjectNo("PRJ-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        dto.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        dto.setSalesPersonName(getUserDisplayName(unbilled.getCreatedBy()));
-        dto.setProductId(estimate != null ? estimate.getSolutionId() : null);
-        dto.setCompanyId(company != null ? company.getId() : null);
-        dto.setCompanyUnitId(unit != null ? unit.getId() : null);
-        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
-        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
-        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
-        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
-        dto.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
-        dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
-        dto.setDate(LocalDate.now());
-        dto.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
-        dto.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
-
-        PaymentReceipt first = paymentReceiptRepository.findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(unbilled)
-                .orElse(null);
-        dto.setPaymentTypeId(first != null && first.getPaymentType() != null ? first.getPaymentType().getId() : null);
-
-        dto.setApprovedById(approver.getId());
-        dto.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        dto.setUpdatedBy(approver.getId());
-
-        return dto;
-    }
 
     private String getUserDisplayName(User user) {
         if (user == null) return null;
@@ -1352,7 +1238,39 @@ public class PaymentServiceImpl implements PaymentService {
                         : (company != null ? company.getName() + " - Project" : "Unnamed Project")
         );
 
+        // ==================== TDS RESPONSE DTO ====================
+        if (Boolean.TRUE.equals(unbilled.isTdsActive())) {
+            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                    .ifPresent(tds -> {
+                        dto.setTdsResponseDto(mapToTdsResponseDtoForSummary(tds));
+                    });
+        } else {
+            dto.setTdsResponseDto(null);
+        }
+        // =========================================================
+
         return dto;
+    }
+
+    private TdsResponseDto mapToTdsResponseDtoForSummary(TdsRegistration tds) {
+        if (tds == null) return null;
+
+        return TdsResponseDto.builder()
+                .id(tds.getId())
+                .publicUuid(tds.getPublicUuid())
+                .estimateId(tds.getEstimate() != null ? tds.getEstimate().getId() : null)
+                .estimateNumber(tds.getEstimate() != null ? tds.getEstimate().getEstimateNumber() : null)
+                .unbilledInvoiceId(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getId() : null)
+                .unbilledNumber(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getUnbilledNumber() : null)
+                .tdsPercentage(tds.getTdsPercentage())
+                .taxableAmount(tds.getTaxableAmount())
+                .tdsAmount(tds.getTdsAmount())
+                .status(tds.getStatus())
+                .createdById(tds.getCreatedBy() != null ? tds.getCreatedBy().getId() : null)
+                .createdByName(getUserDisplayName(tds.getCreatedBy()))
+                .createdAt(tds.getCreatedAt())
+                .updatedAt(tds.getUpdatedAt())
+                .build();
     }
 
     private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
@@ -2087,7 +2005,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public TdsResponseDto getTds(Long unbilledId, Long estimateId) {
 
         if (unbilledId == null && estimateId == null) {
