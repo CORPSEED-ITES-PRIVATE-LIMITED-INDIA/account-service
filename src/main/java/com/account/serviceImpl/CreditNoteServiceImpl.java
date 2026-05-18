@@ -135,7 +135,6 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         for (Invoice invoice : invoices) {
             CreditNoteInvoiceDetail detail = CreditNoteInvoiceDetail.builder()
                     .creditNote(creditNote)
-                    .invoice(invoice)
                     .invoiceId(invoice.getId())
                     .invoiceNumber(invoice.getInvoiceNumber())
                     .invoiceDate(invoice.getInvoiceDate())

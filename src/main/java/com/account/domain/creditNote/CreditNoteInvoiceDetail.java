@@ -24,11 +24,12 @@ public class CreditNoteInvoiceDetail {
     @JoinColumn(name = "credit_note_id", nullable = false)
     private CreditNote creditNote;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "invoice_id")
-    private Invoice invoice;
-
+    @Column(name = "invoice_id")
     private Long invoiceId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "invoice_id", insertable = false, updatable = false)
+    private Invoice invoice;
 
     private String invoiceNumber;
 
