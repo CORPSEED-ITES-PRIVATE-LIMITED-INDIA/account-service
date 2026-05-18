@@ -238,9 +238,12 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
         });
-        // Business rules for amount vs payment type
-        validatePaymentRules(paymentType, reqAmount, unbilled, isFirstPayment);
-
+        validatePaymentRules(
+                paymentType,
+                reqAmount,
+                unbilled,
+                request.getPaymentTermsDays()
+        );
         createTdsIfRequired(request, estimate, unbilled, paymentType, salesperson);
 
         // Prevent approved + pending + current request from exceeding total amount
@@ -333,39 +336,76 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void validatePaymentRules(PaymentType paymentType,
-                                       BigDecimal reqAmount,
-                                       UnbilledInvoice unbilled,
-                                       boolean isFirstPayment) {
+                                      BigDecimal reqAmount,
+                                      UnbilledInvoice unbilled,
+                                      Integer paymentTermsDays) {
+
         if (paymentType == null || paymentType.getCode() == null) {
-            throw new ValidationException("Invalid payment type", "ERR_PAYMENT_TYPE_INVALID", "paymentTypeId");
+            throw new ValidationException(
+                    "Invalid payment type",
+                    "ERR_PAYMENT_TYPE_INVALID",
+                    "paymentTypeId"
+            );
         }
+
         BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
         BigDecimal total = safe2(unbilled.getTotalAmount());
         String code = paymentType.getCode().trim().toUpperCase();
 
-        // ==================== MODIFIED CONDITION ====================
+        // ==================== OLD LOGIC - SAME ====================
         // Allow ZERO amount only for PURCHASE_ORDER payment type
         boolean isPurchaseOrder = "PURCHASE_ORDER".equals(code);
 
         if (!isPurchaseOrder && reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException("Amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
+            throw new ValidationException(
+                    "Amount must be positive",
+                    "ERR_AMOUNT_NOT_POSITIVE",
+                    "amount"
+            );
         }
-        // ============================================================
+        // ==========================================================
+
+        // ==================== NEW PO TERMS VALIDATION ====================
+        // For PURCHASE_ORDER, payment terms days is mandatory
+        if (isPurchaseOrder) {
+            if (paymentTermsDays == null || paymentTermsDays <= 0) {
+                throw new ValidationException(
+                        "Payment terms days is required for Purchase Order payment type",
+                        "ERR_PAYMENT_TERMS_DAYS_REQUIRED",
+                        "paymentTermsDays"
+                );
+            }
+        }
+        // =================================================================
 
         if (reqAmount.compareTo(outstanding) > 0) {
-            throw new ValidationException("Amount is greater than outstanding amount",
-                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING", "amount");
+            throw new ValidationException(
+                    "Amount is greater than outstanding amount",
+                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING",
+                    "amount"
+            );
         }
+
         if ("FULL".equals(code)) {
             if (reqAmount.compareTo(outstanding) != 0) {
-                throw new ValidationException("FULL payment must equal outstanding amount",
-                        "ERR_FULL_AMOUNT_MISMATCH", "amount");
+                throw new ValidationException(
+                        "FULL payment must equal outstanding amount",
+                        "ERR_FULL_AMOUNT_MISMATCH",
+                        "amount"
+                );
             }
             return;
         }
+
         if ("PARTIAL".equals(code)) {
-            BigDecimal half = total.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-            BigDecimal expected = (outstanding.compareTo(half) < 0) ? outstanding : half;
+            BigDecimal half = total
+                    .multiply(new BigDecimal("0.50"))
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal expected = (outstanding.compareTo(half) < 0)
+                    ? outstanding
+                    : half;
+
             if (reqAmount.compareTo(expected) != 0) {
                 throw new ValidationException(
                         "PARTIAL payment must be " + expected + " (50% of total or remaining outstanding)",
@@ -375,57 +415,19 @@ public class PaymentServiceImpl implements PaymentService {
             }
             return;
         }
+
         if ("INSTALLMENT".equals(code) || "PURCHASE_ORDER".equals(code)) {
             return;
         }
-        throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
-                "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
+
+        throw new ValidationException(
+                "Unsupported payment type: " + paymentType.getCode(),
+                "ERR_UNSUPPORTED_PAYMENT_TYPE",
+                "paymentTypeId"
+        );
     }
 
 
-
-//    private void validatePaymentRules(PaymentType paymentType,
-//                                      BigDecimal reqAmount,
-//                                      UnbilledInvoice unbilled,
-//                                      boolean isFirstPayment) {
-//        if (paymentType == null || paymentType.getCode() == null) {
-//            throw new ValidationException("Invalid payment type", "ERR_PAYMENT_TYPE_INVALID", "paymentTypeId");
-//        }
-//        BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
-//        BigDecimal total = safe2(unbilled.getTotalAmount());
-//        String code = paymentType.getCode().trim().toUpperCase();
-//        if (reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
-//            throw new ValidationException("Amount must be positive", "ERR_AMOUNT_NOT_POSITIVE", "amount");
-//        }
-//        if (reqAmount.compareTo(outstanding) > 0) {
-//            throw new ValidationException("Amount is greater than outstanding amount",
-//                    "ERR_AMOUNT_EXCEEDS_OUTSTANDING", "amount");
-//        }
-//        if ("FULL".equals(code)) {
-//            if (reqAmount.compareTo(outstanding) != 0) {
-//                throw new ValidationException("FULL payment must equal outstanding amount",
-//                        "ERR_FULL_AMOUNT_MISMATCH", "amount");
-//            }
-//            return;
-//        }
-//        if ("PARTIAL".equals(code)) {
-//            BigDecimal half = total.multiply(new BigDecimal("0.50")).setScale(2, RoundingMode.HALF_UP);
-//            BigDecimal expected = (outstanding.compareTo(half) < 0) ? outstanding : half;
-//            if (reqAmount.compareTo(expected) != 0) {
-//                throw new ValidationException(
-//                        "PARTIAL payment must be " + expected + " (50% of total or remaining outstanding)",
-//                        "ERR_PARTIAL_AMOUNT_MISMATCH",
-//                        "amount"
-//                );
-//            }
-//            return;
-//        }
-//        if ("INSTALLMENT".equals(code) || "PURCHASE_ORDER".equals(code)) {
-//            return;
-//        }
-//        throw new ValidationException("Unsupported payment type: " + paymentType.getCode(),
-//                "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
-//    }
 
     private void validateGovernmentFeeRequest(PaymentRegistrationRequestDto request) {
         if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
@@ -727,86 +729,6 @@ public class PaymentServiceImpl implements PaymentService {
     }
     private BigDecimal safe2(BigDecimal val) {
         return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    @Override
-    @Transactional
-    public void rejectUnbilledInvoice(Long unbilledId, String rejectionReason, Long approverUserId) {
-
-        log.info("Rejecting Unbilled Invoice | unbilledId: {}, approverId: {}, reason: {}",
-                unbilledId, approverUserId, rejectionReason);
-
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled invoice not found with ID: " + unbilledId,
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unbilledId
-                ));
-
-        if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
-            throw new ValidationException(
-                    "Only PENDING_APPROVAL unbilled invoices can be rejected. Current status: " + unbilled.getStatus(),
-                    "ERR_INVALID_STATUS_FOR_REJECTION",
-                    "status"
-            );
-        }
-
-        if (rejectionReason == null || rejectionReason.trim().isEmpty()) {
-            throw new ValidationException(
-                    "Rejection reason is required",
-                    "ERR_REJECTION_REASON_REQUIRED",
-                    "rejectionReason"
-            );
-        }
-        String trimmedReason = rejectionReason.trim();
-
-        User approver = userRepository.findById(approverUserId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Approver/Rejector not found with ID: " + approverUserId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        approverUserId
-                ));
-
-        unbilled.setStatus(UnbilledStatus.REJECTED);
-        unbilled.setRejectionReason(trimmedReason);
-        unbilled.setApprovedBy(approver);
-        unbilled.setApprovedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-        unbilled.setApprovalRemarks(null);
-
-        Estimate estimate = unbilled.getEstimate();
-        estimate.setStatus(EstimateStatus.REJECTED);
-        estimateRepository.save(estimate);
-
-        List<Invoice> existingInvoices = invoiceRepository.findByUnbilledInvoiceIdAndIsCancelledFalse(unbilled.getId());
-        BigDecimal invoicedTotal = existingInvoices.stream()
-                .map(Invoice::getGrandTotal)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        unbilled.setReceivedAmount(invoicedTotal);
-        unbilled.setOutstandingAmount(
-                unbilled.getTotalAmount()
-                        .subtract(invoicedTotal)
-                        .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP)
-        );
-
-        unbilledInvoiceRepository.save(unbilled);
-
-        log.warn("Unbilled {} REJECTED | reason: '{}' | by user: {}", unbilled.getUnbilledNumber(), trimmedReason, approver.getId());
-
-        // Send notification to salesperson (future enhancement)
-        if (unbilled.getCreatedBy() != null && unbilled.getCreatedBy().getEmail() != null) {
-            // emailService.sendRejectionNotification(
-            //         unbilled.getCreatedBy().getEmail(),
-            //         unbilled.getUnbilledNumber(),
-            //         trimmedReason,
-            //         approver.getFullName() != null ? approver.getFullName() : approver.getEmail()
-            // );
-            log.info("Notification should be sent to salesperson {} about rejection", unbilled.getCreatedBy().getEmail());
-        }
     }
 
 
@@ -1228,40 +1150,6 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
-    private UnbilledInvoiceApprovalResponseDto buildApprovalResponse(
-            UnbilledInvoice unbilled, User approver, Company company, CompanyUnit unit, Estimate estimate) {
-
-        UnbilledInvoiceApprovalResponseDto dto = new UnbilledInvoiceApprovalResponseDto();
-
-        dto.setName(estimate != null ? estimate.getSolutionName() :
-                (company != null ? company.getName() + " - Project" : "Unnamed Project"));
-
-        dto.setProjectNo("PRJ-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        dto.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        dto.setSalesPersonName(getUserDisplayName(unbilled.getCreatedBy()));
-        dto.setProductId(estimate != null ? estimate.getSolutionId() : null);
-        dto.setCompanyId(company != null ? company.getId() : null);
-        dto.setCompanyUnitId(unit != null ? unit.getId() : null);
-        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
-        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
-        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
-        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
-        dto.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
-        dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
-        dto.setDate(LocalDate.now());
-        dto.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
-        dto.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
-
-        PaymentReceipt first = paymentReceiptRepository.findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(unbilled)
-                .orElse(null);
-        dto.setPaymentTypeId(first != null && first.getPaymentType() != null ? first.getPaymentType().getId() : null);
-
-        dto.setApprovedById(approver.getId());
-        dto.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        dto.setUpdatedBy(approver.getId());
-
-        return dto;
-    }
 
     private String getUserDisplayName(User user) {
         if (user == null) return null;
@@ -1350,7 +1238,39 @@ public class PaymentServiceImpl implements PaymentService {
                         : (company != null ? company.getName() + " - Project" : "Unnamed Project")
         );
 
+        // ==================== TDS RESPONSE DTO ====================
+        if (Boolean.TRUE.equals(unbilled.isTdsActive())) {
+            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                    .ifPresent(tds -> {
+                        dto.setTdsResponseDto(mapToTdsResponseDtoForSummary(tds));
+                    });
+        } else {
+            dto.setTdsResponseDto(null);
+        }
+        // =========================================================
+
         return dto;
+    }
+
+    private TdsResponseDto mapToTdsResponseDtoForSummary(TdsRegistration tds) {
+        if (tds == null) return null;
+
+        return TdsResponseDto.builder()
+                .id(tds.getId())
+                .publicUuid(tds.getPublicUuid())
+                .estimateId(tds.getEstimate() != null ? tds.getEstimate().getId() : null)
+                .estimateNumber(tds.getEstimate() != null ? tds.getEstimate().getEstimateNumber() : null)
+                .unbilledInvoiceId(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getId() : null)
+                .unbilledNumber(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getUnbilledNumber() : null)
+                .tdsPercentage(tds.getTdsPercentage())
+                .taxableAmount(tds.getTaxableAmount())
+                .tdsAmount(tds.getTdsAmount())
+                .status(tds.getStatus())
+                .createdById(tds.getCreatedBy() != null ? tds.getCreatedBy().getId() : null)
+                .createdByName(getUserDisplayName(tds.getCreatedBy()))
+                .createdAt(tds.getCreatedAt())
+                .updatedAt(tds.getUpdatedAt())
+                .build();
     }
 
     private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
@@ -2085,7 +2005,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public TdsResponseDto getTds(Long unbilledId, Long estimateId) {
 
         if (unbilledId == null && estimateId == null) {

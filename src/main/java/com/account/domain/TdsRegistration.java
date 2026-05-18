@@ -78,4 +78,5 @@ public class TdsRegistration {
 
     @LastModifiedDate
     private LocalDateTime updatedAt;
+
 }

@@ -16,12 +16,6 @@ public interface TdsRegistrationRepository extends JpaRepository<TdsRegistration
 
     Optional<TdsRegistration> findByEstimateAndIsDeletedFalse(Estimate estimate);
 
-    boolean existsByUnbilledInvoiceAndIsDeletedFalse(UnbilledInvoice unbilledInvoice);
 
-    boolean existsByEstimateAndIsDeletedFalse(Estimate estimate);
 
-    Optional<TdsRegistration> findByUnbilledInvoiceAndStatusAndIsDeletedFalse(
-            UnbilledInvoice unbilledInvoice,
-            TdsStatus status
-    );
 }

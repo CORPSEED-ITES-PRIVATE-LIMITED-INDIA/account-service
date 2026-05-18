@@ -1,6 +1,7 @@
 package com.account.dto.unbilled;
 
 import com.account.domain.UnbilledStatus;
+import com.account.dto.payment.TdsResponseDto;
 import jakarta.persistence.Column;
 import lombok.Builder;
 import lombok.Getter;
@@ -48,5 +49,6 @@ public class UnbilledInvoiceSummaryDto {
     private String pinCode;
     private String gstNo;
     private Long searchCount;
+    private TdsResponseDto tdsResponseDto;
 
 }
