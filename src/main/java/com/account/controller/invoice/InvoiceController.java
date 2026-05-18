@@ -5,6 +5,8 @@ import com.account.dto.invoice.InvoiceDetailDto;
 import com.account.dto.invoice.InvoiceReportDto;
 import com.account.dto.invoice.InvoiceSearchRequest;
 import com.account.dto.invoice.InvoiceSummaryDto;
+import com.account.dto.taxation.TaxationReportDto;
+import com.account.dto.taxation.TaxationReportRequest;
 import com.account.service.InvoiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -124,5 +126,12 @@ public class InvoiceController {
 
         InvoiceDetailDto dto = invoiceService.getInvoiceByInvoiceNumber(invoiceNumber, userId);
         return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/taxationReport")
+    public ResponseEntity<TaxationReportDto> taxationReport(
+            @RequestBody TaxationReportRequest request
+    ) {
+        return ResponseEntity.ok(invoiceService.taxationReport(request));
     }
 }

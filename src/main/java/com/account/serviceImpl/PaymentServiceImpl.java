@@ -680,6 +680,7 @@ public class PaymentServiceImpl implements PaymentService {
         TdsRegistration tds = new TdsRegistration();
         tds.setPublicUuid(UUID.randomUUID().toString());
         tds.setEstimate(estimate);
+        tds.setCompany(estimate.getCompany());
         tds.setUnbilledInvoice(unbilled);
         tds.setTdsPercentage(tdsPercentage);
         tds.setTaxableAmount(taxableAmount);

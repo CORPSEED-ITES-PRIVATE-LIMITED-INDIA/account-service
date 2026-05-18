@@ -4,6 +4,7 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
 import com.account.dto.invoice.*;
+import com.account.dto.taxation.*;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
@@ -789,5 +790,460 @@ public class InvoiceServiceImpl implements InvoiceService {
 		if (user == null) return null;
 		return user.getFullName() != null ? user.getFullName() : user.getEmail();
 	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public TaxationReportDto taxationReport(TaxationReportRequest request) {
+
+		if (request == null) {
+			throw new ValidationException(
+					"Taxation report request is required",
+					"ERR_TAXATION_REPORT_REQUEST_REQUIRED",
+					"request"
+			);
+		}
+
+		if (request.getType() == null) {
+			throw new ValidationException(
+					"Taxation report type is required. Allowed values: GST, TDS",
+					"ERR_TAXATION_REPORT_TYPE_REQUIRED",
+					"type"
+			);
+		}
+
+		if (request.getType() == TaxationReportType.GST) {
+			return TaxationReportDto.builder()
+					.type(TaxationReportType.GST)
+					.gstReport(buildGstTaxationReport(request))
+					.tdsReport(null)
+					.build();
+		}
+
+		if (request.getType() == TaxationReportType.TDS) {
+			return TaxationReportDto.builder()
+					.type(TaxationReportType.TDS)
+					.gstReport(null)
+					.tdsReport(buildTdsTaxationReport(request))
+					.build();
+		}
+
+		throw new ValidationException(
+				"Unsupported taxation report type: " + request.getType(),
+				"ERR_UNSUPPORTED_TAXATION_REPORT_TYPE",
+				"type"
+		);
+	}
+	private GstTaxationReportDto buildGstTaxationReport(TaxationReportRequest request) {
+
+		CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+		CriteriaQuery<Tuple> query = cb.createTupleQuery();
+		Root<Invoice> invoiceRoot = query.from(Invoice.class);
+
+		Join<Invoice, UnbilledInvoice> unbilledJoin =
+				invoiceRoot.join("unbilledInvoice", JoinType.LEFT);
+
+		Join<UnbilledInvoice, Company> companyJoin =
+				unbilledJoin.join("company", JoinType.LEFT);
+
+		List<Predicate> predicates = buildGstTaxationPredicates(
+				request,
+				cb,
+				invoiceRoot,
+				unbilledJoin,
+				companyJoin
+		);
+
+		Expression<Long> totalInvoicesExp =
+				cb.count(invoiceRoot.get("id"));
+
+		Expression<BigDecimal> totalTaxableAmountExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("subTotalExGst")), BigDecimal.ZERO);
+
+		Expression<BigDecimal> totalInvoiceAmountExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("grandTotal")), BigDecimal.ZERO);
+
+		Expression<BigDecimal> totalGstCollectedExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("totalGstAmount")), BigDecimal.ZERO);
+
+		Expression<BigDecimal> totalCgstCollectedExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("cgstAmount")), BigDecimal.ZERO);
+
+		Expression<BigDecimal> totalSgstCollectedExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("sgstAmount")), BigDecimal.ZERO);
+
+		Expression<BigDecimal> totalIgstCollectedExp =
+				cb.coalesce(cb.sum(invoiceRoot.get("igstAmount")), BigDecimal.ZERO);
+
+		query.multiselect(
+				totalInvoicesExp.alias("totalInvoices"),
+				totalTaxableAmountExp.alias("totalTaxableAmount"),
+				totalInvoiceAmountExp.alias("totalInvoiceAmount"),
+				totalGstCollectedExp.alias("totalGstCollected"),
+				totalCgstCollectedExp.alias("totalCgstCollected"),
+				totalSgstCollectedExp.alias("totalSgstCollected"),
+				totalIgstCollectedExp.alias("totalIgstCollected")
+		);
+
+		query.where(cb.and(predicates.toArray(new Predicate[0])));
+
+		Tuple result = entityManager.createQuery(query).getSingleResult();
+
+		Long totalInvoices = result.get("totalInvoices", Long.class);
+
+		BigDecimal totalTaxableAmount = safeMoney(result.get("totalTaxableAmount", BigDecimal.class));
+		BigDecimal totalInvoiceAmount = safeMoney(result.get("totalInvoiceAmount", BigDecimal.class));
+		BigDecimal totalGstCollected = safeMoney(result.get("totalGstCollected", BigDecimal.class));
+		BigDecimal totalCgstCollected = safeMoney(result.get("totalCgstCollected", BigDecimal.class));
+		BigDecimal totalSgstCollected = safeMoney(result.get("totalSgstCollected", BigDecimal.class));
+		BigDecimal totalIgstCollected = safeMoney(result.get("totalIgstCollected", BigDecimal.class));
+
+		BigDecimal averageGstPerInvoice =
+				totalInvoices == null || totalInvoices == 0
+						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						: totalGstCollected.divide(
+						BigDecimal.valueOf(totalInvoices),
+						2,
+						RoundingMode.HALF_UP
+				);
+
+		BigDecimal averageInvoiceValue =
+				totalInvoices == null || totalInvoices == 0
+						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						: totalInvoiceAmount.divide(
+						BigDecimal.valueOf(totalInvoices),
+						2,
+						RoundingMode.HALF_UP
+				);
+
+		return GstTaxationReportDto.builder()
+				.totalInvoices(totalInvoices == null ? 0L : totalInvoices)
+				.totalTaxableAmount(totalTaxableAmount)
+				.totalInvoiceAmount(totalInvoiceAmount)
+				.totalGstCollected(totalGstCollected)
+				.totalCgstCollected(totalCgstCollected)
+				.totalSgstCollected(totalSgstCollected)
+				.totalIgstCollected(totalIgstCollected)
+				.averageGstPerInvoice(averageGstPerInvoice)
+				.averageInvoiceValue(averageInvoiceValue)
+				.build();
+	}
+
+	private TdsTaxationReportDto buildTdsTaxationReport(TaxationReportRequest request) {
+
+		CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+		CriteriaQuery<Tuple> query = cb.createTupleQuery();
+		Root<TdsRegistration> tdsRoot = query.from(TdsRegistration.class);
+
+		Join<TdsRegistration, Company> companyJoin =
+				tdsRoot.join("company", JoinType.LEFT);
+
+		Join<TdsRegistration, UnbilledInvoice> unbilledJoin =
+				tdsRoot.join("unbilledInvoice", JoinType.LEFT);
+
+		Join<TdsRegistration, Estimate> estimateJoin =
+				tdsRoot.join("estimate", JoinType.LEFT);
+
+		List<Predicate> predicates = buildTdsTaxationPredicates(
+				request,
+				cb,
+				tdsRoot,
+				companyJoin,
+				unbilledJoin,
+				estimateJoin
+		);
+
+		Expression<Long> totalTdsCountExp =
+				cb.count(tdsRoot.get("id"));
+
+		Expression<BigDecimal> totalTaxableAmountExp =
+				cb.coalesce(cb.sum(tdsRoot.get("taxableAmount")), BigDecimal.ZERO);
+
+		Expression<BigDecimal> totalTdsAmountExp =
+				cb.coalesce(cb.sum(tdsRoot.get("tdsAmount")), BigDecimal.ZERO);
+
+		Expression<BigDecimal> pendingTdsAmountExp =
+				cb.coalesce(
+						cb.sum(
+								cb.<BigDecimal>selectCase()
+										.when(
+												cb.equal(tdsRoot.get("status"), TdsStatus.PENDING),
+												tdsRoot.get("tdsAmount")
+										)
+										.otherwise(BigDecimal.ZERO)
+						),
+						BigDecimal.ZERO
+				);
+
+		Expression<BigDecimal> approvedTdsAmountExp =
+				cb.coalesce(
+						cb.sum(
+								cb.<BigDecimal>selectCase()
+										.when(
+												cb.equal(tdsRoot.get("status"), TdsStatus.APPROVED),
+												tdsRoot.get("tdsAmount")
+										)
+										.otherwise(BigDecimal.ZERO)
+						),
+						BigDecimal.ZERO
+				);
+
+		Expression<Long> pendingTdsCountExp =
+				cb.sum(
+						cb.<Long>selectCase()
+								.when(cb.equal(tdsRoot.get("status"), TdsStatus.PENDING), 1L)
+								.otherwise(0L)
+				);
+
+		Expression<Long> approvedTdsCountExp =
+				cb.sum(
+						cb.<Long>selectCase()
+								.when(cb.equal(tdsRoot.get("status"), TdsStatus.APPROVED), 1L)
+								.otherwise(0L)
+				);
+
+		query.multiselect(
+				totalTdsCountExp.alias("totalTdsRegistrations"),
+				totalTaxableAmountExp.alias("totalTaxableAmount"),
+				totalTdsAmountExp.alias("totalTdsAmount"),
+				pendingTdsAmountExp.alias("pendingTdsAmount"),
+				approvedTdsAmountExp.alias("approvedTdsAmount"),
+				pendingTdsCountExp.alias("pendingTdsCount"),
+				approvedTdsCountExp.alias("approvedTdsCount")
+		);
+
+		query.where(cb.and(predicates.toArray(new Predicate[0])));
+
+		Tuple result = entityManager.createQuery(query).getSingleResult();
+
+		Long totalTdsRegistrations = result.get("totalTdsRegistrations", Long.class);
+
+		BigDecimal totalTaxableAmount = safeMoney(result.get("totalTaxableAmount", BigDecimal.class));
+		BigDecimal totalTdsAmount = safeMoney(result.get("totalTdsAmount", BigDecimal.class));
+		BigDecimal pendingTdsAmount = safeMoney(result.get("pendingTdsAmount", BigDecimal.class));
+		BigDecimal approvedTdsAmount = safeMoney(result.get("approvedTdsAmount", BigDecimal.class));
+
+		Long pendingTdsCount = result.get("pendingTdsCount", Long.class);
+		Long approvedTdsCount = result.get("approvedTdsCount", Long.class);
+
+		BigDecimal averageTdsAmount =
+				totalTdsRegistrations == null || totalTdsRegistrations == 0
+						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						: totalTdsAmount.divide(
+						BigDecimal.valueOf(totalTdsRegistrations),
+						2,
+						RoundingMode.HALF_UP
+				);
+
+		return TdsTaxationReportDto.builder()
+				.totalTdsRegistrations(totalTdsRegistrations == null ? 0L : totalTdsRegistrations)
+				.totalTaxableAmount(totalTaxableAmount)
+				.totalTdsAmount(totalTdsAmount)
+				.pendingTdsAmount(pendingTdsAmount)
+				.approvedTdsAmount(approvedTdsAmount)
+				.pendingTdsCount(pendingTdsCount == null ? 0L : pendingTdsCount)
+				.approvedTdsCount(approvedTdsCount == null ? 0L : approvedTdsCount)
+				.averageTdsAmount(averageTdsAmount)
+				.build();
+	}
+
+
+	private List<Predicate> buildGstTaxationPredicates(
+			TaxationReportRequest request,
+			CriteriaBuilder cb,
+			Root<Invoice> invoiceRoot,
+			Join<Invoice, UnbilledInvoice> unbilledJoin,
+			Join<UnbilledInvoice, Company> companyJoin
+	) {
+		List<Predicate> predicates = new ArrayList<>();
+
+		predicates.add(cb.isFalse(invoiceRoot.get("isCancelled")));
+
+		if (request.getCreatedById() != null) {
+			predicates.add(cb.equal(invoiceRoot.get("createdBy").get("id"), request.getCreatedById()));
+		}
+
+		if (request.getStatus() != null) {
+			predicates.add(cb.equal(invoiceRoot.get("status"), request.getStatus()));
+		}
+
+		if (request.getFromInvoiceDate() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(
+					invoiceRoot.get("invoiceDate"),
+					request.getFromInvoiceDate()
+			));
+		}
+
+		if (request.getToInvoiceDate() != null) {
+			predicates.add(cb.lessThanOrEqualTo(
+					invoiceRoot.get("invoiceDate"),
+					request.getToInvoiceDate()
+			));
+		}
+
+		if (request.getFromCreatedDate() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(
+					invoiceRoot.get("createdAt"),
+					request.getFromCreatedDate().atStartOfDay()
+			));
+		}
+
+		if (request.getToCreatedDate() != null) {
+			predicates.add(cb.lessThanOrEqualTo(
+					invoiceRoot.get("createdAt"),
+					request.getToCreatedDate().atTime(23, 59, 59)
+			));
+		}
+
+		if (request.getCompanyId() != null) {
+			predicates.add(cb.equal(companyJoin.get("id"), request.getCompanyId()));
+		}
+
+		if (request.getCompanyName() != null && !request.getCompanyName().trim().isEmpty()) {
+			predicates.add(cb.like(
+					cb.lower(companyJoin.get("name")),
+					"%" + request.getCompanyName().trim().toLowerCase() + "%"
+			));
+		}
+
+		if (request.getSolutionId() != null) {
+			predicates.add(cb.equal(invoiceRoot.get("solutionId"), request.getSolutionId()));
+		}
+
+		if (request.getMinAmount() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(
+					invoiceRoot.get("grandTotal"),
+					request.getMinAmount()
+			));
+		}
+
+		if (request.getMaxAmount() != null) {
+			predicates.add(cb.lessThanOrEqualTo(
+					invoiceRoot.get("grandTotal"),
+					request.getMaxAmount()
+			));
+		}
+
+		if (Boolean.TRUE.equals(request.getIncludeGstOnly())) {
+			predicates.add(cb.greaterThan(
+					invoiceRoot.get("totalGstAmount"),
+					BigDecimal.ZERO
+			));
+		}
+
+		if (request.getCurrency() != null && !request.getCurrency().trim().isEmpty()) {
+			predicates.add(cb.equal(
+					cb.upper(invoiceRoot.get("currency")),
+					request.getCurrency().trim().toUpperCase()
+			));
+		}
+
+		if (Boolean.TRUE.equals(request.getOnlyWithOutstanding())) {
+			predicates.add(cb.greaterThan(
+					unbilledJoin.get("outstandingAmount"),
+					BigDecimal.ZERO
+			));
+		}
+
+		return predicates;
+	}
+	private List<Predicate> buildTdsTaxationPredicates(
+			TaxationReportRequest request,
+			CriteriaBuilder cb,
+			Root<TdsRegistration> tdsRoot,
+			Join<TdsRegistration, Company> companyJoin,
+			Join<TdsRegistration, UnbilledInvoice> unbilledJoin,
+			Join<TdsRegistration, Estimate> estimateJoin
+	) {
+		List<Predicate> predicates = new ArrayList<>();
+
+		predicates.add(cb.isFalse(tdsRoot.get("isDeleted")));
+
+		if (request.getCreatedById() != null) {
+			predicates.add(cb.equal(tdsRoot.get("createdBy").get("id"), request.getCreatedById()));
+		}
+
+		if (request.getTdsStatus() != null) {
+			predicates.add(cb.equal(tdsRoot.get("status"), request.getTdsStatus()));
+		}
+
+		/*
+		 * For TDS, invoiceDate does not exist directly.
+		 * So fromInvoiceDate/toInvoiceDate are treated as TDS createdAt date filters.
+		 */
+		if (request.getFromInvoiceDate() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(
+					tdsRoot.get("createdAt"),
+					request.getFromInvoiceDate().atStartOfDay()
+			));
+		}
+
+		if (request.getToInvoiceDate() != null) {
+			predicates.add(cb.lessThanOrEqualTo(
+					tdsRoot.get("createdAt"),
+					request.getToInvoiceDate().atTime(23, 59, 59)
+			));
+		}
+
+		if (request.getFromCreatedDate() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(
+					tdsRoot.get("createdAt"),
+					request.getFromCreatedDate().atStartOfDay()
+			));
+		}
+
+		if (request.getToCreatedDate() != null) {
+			predicates.add(cb.lessThanOrEqualTo(
+					tdsRoot.get("createdAt"),
+					request.getToCreatedDate().atTime(23, 59, 59)
+			));
+		}
+
+		if (request.getCompanyId() != null) {
+			predicates.add(cb.equal(companyJoin.get("id"), request.getCompanyId()));
+		}
+
+		if (request.getCompanyName() != null && !request.getCompanyName().trim().isEmpty()) {
+			predicates.add(cb.like(
+					cb.lower(companyJoin.get("name")),
+					"%" + request.getCompanyName().trim().toLowerCase() + "%"
+			));
+		}
+
+		/*
+		 * This assumes Estimate has solutionId.
+		 * If your Estimate entity does not have solutionId, remove this block
+		 * or replace it with the correct field.
+		 */
+		if (request.getSolutionId() != null) {
+			predicates.add(cb.equal(estimateJoin.get("solutionId"), request.getSolutionId()));
+		}
+
+		if (request.getMinAmount() != null) {
+			predicates.add(cb.greaterThanOrEqualTo(
+					tdsRoot.get("tdsAmount"),
+					request.getMinAmount()
+			));
+		}
+
+		if (request.getMaxAmount() != null) {
+			predicates.add(cb.lessThanOrEqualTo(
+					tdsRoot.get("tdsAmount"),
+					request.getMaxAmount()
+			));
+		}
+
+		if (Boolean.TRUE.equals(request.getOnlyWithOutstanding())) {
+			predicates.add(cb.greaterThan(
+					unbilledJoin.get("outstandingAmount"),
+					BigDecimal.ZERO
+			));
+		}
+
+		return predicates;
+	}
+
+
 
 }
