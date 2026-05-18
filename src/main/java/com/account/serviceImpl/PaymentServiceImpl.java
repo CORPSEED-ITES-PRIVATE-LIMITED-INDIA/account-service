@@ -670,6 +670,7 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+
         BigDecimal taxableAmount = calculateTdsTaxableAmount(estimate, unbilled);
         BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
 
