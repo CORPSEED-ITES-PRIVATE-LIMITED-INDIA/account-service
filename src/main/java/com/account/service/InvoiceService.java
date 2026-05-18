@@ -5,6 +5,8 @@ import com.account.dto.invoice.InvoiceDetailDto;
 import com.account.dto.invoice.InvoiceReportDto;
 import com.account.dto.invoice.InvoiceSearchRequest;
 import com.account.dto.invoice.InvoiceSummaryDto;
+import com.account.dto.taxation.TaxationReportDto;
+import com.account.dto.taxation.TaxationReportRequest;
 
 import java.util.List;
 
@@ -30,4 +32,6 @@ public interface InvoiceService {
 	InvoiceReportDto invoiceReport(InvoiceSearchRequest request);
 
 	InvoiceDetailDto getInvoiceByInvoiceNumber(String invoiceNumber, Long requestingUserId);
+
+	TaxationReportDto taxationReport(TaxationReportRequest request);
 }

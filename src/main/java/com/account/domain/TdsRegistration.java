@@ -42,6 +42,10 @@ public class TdsRegistration {
     @JoinColumn(name = "estimate_id", nullable = false)
     private Estimate estimate;
 
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "company_id", nullable = false)
+    private Company company;
+
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "unbilled_invoice_id", nullable = false, unique = true)
     private UnbilledInvoice unbilledInvoice;

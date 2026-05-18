@@ -120,5 +120,6 @@ public class CreditNote {
             cascade = CascadeType.ALL,
             orphanRemoval = true
     )
+    @Builder.Default
     private List<CreditNoteInvoiceDetail> invoiceDetails = new ArrayList<>();
 }
