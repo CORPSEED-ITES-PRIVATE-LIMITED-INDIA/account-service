@@ -87,6 +87,7 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getEstimateId()
                 ));
 
+
         // NEW VALIDATION: Prevent payment registration on REJECTED estimate
         if (estimate.getStatus() == EstimateStatus.REJECTED) {
             throw new ValidationException(
