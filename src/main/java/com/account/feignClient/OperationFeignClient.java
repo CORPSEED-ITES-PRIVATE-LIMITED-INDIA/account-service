@@ -56,4 +56,64 @@ public interface OperationFeignClient {
             Pageable pageable
     );
 
+
+    // ============================================================
+// PROCUREMENT PURCHASE ORDER APIs
+// ============================================================
+
+    @GetMapping("/operationService/api/purchase-orders")
+    ResponseEntity<?> getProcurementPurchaseOrders(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    );
+
+    @PutMapping("/operationService/api/purchase-orders/{purchaseOrderId}/approve/{userId}")
+    ResponseEntity<?> approveProcurementPurchaseOrder(
+            @PathVariable Long purchaseOrderId,
+            @PathVariable Long userId,
+            @RequestBody(required = false) ProcurementPurchaseOrderActionRequestDto request
+    );
+
+    @PutMapping("/operationService/api/purchase-orders/{purchaseOrderId}/reject/{userId}")
+    ResponseEntity<?> rejectProcurementPurchaseOrder(
+            @PathVariable Long purchaseOrderId,
+            @PathVariable Long userId,
+            @RequestBody ProcurementPurchaseOrderActionRequestDto request
+    );
+
+
+    // ============================================================
+// PROCUREMENT PAYMENT REQUEST APIs
+// ============================================================
+
+    @GetMapping("/operationService/api/procurement-payment-requests")
+    ResponseEntity<?> getProcurementPaymentRequests(
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    );
+
+    @PutMapping("/operationService/api/procurement-payment-requests/{paymentRequestId}/approve/{userId}")
+    ResponseEntity<?> approveProcurementPaymentRequest(
+            @PathVariable Long paymentRequestId,
+            @PathVariable Long userId,
+            @RequestBody(required = false) ProcurementPaymentActionRequestDto request
+    );
+
+    @PutMapping("/operationService/api/procurement-payment-requests/{paymentRequestId}/reject/{userId}")
+    ResponseEntity<?> rejectProcurementPaymentRequest(
+            @PathVariable Long paymentRequestId,
+            @PathVariable Long userId,
+            @RequestBody ProcurementPaymentActionRequestDto request
+    );
+
+    @PutMapping("/operationService/api/procurement-payment-requests/{paymentRequestId}/release-payment/{userId}")
+    ResponseEntity<?> releaseProcurementPayment(
+            @PathVariable Long paymentRequestId,
+            @PathVariable Long userId,
+            @RequestBody(required = false) ProcurementPaymentActionRequestDto request
+    );
+
+
 }
