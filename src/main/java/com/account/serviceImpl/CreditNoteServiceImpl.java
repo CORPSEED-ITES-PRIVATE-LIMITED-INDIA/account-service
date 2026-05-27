@@ -473,6 +473,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         return CreditNoteResponseDto.builder()
                 .id(creditNote.getId())
                 .creditNoteNumber(creditNote.getCreditNoteNumber())
+                .proposalId(creditNote.getEstimate().getProposalId())
                 .unbilledId(unbilled != null ? unbilled.getId() : null)
                 .unbilledNumber(creditNote.getUnbilledNumber())
                 .estimateId(estimate != null ? estimate.getId() : null)
