@@ -31,6 +31,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     """)
 	Optional<User> findByIdAndNotDeleted(@Param("id") Long id);
 
+	List<User> findByDepartmentIgnoreCaseAndIsDeletedFalseAndIsActiveTrue(String department);
+
+
 
 
 }

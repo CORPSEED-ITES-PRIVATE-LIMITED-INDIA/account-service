@@ -14,6 +14,9 @@ import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.feignClient.OperationFeignClient;
+import com.account.notification.NotificationPublisherService;
+import com.account.notification.dto.NotificationCreateRequestDto;
+import com.account.notification.dto.NotificationPriority;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
@@ -57,6 +60,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final InvoiceRepository invoiceRepository;
     private final GovernmentFeeRepository governmentFeeRepository;
     private final TdsRegistrationRepository tdsRegistrationRepository;
+    private final NotificationPublisherService notificationPublisherService;
+
 
     @Override
     @Transactional
@@ -331,6 +336,17 @@ public class PaymentServiceImpl implements PaymentService {
         response.setUnbilledNumber(unbilled.getUnbilledNumber());
         response.setUnbilledStatus(unbilled.getStatus());
         response.setMessage(message);
+
+        /*
+         * Notify account department users that payment is registered
+         * and waiting for approval.
+         */
+        pushPaymentRegisteredNotificationToAccountUsers(
+                unbilled,
+                receipt,
+                estimate,
+                salesperson
+        );
 
         return response;
     }
@@ -792,7 +808,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             unbilled.setStatus(UnbilledStatus.REJECTED);
 
-            //   Mark all pending payments as REJECTED
+                        //   Mark all pending payments as REJECTED
             unbilled.getPayments().forEach(p -> {
                 if (p.getStatus() == PaymentStatus.PENDING) {
                     p.setStatus(PaymentStatus.REJECTED);
@@ -851,6 +867,8 @@ public class PaymentServiceImpl implements PaymentService {
                     "Unbilled {} rejected → pending amount discarded, no financial impact",
                     unbilled.getUnbilledNumber()
             );
+
+
 
         } else {
 
@@ -922,6 +940,14 @@ public class PaymentServiceImpl implements PaymentService {
         // ===============================
         if ("REJECTED".equals(request.getApprovalRemarks())) {
             unbilledInvoiceRepository.save(unbilled);
+
+            pushPaymentApprovalDecisionNotificationToSalesperson(
+                    unbilled,
+                    estimate,
+                    approver,
+                    false,
+                    request.getApprovalRemarks()
+            );
 
             UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
 
@@ -1026,6 +1052,15 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         unbilledInvoiceRepository.save(unbilled);
+
+        pushPaymentApprovalDecisionNotificationToSalesperson(
+                unbilled,
+                estimate,
+                approver,
+                true,
+                request.getApprovalRemarks()
+        );
+
 
         UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
 
@@ -1155,6 +1190,22 @@ public class PaymentServiceImpl implements PaymentService {
     private String getUserDisplayName(User user) {
         if (user == null) return null;
         return user.getFullName() != null ? user.getFullName() : user.getEmail();
+    }
+
+    private String getUserDisplayName2(User user) {
+        if (user == null) {
+            return "System";
+        }
+
+        if (user.getFullName() != null && !user.getFullName().trim().isEmpty()) {
+            return user.getFullName().trim();
+        }
+
+        if (user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
+            return user.getEmail().trim();
+        }
+
+        return "User";
     }
 
     private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
@@ -1349,6 +1400,196 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setLineItems(lineItemDtos);
 
         return dto;
+    }
+
+    private void pushPaymentRegisteredNotificationToAccountUsers(
+            UnbilledInvoice unbilled,
+            PaymentReceipt receipt,
+            Estimate estimate,
+            User salesperson
+    ) {
+        if (unbilled == null || unbilled.getId() == null || receipt == null || receipt.getId() == null) {
+            return;
+        }
+
+        List<User> accountUsers = findAccountDepartmentApprovers();
+
+        if (accountUsers == null || accountUsers.isEmpty()) {
+            log.warn(
+                    "Payment registration notification skipped because no active account department users found | unbilledId={}",
+                    unbilled.getId()
+            );
+            return;
+        }
+
+        String salespersonName = getUserDisplayName2(salesperson);
+        String unbilledNumber = unbilled.getUnbilledNumber() != null
+                ? unbilled.getUnbilledNumber()
+                : "UNBILLED-" + unbilled.getId();
+
+        String estimateNumber = estimate != null && estimate.getEstimateNumber() != null
+                ? estimate.getEstimateNumber()
+                : "";
+
+        String companyName = unbilled.getCompany() != null && unbilled.getCompany().getName() != null
+                ? unbilled.getCompany().getName()
+                : "company";
+
+        String amount = receipt.getAmount() != null
+                ? receipt.getAmount().toPlainString()
+                : "0.00";
+
+        for (User accountUser : accountUsers) {
+            if (accountUser == null || accountUser.getId() == null) {
+                continue;
+            }
+
+            notificationPublisherService.sendNotification(
+                    NotificationCreateRequestDto.builder()
+                            .receiverId(accountUser.getId())
+                            .actorId(salesperson != null ? salesperson.getId() : null)
+                            .actorName(salespersonName)
+                            .module(NotificationCreateRequestDto.NotificationModule.PAYMENT)
+                            .eventType(NotificationCreateRequestDto.NotificationEventType.PAYMENT_REGISTERED)
+                            .referenceId(unbilled.getId())
+                            .referenceNumber(unbilledNumber)
+                            .title("Payment Approval Required")
+                            .message(salespersonName + " registered payment of ₹" + amount + " for " + companyName + ".")
+                            .redirectUrl("/account/unbilled-invoices/" + unbilled.getId())
+                            .priority(NotificationPriority.HIGH)
+                            .displayType(NotificationCreateRequestDto.NotificationDisplayType.WARNING)
+                            .metadataJson(
+                                    "{"
+                                            + "\"unbilledId\":" + unbilled.getId() + ","
+                                            + "\"paymentReceiptId\":" + receipt.getId() + ","
+                                            + "\"unbilledNumber\":\"" + escapeJson(unbilledNumber) + "\","
+                                            + "\"estimateNumber\":\"" + escapeJson(estimateNumber) + "\","
+                                            + "\"companyName\":\"" + escapeJson(companyName) + "\","
+                                            + "\"amount\":\"" + escapeJson(amount) + "\","
+                                            + "\"registeredBy\":\"" + escapeJson(salespersonName) + "\""
+                                            + "}"
+                            )
+                            .build()
+            );
+        }
+    }
+
+    private void pushPaymentApprovalDecisionNotificationToSalesperson(
+            UnbilledInvoice unbilled,
+            Estimate estimate,
+            User approver,
+            boolean approved,
+            String remarks
+    ) {
+        if (unbilled == null || unbilled.getId() == null) {
+            return;
+        }
+
+        User salesperson = unbilled.getCreatedBy();
+
+        if (salesperson == null || salesperson.getId() == null) {
+            log.warn(
+                    "Payment approval notification skipped because salesperson/createdBy not found | unbilledId={}",
+                    unbilled.getId()
+            );
+            return;
+        }
+
+        String approverName = getUserDisplayName(approver);
+
+        String unbilledNumber = unbilled.getUnbilledNumber() != null
+                ? unbilled.getUnbilledNumber()
+                : "UNBILLED-" + unbilled.getId();
+
+        String estimateNumber = estimate != null && estimate.getEstimateNumber() != null
+                ? estimate.getEstimateNumber()
+                : "";
+
+        String companyName = unbilled.getCompany() != null && unbilled.getCompany().getName() != null
+                ? unbilled.getCompany().getName()
+                : "company";
+
+        String totalAmount = unbilled.getTotalAmount() != null
+                ? unbilled.getTotalAmount().toPlainString()
+                : "0.00";
+
+        String receivedAmount = unbilled.getReceivedAmount() != null
+                ? unbilled.getReceivedAmount().toPlainString()
+                : "0.00";
+
+        NotificationCreateRequestDto.NotificationEventType eventType = approved
+                ? NotificationCreateRequestDto.NotificationEventType.PAYMENT_APPROVED
+                : NotificationCreateRequestDto.NotificationEventType.PAYMENT_REJECTED;
+
+        NotificationCreateRequestDto.NotificationDisplayType displayType = approved
+                ? NotificationCreateRequestDto.NotificationDisplayType.SUCCESS
+                : NotificationCreateRequestDto.NotificationDisplayType.DANGER;
+
+        String title = approved
+                ? "Payment Approved"
+                : "Payment Rejected";
+
+        String message = approved
+                ? approverName + " approved payment for " + companyName + "."
+                : approverName + " rejected payment for " + companyName + ".";
+
+        notificationPublisherService.sendNotification(
+                NotificationCreateRequestDto.builder()
+                        .receiverId(salesperson.getId())
+                        .actorId(approver != null ? approver.getId() : null)
+                        .actorName(approverName)
+                        .module(NotificationCreateRequestDto.NotificationModule.PAYMENT)
+                        .eventType(eventType)
+                        .referenceId(unbilled.getId())
+                        .referenceNumber(unbilledNumber)
+                        .title(title)
+                        .message(message)
+                        .redirectUrl("/account/unbilled-invoices/" + unbilled.getId())
+                        .priority(NotificationPriority.HIGH)
+                        .displayType(displayType)
+                        .metadataJson(
+                                "{"
+                                        + "\"unbilledId\":" + unbilled.getId() + ","
+                                        + "\"unbilledNumber\":\"" + escapeJson(unbilledNumber) + "\","
+                                        + "\"estimateNumber\":\"" + escapeJson(estimateNumber) + "\","
+                                        + "\"companyName\":\"" + escapeJson(companyName) + "\","
+                                        + "\"totalAmount\":\"" + escapeJson(totalAmount) + "\","
+                                        + "\"receivedAmount\":\"" + escapeJson(receivedAmount) + "\","
+                                        + "\"approved\":" + approved + ","
+                                        + "\"remarks\":\"" + escapeJson(remarks) + "\","
+                                        + "\"actionBy\":\"" + escapeJson(approverName) + "\""
+                                        + "}"
+                        )
+                        .build()
+        );
+    }
+
+    private List<User> findAccountDepartmentApprovers() {
+        List<User> users = new ArrayList<>();
+
+        users.addAll(userRepository.findByDepartmentIgnoreCaseAndIsDeletedFalseAndIsActiveTrue("ACCOUNT"));
+
+        if (users.isEmpty()) {
+            users.addAll(userRepository.findByDepartmentIgnoreCaseAndIsDeletedFalseAndIsActiveTrue("ACCOUNTS"));
+        }
+
+        return users.stream()
+                .filter(Objects::nonNull)
+                .filter(user -> !user.isDeleted())
+                .filter(User::isActive)
+                .filter(user -> user.getId() != null)
+                .distinct()
+                .collect(Collectors.toList());
+    }
+
+    private String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"");
     }
 
     @Override
