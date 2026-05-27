@@ -20,6 +20,7 @@ public class OrganizationController {
 
     private final OrganizationService organizationService;
 
+
     @Operation(summary = "Create or update organization configuration (ADMIN only)")
     @ApiResponse(responseCode = "200", description = "Organization updated successfully")
     @PostMapping("/createOrganization")
