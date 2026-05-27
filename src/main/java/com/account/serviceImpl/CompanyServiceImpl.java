@@ -18,6 +18,9 @@ import com.account.dto.operationService.OperationContactRequestDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.feignClient.OperationFeignClient;
+import com.account.notification.NotificationPublisherService;
+import com.account.notification.dto.NotificationCreateRequestDto;
+import com.account.notification.dto.NotificationPriority;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
 import com.account.repository.ContactRepository;
@@ -39,7 +42,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -58,6 +63,9 @@ public class CompanyServiceImpl implements CompanyService {
     private ContactRepository contactRepository;
 
     private final OperationFeignClient operationFeignClient;
+
+    @Autowired
+    private  NotificationPublisherService notificationPublisherService;
 
 
 
@@ -229,8 +237,140 @@ public class CompanyServiceImpl implements CompanyService {
             }
         }
 
-        companyRepository.save(company);
-        return mapToResponseDto(company);
+        Company savedCompany = companyRepository.save(company);
+
+        /*
+         * Send notification for company and unit approval
+         * only after full details are successfully updated.
+         */
+        pushCompanyApprovalRequiredNotification(savedCompany, updatedById);
+
+        return mapToResponseDto(savedCompany);
+    }
+
+    private void pushCompanyApprovalRequiredNotification(
+            Company company,
+            Long updatedById
+    ) {
+        if (company == null || company.getId() == null) {
+            return;
+        }
+
+        User updatedBy = null;
+
+        if (updatedById != null) {
+            updatedBy = userRepository.findById(updatedById).orElse(null);
+        }
+
+        List<User> approvalUsers = findCompanyApprovalUsers();
+
+        if (approvalUsers == null || approvalUsers.isEmpty()) {
+            logger.warn("Company approval notification skipped because no approval users found. companyId={}",
+                    company.getId());
+            return;
+        }
+
+        String updatedByName = getUserDisplayName(updatedBy);
+
+        String companyName = company.getName() != null
+                ? company.getName()
+                : "company";
+
+        String companyNumber = "COMPANY-" + company.getId();
+
+        String unitSummary = buildUnitSummary(company);
+
+        for (User receiver : approvalUsers) {
+            if (receiver == null || receiver.getId() == null) {
+                continue;
+            }
+
+            notificationPublisherService.sendNotification(
+                    NotificationCreateRequestDto.builder()
+                            .receiverId(receiver.getId())
+                            .actorId(updatedBy != null ? updatedBy.getId() : null)
+                            .actorName(updatedByName)
+                            .module(NotificationCreateRequestDto.NotificationModule.COMPANY)
+                            .eventType(NotificationCreateRequestDto.NotificationEventType.COMPANY_APPROVAL_REQUIRED)
+                            .referenceId(company.getId())
+                            .referenceNumber(companyNumber)
+                            .title("Company with Unit Approval Required")
+                            .message(updatedByName + " updated full details for " + companyName + ". Please review company and unit details.")
+                            .redirectUrl("/companies/" + company.getId())
+                            .priority(NotificationPriority.HIGH)
+                            .displayType(NotificationCreateRequestDto.NotificationDisplayType.WARNING)
+                            .metadataJson(
+                                    "{"
+                                            + "\"companyId\":" + company.getId() + ","
+                                            + "\"companyName\":\"" + escapeJson(companyName) + "\","
+                                            + "\"companyNumber\":\"" + escapeJson(companyNumber) + "\","
+                                            + "\"updatedBy\":\"" + escapeJson(updatedByName) + "\","
+                                            + "\"unitSummary\":\"" + escapeJson(unitSummary) + "\""
+                                            + "}"
+                            )
+                            .build()
+            );
+        }
+    }
+
+    private String getUserDisplayName(User user) {
+        if (user == null) {
+            return "System";
+        }
+
+        if (user.getFullName() != null && !user.getFullName().trim().isEmpty()) {
+            return user.getFullName().trim();
+        }
+
+        if (user.getEmail() != null && !user.getEmail().trim().isEmpty()) {
+            return user.getEmail().trim();
+        }
+
+        return "User";
+    }
+
+    private String escapeJson(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"");
+    }
+
+    private String buildUnitSummary(Company company) {
+        if (company == null || company.getUnits() == null || company.getUnits().isEmpty()) {
+            return "";
+        }
+
+        return company.getUnits()
+                .stream()
+                .filter(Objects::nonNull)
+                .map(unit -> unit.getUnitName() != null ? unit.getUnitName() : "Unit-" + unit.getId())
+                .collect(Collectors.joining(", "));
+    }
+
+    private List<User> findCompanyApprovalUsers() {
+        List<User> users = new ArrayList<>();
+
+        users.addAll(userRepository.findByDepartmentIgnoreCaseAndIsDeletedFalseAndIsActiveTrue("ACCOUNT"));
+
+        if (users.isEmpty()) {
+            users.addAll(userRepository.findByDepartmentIgnoreCaseAndIsDeletedFalseAndIsActiveTrue("ACCOUNTS"));
+        }
+
+        if (users.isEmpty()) {
+            users.addAll(userRepository.findByDepartmentIgnoreCaseAndIsDeletedFalseAndIsActiveTrue("ADMIN"));
+        }
+
+        return users.stream()
+                .filter(Objects::nonNull)
+                .filter(user -> !user.isDeleted())
+                .filter(User::isActive)
+                .filter(user -> user.getId() != null)
+                .distinct()
+                .collect(Collectors.toList());
     }
 
     @Override
