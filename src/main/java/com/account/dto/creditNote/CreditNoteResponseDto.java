@@ -15,6 +15,7 @@ public class CreditNoteResponseDto {
     private Long id;
 
     private String creditNoteNumber;
+
     private Long proposalId;
 
     private Long unbilledId;
