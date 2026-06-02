@@ -79,8 +79,15 @@ public class CreditNote {
     @Column(name = "outstanding_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal outstandingAmount;
 
+    @Column(name = "credit_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal creditAmount;
+
     @Column(name = "refund_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal refundAmount;
+
+
+    private BigDecimal utilizedCreditAmount;  // Amount already used in future invoices
+    private BigDecimal remainingCreditAmount; // Balance still available
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)

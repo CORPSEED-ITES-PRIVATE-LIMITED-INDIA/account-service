@@ -89,9 +89,9 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 ? request.getRefundAmount()
                 : receivedAmount;
 
-        if (refundAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (refundAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException(
-                    "Refund amount must be greater than zero",
+                    "Refund amount cannot be negative",
                     "ERR_INVALID_REFUND_AMOUNT"
             );
         }
@@ -103,6 +103,8 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                     "ERR_REFUND_EXCEEDS_RECEIVED_AMOUNT"
             );
         }
+
+        BigDecimal creditAmount = receivedAmount.subtract(refundAmount);
 
         Estimate estimate = unbilled.getEstimate();
         Company company = unbilled.getCompany();
@@ -122,6 +124,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 .receivedAmount(receivedAmount)
                 .currentReceivedAmount(currentReceivedAmount)
                 .outstandingAmount(outstandingAmount)
+                .creditAmount(creditAmount)
                 .refundAmount(refundAmount)
                 .status(CreditNoteStatus.PENDING)
                 .reason(request.getReason())
@@ -487,6 +490,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 .currentReceivedAmount(creditNote.getCurrentReceivedAmount())
                 .outstandingAmount(creditNote.getOutstandingAmount())
                 .refundAmount(creditNote.getRefundAmount())
+                .creditAmount(creditNote.getCreditAmount())
                 .status(creditNote.getStatus())
                 .reason(creditNote.getReason())
                 .approvalRemarks(creditNote.getApprovalRemarks())

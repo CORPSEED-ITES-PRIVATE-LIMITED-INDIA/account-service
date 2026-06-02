@@ -42,6 +42,7 @@ public class CreditNoteResponseDto {
     private BigDecimal outstandingAmount;
 
     private BigDecimal refundAmount;
+    private BigDecimal creditAmount;
 
     private CreditNoteStatus status;
 
