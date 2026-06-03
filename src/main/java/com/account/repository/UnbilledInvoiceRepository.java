@@ -47,13 +47,15 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     long countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(Long createdById, Long approvedById, UnbilledStatus status);
 
     @Query("""
-    SELECT u FROM UnbilledInvoice u
-    LEFT JOIN u.company c
-    WHERE u.isCancelled = false 
-      AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
-      AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
-    ORDER BY u.createdAt DESC
-""")
+        SELECT u
+        FROM UnbilledInvoice u
+        LEFT JOIN u.company c
+        LEFT JOIN u.estimate e
+        WHERE u.isCancelled = false
+          AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
+          AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+          AND (:estimateNumber IS NULL OR LOWER(e.estimateNumber) LIKE LOWER(CONCAT('%', :estimateNumber, '%')))
+        """)
     Page<UnbilledInvoice> searchUnbilledInvoicesAndIsCancelledFalse(
             @Param("unbilledNumber") String unbilledNumber,
             @Param("companyName") String companyName,
@@ -61,14 +63,19 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             Pageable pageable
     );
     @Query("""
-        SELECT COUNT(u) FROM UnbilledInvoice u
+        SELECT COUNT(u)
+        FROM UnbilledInvoice u
         LEFT JOIN u.company c
-        WHERE u.isCancelled = false AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
-        AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+        LEFT JOIN u.estimate e
+        WHERE u.isCancelled = false
+          AND (:unbilledNumber IS NULL OR LOWER(u.unbilledNumber) LIKE LOWER(CONCAT('%', :unbilledNumber, '%')))
+          AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+          AND (:estimateNumber IS NULL OR LOWER(e.estimateNumber) LIKE LOWER(CONCAT('%', :estimateNumber, '%')))
         """)
     long countSearchUnbilledInvoicesAndIsCancelledFalse(
             @Param("unbilledNumber") String unbilledNumber,
-            @Param("companyName") String companyName
+            @Param("companyName") String companyName,
+            @Param("estimateNumber") String estimateNumber
     );
 
 

@@ -1678,7 +1678,8 @@ public class PaymentServiceImpl implements PaymentService {
 
         long totalCount = unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
                 unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
-                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
+                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null,
+                estimateNumber != null && !estimateNumber.trim().isEmpty() ? estimateNumber.trim() : null
         );
 
         for (UnbilledInvoiceSummaryDto dto : dtos) {
@@ -1694,7 +1695,8 @@ public class PaymentServiceImpl implements PaymentService {
 
         return unbilledInvoiceRepository.countSearchUnbilledInvoicesAndIsCancelledFalse(
                 unbilledNumber != null && !unbilledNumber.trim().isEmpty() ? unbilledNumber.trim() : null,
-                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null
+                companyName != null && !companyName.trim().isEmpty() ? companyName.trim() : null,
+                null
         );
     }
 
