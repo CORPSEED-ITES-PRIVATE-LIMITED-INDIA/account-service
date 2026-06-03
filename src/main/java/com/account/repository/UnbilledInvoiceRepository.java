@@ -57,6 +57,7 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     Page<UnbilledInvoice> searchUnbilledInvoicesAndIsCancelledFalse(
             @Param("unbilledNumber") String unbilledNumber,
             @Param("companyName") String companyName,
+            @Param("estimateNumber") String estimateNumber,
             Pageable pageable
     );
     @Query("""

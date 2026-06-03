@@ -58,8 +58,8 @@ public interface OperationFeignClient {
 
 
     // ============================================================
-// PROCUREMENT PURCHASE ORDER APIs
-// ============================================================
+    // PROCUREMENT PURCHASE ORDER APIs
+    // ============================================================
 
     @GetMapping("/operationService/api/purchase-orders")
     ResponseEntity<?> getProcurementPurchaseOrders(
@@ -84,8 +84,8 @@ public interface OperationFeignClient {
 
 
     // ============================================================
-// PROCUREMENT PAYMENT REQUEST APIs
-// ============================================================
+    // PROCUREMENT PAYMENT REQUEST APIs
+    // ============================================================
 
     @GetMapping("/operationService/api/procurement-payment-requests")
     ResponseEntity<?> getProcurementPaymentRequests(
