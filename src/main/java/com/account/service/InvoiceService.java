@@ -34,4 +34,18 @@ public interface InvoiceService {
 	InvoiceDetailDto getInvoiceByInvoiceNumber(String invoiceNumber, Long requestingUserId);
 
 	TaxationReportDto taxationReport(TaxationReportRequest request);
+
+	List<InvoiceSummaryDto> getInvoicesByUnbilled(
+			Long userId,
+			Long unbilledId,
+			InvoiceStatus status,
+			int page,
+			int size
+	);
+
+	long countInvoicesByUnbilled(
+			Long userId,
+			Long unbilledId,
+			InvoiceStatus status
+	);
 }

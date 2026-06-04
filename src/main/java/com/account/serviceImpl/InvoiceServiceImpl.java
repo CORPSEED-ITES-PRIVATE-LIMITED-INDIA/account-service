@@ -1148,6 +1148,110 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return predicates;
 	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<InvoiceSummaryDto> getInvoicesByUnbilled(
+			Long userId,
+			Long unbilledId,
+			InvoiceStatus status,
+			int page,
+			int size
+	) {
+		if (userId == null || userId <= 0) {
+			throw new ValidationException(
+					"Valid userId is required",
+					"ERR_INVALID_USER_ID",
+					"userId"
+			);
+		}
+
+		User requestingUser = userRepository.findById(userId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"User not found with ID: " + userId,
+						"USER_NOT_FOUND",
+						"User",
+						userId
+				));
+
+		boolean isAdmin = isAdminUser(requestingUser);
+
+		/*
+		 * ADMIN:
+		 * visibleUserId = null means no user filter, so admin sees all invoices.
+		 *
+		 * NORMAL USER:
+		 * visibleUserId = userId means only invoices linked with unbilled.createdBy
+		 * or unbilled.approvedBy will be visible.
+		 */
+		Long visibleUserId = isAdmin ? null : userId;
+
+		Pageable pageable = PageRequest.of(
+				page,
+				size,
+				Sort.by(Sort.Direction.DESC, "createdAt")
+		);
+
+		Page<Invoice> pageResult = invoiceRepository.findInvoicesByUnbilledAndUserAccess(
+				visibleUserId,
+				unbilledId,
+				status,
+				pageable
+		);
+
+		return pageResult.getContent()
+				.stream()
+				.map(this::toSummaryDto)
+				.collect(Collectors.toList());
+	}
+
+
+	@Override
+	@Transactional(readOnly = true)
+	public long countInvoicesByUnbilled(
+			Long userId,
+			Long unbilledId,
+			InvoiceStatus status
+	) {
+		if (userId == null || userId <= 0) {
+			throw new ValidationException(
+					"Valid userId is required",
+					"ERR_INVALID_USER_ID",
+					"userId"
+			);
+		}
+
+		User requestingUser = userRepository.findById(userId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"User not found with ID: " + userId,
+						"USER_NOT_FOUND",
+						"User",
+						userId
+				));
+
+		boolean isAdmin = isAdminUser(requestingUser);
+
+		Long visibleUserId = isAdmin ? null : userId;
+
+		return invoiceRepository.countInvoicesByUnbilledAndUserAccess(
+				visibleUserId,
+				unbilledId,
+				status
+		);
+	}
+
+
+	private boolean isAdminUser(User user) {
+		return user.getUserRole() != null
+				&& user.getUserRole()
+				.stream()
+				.anyMatch(role ->
+						role != null
+								&& role.getName() != null
+								&& "ADMIN".equalsIgnoreCase(role.getName())
+				);
+	}
+
 	private List<Predicate> buildTdsTaxationPredicates(
 			TaxationReportRequest request,
 			CriteriaBuilder cb,

@@ -134,4 +134,47 @@ public class InvoiceController {
     ) {
         return ResponseEntity.ok(invoiceService.taxationReport(request));
     }
+
+    @GetMapping("/by-unbilled")
+    @Operation(
+            summary = "Get invoices by user and unbilled invoice",
+            description = "ADMIN can view all invoices. Normal user can view only invoices linked with their own unbilled invoices."
+    )
+    public ResponseEntity<List<InvoiceSummaryDto>> getInvoicesByUnbilled(
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long unbilledId,
+            @RequestParam(value = "status", required = false) InvoiceStatus status,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        List<InvoiceSummaryDto> invoices = invoiceService.getInvoicesByUnbilled(
+                userId,
+                unbilledId,
+                status,
+                page - 1,
+                size
+        );
+
+        return ResponseEntity.ok(invoices);
+    }
+
+
+    @GetMapping("/by-unbilled/count")
+    @Operation(
+            summary = "Get count of invoices by user and unbilled invoice",
+            description = "ADMIN count will include all invoices. Normal user count will include only own unbilled-linked invoices."
+    )
+    public ResponseEntity<Long> countInvoicesByUnbilled(
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long unbilledId,
+            @RequestParam(value = "status", required = false) InvoiceStatus status
+    ) {
+        return ResponseEntity.ok(
+                invoiceService.countInvoicesByUnbilled(userId, unbilledId, status)
+        );
+    }
 }
