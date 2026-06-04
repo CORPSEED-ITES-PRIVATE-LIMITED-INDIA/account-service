@@ -25,6 +25,9 @@ public class CreditNoteResponseDto {
     private Long estimateId;
 
     private String estimateNumber;
+    private String attachment;
+
+
 
     private Long companyId;
 

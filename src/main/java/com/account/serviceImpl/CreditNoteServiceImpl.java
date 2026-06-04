@@ -481,30 +481,44 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         return CreditNoteResponseDto.builder()
                 .id(creditNote.getId())
                 .creditNoteNumber(creditNote.getCreditNoteNumber())
-                .proposalId(creditNote.getEstimate().getProposalId())
+
+                .proposalId(estimate != null ? estimate.getProposalId() : null)
+
                 .unbilledId(unbilled != null ? unbilled.getId() : null)
                 .unbilledNumber(creditNote.getUnbilledNumber())
+
                 .estimateId(estimate != null ? estimate.getId() : null)
                 .estimateNumber(creditNote.getEstimateNumber())
+
                 .companyId(company != null ? company.getId() : null)
                 .companyName(creditNote.getCompanyName())
+
                 .contactId(contact != null ? contact.getId() : null)
                 .contactName(creditNote.getContactName())
+
+                .attachment(creditNote.getAttachment())
+
                 .totalAmount(creditNote.getTotalAmount())
                 .receivedAmount(creditNote.getReceivedAmount())
                 .currentReceivedAmount(creditNote.getCurrentReceivedAmount())
                 .outstandingAmount(creditNote.getOutstandingAmount())
                 .refundAmount(creditNote.getRefundAmount())
-                .creditAmount(creditNote.getCreditAmount())                .status(creditNote.getStatus())
+                .creditAmount(creditNote.getCreditAmount())
+
+                .status(creditNote.getStatus())
                 .reason(creditNote.getReason())
                 .approvalRemarks(creditNote.getApprovalRemarks())
+
                 .createdById(creditNote.getCreatedBy() != null ? creditNote.getCreatedBy().getId() : null)
                 .approvedById(creditNote.getApprovedBy() != null ? creditNote.getApprovedBy().getId() : null)
+
                 .createdAt(creditNote.getCreatedAt())
                 .approvedAt(creditNote.getApprovedAt())
+
                 .rejectionReason(creditNote.getRejectionReason())
                 .rejectedById(creditNote.getRejectedBy() != null ? creditNote.getRejectedBy().getId() : null)
                 .rejectedAt(creditNote.getRejectedAt())
+
                 .updatedAt(creditNote.getUpdatedAt())
                 .invoices(invoiceDtos)
                 .build();
