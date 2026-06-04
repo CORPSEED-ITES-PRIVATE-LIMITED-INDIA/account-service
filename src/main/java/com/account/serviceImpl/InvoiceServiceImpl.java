@@ -1154,7 +1154,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 	public List<InvoiceSummaryDto> getInvoicesByUnbilled(
 			Long userId,
 			Long unbilledId,
-			InvoiceStatus status,
 			int page,
 			int size
 	) {
@@ -1166,7 +1165,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
-
 		User requestingUser = userRepository.findById(userId)
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"User not found with ID: " + userId,
@@ -1177,14 +1175,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		boolean isAdmin = isAdminUser(requestingUser);
 
-		/*
-		 * ADMIN:
-		 * visibleUserId = null means no user filter, so admin sees all invoices.
-		 *
-		 * NORMAL USER:
-		 * visibleUserId = userId means only invoices linked with unbilled.createdBy
-		 * or unbilled.approvedBy will be visible.
-		 */
 		Long visibleUserId = isAdmin ? null : userId;
 
 		Pageable pageable = PageRequest.of(
@@ -1196,7 +1186,6 @@ public class InvoiceServiceImpl implements InvoiceService {
 		Page<Invoice> pageResult = invoiceRepository.findInvoicesByUnbilledAndUserAccess(
 				visibleUserId,
 				unbilledId,
-				status,
 				pageable
 		);
 
@@ -1211,8 +1200,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 	@Transactional(readOnly = true)
 	public long countInvoicesByUnbilled(
 			Long userId,
-			Long unbilledId,
-			InvoiceStatus status
+			Long unbilledId
 	) {
 		if (userId == null || userId <= 0) {
 			throw new ValidationException(
@@ -1236,8 +1224,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return invoiceRepository.countInvoicesByUnbilledAndUserAccess(
 				visibleUserId,
-				unbilledId,
-				status
+				unbilledId
 		);
 	}
 

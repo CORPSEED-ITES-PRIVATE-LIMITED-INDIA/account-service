@@ -85,48 +85,43 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
 
 
     @Query("""
-            SELECT i
-            FROM Invoice i
-            JOIN i.unbilledInvoice u
-            LEFT JOIN u.createdBy cb
-            LEFT JOIN u.approvedBy ab
-            WHERE i.isCancelled = false
-              AND u.isCancelled = false
-              AND (:status IS NULL OR i.status = :status)
-              AND (:unbilledId IS NULL OR u.id = :unbilledId)
-              AND (
-                    :visibleUserId IS NULL
-                    OR cb.id = :visibleUserId
-                    OR ab.id = :visibleUserId
-                  )
-            """)
+        SELECT i
+        FROM Invoice i
+        JOIN i.unbilledInvoice u
+        LEFT JOIN u.createdBy cb
+        LEFT JOIN u.approvedBy ab
+        WHERE i.isCancelled = false
+          AND u.isCancelled = false
+          AND (:unbilledId IS NULL OR u.id = :unbilledId)
+          AND (
+                :visibleUserId IS NULL
+                OR cb.id = :visibleUserId
+                OR ab.id = :visibleUserId
+              )
+        """)
     Page<Invoice> findInvoicesByUnbilledAndUserAccess(
             @Param("visibleUserId") Long visibleUserId,
             @Param("unbilledId") Long unbilledId,
-            @Param("status") InvoiceStatus status,
             Pageable pageable
     );
 
-
     @Query("""
-            SELECT COUNT(i)
-            FROM Invoice i
-            JOIN i.unbilledInvoice u
-            LEFT JOIN u.createdBy cb
-            LEFT JOIN u.approvedBy ab
-            WHERE i.isCancelled = false
-              AND u.isCancelled = false
-              AND (:status IS NULL OR i.status = :status)
-              AND (:unbilledId IS NULL OR u.id = :unbilledId)
-              AND (
-                    :visibleUserId IS NULL
-                    OR cb.id = :visibleUserId
-                    OR ab.id = :visibleUserId
-                  )
-            """)
+        SELECT COUNT(i)
+        FROM Invoice i
+        JOIN i.unbilledInvoice u
+        LEFT JOIN u.createdBy cb
+        LEFT JOIN u.approvedBy ab
+        WHERE i.isCancelled = false
+          AND u.isCancelled = false
+          AND (:unbilledId IS NULL OR u.id = :unbilledId)
+          AND (
+                :visibleUserId IS NULL
+                OR cb.id = :visibleUserId
+                OR ab.id = :visibleUserId
+              )
+        """)
     long countInvoicesByUnbilledAndUserAccess(
             @Param("visibleUserId") Long visibleUserId,
-            @Param("unbilledId") Long unbilledId,
-            @Param("status") InvoiceStatus status
+            @Param("unbilledId") Long unbilledId
     );
 }

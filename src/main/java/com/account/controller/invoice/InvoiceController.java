@@ -143,7 +143,6 @@ public class InvoiceController {
     public ResponseEntity<List<InvoiceSummaryDto>> getInvoicesByUnbilled(
             @RequestParam Long userId,
             @RequestParam(required = false) Long unbilledId,
-            @RequestParam(value = "status", required = false) InvoiceStatus status,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "size", defaultValue = "10") int size
     ) {
@@ -154,7 +153,6 @@ public class InvoiceController {
         List<InvoiceSummaryDto> invoices = invoiceService.getInvoicesByUnbilled(
                 userId,
                 unbilledId,
-                status,
                 page - 1,
                 size
         );
@@ -170,11 +168,10 @@ public class InvoiceController {
     )
     public ResponseEntity<Long> countInvoicesByUnbilled(
             @RequestParam Long userId,
-            @RequestParam(required = false) Long unbilledId,
-            @RequestParam(value = "status", required = false) InvoiceStatus status
+            @RequestParam(required = false) Long unbilledId
     ) {
         return ResponseEntity.ok(
-                invoiceService.countInvoicesByUnbilled(userId, unbilledId, status)
+                invoiceService.countInvoicesByUnbilled(userId, unbilledId)
         );
     }
 }

@@ -38,14 +38,11 @@ public interface InvoiceService {
 	List<InvoiceSummaryDto> getInvoicesByUnbilled(
 			Long userId,
 			Long unbilledId,
-			InvoiceStatus status,
 			int page,
 			int size
 	);
 
 	long countInvoicesByUnbilled(
 			Long userId,
-			Long unbilledId,
-			InvoiceStatus status
-	);
+			Long unbilledId);
 }
