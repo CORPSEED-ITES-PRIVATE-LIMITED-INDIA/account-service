@@ -133,6 +133,7 @@ public class UnbilledInvoiceController {
                 paymentService.searchUnbilledInvoices(
                         request.getUnbilledNumber(),
                         request.getCompanyName(),
+                        request.getEstimateNumber(),
                         normalizedPage,
                         size
                 );
