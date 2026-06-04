@@ -67,6 +67,10 @@ public class CreditNote {
     @Column(name = "contact_name")
     private String contactName;
 
+    @Column(name = "attachment")
+    private String attachment;
+
+
     @Column(name = "total_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal totalAmount;
 

@@ -123,6 +123,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 .totalAmount(totalAmount)
                 .receivedAmount(receivedAmount)
                 .currentReceivedAmount(currentReceivedAmount)
+                .attachment(request.getAttachment())
                 .outstandingAmount(outstandingAmount)
                 .creditAmount(creditAmount)
                 .refundAmount(refundAmount)
@@ -350,6 +351,10 @@ public class CreditNoteServiceImpl implements CreditNoteService {
 
         if (request.getCreatedByUserId() == null) {
             throw new ValidationException("createdByUserId is required", "ERR_CREATED_BY_REQUIRED");
+        }
+
+        if (request.getAttachment() == null) {
+            throw new ValidationException("Attachment file is required", "ERR_ATTACHMENT_REQUIRED");
         }
     }
 

@@ -16,6 +16,8 @@ public class CreateCreditNoteRefundRequestDto {
 
     private BigDecimal refundAmount;
 
+    private String attachment;
+
     private String reason;
 
     private List<Long> invoiceIds;
