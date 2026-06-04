@@ -105,6 +105,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             Pageable pageable
     );
 
+
     @Query("""
         SELECT COUNT(i)
         FROM Invoice i
