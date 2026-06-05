@@ -104,6 +104,56 @@ public class Invoice {
     @Column(name = "buyer_gstin", length = 15)
     private String buyerGstin;
 
+
+
+
+    // === Organization Snapshot Details ===
+// Saved at invoice generation time so old invoices do not change
+// if organization profile/address changes later.
+
+    @Column(name = "organization_name", length = 255)
+    private String organizationName;
+
+    @Column(name = "organization_address_line1", length = 255)
+    private String organizationAddressLine1;
+
+    @Column(name = "organization_address_line2", length = 255)
+    private String organizationAddressLine2;
+
+    @Column(name = "organization_city", length = 100)
+    private String organizationCity;
+
+    @Column(name = "organization_state", length = 100)
+    private String organizationState;
+
+    @Column(name = "organization_country", length = 100)
+    private String organizationCountry;
+
+    @Column(name = "organization_pin_code", length = 20)
+    private String organizationPinCode;
+
+    @Column(name = "organization_gst_no", length = 50)
+    private String organizationGstNo;
+
+    @Column(name = "organization_pan_no", length = 50)
+    private String organizationPanNo;
+
+    @Column(name = "organization_cin_number", length = 21)
+    private String organizationCinNumber;
+
+    @Column(name = "organization_email", length = 100)
+    private String organizationEmail;
+
+    @Column(name = "organization_phone", length = 50)
+    private String organizationPhone;
+
+    @Column(name = "organization_website", length = 500)
+    private String organizationWebsite;
+
+    @Column(name = "organization_logo_url", length = 255)
+    private String organizationLogoUrl;
+
+
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by", updatable = false)

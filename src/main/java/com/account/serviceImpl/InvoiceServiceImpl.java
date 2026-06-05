@@ -85,6 +85,15 @@ public class InvoiceServiceImpl implements InvoiceService {
 		invoice.setSolutionId(estimate.getSolutionId());
 		invoice.setSolutionName(estimate.getSolutionName());
 
+		Organization organization = organizationRepository.findTopOrganization()
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Organization details not found. Please configure organization profile before generating invoice.",
+						"ORGANIZATION_NOT_FOUND"
+				));
+
+		copyOrganizationDetailsToInvoice(invoice, organization);
+
+
 		// Buyer GSTIN – always prefer unit-level if unit exists, fallback to null or company PAN if needed
 		String buyerGstin = null;
 
@@ -199,8 +208,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		// HEADER LEVEL GST SPLIT (IGST vs CGST/SGST)
 		// ==========================================
 		BigDecimal totalGst = safeMoney(invoice.getTotalGstAmount());
-		boolean igstApplicable = isIgstApplicable(unbilled);
-
+		boolean igstApplicable = isIgstApplicable(unbilled, organization);
 		if (igstApplicable) {
 			invoice.setIgstAmount(totalGst);
 			invoice.setCgstAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
@@ -235,17 +243,34 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return invoice;
 	}
 
+	private void copyOrganizationDetailsToInvoice(Invoice invoice, Organization organization) {
+		if (invoice == null || organization == null) {
+			return;
+		}
 
-	private boolean isIgstApplicable(UnbilledInvoice unbilled) {
-		Optional<Organization> organizationOpt = organizationRepository.findById(1L);
+		invoice.setOrganizationName(organization.getName());
+		invoice.setOrganizationAddressLine1(organization.getAddressLine1());
+		invoice.setOrganizationAddressLine2(organization.getAddressLine2());
+		invoice.setOrganizationCity(organization.getCity());
+		invoice.setOrganizationState(organization.getState());
+		invoice.setOrganizationCountry(organization.getCountry());
+		invoice.setOrganizationPinCode(organization.getPinCode());
+		invoice.setOrganizationGstNo(organization.getGstNo());
+		invoice.setOrganizationPanNo(organization.getPanNo());
+		invoice.setOrganizationCinNumber(organization.getCinNumber());
+		invoice.setOrganizationEmail(organization.getEmail());
+		invoice.setOrganizationPhone(organization.getPhone());
+		invoice.setOrganizationWebsite(organization.getWebsite());
+		invoice.setOrganizationLogoUrl(organization.getLogoUrl());
+	}
 
-		if (organizationOpt.isEmpty()) {
+
+	private boolean isIgstApplicable(UnbilledInvoice unbilled, Organization organization) {
+		if (organization == null) {
 			log.warn("Organization not found. Defaulting invoice {} to IGST logic.",
 					unbilled.getUnbilledNumber());
 			return true;
 		}
-
-		Organization organization = organizationOpt.get();
 
 		String orgState = organization.getState();
 		String unitState = unbilled.getUnit() != null ? unbilled.getUnit().getState() : null;
@@ -270,6 +295,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
 				: value.setScale(2, RoundingMode.HALF_UP);
 	}
+
+
 	@Override
 	public List<InvoiceSummaryDto> getInvoicesList(Long userId, InvoiceStatus status, int page, int size) {
 
@@ -392,6 +419,21 @@ public class InvoiceServiceImpl implements InvoiceService {
 						? inv.getCreatedBy().getFullName()
 						: inv.getCreatedBy().getEmail())
 						: null)
+
+				.organizationName(inv.getOrganizationName())
+				.organizationAddressLine1(inv.getOrganizationAddressLine1())
+				.organizationAddressLine2(inv.getOrganizationAddressLine2())
+				.organizationCity(inv.getOrganizationCity())
+				.organizationState(inv.getOrganizationState())
+				.organizationCountry(inv.getOrganizationCountry())
+				.organizationPinCode(inv.getOrganizationPinCode())
+				.organizationGstNo(inv.getOrganizationGstNo())
+				.organizationPanNo(inv.getOrganizationPanNo())
+				.organizationCinNumber(inv.getOrganizationCinNumber())
+				.organizationEmail(inv.getOrganizationEmail())
+				.organizationPhone(inv.getOrganizationPhone())
+				.organizationWebsite(inv.getOrganizationWebsite())
+				.organizationLogoUrl(inv.getOrganizationLogoUrl())
 
 				.createdAt(inv.getCreatedAt())
 				.build();
@@ -755,6 +797,21 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setUpdatedAt(invoice.getUpdatedAt());
 
 		dto.setLineItems(lineItems);
+
+		dto.setOrganizationName(invoice.getOrganizationName());
+		dto.setOrganizationAddressLine1(invoice.getOrganizationAddressLine1());
+		dto.setOrganizationAddressLine2(invoice.getOrganizationAddressLine2());
+		dto.setOrganizationCity(invoice.getOrganizationCity());
+		dto.setOrganizationState(invoice.getOrganizationState());
+		dto.setOrganizationCountry(invoice.getOrganizationCountry());
+		dto.setOrganizationPinCode(invoice.getOrganizationPinCode());
+		dto.setOrganizationGstNo(invoice.getOrganizationGstNo());
+		dto.setOrganizationPanNo(invoice.getOrganizationPanNo());
+		dto.setOrganizationCinNumber(invoice.getOrganizationCinNumber());
+		dto.setOrganizationEmail(invoice.getOrganizationEmail());
+		dto.setOrganizationPhone(invoice.getOrganizationPhone());
+		dto.setOrganizationWebsite(invoice.getOrganizationWebsite());
+		dto.setOrganizationLogoUrl(invoice.getOrganizationLogoUrl());
 
 		return dto;
 	}

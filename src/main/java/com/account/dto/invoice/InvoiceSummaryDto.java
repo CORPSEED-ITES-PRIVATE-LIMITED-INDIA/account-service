@@ -39,6 +39,23 @@ public class InvoiceSummaryDto {
     private String irn;
     private InvoiceStatus status;
 
+
+    private String organizationName;
+    private String organizationAddressLine1;
+    private String organizationAddressLine2;
+    private String organizationCity;
+    private String organizationState;
+    private String organizationCountry;
+    private String organizationPinCode;
+    private String organizationGstNo;
+    private String organizationPanNo;
+    private String organizationCinNumber;
+    private String organizationEmail;
+    private String organizationPhone;
+    private String organizationWebsite;
+    private String organizationLogoUrl;
+
+
     private String createdByName;
     private LocalDateTime createdAt;
     private LocalDateTime sentAt;
