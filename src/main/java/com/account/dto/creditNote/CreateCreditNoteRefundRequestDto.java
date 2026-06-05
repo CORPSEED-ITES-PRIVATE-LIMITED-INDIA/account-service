@@ -21,4 +21,5 @@ public class CreateCreditNoteRefundRequestDto {
     private String reason;
 
     private List<Long> invoiceIds;
+
 }
