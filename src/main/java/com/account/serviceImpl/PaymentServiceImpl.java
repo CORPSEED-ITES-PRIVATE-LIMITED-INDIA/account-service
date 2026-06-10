@@ -1620,21 +1620,59 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size) {
+    public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(
+            Long userId,
+            UnbilledStatus status,
+            int page,
+            int size
+    ) {
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
 
-        log.info("Fetching unbilled invoices list (paginated) | userId={}, status={}, page={}, size={}",
-                userId != null ? userId : "all",
-                status != null ? status : "all",
-                page + 1,
-                size);
+        Long filterUserId = userId;
 
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        if (isAccountAdmin(userId)) {
+            filterUserId = null;
+        }
 
-        Page<UnbilledInvoice> pageResult = unbilledInvoiceRepository.findUnbilledInvoices(userId, status, pageable);
+        Page<UnbilledInvoice> pageResult =
+                unbilledInvoiceRepository.findUnbilledInvoices(filterUserId, status, pageable);
 
-        return pageResult.getContent().stream()
+        return pageResult.getContent()
+                .stream()
                 .map(this::mapToSummaryDto)
                 .collect(Collectors.toList());
+    }
+
+
+    private boolean isAccountAdmin(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+
+        User user = userRepository.findByIdAndNotDeleted(userId)
+                .orElse(null);
+
+        if (user == null || !user.isActive()) {
+            return false;
+        }
+
+        boolean isAccountDepartment =
+                "ACCOUNT".equalsIgnoreCase(user.getDepartment())
+                        || "ACCOUNTS".equalsIgnoreCase(user.getDepartment());
+
+        boolean isAdminRole = user.getUserRole() != null
+                && user.getUserRole().stream()
+                .anyMatch(role ->
+                        role != null
+                                && !role.isDeleted()
+                                && "ADMIN".equalsIgnoreCase(role.getName())
+                );
+
+        return isAccountDepartment && isAdminRole;
     }
 
     @Override

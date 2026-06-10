@@ -25,9 +25,8 @@ public class CreditNoteResponseDto {
     private Long estimateId;
 
     private String estimateNumber;
+
     private String attachment;
-
-
 
     private Long companyId;
 
@@ -46,6 +45,7 @@ public class CreditNoteResponseDto {
     private BigDecimal outstandingAmount;
 
     private BigDecimal refundAmount;
+
     private BigDecimal creditAmount;
 
     private CreditNoteStatus status;

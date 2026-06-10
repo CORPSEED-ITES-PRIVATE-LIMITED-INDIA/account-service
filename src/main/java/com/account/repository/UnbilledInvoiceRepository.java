@@ -21,6 +21,7 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     Optional<UnbilledInvoice> findByEstimateAndIsCancelledFalse(Estimate estimate);
 
     Optional<UnbilledInvoice> findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(Estimate estimate);
+
     @Query("""
         SELECT u
         FROM UnbilledInvoice u
