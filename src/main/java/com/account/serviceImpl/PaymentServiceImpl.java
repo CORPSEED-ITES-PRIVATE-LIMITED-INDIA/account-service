@@ -1632,23 +1632,20 @@ public class PaymentServiceImpl implements PaymentService {
                 Sort.by(Sort.Direction.DESC, "createdAt")
         );
 
-        Long filterUserId = userId;
+        Long applicableUserId = hasUnrestrictedUnbilledInvoiceAccess(userId)
+                ? null
+                : userId;
 
-        if (isAccountAdmin(userId)) {
-            filterUserId = null;
-        }
+        Page<UnbilledInvoice> unbilledInvoicePage =
+                unbilledInvoiceRepository.findUnbilledInvoices(applicableUserId, status, pageable);
 
-        Page<UnbilledInvoice> pageResult =
-                unbilledInvoiceRepository.findUnbilledInvoices(filterUserId, status, pageable);
-
-        return pageResult.getContent()
+        return unbilledInvoicePage.getContent()
                 .stream()
                 .map(this::mapToSummaryDto)
                 .collect(Collectors.toList());
     }
 
-
-    private boolean isAccountAdmin(Long userId) {
+    private boolean hasUnrestrictedUnbilledInvoiceAccess(Long userId) {
         if (userId == null) {
             return false;
         }
@@ -1660,20 +1657,31 @@ public class PaymentServiceImpl implements PaymentService {
             return false;
         }
 
-        boolean isAccountDepartment =
-                "ACCOUNT".equalsIgnoreCase(user.getDepartment())
-                        || "ACCOUNTS".equalsIgnoreCase(user.getDepartment());
+        return belongsToAccountsDepartment(user) || hasAdminRole(user);
+    }
 
-        boolean isAdminRole = user.getUserRole() != null
+    private boolean belongsToAccountsDepartment(User user) {
+        return user.getDepartment() != null
+                && (
+                "ACCOUNT".equalsIgnoreCase(user.getDepartment().trim())
+                        || "ACCOUNTS".equalsIgnoreCase(user.getDepartment().trim())
+        );
+    }
+
+    private boolean hasAdminRole(User user) {
+        return user.getUserRole() != null
                 && user.getUserRole().stream()
                 .anyMatch(role ->
                         role != null
                                 && !role.isDeleted()
-                                && "ADMIN".equalsIgnoreCase(role.getName())
+                                && role.getName() != null
+                                && "ADMIN".equalsIgnoreCase(role.getName().trim())
                 );
-
-        return isAccountDepartment && isAdminRole;
     }
+
+
+
+
 
     @Override
     public long getUnbilledInvoicesCount(Long userId, UnbilledStatus status) {
