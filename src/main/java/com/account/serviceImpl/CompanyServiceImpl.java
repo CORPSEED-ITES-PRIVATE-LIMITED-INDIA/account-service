@@ -190,63 +190,233 @@ public class CompanyServiceImpl implements CompanyService {
     public CompanyResponseDto updateFullCompanyDetails(Long companyId, CompanyRequestDto dto, Long updatedById) {
 
         Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
-                .orElseThrow(() -> new ResourceNotFoundException("Company not found", "ERR_COMPANY_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Company not found",
+                        "ERR_COMPANY_NOT_FOUND"
+                ));
 
         User updatedBy = userRepository.findByIdAndNotDeleted(updatedById)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found", "ERR_USER_NOT_FOUND"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found",
+                        "ERR_USER_NOT_FOUND"
+                ));
 
-        if (StringUtils.hasText(dto.getName()))
+        boolean isAdmin = isAdminUser(updatedBy);
+
+        boolean companyApproved =
+                company.isAccountsApproved()
+                        || company.getOnboardingStatus() == OnboardingStatus.APPROVED;
+
+        /*
+         * RULE:
+         * If company is already APPROVED, only ADMIN can update it.
+         * Even ADMIN update must NOT change company status to INITIATED.
+         */
+        if (companyApproved && !isAdmin) {
+            throw new ValidationException(
+                    "Company is already APPROVED. Only ADMIN can update approved company details.",
+                    "ERR_ONLY_ADMIN_CAN_UPDATE_APPROVED_COMPANY"
+            );
+        }
+
+        OnboardingStatus originalCompanyStatus = company.getOnboardingStatus();
+        boolean originalCompanyAccountsApproved = company.isAccountsApproved();
+        User originalCompanyAccountsReviewedBy = company.getAccountsReviewedBy();
+        LocalDateTime originalCompanyAccountsReviewedAt = company.getAccountsReviewedAt();
+        String originalCompanyAccountsRemark = company.getAccountsRemark();
+
+        // ==================== COMPANY FIELD UPDATE ====================
+
+        if (StringUtils.hasText(dto.getName())) {
             company.setName(dto.getName().trim());
+        }
 
-        if (StringUtils.hasText(dto.getPanNo()))
+        if (StringUtils.hasText(dto.getPanNo())) {
             company.setPanNo(dto.getPanNo().trim().toUpperCase());
+        }
 
-        company.setEstablishDate(dto.getEstablishDate());
-        company.setIndustry(dto.getIndustry());
-        company.setSubIndustry(dto.getSubIndustry());
-        company.setPaymentTerm(dto.getPaymentTerm());
-        company.setAggrementPresent(Boolean.TRUE.equals(dto.getAggrementPresent()));
-        company.setAggrement(dto.getAggrement());
-        company.setNdaPresent(Boolean.TRUE.equals(dto.getNdaPresent()));
-        company.setNda(dto.getNda());
-        company.setRevenue(dto.getRevenue());
+        if (dto.getEstablishDate() != null) {
+            company.setEstablishDate(dto.getEstablishDate());
+        }
+
+        if (StringUtils.hasText(dto.getIndustry())) {
+            company.setIndustry(dto.getIndustry().trim());
+        }
+
+        if (StringUtils.hasText(dto.getSubIndustry())) {
+            company.setSubIndustry(dto.getSubIndustry().trim());
+        }
+
+
+        if (dto.getPaymentTerm() != null) {
+            company.setPaymentTerm(dto.getPaymentTerm());
+        }
+
+        if (dto.getAggrementPresent() != null) {
+            company.setAggrementPresent(Boolean.TRUE.equals(dto.getAggrementPresent()));
+        }
+
+        if (dto.getAggrement() != null) {
+            company.setAggrement(dto.getAggrement());
+        }
+
+        if (dto.getNdaPresent() != null) {
+            company.setNdaPresent(Boolean.TRUE.equals(dto.getNdaPresent()));
+        }
+
+        if (dto.getNda() != null) {
+            company.setNda(dto.getNda());
+        }
+
+        if (dto.getRevenue() != null) {
+            company.setRevenue(dto.getRevenue());
+        }
+
         company.setUpdatedBy(updatedBy);
         company.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
-        company.setOnboardingStatus(OnboardingStatus.INITIATED);
 
-        if (dto.getUnits() != null) {
+        // ==================== UNIT UPDATE ====================
+
+        if (dto.getUnits() != null && !dto.getUnits().isEmpty()) {
+
             for (CompanyUnitFullRequestDto u : dto.getUnits()) {
+
+                if (u.getId() == null) {
+                    throw new ValidationException(
+                            "Unit ID is required for update",
+                            "ERR_UNIT_ID_REQUIRED"
+                    );
+                }
 
                 CompanyUnit unit = companyUnitRepository
                         .findByIdAndCompanyIdAndIsDeletedFalse(u.getId(), companyId)
-                        .orElseThrow(() -> new ValidationException("Unit not found", "ERR_UNIT_NOT_FOUND"));
+                        .orElseThrow(() -> new ValidationException(
+                                "Unit not found",
+                                "ERR_UNIT_NOT_FOUND"
+                        ));
 
-                unit.setUnitName(u.getUnitName());
-                unit.setAddressLine1(u.getAddressLine1());
-                unit.setAddressLine2(u.getAddressLine2());
-                unit.setCity(u.getCity());
-                unit.setState(u.getState());
-                unit.setCountry(u.getCountry());
-                unit.setPinCode(u.getPinCode());
-                unit.setGstNo(u.getGstNo());
-                unit.setUnitOpeningDate(u.getUnitOpeningDate());
+                boolean unitApproved =
+                        unit.isAccountsApproved()
+                                || unit.getOnboardingStatus() == OnboardingStatus.APPROVED;
+
+                /*
+                 * RULE:
+                 * If unit is already APPROVED, only ADMIN can update it.
+                 * Even ADMIN update must NOT change unit status to INITIATED.
+                 */
+                if (unitApproved && !isAdmin) {
+                    throw new ValidationException(
+                            "Unit '" + unit.getUnitName() + "' is already APPROVED. Only ADMIN can update approved unit.",
+                            "ERR_ONLY_ADMIN_CAN_UPDATE_APPROVED_UNIT"
+                    );
+                }
+
+                OnboardingStatus originalUnitStatus = unit.getOnboardingStatus();
+                boolean originalUnitAccountsApproved = unit.isAccountsApproved();
+                User originalUnitAccountsReviewedBy = unit.getAccountsReviewedBy();
+                LocalDateTime originalUnitAccountsReviewedAt = unit.getAccountsReviewedAt();
+                String originalUnitAccountsRemark = unit.getAccountsRemark();
+
+                if (StringUtils.hasText(u.getUnitName())) {
+                    unit.setUnitName(u.getUnitName().trim());
+                }
+
+                if (u.getAddressLine1() != null) {
+                    unit.setAddressLine1(u.getAddressLine1());
+                }
+
+                if (u.getAddressLine2() != null) {
+                    unit.setAddressLine2(u.getAddressLine2());
+                }
+
+                if (u.getCity() != null) {
+                    unit.setCity(u.getCity());
+                }
+
+                if (u.getState() != null) {
+                    unit.setState(u.getState());
+                }
+
+                if (u.getCountry() != null) {
+                    unit.setCountry(u.getCountry());
+                }
+
+                if (u.getPinCode() != null) {
+                    unit.setPinCode(u.getPinCode());
+                }
+
+                if (u.getGstNo() != null) {
+                    unit.setGstNo(u.getGstNo());
+                }
+
+                if (u.getUnitOpeningDate() != null) {
+                    unit.setUnitOpeningDate(u.getUnitOpeningDate());
+                }
+
                 unit.setUpdatedBy(updatedBy);
                 unit.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
-                unit.setOnboardingStatus(OnboardingStatus.INITIATED);
 
+                /*
+                 * Status handling for unit:
+                 * Approved unit keeps original approval status.
+                 * Non-approved unit moves to INITIATED after edit.
+                 */
+                if (unitApproved) {
+                    unit.setOnboardingStatus(originalUnitStatus);
+                    unit.setAccountsApproved(originalUnitAccountsApproved);
+                    unit.setAccountsReviewedBy(originalUnitAccountsReviewedBy);
+                    unit.setAccountsReviewedAt(originalUnitAccountsReviewedAt);
+                    unit.setAccountsRemark(originalUnitAccountsRemark);
+                } else {
+                    unit.setOnboardingStatus(OnboardingStatus.INITIATED);
+                    unit.setAccountsApproved(false);
+                }
+
+                companyUnitRepository.save(unit);
             }
+        }
+
+        /*
+         * Status handling for company:
+         * Approved company keeps original approval status.
+         * Non-approved company moves to INITIATED after edit.
+         */
+        if (companyApproved) {
+            company.setOnboardingStatus(originalCompanyStatus);
+            company.setAccountsApproved(originalCompanyAccountsApproved);
+            company.setAccountsReviewedBy(originalCompanyAccountsReviewedBy);
+            company.setAccountsReviewedAt(originalCompanyAccountsReviewedAt);
+            company.setAccountsRemark(originalCompanyAccountsRemark);
+        } else {
+            company.setOnboardingStatus(OnboardingStatus.INITIATED);
+            company.setAccountsApproved(false);
         }
 
         Company savedCompany = companyRepository.save(company);
 
         /*
-         * Send notification for company and unit approval
-         * only after full details are successfully updated.
+         * Send approval notification only when company is NOT already approved.
+         * Approved company updated by ADMIN should not go for approval again.
          */
-        pushCompanyApprovalRequiredNotification(savedCompany, updatedById);
+        if (!companyApproved) {
+            pushCompanyApprovalRequiredNotification(savedCompany, updatedById);
+        }
 
         return mapToResponseDto(savedCompany);
     }
+
+    private boolean isAdminUser(User user) {
+
+        if (user == null || user.getRole() == null || user.getRole().isEmpty()) {
+            return false;
+        }
+
+        return user.getRole()
+                .stream()
+                .filter(Objects::nonNull)
+                .anyMatch(role -> "ADMIN".equalsIgnoreCase(role.trim()));
+    }
+
 
     private void pushCompanyApprovalRequiredNotification(
             Company company,
