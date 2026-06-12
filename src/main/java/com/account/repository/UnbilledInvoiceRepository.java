@@ -3,15 +3,14 @@ package com.account.repository;
 import com.account.domain.UnbilledInvoice;
 import com.account.domain.UnbilledStatus;
 import com.account.domain.estimate.Estimate;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -45,7 +44,11 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
 
     long countByStatusAndIsCancelledFalse(UnbilledStatus status);
 
-    long countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(Long createdById, Long approvedById, UnbilledStatus status);
+    long countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(
+            Long createdById,
+            Long approvedById,
+            UnbilledStatus status
+    );
 
     @Query("""
         SELECT u
@@ -63,6 +66,7 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             @Param("estimateNumber") String estimateNumber,
             Pageable pageable
     );
+
     @Query("""
         SELECT COUNT(u)
         FROM UnbilledInvoice u
@@ -79,20 +83,79 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
             @Param("estimateNumber") String estimateNumber
     );
 
-
     List<UnbilledInvoice> findByEstimateIdInAndIsCancelledFalse(List<Long> estimateIds);
 
     /**
      * Find Unbilled Invoice by Unbilled Number using Native Query
      */
     @Query(value = """
-    SELECT * FROM unbilled_invoice 
-    WHERE unbilled_number = :unbilledNumber 
-      AND is_cancelled = false 
-    LIMIT 1
-    """,
+        SELECT * FROM unbilled_invoice 
+        WHERE unbilled_number = :unbilledNumber 
+          AND is_cancelled = false 
+        LIMIT 1
+        """,
             nativeQuery = true)
-    Optional<UnbilledInvoice> findByUnbilledNumberAndIsCancelledFalse(@Param("unbilledNumber") String unbilledNumber);
+    Optional<UnbilledInvoice> findByUnbilledNumberAndIsCancelledFalse(
+            @Param("unbilledNumber") String unbilledNumber
+    );
 
+    /**
+     * Report API query:
+     * Filter unbilled invoices by userId, status, fromDate and toDate.
+     *
+     * Date filter is based on createdAt.
+     */
+    @Query("""
+    SELECT u
+    FROM UnbilledInvoice u
+    WHERE u.isCancelled = false
 
+      AND (:userId IS NULL
+            OR u.createdBy.id = :userId
+            OR u.approvedBy.id = :userId)
+
+      AND (:createdByUserId IS NULL
+            OR u.createdBy.id = :createdByUserId)
+
+      AND (:status IS NULL OR u.status = :status)
+
+      AND (:fromDateTime IS NULL OR u.createdAt >= :fromDateTime)
+
+      AND (:toDateTime IS NULL OR u.createdAt < :toDateTime)
+
+    ORDER BY u.createdAt DESC
+    """)
+    List<UnbilledInvoice> findUnbilledReport(
+            @Param("userId") Long userId,
+            @Param("createdByUserId") Long createdByUserId,
+            @Param("status") UnbilledStatus status,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+    @Query("""
+    SELECT COUNT(u)
+    FROM UnbilledInvoice u
+    WHERE u.isCancelled = false
+
+      AND (:userId IS NULL
+            OR u.createdBy.id = :userId
+            OR u.approvedBy.id = :userId)
+
+      AND (:createdByUserId IS NULL
+            OR u.createdBy.id = :createdByUserId)
+
+      AND (:status IS NULL OR u.status = :status)
+
+      AND (:fromDateTime IS NULL OR u.createdAt >= :fromDateTime)
+
+      AND (:toDateTime IS NULL OR u.createdAt < :toDateTime)
+    """)
+    long countUnbilledReport(
+            @Param("userId") Long userId,
+            @Param("createdByUserId") Long createdByUserId,
+            @Param("status") UnbilledStatus status,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
 }

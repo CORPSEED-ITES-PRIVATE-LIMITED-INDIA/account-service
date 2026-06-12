@@ -17,10 +17,14 @@ import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -28,6 +32,8 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.Date;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -302,6 +308,199 @@ public class UnbilledServiceImpl implements UnbilledService {
     }
 
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<UnbilledInvoiceSummaryDto> getUnbilledReport(
+            Long userId,
+            Long createdByUserId,
+            UnbilledStatus status,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new IllegalArgumentException("fromDate cannot be after toDate");
+        }
+
+        Long applicableUserId = hasUnrestrictedUnbilledInvoiceAccess(userId)
+                ? null
+                : userId;
+
+        LocalDateTime fromDateTime = fromDate != null
+                ? fromDate.atStartOfDay()
+                : null;
+
+        LocalDateTime toDateTime = toDate != null
+                ? toDate.plusDays(1).atStartOfDay()
+                : null;
+
+        List<UnbilledInvoice> unbilledInvoices =
+                unbilledInvoiceRepository.findUnbilledReport(
+                        applicableUserId,
+                        createdByUserId,
+                        status,
+                        fromDateTime,
+                        toDateTime
+                );
+
+        long totalCount = unbilledInvoiceRepository.countUnbilledReport(
+                applicableUserId,
+                createdByUserId,
+                status,
+                fromDateTime,
+                toDateTime
+        );
+
+        List<UnbilledInvoiceSummaryDto> list = unbilledInvoices
+                .stream()
+                .map(this::mapToSummaryDtoForReport)
+                .collect(Collectors.toList());
+
+        for (UnbilledInvoiceSummaryDto dto : list) {
+            dto.setSearchCount(totalCount);
+        }
+
+        return list;
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public long getUnbilledReportCount(
+            Long userId,
+            Long createdByUserId,
+            UnbilledStatus status,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new IllegalArgumentException("fromDate cannot be after toDate");
+        }
+
+        Long applicableUserId = hasUnrestrictedUnbilledInvoiceAccess(userId)
+                ? null
+                : userId;
+
+        LocalDateTime fromDateTime = fromDate != null
+                ? fromDate.atStartOfDay()
+                : null;
+
+        LocalDateTime toDateTime = toDate != null
+                ? toDate.plusDays(1).atStartOfDay()
+                : null;
+
+        return unbilledInvoiceRepository.countUnbilledReport(
+                applicableUserId,
+                createdByUserId,
+                status,
+                fromDateTime,
+                toDateTime
+        );
+    }
+
+    private boolean hasUnrestrictedUnbilledInvoiceAccess(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+
+        User user = userRepository.findById(userId).orElse(null);
+
+        if (user == null || !user.isActive() || user.isDeleted()) {
+            return false;
+        }
+
+        return belongsToAccountsDepartment(user) || hasAdminRole(user);
+    }
+
+    private boolean belongsToAccountsDepartment(User user) {
+        return user.getDepartment() != null
+                && (
+                "ACCOUNT".equalsIgnoreCase(user.getDepartment().trim())
+                        || "ACCOUNTS".equalsIgnoreCase(user.getDepartment().trim())
+        );
+    }
+
+    private boolean hasAdminRole(User user) {
+        return user.getUserRole() != null
+                && user.getUserRole().stream()
+                .anyMatch(role ->
+                        role != null
+                                && !role.isDeleted()
+                                && role.getName() != null
+                                && "ADMIN".equalsIgnoreCase(role.getName().trim())
+                );
+    }
+
+    private UnbilledInvoiceSummaryDto mapToSummaryDtoForReport(UnbilledInvoice unbilled) {
+        UnbilledInvoiceSummaryDto dto = new UnbilledInvoiceSummaryDto();
+
+        dto.setId(unbilled.getId());
+        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+
+        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
+
+        Estimate estimate = unbilled.getEstimate();
+        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+        dto.setEstimateId(estimate != null ? estimate.getId() : null);
+        dto.setSolutionId(estimate != null ? estimate.getSolutionId() : null);
+        dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
+        dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
+
+        Company company = unbilled.getCompany();
+        dto.setCompanyName(company != null ? company.getName() : null);
+
+        Contact contact = unbilled.getContact();
+        dto.setContactName(contact != null ? contact.getName() : null);
+        dto.setEmails(contact != null ? contact.getEmails() : null);
+        dto.setContactNo(contact != null ? contact.getContactNo() : null);
+
+        CompanyUnit unit = unbilled.getUnit();
+        if (unit != null) {
+            dto.setAddressLine1(unit.getAddressLine1());
+            dto.setAddressLine2(unit.getAddressLine2());
+            dto.setCity(unit.getCity());
+            dto.setState(unit.getState());
+            dto.setCountry(unit.getCountry() != null ? unit.getCountry() : "India");
+            dto.setPinCode(unit.getPinCode());
+            dto.setGstNo(unit.getGstNo());
+        }
+
+        if (unbilled.getPayments() != null && !unbilled.getPayments().isEmpty()) {
+            PaymentReceipt receipt = unbilled.getPayments().get(0);
+
+            if (receipt.getPaymentType() != null) {
+                dto.setPaymentTypeId(receipt.getPaymentType().getId());
+                dto.setPaymentTypeCode(receipt.getPaymentType().getCode());
+            }
+        }
+
+        dto.setTotalAmount(unbilled.getTotalAmount());
+        dto.setReceivedAmount(unbilled.getReceivedAmount());
+        dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
+        dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+
+        dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
+        dto.setTdsActiveFlag(unbilled.isTdsActive());
+
+        dto.setStatus(unbilled.getStatus());
+        dto.setCreatedAt(unbilled.getCreatedAt());
+        dto.setApprovedAt(unbilled.getApprovedAt());
+
+        User createdBy = unbilled.getCreatedBy();
+        dto.setCreatedByName(getUserDisplayName(createdBy));
+
+        User approvedBy = unbilled.getApprovedBy();
+        dto.setApprovedByName(getUserDisplayName(approvedBy));
+
+        dto.setName(
+                estimate != null && estimate.getSolutionName() != null
+                        ? estimate.getSolutionName()
+                        : (company != null ? company.getName() + " - Project" : "Unnamed Project")
+        );
+
+        return dto;
+    }
+
 
     private String generateProjectNumber() {
         String dateTimePart = LocalDateTime.now()
@@ -356,13 +555,12 @@ public class UnbilledServiceImpl implements UnbilledService {
             log.info("Project successfully created in operation-service | projectNo={}", projectDto.getProjectNo());
 
         } catch (Error error) {
-            // ❗ DO NOT break main transaction (invoice approval)
+            //  DO NOT break main transaction (invoice approval)
             log.error("Failed to create project in operation-service | unbilled={} | error={}",
                     unbilled.getUnbilledNumber(), error.getMessage(), error);
 
             throw error;
 
-            // Optional: push to retry queue / event / dead-letter
         }
     }
 

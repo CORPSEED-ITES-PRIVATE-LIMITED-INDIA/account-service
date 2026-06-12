@@ -8,6 +8,7 @@ import com.account.dto.payment.TdsResponseDto;
 import com.account.dto.unbilled.*;
 import com.account.exception.ResourceNotFoundException;
 import com.account.service.PaymentService;
+import com.account.service.UnbilledService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -19,11 +20,13 @@ import jakarta.validation.ValidationException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Tag(name = "Unbilled Invoices", description = "Operations related to unbilled / proforma / advance invoices (approval flow for accounts team)")
@@ -34,6 +37,8 @@ import java.util.List;
 public class UnbilledInvoiceController {
 
     private final PaymentService paymentService;
+
+    private final UnbilledService unbilledService;
 
     // ────────────────────────────────────────────────
     //  Approve unbilled invoice (usually done by Accounts)
@@ -264,6 +269,99 @@ public class UnbilledInvoiceController {
 
         UnbilledInvoiceDetailDto dto = paymentService.getUnbilledInvoiceByNumber(unbilledNumber, userId);
         return ResponseEntity.ok(dto);
+    }
+
+    @Operation(
+            summary = "Get unbilled invoice report",
+            description = "Returns unbilled invoices filtered by userId, createdByUserId, status, fromDate and toDate."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Report returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid report filter parameters", content = @Content)
+    })
+    @GetMapping("/report")
+    public ResponseEntity<List<UnbilledInvoiceSummaryDto>> getUnbilledReport(
+            @RequestParam(value = "userId", required = false)
+            @Parameter(description = "Logged-in/requesting user ID. Example: Praveen account user ID") Long userId,
+
+            @RequestParam(value = "createdByUserId", required = false)
+            @Parameter(description = "Filter by user who created the unbilled invoice. Example: Dhruv/Rahul/Rajeev user ID") Long createdByUserId,
+
+            @RequestParam(value = "status", required = false)
+            @Parameter(description = "Filter by unbilled invoice status") UnbilledStatus status,
+
+            @RequestParam(value = "fromDate", required = false)
+            @Parameter(description = "Report start date in yyyy-MM-dd format") String fromDate,
+
+            @RequestParam(value = "toDate", required = false)
+            @Parameter(description = "Report end date in yyyy-MM-dd format") String toDate
+    ) {
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        List<UnbilledInvoiceSummaryDto> response =
+                unbilledService.getUnbilledReport(
+                        userId,
+                        createdByUserId,
+                        status,
+                        parsedFromDate,
+                        parsedToDate
+                );
+
+        return ResponseEntity.ok(response);
+    }
+    @Operation(
+            summary = "Get unbilled invoice report count",
+            description = "Returns total count of unbilled invoices matching userId, createdByUserId, status, fromDate and toDate filters."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Report count returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid report filter parameters", content = @Content)
+    })
+    @GetMapping("/report/count")
+    public ResponseEntity<Long> getUnbilledReportCount(
+            @RequestParam(value = "userId", required = false)
+            @Parameter(description = "Logged-in/requesting user ID. Example: Praveen account user ID") Long userId,
+
+            @RequestParam(value = "createdByUserId", required = false)
+            @Parameter(description = "Filter by user who created the unbilled invoice. Example: Dhruv/Rahul/Rajeev user ID") Long createdByUserId,
+
+            @RequestParam(value = "status", required = false)
+            @Parameter(description = "Filter by unbilled invoice status") UnbilledStatus status,
+
+            @RequestParam(value = "fromDate", required = false)
+            @Parameter(description = "Report start date in yyyy-MM-dd format") String fromDate,
+
+            @RequestParam(value = "toDate", required = false)
+            @Parameter(description = "Report end date in yyyy-MM-dd format") String toDate
+    ) {
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        long count = unbilledService.getUnbilledReportCount(
+                userId,
+                createdByUserId,
+                status,
+                parsedFromDate,
+                parsedToDate
+        );
+
+        return ResponseEntity.ok(count);
+    }
+
+
+    private LocalDate parseDate(String date, String fieldName) {
+        if (date == null || date.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return LocalDate.parse(date.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                    fieldName + " must be in yyyy-MM-dd format. Invalid value: " + date
+            );
+        }
     }
 
 }

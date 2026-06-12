@@ -1,11 +1,29 @@
 package com.account.service;
 
+import com.account.domain.UnbilledStatus;
+import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 
-import org.springframework.stereotype.Service;
+import java.time.LocalDate;
+import java.util.List;
 
-@Service
 public interface UnbilledService {
 
+    List<UnbilledInvoiceSummaryDto> getUnbilledReport(
+            Long userId,
+            Long createdByUserId,
+            UnbilledStatus status,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
+
+
+    long getUnbilledReportCount(
+            Long userId,
+            Long createdByUserId,
+            UnbilledStatus status,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
 
 
 }
