@@ -178,7 +178,7 @@ public class InvoiceController {
 
     @Operation(
             summary = "Get invoice report",
-            description = "Returns generated tax invoices filtered by userId, createdByUserId, status, fromDate and toDate. Page numbering starts from 1."
+            description = "Returns generated tax invoices filtered by userId, createdByUserId, status, fromDate and toDate."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Invoice report returned successfully"),
@@ -199,18 +199,8 @@ public class InvoiceController {
             String fromDate,
 
             @RequestParam(value = "toDate", required = false)
-            String toDate,
-
-            @RequestParam(value = "page", defaultValue = "1")
-            int page,
-
-            @RequestParam(value = "size", defaultValue = "10")
-            int size
+            String toDate
     ) {
-        if (page < 1 || size < 1) {
-            throw new IllegalArgumentException("page and size must be positive");
-        }
-
         LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
         LocalDate parsedToDate = parseDate(toDate, "toDate");
 
@@ -219,9 +209,7 @@ public class InvoiceController {
                 createdByUserId,
                 status,
                 parsedFromDate,
-                parsedToDate,
-                page - 1,
-                size
+                parsedToDate
         );
 
         return ResponseEntity.ok(response);

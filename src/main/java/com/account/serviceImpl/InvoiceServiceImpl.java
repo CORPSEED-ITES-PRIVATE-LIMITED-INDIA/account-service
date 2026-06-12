@@ -1400,9 +1400,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			Long createdByUserId,
 			InvoiceStatus status,
 			LocalDate fromDate,
-			LocalDate toDate,
-			int page,
-			int size
+			LocalDate toDate
 	) {
 		if (userId == null || userId <= 0) {
 			throw new ValidationException(
@@ -1420,22 +1418,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				? null
 				: userId;
 
-		Pageable pageable = PageRequest.of(
-				page,
-				size,
-				Sort.by(Sort.Direction.DESC, "createdAt")
-		);
-
-		Page<Invoice> invoicePage = invoiceRepository.findInvoiceReport(
-				visibleUserId,
-				createdByUserId,
-				status,
-				fromDate,
-				toDate,
-				pageable
-		);
-
-		long totalCount = invoiceRepository.countInvoiceReport(
+		List<Invoice> invoices = invoiceRepository.findInvoiceReport(
 				visibleUserId,
 				createdByUserId,
 				status,
@@ -1443,7 +1426,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 				toDate
 		);
 
-		return invoicePage.getContent()
+		long totalCount = invoices.size();
+
+		return invoices
 				.stream()
 				.map(invoice -> {
 					InvoiceSummaryDto dto = toSummaryDto(invoice);

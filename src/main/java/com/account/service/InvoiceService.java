@@ -53,9 +53,7 @@ public interface InvoiceService {
 			Long createdByUserId,
 			InvoiceStatus status,
 			LocalDate fromDate,
-			LocalDate toDate,
-			int page,
-			int size
+			LocalDate toDate
 	);
 
 	long getInvoiceReportCount(

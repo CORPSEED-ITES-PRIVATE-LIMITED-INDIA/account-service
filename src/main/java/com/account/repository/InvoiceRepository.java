@@ -146,14 +146,14 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
       AND (:status IS NULL OR i.status = :status)
       AND (:fromDate IS NULL OR i.invoiceDate >= :fromDate)
       AND (:toDate IS NULL OR i.invoiceDate <= :toDate)
+    ORDER BY i.createdAt DESC
 """)
-    Page<Invoice> findInvoiceReport(
+    List<Invoice> findInvoiceReport(
             @Param("visibleUserId") Long visibleUserId,
             @Param("createdByUserId") Long createdByUserId,
             @Param("status") InvoiceStatus status,
             @Param("fromDate") LocalDate fromDate,
-            @Param("toDate") LocalDate toDate,
-            Pageable pageable
+            @Param("toDate") LocalDate toDate
     );
 
     @Query("""
