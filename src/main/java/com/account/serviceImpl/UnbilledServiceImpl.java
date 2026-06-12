@@ -353,17 +353,16 @@ public class UnbilledServiceImpl implements UnbilledService {
                 toDateTime
         );
 
-        List<UnbilledInvoiceSummaryDto> list = unbilledInvoices
+        return unbilledInvoices
                 .stream()
-                .map(this::mapToSummaryDtoForReport)
+                .map(unbilled -> {
+                    UnbilledInvoiceSummaryDto dto = mapToSummaryDto(unbilled);
+                    dto.setSearchCount(totalCount);
+                    return dto;
+                })
                 .collect(Collectors.toList());
-
-        for (UnbilledInvoiceSummaryDto dto : list) {
-            dto.setSearchCount(totalCount);
-        }
-
-        return list;
     }
+
 
 
     @Override
