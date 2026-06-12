@@ -89,7 +89,7 @@ public class UnbilledInvoiceController {
         }
 
         List<UnbilledInvoiceSummaryDto> list =
-                paymentService.getUnbilledInvoicesList(userId, status, page - 1, size);
+                unbilledService.getUnbilledInvoicesList(userId, status, page - 1, size);
 
         return ResponseEntity.ok(list);
     }

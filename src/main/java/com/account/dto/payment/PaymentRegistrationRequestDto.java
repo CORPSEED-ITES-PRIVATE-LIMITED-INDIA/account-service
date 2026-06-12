@@ -28,6 +28,9 @@ public class PaymentRegistrationRequestDto {
     @NotBlank(message = "Transaction reference is required")
     private String transactionReference;
 
+    @NotBlank(message = "Payment proof is required")
+    private String paymentProof;
+
     // PO Payment Terms
     // Required only when payment type = PURCHASE_ORDER
     private Integer paymentTermsDays;

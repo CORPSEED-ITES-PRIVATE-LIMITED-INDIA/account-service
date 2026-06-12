@@ -294,6 +294,9 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setTransactionReference(request.getTransactionReference());
         receipt.setRemarks(request.getRemarks());
         receipt.setReceivedBy(salesperson);
+        receipt.setTransactionReference(request.getTransactionReference());
+        receipt.setPaymentProof(request.getPaymentProof());
+
 
         // EPR fields - saved only for product-related estimates (otherwise null)
         receipt.setEprFinancialYear(request.getEprFinancialYear());
@@ -1328,6 +1331,8 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
+
+
     private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
         Estimate estimate = unbilled.getEstimate();
 
@@ -1619,31 +1624,7 @@ public class PaymentServiceImpl implements PaymentService {
         return mapToDetailDto(unbilledInvoice);
     }
 
-    @Override
-    public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(
-            Long userId,
-            UnbilledStatus status,
-            int page,
-            int size
-    ) {
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by(Sort.Direction.DESC, "createdAt")
-        );
 
-        Long applicableUserId = hasUnrestrictedUnbilledInvoiceAccess(userId)
-                ? null
-                : userId;
-
-        Page<UnbilledInvoice> unbilledInvoicePage =
-                unbilledInvoiceRepository.findUnbilledInvoices(applicableUserId, status, pageable);
-
-        return unbilledInvoicePage.getContent()
-                .stream()
-                .map(this::mapToSummaryDto)
-                .collect(Collectors.toList());
-    }
 
     private boolean hasUnrestrictedUnbilledInvoiceAccess(Long userId) {
         if (userId == null) {

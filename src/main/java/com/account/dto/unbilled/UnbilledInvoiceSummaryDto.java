@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Getter
@@ -49,6 +50,14 @@ public class UnbilledInvoiceSummaryDto {
     private String pinCode;
     private String gstNo;
     private Long searchCount;
+
+    private Long paymentReceiptId;
+    private String paymentProof;
+    private String transactionReference;
+    private String paymentMode;
+    private LocalDate paymentDate;
+    private BigDecimal paymentAmount;
+    private String paymentStatus;
     private TdsResponseDto tdsResponseDto;
 
 }

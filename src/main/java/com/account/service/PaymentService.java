@@ -21,7 +21,6 @@ public interface PaymentService {
 
     UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(Long unbilledId, UnbilledInvoiceApprovalRequestDto request);
 
-    List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size);
 
     long getUnbilledInvoicesCount(Long userId, UnbilledStatus status);
 

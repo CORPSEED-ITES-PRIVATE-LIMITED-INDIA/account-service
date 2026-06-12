@@ -4,11 +4,11 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.dto.operationService.*;
+import com.account.dto.payment.TdsResponseDto;
 import com.account.dto.unbilled.*;
 import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.feignClient.OperationFeignClient;
-import com.account.notification.NotificationPublisherService;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
 import com.account.service.UnbilledService;
@@ -52,6 +52,9 @@ public class UnbilledServiceImpl implements UnbilledService {
     private final ContactRepository contactRepository;
     private final OperationFeignClient operationFeignClient;
     private final InvoiceRepository invoiceRepository;
+
+    private final TdsRegistrationRepository tdsRegistrationRepository;
+
 
     @Transactional
     public UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(
@@ -429,6 +432,184 @@ public class UnbilledServiceImpl implements UnbilledService {
                                 && "ADMIN".equalsIgnoreCase(role.getName().trim())
                 );
     }
+
+
+    @Override
+    public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(
+            Long userId,
+            UnbilledStatus status,
+            int page,
+            int size
+    ) {
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
+        Long applicableUserId = hasUnrestrictedUnbilledInvoiceAccess(userId)
+                ? null
+                : userId;
+
+        Page<UnbilledInvoice> unbilledInvoicePage =
+                unbilledInvoiceRepository.findUnbilledInvoices(applicableUserId, status, pageable);
+
+        return unbilledInvoicePage.getContent()
+                .stream()
+                .map(this::mapToSummaryDto)
+                .collect(Collectors.toList());
+    }
+
+    private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
+        UnbilledInvoiceSummaryDto dto = new UnbilledInvoiceSummaryDto();
+
+        dto.setId(unbilled.getId());
+        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
+
+        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
+
+        Estimate estimate = unbilled.getEstimate();
+        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+        dto.setEstimateId(estimate != null ? estimate.getId() : null);
+        dto.setSolutionId(estimate != null ? estimate.getSolutionId() : null);
+        dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
+        dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
+
+        Company company = unbilled.getCompany();
+        dto.setCompanyName(company != null ? company.getName() : null);
+
+        Contact contact = unbilled.getContact();
+        dto.setContactName(contact != null ? contact.getName() : null);
+        dto.setEmails(contact != null ? contact.getEmails() : null);
+        dto.setContactNo(contact != null ? contact.getContactNo() : null);
+
+        CompanyUnit unit = unbilled.getUnit();
+        if (unit != null) {
+            dto.setAddressLine1(unit.getAddressLine1());
+            dto.setAddressLine2(unit.getAddressLine2());
+            dto.setCity(unit.getCity());
+            dto.setState(unit.getState());
+            dto.setCountry(unit.getCountry() != null ? unit.getCountry() : "India");
+            dto.setPinCode(unit.getPinCode());
+            dto.setGstNo(unit.getGstNo());
+        }
+
+        // ==================== PAYMENT RECEIPT DETAILS ====================
+        PaymentReceipt receipt = getLatestActivePaymentReceipt(unbilled);
+
+        if (receipt != null) {
+            dto.setPaymentReceiptId(receipt.getId());
+
+            if (receipt.getPaymentType() != null) {
+                dto.setPaymentTypeId(receipt.getPaymentType().getId());
+                dto.setPaymentTypeCode(receipt.getPaymentType().getCode());
+            } else {
+                dto.setPaymentTypeId(null);
+                dto.setPaymentTypeCode(null);
+            }
+
+            dto.setPaymentProof(receipt.getPaymentProof());
+            dto.setTransactionReference(receipt.getTransactionReference());
+            dto.setPaymentMode(receipt.getPaymentMode());
+            dto.setPaymentDate(receipt.getPaymentDate());
+            dto.setPaymentAmount(receipt.getAmount());
+            dto.setPaymentStatus(receipt.getStatus() != null ? receipt.getStatus().name() : null);
+
+        } else {
+            dto.setPaymentReceiptId(null);
+            dto.setPaymentTypeId(null);
+            dto.setPaymentTypeCode(null);
+            dto.setPaymentProof(null);
+            dto.setTransactionReference(null);
+            dto.setPaymentMode(null);
+            dto.setPaymentDate(null);
+            dto.setPaymentAmount(null);
+            dto.setPaymentStatus(null);
+        }
+        // ================================================================
+
+        dto.setTotalAmount(unbilled.getTotalAmount());
+        dto.setReceivedAmount(unbilled.getReceivedAmount());
+        dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
+        dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+
+        dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
+        dto.setTdsActiveFlag(unbilled.isTdsActive());
+
+        dto.setStatus(unbilled.getStatus());
+        dto.setCreatedAt(unbilled.getCreatedAt());
+        dto.setApprovedAt(unbilled.getApprovedAt());
+
+        User createdBy = unbilled.getCreatedBy();
+        dto.setCreatedByName(getUserDisplayName(createdBy));
+
+        User approvedBy = unbilled.getApprovedBy();
+        dto.setApprovedByName(getUserDisplayName(approvedBy));
+
+        dto.setName(
+                estimate != null && estimate.getSolutionName() != null
+                        ? estimate.getSolutionName()
+                        : (company != null ? company.getName() + " - Project" : "Unnamed Project")
+        );
+
+        // ==================== TDS RESPONSE DTO ====================
+        if (Boolean.TRUE.equals(unbilled.isTdsActive())) {
+            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                    .ifPresent(tds -> {
+                        dto.setTdsResponseDto(mapToTdsResponseDtoForSummary(tds));
+                    });
+        } else {
+            dto.setTdsResponseDto(null);
+        }
+        // =========================================================
+
+        return dto;
+    }
+
+    private PaymentReceipt getLatestActivePaymentReceipt(UnbilledInvoice unbilled) {
+        if (unbilled == null || unbilled.getPayments() == null || unbilled.getPayments().isEmpty()) {
+            return null;
+        }
+
+        return unbilled.getPayments()
+                .stream()
+                .filter(payment -> !payment.isCancelled())
+                .max(
+                        Comparator
+                                .comparing(
+                                        PaymentReceipt::getCreatedAt,
+                                        Comparator.nullsFirst(Comparator.naturalOrder())
+                                )
+                                .thenComparing(
+                                        PaymentReceipt::getId,
+                                        Comparator.nullsFirst(Comparator.naturalOrder())
+                                )
+                )
+                .orElse(null);
+    }
+    private TdsResponseDto mapToTdsResponseDtoForSummary(TdsRegistration tds) {
+        if (tds == null) return null;
+
+        return TdsResponseDto.builder()
+                .id(tds.getId())
+                .publicUuid(tds.getPublicUuid())
+                .estimateId(tds.getEstimate() != null ? tds.getEstimate().getId() : null)
+                .estimateNumber(tds.getEstimate() != null ? tds.getEstimate().getEstimateNumber() : null)
+                .unbilledInvoiceId(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getId() : null)
+                .unbilledNumber(tds.getUnbilledInvoice() != null ? tds.getUnbilledInvoice().getUnbilledNumber() : null)
+                .tdsPercentage(tds.getTdsPercentage())
+                .taxableAmount(tds.getTaxableAmount())
+                .tdsAmount(tds.getTdsAmount())
+                .status(tds.getStatus())
+                .createdById(tds.getCreatedBy() != null ? tds.getCreatedBy().getId() : null)
+                .createdByName(getUserDisplayName(tds.getCreatedBy()))
+                .createdAt(tds.getCreatedAt())
+                .updatedAt(tds.getUpdatedAt())
+                .build();
+    }
+
+
 
     private UnbilledInvoiceSummaryDto mapToSummaryDtoForReport(UnbilledInvoice unbilled) {
         UnbilledInvoiceSummaryDto dto = new UnbilledInvoiceSummaryDto();

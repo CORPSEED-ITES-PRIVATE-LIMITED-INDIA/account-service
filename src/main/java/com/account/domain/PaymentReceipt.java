@@ -67,8 +67,8 @@ public class PaymentReceipt {
     private User receivedBy;
 
     // Future: Proof attachment (file path or S3 key)
-    @Column(length = 500)
-    private String proofDocumentUrl;
+    @Column(name = "payment_proof", length = 500)
+    private String paymentProof;
 
     @Column(length = 9)
     private String eprFinancialYear;
@@ -101,7 +101,6 @@ public class PaymentReceipt {
     @Column(length = 100)
     private String paymentTerms;             // e.g. "Net 90 Days", "Immediate"
 
-    // =====================================================================
 
 
 }

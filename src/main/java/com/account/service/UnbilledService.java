@@ -25,5 +25,6 @@ public interface UnbilledService {
             LocalDate toDate
     );
 
+    List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size);
 
 }
