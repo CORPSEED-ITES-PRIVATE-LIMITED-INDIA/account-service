@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Tag(name = "Invoices", description = "Operations for viewing generated tax invoices")
@@ -174,4 +175,109 @@ public class InvoiceController {
                 invoiceService.countInvoicesByUnbilled(userId, unbilledId)
         );
     }
+
+    @Operation(
+            summary = "Get invoice report",
+            description = "Returns generated tax invoices filtered by userId, createdByUserId, status, fromDate and toDate. Page numbering starts from 1."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invoice report returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid report filter parameters")
+    })
+    @GetMapping("/report")
+    public ResponseEntity<List<InvoiceSummaryDto>> getInvoiceReport(
+            @RequestParam(value = "userId")
+            Long userId,
+
+            @RequestParam(value = "createdByUserId", required = false)
+            Long createdByUserId,
+
+            @RequestParam(value = "status", required = false)
+            InvoiceStatus status,
+
+            @RequestParam(value = "fromDate", required = false)
+            String fromDate,
+
+            @RequestParam(value = "toDate", required = false)
+            String toDate,
+
+            @RequestParam(value = "page", defaultValue = "1")
+            int page,
+
+            @RequestParam(value = "size", defaultValue = "10")
+            int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        List<InvoiceSummaryDto> response = invoiceService.getInvoiceReport(
+                userId,
+                createdByUserId,
+                status,
+                parsedFromDate,
+                parsedToDate,
+                page - 1,
+                size
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "Get invoice report count",
+            description = "Returns count of invoices matching report filters."
+    )
+    @GetMapping("/report/count")
+    public ResponseEntity<Long> getInvoiceReportCount(
+            @RequestParam(value = "userId")
+            Long userId,
+
+            @RequestParam(value = "createdByUserId", required = false)
+            Long createdByUserId,
+
+            @RequestParam(value = "status", required = false)
+            InvoiceStatus status,
+
+            @RequestParam(value = "fromDate", required = false)
+            String fromDate,
+
+            @RequestParam(value = "toDate", required = false)
+            String toDate
+    ) {
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        return ResponseEntity.ok(
+                invoiceService.getInvoiceReportCount(
+                        userId,
+                        createdByUserId,
+                        status,
+                        parsedFromDate,
+                        parsedToDate
+                )
+        );
+    }
+
+    private LocalDate parseDate(String value, String fieldName) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException(fieldName + " must be in yyyy-MM-dd format");
+        }
+    }
+
+
+
+
+
+
+
 }

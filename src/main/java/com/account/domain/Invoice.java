@@ -105,12 +105,6 @@ public class Invoice {
     private String buyerGstin;
 
 
-
-
-    // === Organization Snapshot Details ===
-// Saved at invoice generation time so old invoices do not change
-// if organization profile/address changes later.
-
     @Column(name = "organization_name", length = 255)
     private String organizationName;
 

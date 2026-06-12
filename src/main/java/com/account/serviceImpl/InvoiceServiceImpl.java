@@ -1393,6 +1393,118 @@ public class InvoiceServiceImpl implements InvoiceService {
 		return predicates;
 	}
 
+	@Override
+	@Transactional(readOnly = true)
+	public List<InvoiceSummaryDto> getInvoiceReport(
+			Long userId,
+			Long createdByUserId,
+			InvoiceStatus status,
+			LocalDate fromDate,
+			LocalDate toDate,
+			int page,
+			int size
+	) {
+		if (userId == null || userId <= 0) {
+			throw new ValidationException(
+					"Valid userId is required",
+					"ERR_INVALID_USER_ID",
+					"userId"
+			);
+		}
+
+		if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+			throw new IllegalArgumentException("fromDate cannot be after toDate");
+		}
+
+		Long visibleUserId = hasUnrestrictedInvoiceReportAccess(userId)
+				? null
+				: userId;
+
+		Pageable pageable = PageRequest.of(
+				page,
+				size,
+				Sort.by(Sort.Direction.DESC, "createdAt")
+		);
+
+		Page<Invoice> invoicePage = invoiceRepository.findInvoiceReport(
+				visibleUserId,
+				createdByUserId,
+				status,
+				fromDate,
+				toDate,
+				pageable
+		);
+
+		long totalCount = invoiceRepository.countInvoiceReport(
+				visibleUserId,
+				createdByUserId,
+				status,
+				fromDate,
+				toDate
+		);
+
+		return invoicePage.getContent()
+				.stream()
+				.map(invoice -> {
+					InvoiceSummaryDto dto = toSummaryDto(invoice);
+					dto.setSearchCount(totalCount);
+					return dto;
+				})
+				.collect(Collectors.toList());
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public long getInvoiceReportCount(
+			Long userId,
+			Long createdByUserId,
+			InvoiceStatus status,
+			LocalDate fromDate,
+			LocalDate toDate
+	) {
+		if (userId == null || userId <= 0) {
+			throw new ValidationException(
+					"Valid userId is required",
+					"ERR_INVALID_USER_ID",
+					"userId"
+			);
+		}
+
+		if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+			throw new IllegalArgumentException("fromDate cannot be after toDate");
+		}
+
+		Long visibleUserId = hasUnrestrictedInvoiceReportAccess(userId)
+				? null
+				: userId;
+
+		return invoiceRepository.countInvoiceReport(
+				visibleUserId,
+				createdByUserId,
+				status,
+				fromDate,
+				toDate
+		);
+	}
+
+	private boolean hasUnrestrictedInvoiceReportAccess(Long userId) {
+		User user = userRepository.findById(userId).orElse(null);
+
+		if (user == null || !user.isActive() || user.isDeleted()) {
+			return false;
+		}
+
+		return belongsToAccountsDepartment(user) || isAdminUser(user);
+	}
+
+	private boolean belongsToAccountsDepartment(User user) {
+		return user.getDepartment() != null
+				&& (
+				"ACCOUNT".equalsIgnoreCase(user.getDepartment().trim())
+						|| "ACCOUNTS".equalsIgnoreCase(user.getDepartment().trim())
+		);
+	}
+
 
 
 }

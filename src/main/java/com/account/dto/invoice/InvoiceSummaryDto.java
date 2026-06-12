@@ -1,8 +1,10 @@
 package com.account.dto.invoice;
 
 import com.account.domain.InvoiceStatus;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -10,6 +12,8 @@ import java.time.LocalDateTime;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class InvoiceSummaryDto {
 
     private Long id;
@@ -39,7 +43,6 @@ public class InvoiceSummaryDto {
     private String irn;
     private InvoiceStatus status;
 
-
     private String organizationName;
     private String organizationAddressLine1;
     private String organizationAddressLine2;
@@ -55,8 +58,9 @@ public class InvoiceSummaryDto {
     private String organizationWebsite;
     private String organizationLogoUrl;
 
-
     private String createdByName;
     private LocalDateTime createdAt;
     private LocalDateTime sentAt;
+
+    private Long searchCount;
 }

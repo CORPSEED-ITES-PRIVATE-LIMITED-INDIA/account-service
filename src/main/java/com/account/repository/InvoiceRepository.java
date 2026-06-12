@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -124,5 +125,60 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
     long countInvoicesByUnbilledAndUserAccess(
             @Param("visibleUserId") Long visibleUserId,
             @Param("unbilledId") Long unbilledId
+    );
+
+
+
+    @Query("""
+    SELECT i
+    FROM Invoice i
+    LEFT JOIN i.unbilledInvoice u
+    LEFT JOIN u.createdBy unbilledCreatedBy
+    LEFT JOIN u.approvedBy unbilledApprovedBy
+    LEFT JOIN i.createdBy invoiceCreatedBy
+    WHERE i.isCancelled = false
+      AND (:visibleUserId IS NULL
+            OR invoiceCreatedBy.id = :visibleUserId
+            OR unbilledCreatedBy.id = :visibleUserId
+            OR unbilledApprovedBy.id = :visibleUserId
+          )
+      AND (:createdByUserId IS NULL OR unbilledCreatedBy.id = :createdByUserId)
+      AND (:status IS NULL OR i.status = :status)
+      AND (:fromDate IS NULL OR i.invoiceDate >= :fromDate)
+      AND (:toDate IS NULL OR i.invoiceDate <= :toDate)
+""")
+    Page<Invoice> findInvoiceReport(
+            @Param("visibleUserId") Long visibleUserId,
+            @Param("createdByUserId") Long createdByUserId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            Pageable pageable
+    );
+
+    @Query("""
+    SELECT COUNT(i)
+    FROM Invoice i
+    LEFT JOIN i.unbilledInvoice u
+    LEFT JOIN u.createdBy unbilledCreatedBy
+    LEFT JOIN u.approvedBy unbilledApprovedBy
+    LEFT JOIN i.createdBy invoiceCreatedBy
+    WHERE i.isCancelled = false
+      AND (:visibleUserId IS NULL
+            OR invoiceCreatedBy.id = :visibleUserId
+            OR unbilledCreatedBy.id = :visibleUserId
+            OR unbilledApprovedBy.id = :visibleUserId
+          )
+      AND (:createdByUserId IS NULL OR unbilledCreatedBy.id = :createdByUserId)
+      AND (:status IS NULL OR i.status = :status)
+      AND (:fromDate IS NULL OR i.invoiceDate >= :fromDate)
+      AND (:toDate IS NULL OR i.invoiceDate <= :toDate)
+""")
+    long countInvoiceReport(
+            @Param("visibleUserId") Long visibleUserId,
+            @Param("createdByUserId") Long createdByUserId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
     );
 }

@@ -8,6 +8,7 @@ import com.account.dto.invoice.InvoiceSummaryDto;
 import com.account.dto.taxation.TaxationReportDto;
 import com.account.dto.taxation.TaxationReportRequest;
 
+import java.time.LocalDate;
 import java.util.List;
 
 public interface InvoiceService {
@@ -45,4 +46,28 @@ public interface InvoiceService {
 	long countInvoicesByUnbilled(
 			Long userId,
 			Long unbilledId);
+
+
+	List<InvoiceSummaryDto> getInvoiceReport(
+			Long userId,
+			Long createdByUserId,
+			InvoiceStatus status,
+			LocalDate fromDate,
+			LocalDate toDate,
+			int page,
+			int size
+	);
+
+	long getInvoiceReportCount(
+			Long userId,
+			Long createdByUserId,
+			InvoiceStatus status,
+			LocalDate fromDate,
+			LocalDate toDate
+	);
+
+
+
+
+
 }
