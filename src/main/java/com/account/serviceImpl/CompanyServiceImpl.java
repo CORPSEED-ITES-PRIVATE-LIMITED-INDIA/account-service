@@ -201,23 +201,15 @@ public class CompanyServiceImpl implements CompanyService {
                         "ERR_USER_NOT_FOUND"
                 ));
 
-        boolean isAdmin = isAdminUser(updatedBy);
-
         boolean companyApproved =
                 company.isAccountsApproved()
                         || company.getOnboardingStatus() == OnboardingStatus.APPROVED;
 
         /*
          * RULE:
-         * If company is already APPROVED, only ADMIN can update it.
-         * Even ADMIN update must NOT change company status to INITIATED.
+         * Approved company can be updated by any user,
+         * but its approval status must NOT change.
          */
-        if (companyApproved && !isAdmin) {
-            throw new ValidationException(
-                    "Company is already APPROVED. Only ADMIN can update approved company details.",
-                    "ERR_ONLY_ADMIN_CAN_UPDATE_APPROVED_COMPANY"
-            );
-        }
 
         OnboardingStatus originalCompanyStatus = company.getOnboardingStatus();
         boolean originalCompanyAccountsApproved = company.isAccountsApproved();
@@ -246,7 +238,6 @@ public class CompanyServiceImpl implements CompanyService {
         if (StringUtils.hasText(dto.getSubIndustry())) {
             company.setSubIndustry(dto.getSubIndustry().trim());
         }
-
 
         if (dto.getPaymentTerm() != null) {
             company.setPaymentTerm(dto.getPaymentTerm());
@@ -301,15 +292,9 @@ public class CompanyServiceImpl implements CompanyService {
 
                 /*
                  * RULE:
-                 * If unit is already APPROVED, only ADMIN can update it.
-                 * Even ADMIN update must NOT change unit status to INITIATED.
+                 * Approved unit can be updated,
+                 * but its approval status must NOT change.
                  */
-                if (unitApproved && !isAdmin) {
-                    throw new ValidationException(
-                            "Unit '" + unit.getUnitName() + "' is already APPROVED. Only ADMIN can update approved unit.",
-                            "ERR_ONLY_ADMIN_CAN_UPDATE_APPROVED_UNIT"
-                    );
-                }
 
                 OnboardingStatus originalUnitStatus = unit.getOnboardingStatus();
                 boolean originalUnitAccountsApproved = unit.isAccountsApproved();
@@ -370,6 +355,9 @@ public class CompanyServiceImpl implements CompanyService {
                 } else {
                     unit.setOnboardingStatus(OnboardingStatus.INITIATED);
                     unit.setAccountsApproved(false);
+                    unit.setAccountsReviewedBy(null);
+                    unit.setAccountsReviewedAt(null);
+                    unit.setAccountsRemark(null);
                 }
 
                 companyUnitRepository.save(unit);
@@ -390,13 +378,16 @@ public class CompanyServiceImpl implements CompanyService {
         } else {
             company.setOnboardingStatus(OnboardingStatus.INITIATED);
             company.setAccountsApproved(false);
+            company.setAccountsReviewedBy(null);
+            company.setAccountsReviewedAt(null);
+            company.setAccountsRemark(null);
         }
 
         Company savedCompany = companyRepository.save(company);
 
         /*
          * Send approval notification only when company is NOT already approved.
-         * Approved company updated by ADMIN should not go for approval again.
+         * Approved company update should not go for approval again.
          */
         if (!companyApproved) {
             pushCompanyApprovalRequiredNotification(savedCompany, updatedById);
@@ -405,8 +396,8 @@ public class CompanyServiceImpl implements CompanyService {
         return mapToResponseDto(savedCompany);
     }
 
-    private boolean isAdminUser(User user) {
 
+    private boolean isAdminUser(User user) {
         if (user == null || user.getRole() == null || user.getRole().isEmpty()) {
             return false;
         }
@@ -416,7 +407,6 @@ public class CompanyServiceImpl implements CompanyService {
                 .filter(Objects::nonNull)
                 .anyMatch(role -> "ADMIN".equalsIgnoreCase(role.trim()));
     }
-
 
     private void pushCompanyApprovalRequiredNotification(
             Company company,
