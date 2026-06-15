@@ -397,17 +397,6 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
 
-    private boolean isAdminUser(User user) {
-        if (user == null || user.getRole() == null || user.getRole().isEmpty()) {
-            return false;
-        }
-
-        return user.getRole()
-                .stream()
-                .filter(Objects::nonNull)
-                .anyMatch(role -> "ADMIN".equalsIgnoreCase(role.trim()));
-    }
-
     private void pushCompanyApprovalRequiredNotification(
             Company company,
             Long updatedById

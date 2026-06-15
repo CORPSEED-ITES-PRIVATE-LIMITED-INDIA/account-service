@@ -27,6 +27,11 @@ public class UnbilledInvoiceSummaryDto {
     private Long paymentTypeId;
     private String paymentTypeCode;
     private String companyName;
+
+    private Long unitId;
+    private String unitName;
+    private String unitStatus;
+
     private String contactName;
     private BigDecimal totalAmount;
     private BigDecimal receivedAmount;
@@ -59,5 +64,7 @@ public class UnbilledInvoiceSummaryDto {
     private BigDecimal paymentAmount;
     private String paymentStatus;
     private TdsResponseDto tdsResponseDto;
+
+
 
 }

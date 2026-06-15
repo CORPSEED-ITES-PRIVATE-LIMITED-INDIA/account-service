@@ -485,6 +485,12 @@ public class UnbilledServiceImpl implements UnbilledService {
 
         CompanyUnit unit = unbilled.getUnit();
         if (unit != null) {
+
+            dto.setUnitId(unit.getId());
+            dto.setUnitName(unit.getUnitName());
+            dto.setUnitStatus(unit.getStatus());
+
+
             dto.setAddressLine1(unit.getAddressLine1());
             dto.setAddressLine2(unit.getAddressLine2());
             dto.setCity(unit.getCity());
@@ -606,79 +612,6 @@ public class UnbilledServiceImpl implements UnbilledService {
                 .createdAt(tds.getCreatedAt())
                 .updatedAt(tds.getUpdatedAt())
                 .build();
-    }
-
-
-
-    private UnbilledInvoiceSummaryDto mapToSummaryDtoForReport(UnbilledInvoice unbilled) {
-        UnbilledInvoiceSummaryDto dto = new UnbilledInvoiceSummaryDto();
-
-        dto.setId(unbilled.getId());
-        dto.setUnbilledNumber(unbilled.getUnbilledNumber());
-
-        dto.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
-        dto.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
-
-        Estimate estimate = unbilled.getEstimate();
-        dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
-        dto.setEstimateId(estimate != null ? estimate.getId() : null);
-        dto.setSolutionId(estimate != null ? estimate.getSolutionId() : null);
-        dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
-        dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
-
-        Company company = unbilled.getCompany();
-        dto.setCompanyName(company != null ? company.getName() : null);
-
-        Contact contact = unbilled.getContact();
-        dto.setContactName(contact != null ? contact.getName() : null);
-        dto.setEmails(contact != null ? contact.getEmails() : null);
-        dto.setContactNo(contact != null ? contact.getContactNo() : null);
-
-        CompanyUnit unit = unbilled.getUnit();
-        if (unit != null) {
-            dto.setAddressLine1(unit.getAddressLine1());
-            dto.setAddressLine2(unit.getAddressLine2());
-            dto.setCity(unit.getCity());
-            dto.setState(unit.getState());
-            dto.setCountry(unit.getCountry() != null ? unit.getCountry() : "India");
-            dto.setPinCode(unit.getPinCode());
-            dto.setGstNo(unit.getGstNo());
-        }
-
-        if (unbilled.getPayments() != null && !unbilled.getPayments().isEmpty()) {
-            PaymentReceipt receipt = unbilled.getPayments().get(0);
-
-            if (receipt.getPaymentType() != null) {
-                dto.setPaymentTypeId(receipt.getPaymentType().getId());
-                dto.setPaymentTypeCode(receipt.getPaymentType().getCode());
-            }
-        }
-
-        dto.setTotalAmount(unbilled.getTotalAmount());
-        dto.setReceivedAmount(unbilled.getReceivedAmount());
-        dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
-        dto.setOutstandingAmount(unbilled.getOutstandingAmount());
-
-        dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
-        dto.setTdsActiveFlag(unbilled.isTdsActive());
-
-        dto.setStatus(unbilled.getStatus());
-        dto.setCreatedAt(unbilled.getCreatedAt());
-        dto.setApprovedAt(unbilled.getApprovedAt());
-
-        User createdBy = unbilled.getCreatedBy();
-        dto.setCreatedByName(getUserDisplayName(createdBy));
-
-        User approvedBy = unbilled.getApprovedBy();
-        dto.setApprovedByName(getUserDisplayName(approvedBy));
-
-        dto.setName(
-                estimate != null && estimate.getSolutionName() != null
-                        ? estimate.getSolutionName()
-                        : (company != null ? company.getName() + " - Project" : "Unnamed Project")
-        );
-
-        return dto;
     }
 
 
