@@ -502,7 +502,7 @@ public class UnbilledServiceImpl implements UnbilledService {
 
             dto.setUnitId(unit.getId());
             dto.setUnitName(unit.getUnitName());
-            dto.setUnitStatus(unit.getStatus());
+            dto.setUnitStatus(unit.getOnboardingStatus().name());
 
 
             dto.setAddressLine1(unit.getAddressLine1());
