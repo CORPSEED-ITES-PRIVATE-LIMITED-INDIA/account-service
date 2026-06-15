@@ -476,7 +476,21 @@ public class UnbilledServiceImpl implements UnbilledService {
         dto.setLeadId(estimate != null ? estimate.getLeadId() : null);
 
         Company company = unbilled.getCompany();
-        dto.setCompanyName(company != null ? company.getName() : null);
+
+        if (company != null) {
+            dto.setCompanyId(company.getId());
+            dto.setCompanyName(company.getName());
+
+            dto.setCompanyStatus(
+                    company.getOnboardingStatus() != null
+                            ? company.getOnboardingStatus().name()
+                            : null
+            );
+        } else {
+            dto.setCompanyId(null);
+            dto.setCompanyName(null);
+            dto.setCompanyStatus(null);
+        }
 
         Contact contact = unbilled.getContact();
         dto.setContactName(contact != null ? contact.getName() : null);

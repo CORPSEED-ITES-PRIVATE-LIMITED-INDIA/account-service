@@ -26,7 +26,11 @@ public class UnbilledInvoiceSummaryDto {
     private Long estimateId;
     private Long paymentTypeId;
     private String paymentTypeCode;
+
+
     private String companyName;
+    private Long companyId;
+    private String companyStatus;
 
     private Long unitId;
     private String unitName;
