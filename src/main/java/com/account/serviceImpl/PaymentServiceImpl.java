@@ -784,19 +784,71 @@ public class PaymentServiceImpl implements PaymentService {
         Company company = unbilled.getCompany();
         CompanyUnit unit = unbilled.getUnit();
 
-        // 4. Determine approval eligibility
-        boolean companyApproved = company != null && company.getOnboardingStatus() == OnboardingStatus.APPROVED;
-        boolean unitApproved = unit == null || unit.getOnboardingStatus() == OnboardingStatus.APPROVED;
+// Normalize approval decision
+        String approvalDecision = request.getApprovalRemarks() != null
+                ? request.getApprovalRemarks().trim().toUpperCase()
+                : "";
 
-        // 5. Block approval if company is not approved
-        if (!companyApproved) {
-            String companyStatus = (company != null) ? company.getOnboardingStatus().toString() : "N/A";
-            throw new ApprovalBlockedException(
-                    "Company must be APPROVED before unbilled invoice approval. " +
-                            "Current status: " + companyStatus,
-                    companyApproved,
-                    unitApproved
+        if (!"APPROVED".equals(approvalDecision) && !"REJECTED".equals(approvalDecision)) {
+            throw new ValidationException(
+                    "Invalid approval decision. Allowed values are APPROVED or REJECTED",
+                    "ERR_INVALID_APPROVAL_DECISION",
+                    "approvalRemarks"
             );
+        }
+
+        /*
+         * Company and Unit approval validation should block only APPROVED flow.
+         * Rejection should still be allowed even if company/unit is pending.
+         */
+        if ("APPROVED".equals(approvalDecision)) {
+
+            boolean companyApproved =
+                    company != null
+                            && !company.isDeleted()
+                            && (
+                            company.isAccountsApproved()
+                                    || company.getOnboardingStatus() == OnboardingStatus.APPROVED
+                    );
+
+            boolean unitApproved =
+                    unit != null
+                            && !unit.isDeleted()
+                            && (
+                            unit.isAccountsApproved()
+                                    || unit.getOnboardingStatus() == OnboardingStatus.APPROVED
+                    );
+
+            if (!companyApproved || !unitApproved) {
+
+                String companyStatus = company != null && company.getOnboardingStatus() != null
+                        ? company.getOnboardingStatus().name()
+                        : "N/A";
+
+                String unitStatus = unit != null && unit.getOnboardingStatus() != null
+                        ? unit.getOnboardingStatus().name()
+                        : "N/A";
+
+                String companyName = company != null && company.getName() != null
+                        ? company.getName()
+                        : "N/A";
+
+                String unitName = unit != null && unit.getUnitName() != null
+                        ? unit.getUnitName()
+                        : "N/A";
+
+                throw new ApprovalBlockedException(
+                        "Cannot approve unbilled invoice. Company and Company Unit must both be approved before invoice approval. " +
+                                "Company: " + companyName +
+                                ", Company Status: " + companyStatus +
+                                ", Company Accounts Approved: " + companyApproved +
+                                ". Unit: " + unitName +
+                                ", Unit Status: " + unitStatus +
+                                ", Unit Accounts Approved: " + unitApproved + ".",
+                        companyApproved,
+                        unitApproved
+                );
+            }
         }
 
         // 7. Fetch approver

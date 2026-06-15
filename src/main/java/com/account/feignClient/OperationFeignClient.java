@@ -19,6 +19,12 @@ public interface OperationFeignClient {
             @RequestParam("companyId") Long companyId
     );
 
+    @PostMapping("/operationService/api/companies/syncCompany")
+    ResponseEntity<OperationCompanyResponseDto> syncCompany(
+            @RequestBody OperationCompanyRequestDto dto,
+            @RequestParam("companyId") Long companyId
+    );
+
     @GetMapping("/operationService/api/companies/{companyId}")
     ResponseEntity<OperationCompanyResponseDto> getCompanyById(@PathVariable Long companyId);
 
@@ -57,9 +63,6 @@ public interface OperationFeignClient {
     );
 
 
-    // ============================================================
-    // PROCUREMENT PURCHASE ORDER APIs
-    // ============================================================
 
     @GetMapping("/operationService/api/purchase-orders")
     ResponseEntity<?> getProcurementPurchaseOrders(

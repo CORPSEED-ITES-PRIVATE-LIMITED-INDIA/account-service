@@ -21,7 +21,6 @@ public interface PaymentService {
 
     UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(Long unbilledId, UnbilledInvoiceApprovalRequestDto request);
 
-
     long getUnbilledInvoicesCount(Long userId, UnbilledStatus status);
 
     List<UnbilledInvoiceSummaryDto> searchUnbilledInvoices(String unbilledNumber, String companyName, String estimateNumber, int i, int size);

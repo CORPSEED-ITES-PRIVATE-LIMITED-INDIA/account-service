@@ -707,42 +707,52 @@ public class CompanyServiceImpl implements CompanyService {
 
         System.out.println("Operation Company Creation API Callled! ");
 
-        try {
-
-            ResponseEntity<OperationCompanyResponseDto> res =
-                    operationFeignClient.getCompanyById(company.getId());
-
-            if (res.getStatusCode().is2xxSuccessful()) {
-                logger.info("Company already exists in operation service | companyId={}", company.getId());
-            }
-
-        } catch (FeignException ex) {
-
-            if (ex.status() == 404) {
-
-                logger.info("Company not found in operation service, creating | companyId={}", company.getId());
-                this.operationCompanyCreationMethod(company);
-
-            } else {
-
-                logger.error(
-                        "Operation service error while checking company | companyId={} | status={} | message={}",
+        if (Boolean.TRUE.equals(request.getApprove())) {
+            try {
+                logger.info(
+                        "Syncing approved company/unit to Operation service | companyId={} | unitId={}",
                         company.getId(),
+                        unit.getId()
+                );
+
+                this.operationCompanySyncMethod(company);
+
+                logger.info(
+                        "Operation service sync completed | companyId={} | unitId={}",
+                        company.getId(),
+                        unit.getId()
+                );
+
+            } catch (FeignException ex) {
+                logger.error(
+                        "Operation service sync failed | companyId={} | unitId={} | status={} | message={}",
+                        company.getId(),
+                        unit.getId(),
                         ex.status(),
                         ex.getMessage()
                 );
 
                 throw ex;
             }
+        } else {
+            logger.info(
+                    "Skipping Operation service sync because unit is not approved | companyId={} | unitId={}",
+                    company.getId(),
+                    unit.getId()
+            );
         }
-
 
         System.out.println("Operation Company Creation API Completed! ");
 
         return mapToResponseDto(company);
     }
 
+    private void operationCompanySyncMethod(Company company) {
+        OperationCompanyRequestDto operationCompanyRequestDto =
+                this.mapOperationCompanyRequestDto(company);
 
+        operationFeignClient.syncCompany(operationCompanyRequestDto, company.getId());
+    }
     @Override
     @Transactional
     public CompanyResponseDto migrateCompany(CompanyMigrationRequestDto dto) {
@@ -1283,6 +1293,18 @@ public class CompanyServiceImpl implements CompanyService {
 
             for (CompanyUnit unit : company.getUnits()) {
 
+                if (unit.isDeleted()) {
+                    continue;
+                }
+
+                /*
+                 * Only approved units should go to Operation service.
+                 */
+                if (!unit.isAccountsApproved()
+                        && unit.getOnboardingStatus() != OnboardingStatus.APPROVED) {
+                    continue;
+                }
+
                 OperationCompanyUnitRequestDto unitDto = new OperationCompanyUnitRequestDto();
 
                 unitDto.setUnitId(unit.getId());
@@ -1293,14 +1315,17 @@ public class CompanyServiceImpl implements CompanyService {
                 unitDto.setCountry(unit.getCountry());
                 unitDto.setPinCode(unit.getPinCode());
                 unitDto.setGstNo(unit.getGstNo());
-                unitDto.setStatus(unit.getStatus());
+
+                /*
+                 * If Operation service has only status field,
+                 * use APPROVED here.
+                 */
+                unitDto.setStatus("APPROVED");
 
                 dto.getUnits().add(unitDto);
 
-
-                /* ---------------- Contacts From Unit ---------------- */
-
-                List<Contact> contacts = contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
+                List<Contact> contacts =
+                        contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
 
                 for (Contact contact : contacts) {
 
@@ -1316,6 +1341,7 @@ public class CompanyServiceImpl implements CompanyService {
 
                     contactDto.setCompanyId(company.getId());
                     contactDto.setUnitId(unit.getId());
+
                     contactDto.setCreatedBy(
                             unit.getCreatedBy() != null ? unit.getCreatedBy().getId() : null
                     );
@@ -1323,10 +1349,9 @@ public class CompanyServiceImpl implements CompanyService {
                     contactDto.setUpdatedBy(
                             unit.getUpdatedBy() != null ? unit.getUpdatedBy().getId() : null
                     );
-                    System.out.println("Contact id: "+contactDto.getContactId());
+
                     dto.getContacts().add(contactDto);
                 }
-                System.out.println("COntact length: "+ dto.getContacts().size());
             }
         }
 
