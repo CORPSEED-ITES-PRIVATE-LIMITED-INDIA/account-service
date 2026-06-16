@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import com.account.config.LeadFeignClient;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
@@ -13,7 +14,6 @@ import com.account.exception.AccessDeniedException;
 import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
-import com.account.feignClient.LeadFeignClient;
 import com.account.feignClient.OperationFeignClient;
 import com.account.notification.NotificationPublisherService;
 import com.account.notification.dto.NotificationCreateRequestDto;

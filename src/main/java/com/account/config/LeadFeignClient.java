@@ -4,11 +4,9 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-
+import org.springframework.web.bind.annotation.*;
 
 
 @Service
@@ -19,5 +17,11 @@ public interface LeadFeignClient {
 	@PostMapping("/leadService/api/v1/users/getAllUserForAccount")
 	List<Map<String,Object>> getAllUserForAccount();
 
+	@PutMapping("/leadService/api/proposals/force-cancel/{userId}/{proposalId}")
+	ResponseEntity<String> forceCancelProposal(
+			@PathVariable("userId") Long userId,
+			@PathVariable("proposalId") Long proposalId,
+			@RequestParam(value = "reason", required = false) String reason
+	);
 	
 }
