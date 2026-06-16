@@ -17,7 +17,7 @@ public interface LeadFeignClient {
 
 	
 	@PostMapping("/leadService/api/v1/users/getAllUserForAccount")
-	public List<Map<String,Object>> getAllUserForAccount();
+	List<Map<String,Object>> getAllUserForAccount();
 
 	
 }

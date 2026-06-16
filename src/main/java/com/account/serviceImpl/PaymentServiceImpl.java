@@ -13,6 +13,7 @@ import com.account.exception.AccessDeniedException;
 import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
+import com.account.feignClient.LeadFeignClient;
 import com.account.feignClient.OperationFeignClient;
 import com.account.notification.NotificationPublisherService;
 import com.account.notification.dto.NotificationCreateRequestDto;
@@ -61,6 +62,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final GovernmentFeeRepository governmentFeeRepository;
     private final TdsRegistrationRepository tdsRegistrationRepository;
     private final NotificationPublisherService notificationPublisherService;
+    private final LeadFeignClient leadFeignClient;
 
 
     @Override
@@ -1884,7 +1886,6 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional
     public void cancelUnbilled(Long userId, Long unbilledId, String reason, String cancelAttachment) {
 
-
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Approver not found with ID: " + userId,
@@ -1909,23 +1910,82 @@ public class PaymentServiceImpl implements PaymentService {
             throw new IllegalStateException("Unbilled already cancelled");
         }
 
+        String finalReason = reason != null && !reason.trim().isEmpty()
+                ? reason.trim()
+                : "Unbilled cancelled";
+
+        String finalCancelAttachment = cancelAttachment != null && !cancelAttachment.trim().isEmpty()
+                ? cancelAttachment.trim()
+                : null;
+
         // ===============================
         // CANCEL UNBILLED
         // ===============================
 
         unbilled.setCancelled(true);
         unbilled.setStatus(UnbilledStatus.CANCELLED);
-        unbilled.setRejectionReason(reason);
-        unbilled.setCancelAttachment(cancelAttachment);
+        unbilled.setRejectionReason(finalReason);
+        unbilled.setCancelAttachment(finalCancelAttachment);
+        unbilled.setUpdatedBy(user);
+        unbilled.setUpdatedAt(LocalDateTime.now());
+
         // ===============================
         // CANCEL ESTIMATE
         // ===============================
 
         Estimate estimate = unbilled.getEstimate();
+
         if (estimate != null) {
             estimate.setCancelled(true);
-            estimate.setStatus(EstimateStatus.REJECTED); // or CANCELLED if you add
+            estimate.setStatus(EstimateStatus.CANCELLED);
+            estimate.setRejectionReason(finalReason);
+            estimate.setRejectedAt(LocalDateTime.now());
+            estimate.setRejectedBy(user);
+            estimate.setUpdatedBy(user);
+            estimate.setUpdatedAt(LocalDateTime.now());
+
             estimateRepository.save(estimate);
+        }
+
+        // ===============================
+        // CANCEL PROPOSAL THROUGH LEAD SERVICE
+        // ===============================
+
+        if (estimate != null && estimate.getProposalId() != null) {
+            try {
+                ResponseEntity<String> proposalCancelResponse =
+                        leadFeignClient.forceCancelProposal(
+                                userId,
+                                estimate.getProposalId(),
+                                finalReason
+                        );
+
+                log.info(
+                        "Proposal force cancelled successfully from Lead Service | proposalId={} | response={}",
+                        estimate.getProposalId(),
+                        proposalCancelResponse.getBody()
+                );
+
+            } catch (FeignException.NotFound ex) {
+                log.warn(
+                        "Proposal not found in Lead Service while cancelling unbilled | proposalId={}",
+                        estimate.getProposalId()
+                );
+
+            } catch (FeignException ex) {
+                log.error(
+                        "Lead Service error while force cancelling proposal | proposalId={} | status={} | message={}",
+                        estimate.getProposalId(),
+                        ex.status(),
+                        ex.getMessage()
+                );
+                throw ex;
+            }
+        } else {
+            log.info(
+                    "Proposal cancellation skipped because proposalId is not mapped with estimate | unbilledId={}",
+                    unbilledId
+            );
         }
 
         // ===============================
@@ -1934,17 +1994,18 @@ public class PaymentServiceImpl implements PaymentService {
 
         List<Invoice> invoices = unbilled.getTaxInvoices();
 
-        for (Invoice invoice : invoices) {
-            invoice.setCancelled(true);
-            invoice.setStatus(InvoiceStatus.CANCELLED);
+        if (invoices != null && !invoices.isEmpty()) {
+            for (Invoice invoice : invoices) {
+                invoice.setCancelled(true);
+                invoice.setStatus(InvoiceStatus.CANCELLED);
 
-            // cancel line items
-            if (invoice.getLineItems() != null) {
-                invoice.getLineItems().forEach(item -> item.setCancelled(true));
+                if (invoice.getLineItems() != null) {
+                    invoice.getLineItems().forEach(item -> item.setCancelled(true));
+                }
             }
-        }
 
-        invoiceRepository.saveAll(invoices);
+            invoiceRepository.saveAll(invoices);
+        }
 
         // ===============================
         // CANCEL PAYMENTS
@@ -1952,11 +2013,13 @@ public class PaymentServiceImpl implements PaymentService {
 
         List<PaymentReceipt> payments = unbilled.getPayments();
 
-        for (PaymentReceipt payment : payments) {
-            payment.setCancelled(true);
-        }
+        if (payments != null && !payments.isEmpty()) {
+            for (PaymentReceipt payment : payments) {
+                payment.setCancelled(true);
+            }
 
-        paymentReceiptRepository.saveAll(payments);
+            paymentReceiptRepository.saveAll(payments);
+        }
 
         // ===============================
         // SAVE UNBILLED
@@ -1987,10 +2050,11 @@ public class PaymentServiceImpl implements PaymentService {
 
                 } catch (FeignException cancelEx) {
 
-                    //   Handle "already cancelled"
                     if (cancelEx.status() == 400 || cancelEx.status() == 409) {
-                        log.info("Project already cancelled → skipping | unbilled={}",
-                                unbilled.getUnbilledNumber());
+                        log.info(
+                                "Project already cancelled → skipping | unbilled={}",
+                                unbilled.getUnbilledNumber()
+                        );
                     } else {
                         throw cancelEx;
                     }
@@ -2000,9 +2064,7 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (FeignException ex) {
 
             if (ex.status() == 404) {
-                //   Project does NOT exist → do nothing
                 log.info("Project not found → nothing to cancel");
-
             } else {
                 log.error(
                         "Operation service error while checking project to cancel | unbilled={} | status={} | message={}",
@@ -2013,9 +2075,7 @@ public class PaymentServiceImpl implements PaymentService {
                 throw ex;
             }
         }
-
     }
-
 
     @Override
     @Transactional
