@@ -29,7 +29,7 @@ public interface PaymentService {
 
     UnbilledInvoiceDetailDto getUnbilledInvoice(Long id, Long userId);
 
-    void cancelUnbilled(Long userId, Long id,String reason);
+    void cancelUnbilled(Long userId, Long unbilledId, String reason, String cancelAttachment);
 
     Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId,  Pageable pageable);
 

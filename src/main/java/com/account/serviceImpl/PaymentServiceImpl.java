@@ -1882,7 +1882,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public void cancelUnbilled(Long userId, Long unbilledId, String reason) {
+    public void cancelUnbilled(Long userId, Long unbilledId, String reason, String cancelAttachment) {
 
 
         User user = userRepository.findById(userId)
@@ -1916,7 +1916,7 @@ public class PaymentServiceImpl implements PaymentService {
         unbilled.setCancelled(true);
         unbilled.setStatus(UnbilledStatus.CANCELLED);
         unbilled.setRejectionReason(reason);
-
+        unbilled.setCancelAttachment(cancelAttachment);
         // ===============================
         // CANCEL ESTIMATE
         // ===============================

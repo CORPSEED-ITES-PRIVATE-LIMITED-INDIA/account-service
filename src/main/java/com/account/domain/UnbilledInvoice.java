@@ -122,6 +122,9 @@ public class UnbilledInvoice {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    @Column(name = "cancel_attachment", columnDefinition = "TEXT")
+    private String cancelAttachment;
+
     /**
      * Updates received and outstanding amounts only.
      * Does NOT change status — status is controlled only by approval workflow.

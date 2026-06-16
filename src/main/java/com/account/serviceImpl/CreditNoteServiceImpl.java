@@ -235,7 +235,8 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         paymentService.cancelUnbilled(
                 userId,
                 unbilled.getId(),
-                cancelReason
+                cancelReason,
+                creditNote.getAttachment()
         );
 
         log.info(
