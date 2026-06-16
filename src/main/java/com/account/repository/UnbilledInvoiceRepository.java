@@ -22,19 +22,25 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     Optional<UnbilledInvoice> findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(Estimate estimate);
 
     @Query("""
-        SELECT u
-        FROM UnbilledInvoice u
-        WHERE u.isCancelled = false
-        AND
-            (:userId IS NULL
-                OR u.createdBy.id = :userId
-                OR u.approvedBy.id = :userId)
-        AND
-            (:status IS NULL OR u.status = :status)
-        """)
+    SELECT u
+    FROM UnbilledInvoice u
+    WHERE
+        (
+            (:cancelledStatus = true AND u.status = com.account.domain.UnbilledStatus.CANCELLED)
+            OR
+            (:cancelledStatus = false AND u.isCancelled = false)
+        )
+    AND
+        (:userId IS NULL
+            OR u.createdBy.id = :userId
+            OR u.approvedBy.id = :userId)
+    AND
+        (:status IS NULL OR u.status = :status)
+    """)
     Page<UnbilledInvoice> findUnbilledInvoices(
             @Param("userId") Long userId,
             @Param("status") UnbilledStatus status,
+            @Param("cancelledStatus") boolean cancelledStatus,
             Pageable pageable
     );
 
