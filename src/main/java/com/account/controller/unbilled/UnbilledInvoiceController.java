@@ -94,6 +94,7 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(list);
     }
 
+
     @Operation(
             summary = "Get count of unbilled invoices",
             description = "Returns only the total number of unbilled invoices matching the optional filters (status and/or userId)"
