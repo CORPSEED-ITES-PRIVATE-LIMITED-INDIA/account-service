@@ -184,6 +184,13 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                         userId
                 ));
 
+        if (!isAdmin(approver)) {
+            throw new ValidationException(
+                    "Only ADMIN user can approve credit note",
+                    "ERR_ONLY_ADMIN_CAN_APPROVE_CREDIT_NOTE"
+            );
+        }
+
         CreditNote creditNote = creditNoteRepository.findById(creditNoteId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Credit note not found with ID: " + creditNoteId,
@@ -208,16 +215,6 @@ public class CreditNoteServiceImpl implements CreditNoteService {
             );
         }
 
-        /*
-         * First mark credit note approved.
-         * Then call existing cancellation flow.
-         *
-         * Since this method is @Transactional and cancelUnbilled is also transactional,
-         * both should participate in the same local Account DB transaction.
-         *
-         * If cancelUnbilled throws due to operation-service failure,
-         * this approval will also rollback.
-         */
         creditNote.setStatus(CreditNoteStatus.APPROVED);
         creditNote.setApprovedBy(approver);
         creditNote.setApprovedAt(LocalDateTime.now());
@@ -251,6 +248,26 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         return toResponse(creditNote);
     }
 
+    private boolean isAdmin(User user) {
+
+        boolean hasAdminEntityRole = user.getUserRole() != null
+                && user.getUserRole().stream()
+                .anyMatch(role ->
+                        role != null
+                                && !role.isDeleted()
+                                && role.getName() != null
+                                && "ADMIN".equalsIgnoreCase(role.getName().trim())
+                );
+
+        boolean hasAdminStringRole = user.getRole() != null
+                && user.getRole().stream()
+                .anyMatch(role ->
+                        role != null
+                                && "ADMIN".equalsIgnoreCase(role.trim())
+                );
+
+        return hasAdminEntityRole || hasAdminStringRole;
+    }
     @Override
     @Transactional
     public CreditNoteResponseDto rejectCreditNote(
