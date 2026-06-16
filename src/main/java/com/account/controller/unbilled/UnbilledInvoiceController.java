@@ -191,7 +191,7 @@ public class UnbilledInvoiceController {
             @RequestParam(required = false) String cancelAttachment
             ) {
 
-        paymentService.cancelUnbilled(userId, id, reason, cancelAttachment);
+        unbilledService.cancelUnbilled(userId, id, reason, cancelAttachment);
 
         return ResponseEntity.ok("Unbilled cancelled successfully");
     }

@@ -30,6 +30,5 @@ public interface UnbilledService {
     List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(Long userId, UnbilledStatus status, int page, int size);
 
 
-
-
+    void cancelUnbilled(Long userId, Long id, String reason, String cancelAttachment);
 }

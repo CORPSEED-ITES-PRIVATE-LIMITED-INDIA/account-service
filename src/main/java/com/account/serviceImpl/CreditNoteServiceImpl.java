@@ -14,6 +14,7 @@ import com.account.repository.UserRepository;
 import com.account.repository.CreditNoteRepository;
 import com.account.service.CreditNoteService;
 import com.account.service.PaymentService;
+import com.account.service.UnbilledService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -40,6 +41,8 @@ public class CreditNoteServiceImpl implements CreditNoteService {
     private final InvoiceRepository invoiceRepository;
     private final UserRepository userRepository;
     private final PaymentService paymentService;
+    private final UnbilledService unbilledService;
+
 
     @Override
     @Transactional
@@ -232,7 +235,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
             cancelReason += " | Remarks: " + request.getApprovalRemarks();
         }
 
-        paymentService.cancelUnbilled(
+        unbilledService.cancelUnbilled(
                 userId,
                 unbilled.getId(),
                 cancelReason,

@@ -29,8 +29,6 @@ public interface PaymentService {
 
     UnbilledInvoiceDetailDto getUnbilledInvoice(Long id, Long userId);
 
-    void cancelUnbilled(Long userId, Long unbilledId, String reason, String cancelAttachment);
-
     Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId,  Pageable pageable);
 
     void approveExpense(Long userId, Long unbilledId, Long expenseId, String status);
