@@ -133,4 +133,14 @@ public class CreditNote {
     )
     @Builder.Default
     private List<CreditNoteInvoiceDetail> invoiceDetails = new ArrayList<>();
+
+    @Column(columnDefinition = "TEXT")
+    private String accountApprovalRemarks;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "account_approved_by")
+    private User accountApprovedBy;
+
+    private LocalDateTime accountApprovedAt;
+
 }

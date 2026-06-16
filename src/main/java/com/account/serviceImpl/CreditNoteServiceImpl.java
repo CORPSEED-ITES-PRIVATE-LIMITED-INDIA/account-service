@@ -8,10 +8,10 @@ import com.account.domain.estimate.Estimate;
 import com.account.dto.creditNote.*;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
+import com.account.repository.CreditNoteRepository;
 import com.account.repository.InvoiceRepository;
 import com.account.repository.UnbilledInvoiceRepository;
 import com.account.repository.UserRepository;
-import com.account.repository.CreditNoteRepository;
 import com.account.service.CreditNoteService;
 import com.account.service.PaymentService;
 import com.account.service.UnbilledService;
@@ -23,7 +23,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -43,7 +42,6 @@ public class CreditNoteServiceImpl implements CreditNoteService {
     private final PaymentService paymentService;
     private final UnbilledService unbilledService;
 
-
     @Override
     @Transactional
     public CreditNoteResponseDto createRefundCreditNote(CreateCreditNoteRefundRequestDto request) {
@@ -58,9 +56,14 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                         request.getCreatedByUserId()
                 ));
 
+        if (!isSalesPerson(createdBy)) {
+            throw new ValidationException(
+                    "Only SALES person can create credit note",
+                    "ERR_ONLY_SALES_CAN_CREATE_CREDIT_NOTE"
+            );
+        }
 
         UnbilledInvoice unbilled = resolveUnbilledForRefund(request);
-
 
         if (unbilled.isCancelled() || unbilled.getStatus() == UnbilledStatus.CANCELLED) {
             throw new ValidationException(
@@ -69,7 +72,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
             );
         }
 
-        if (creditNoteRepository.existsByUnbilledInvoiceIdAndStatus(unbilled.getId(), CreditNoteStatus.PENDING)) {
+        if (hasActivePendingCreditNote(unbilled.getId())) {
             throw new ValidationException(
                     "A pending credit note already exists for this unbilled invoice",
                     "ERR_PENDING_CREDIT_NOTE_EXISTS"
@@ -121,16 +124,19 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 .contact(contact)
                 .unbilledNumber(unbilled.getUnbilledNumber())
                 .estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
+                .proposalNumber(null)
                 .companyName(company != null ? company.getName() : null)
                 .contactName(contact != null ? contact.getName() : null)
+                .attachment(request.getAttachment())
                 .totalAmount(totalAmount)
                 .receivedAmount(receivedAmount)
                 .currentReceivedAmount(currentReceivedAmount)
-                .attachment(request.getAttachment())
                 .outstandingAmount(outstandingAmount)
                 .creditAmount(creditAmount)
                 .refundAmount(refundAmount)
-                .status(CreditNoteStatus.PENDING)
+                .utilizedCreditAmount(BigDecimal.ZERO)
+                .remainingCreditAmount(creditAmount)
+                .status(CreditNoteStatus.PENDING_ACCOUNT_REVIEW)
                 .reason(request.getReason())
                 .createdBy(createdBy)
                 .createdAt(LocalDateTime.now())
@@ -159,10 +165,69 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         CreditNote saved = creditNoteRepository.save(creditNote);
 
         log.info(
-                "Refund credit note created | creditNoteId={} | creditNoteNumber={} | unbilled={}",
+                "Refund credit note created by Sales | creditNoteId={} | creditNoteNumber={} | unbilled={}",
                 saved.getId(),
                 saved.getCreditNoteNumber(),
                 unbilled.getUnbilledNumber()
+        );
+
+        return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public CreditNoteResponseDto approveCreditNoteByAccount(
+            Long creditNoteId,
+            Long userId,
+            ApproveCreditNoteRequestDto request
+    ) {
+
+        User accountApprover = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: " + userId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        userId
+                ));
+
+        if (!isAccountTeam(accountApprover)) {
+            throw new ValidationException(
+                    "Only ACCOUNT team can approve credit note at account review stage",
+                    "ERR_ONLY_ACCOUNT_TEAM_CAN_APPROVE_CREDIT_NOTE"
+            );
+        }
+
+        CreditNote creditNote = creditNoteRepository.findById(creditNoteId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Credit note not found with ID: " + creditNoteId,
+                        "CREDIT_NOTE_NOT_FOUND",
+                        "CreditNote",
+                        creditNoteId
+                ));
+
+        if (creditNote.getStatus() != CreditNoteStatus.PENDING_ACCOUNT_REVIEW) {
+            throw new ValidationException(
+                    "Only PENDING_ACCOUNT_REVIEW credit notes can be approved by account team. Current status: "
+                            + creditNote.getStatus(),
+                    "ERR_CREDIT_NOTE_NOT_PENDING_ACCOUNT_REVIEW"
+            );
+        }
+
+        creditNote.setStatus(CreditNoteStatus.PENDING_ADMIN_APPROVAL);
+        creditNote.setAccountApprovedBy(accountApprover);
+        creditNote.setAccountApprovedAt(LocalDateTime.now());
+        creditNote.setAccountApprovalRemarks(
+                request != null ? request.getApprovalRemarks() : null
+        );
+        creditNote.setUpdatedAt(LocalDateTime.now());
+
+        CreditNote saved = creditNoteRepository.save(creditNote);
+
+        log.info(
+                "Credit note reviewed by Account team | creditNoteId={} | creditNoteNumber={} | accountApprovedBy={}",
+                saved.getId(),
+                saved.getCreditNoteNumber(),
+                userId
         );
 
         return toResponse(saved);
@@ -176,7 +241,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
             ApproveCreditNoteRequestDto request
     ) {
 
-        User approver = userRepository.findById(userId)
+        User adminApprover = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "User not found with ID: " + userId,
                         "USER_NOT_FOUND",
@@ -184,10 +249,10 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                         userId
                 ));
 
-        if (!isAdmin(approver)) {
+        if (!isAdmin(adminApprover)) {
             throw new ValidationException(
-                    "Only ADMIN user can approve credit note",
-                    "ERR_ONLY_ADMIN_CAN_APPROVE_CREDIT_NOTE"
+                    "Only ADMIN user can provide final approval for credit note",
+                    "ERR_ONLY_ADMIN_CAN_FINAL_APPROVE_CREDIT_NOTE"
             );
         }
 
@@ -199,10 +264,18 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                         creditNoteId
                 ));
 
-        if (creditNote.getStatus() != CreditNoteStatus.PENDING) {
+        if (creditNote.getStatus() != CreditNoteStatus.PENDING_ADMIN_APPROVAL) {
             throw new ValidationException(
-                    "Only PENDING credit notes can be approved. Current status: " + creditNote.getStatus(),
-                    "ERR_CREDIT_NOTE_NOT_PENDING"
+                    "Only PENDING_ADMIN_APPROVAL credit notes can be finally approved by ADMIN. Current status: "
+                            + creditNote.getStatus(),
+                    "ERR_CREDIT_NOTE_NOT_PENDING_ADMIN_APPROVAL"
+            );
+        }
+
+        if (creditNote.getAccountApprovedBy() == null || creditNote.getAccountApprovedAt() == null) {
+            throw new ValidationException(
+                    "Credit note must be reviewed by account team before final admin approval",
+                    "ERR_ACCOUNT_REVIEW_REQUIRED_BEFORE_ADMIN_APPROVAL"
             );
         }
 
@@ -215,8 +288,15 @@ public class CreditNoteServiceImpl implements CreditNoteService {
             );
         }
 
+        if (unbilled.isCancelled() || unbilled.getStatus() == UnbilledStatus.CANCELLED) {
+            throw new ValidationException(
+                    "Credit note cannot be approved because linked unbilled invoice is already cancelled",
+                    "ERR_UNBILLED_ALREADY_CANCELLED"
+            );
+        }
+
         creditNote.setStatus(CreditNoteStatus.APPROVED);
-        creditNote.setApprovedBy(approver);
+        creditNote.setApprovedBy(adminApprover);
         creditNote.setApprovedAt(LocalDateTime.now());
         creditNote.setUpdatedAt(LocalDateTime.now());
         creditNote.setApprovalRemarks(
@@ -225,7 +305,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
 
         creditNoteRepository.save(creditNote);
 
-        String cancelReason = "Unbilled cancelled because refund credit note was approved. Credit Note: "
+        String cancelReason = "Unbilled cancelled because refund credit note was finally approved by ADMIN. Credit Note: "
                 + creditNote.getCreditNoteNumber();
 
         if (request != null && request.getApprovalRemarks() != null && !request.getApprovalRemarks().isBlank()) {
@@ -240,7 +320,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         );
 
         log.info(
-                "Credit note approved and unbilled cancellation completed | creditNoteId={} | unbilledId={}",
+                "Credit note final-approved by ADMIN and unbilled cancellation completed | creditNoteId={} | unbilledId={}",
                 creditNoteId,
                 unbilled.getId()
         );
@@ -248,26 +328,6 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         return toResponse(creditNote);
     }
 
-    private boolean isAdmin(User user) {
-
-        boolean hasAdminEntityRole = user.getUserRole() != null
-                && user.getUserRole().stream()
-                .anyMatch(role ->
-                        role != null
-                                && !role.isDeleted()
-                                && role.getName() != null
-                                && "ADMIN".equalsIgnoreCase(role.getName().trim())
-                );
-
-        boolean hasAdminStringRole = user.getRole() != null
-                && user.getRole().stream()
-                .anyMatch(role ->
-                        role != null
-                                && "ADMIN".equalsIgnoreCase(role.trim())
-                );
-
-        return hasAdminEntityRole || hasAdminStringRole;
-    }
     @Override
     @Transactional
     public CreditNoteResponseDto rejectCreditNote(
@@ -292,10 +352,28 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                         creditNoteId
                 ));
 
-        if (creditNote.getStatus() != CreditNoteStatus.PENDING) {
+        if (creditNote.getStatus() == CreditNoteStatus.PENDING_ACCOUNT_REVIEW) {
+
+            if (!isAccountTeam(rejectedBy)) {
+                throw new ValidationException(
+                        "Only ACCOUNT team can reject credit note at account review stage",
+                        "ERR_ONLY_ACCOUNT_TEAM_CAN_REJECT_CREDIT_NOTE"
+                );
+            }
+
+        } else if (creditNote.getStatus() == CreditNoteStatus.PENDING_ADMIN_APPROVAL) {
+
+            if (!isAdmin(rejectedBy)) {
+                throw new ValidationException(
+                        "Only ADMIN can reject credit note at final approval stage",
+                        "ERR_ONLY_ADMIN_CAN_REJECT_CREDIT_NOTE"
+                );
+            }
+
+        } else {
             throw new ValidationException(
-                    "Only PENDING credit notes can be rejected. Current status: " + creditNote.getStatus(),
-                    "ERR_CREDIT_NOTE_NOT_PENDING"
+                    "Only pending credit notes can be rejected. Current status: " + creditNote.getStatus(),
+                    "ERR_CREDIT_NOTE_NOT_PENDING_FOR_REJECTION"
             );
         }
 
@@ -312,7 +390,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         creditNote.setRejectedBy(rejectedBy);
         creditNote.setRejectedAt(LocalDateTime.now());
         creditNote.setUpdatedAt(LocalDateTime.now());
-        creditNote.setRejectionReason(reason);
+        creditNote.setRejectionReason(reason.trim());
 
         CreditNote saved = creditNoteRepository.save(creditNote);
 
@@ -374,7 +452,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
             throw new ValidationException("createdByUserId is required", "ERR_CREATED_BY_REQUIRED");
         }
 
-        if (request.getAttachment() == null) {
+        if (request.getAttachment() == null || request.getAttachment().isBlank()) {
             throw new ValidationException("Attachment file is required", "ERR_ATTACHMENT_REQUIRED");
         }
     }
@@ -408,7 +486,6 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 "ERR_ESTIMATE_NUMBER_OR_UNBILLED_ID_REQUIRED"
         );
     }
-
 
     private List<Invoice> fetchInvoicesForCreditNote(UnbilledInvoice unbilled, List<Long> invoiceIds) {
 
@@ -452,6 +529,17 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         return invoices;
     }
 
+    private boolean hasActivePendingCreditNote(Long unbilledId) {
+
+        return creditNoteRepository.existsByUnbilledInvoiceIdAndStatus(
+                unbilledId,
+                CreditNoteStatus.PENDING_ACCOUNT_REVIEW
+        ) || creditNoteRepository.existsByUnbilledInvoiceIdAndStatus(
+                unbilledId,
+                CreditNoteStatus.PENDING_ADMIN_APPROVAL
+        );
+    }
+
     private String generateCreditNoteNumber() {
 
         String dateTimePart = LocalDateTime.now()
@@ -470,6 +558,60 @@ public class CreditNoteServiceImpl implements CreditNoteService {
 
     private BigDecimal safe(BigDecimal value) {
         return value != null ? value : BigDecimal.ZERO;
+    }
+
+    private boolean isAdmin(User user) {
+        return hasRole(user, "ADMIN")
+                || containsIgnoreCase(user.getDesignation(), "ADMIN");
+    }
+
+    private boolean isSalesPerson(User user) {
+        return hasRole(user, "SALES")
+                || hasRole(user, "SALE")
+                || containsIgnoreCase(user.getDepartment(), "SALES")
+                || containsIgnoreCase(user.getDepartment(), "SALE")
+                || containsIgnoreCase(user.getDesignation(), "SALES")
+                || containsIgnoreCase(user.getDesignation(), "SALE");
+    }
+
+    private boolean isAccountTeam(User user) {
+        return hasRole(user, "ACCOUNT")
+                || hasRole(user, "ACCOUNTS")
+                || containsIgnoreCase(user.getDepartment(), "ACCOUNT")
+                || containsIgnoreCase(user.getDepartment(), "ACCOUNTS")
+                || containsIgnoreCase(user.getDesignation(), "ACCOUNT")
+                || containsIgnoreCase(user.getDesignation(), "ACCOUNTS");
+    }
+
+    private boolean hasRole(User user, String roleName) {
+
+        if (user == null || roleName == null) {
+            return false;
+        }
+
+        boolean hasEntityRole = user.getUserRole() != null
+                && user.getUserRole().stream()
+                .anyMatch(role ->
+                        role != null
+                                && !role.isDeleted()
+                                && role.getName() != null
+                                && roleName.equalsIgnoreCase(role.getName().trim())
+                );
+
+        boolean hasStringRole = user.getRole() != null
+                && user.getRole().stream()
+                .anyMatch(role ->
+                        role != null
+                                && roleName.equalsIgnoreCase(role.trim())
+                );
+
+        return hasEntityRole || hasStringRole;
+    }
+
+    private boolean containsIgnoreCase(String value, String keyword) {
+        return value != null
+                && keyword != null
+                && value.trim().toUpperCase().contains(keyword.trim().toUpperCase());
     }
 
     private CreditNoteResponseDto toResponse(CreditNote creditNote) {
@@ -525,16 +667,26 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 .outstandingAmount(creditNote.getOutstandingAmount())
                 .refundAmount(creditNote.getRefundAmount())
                 .creditAmount(creditNote.getCreditAmount())
+                .utilizedCreditAmount(creditNote.getUtilizedCreditAmount())
+                .remainingCreditAmount(creditNote.getRemainingCreditAmount())
 
                 .status(creditNote.getStatus())
                 .reason(creditNote.getReason())
-                .approvalRemarks(creditNote.getApprovalRemarks())
 
                 .createdById(creditNote.getCreatedBy() != null ? creditNote.getCreatedBy().getId() : null)
-                .approvedById(creditNote.getApprovedBy() != null ? creditNote.getApprovedBy().getId() : null)
-
                 .createdAt(creditNote.getCreatedAt())
+
+                .accountApprovedById(
+                        creditNote.getAccountApprovedBy() != null
+                                ? creditNote.getAccountApprovedBy().getId()
+                                : null
+                )
+                .accountApprovedAt(creditNote.getAccountApprovedAt())
+                .accountApprovalRemarks(creditNote.getAccountApprovalRemarks())
+
+                .approvedById(creditNote.getApprovedBy() != null ? creditNote.getApprovedBy().getId() : null)
                 .approvedAt(creditNote.getApprovedAt())
+                .approvalRemarks(creditNote.getApprovalRemarks())
 
                 .rejectionReason(creditNote.getRejectionReason())
                 .rejectedById(creditNote.getRejectedBy() != null ? creditNote.getRejectedBy().getId() : null)

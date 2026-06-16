@@ -1,8 +1,10 @@
 package com.account.dto.creditNote;
 
 import com.account.domain.creditNote.CreditNoteStatus;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -10,6 +12,8 @@ import java.util.List;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class CreditNoteResponseDto {
 
     private Long id;
@@ -48,19 +52,31 @@ public class CreditNoteResponseDto {
 
     private BigDecimal creditAmount;
 
+    private BigDecimal utilizedCreditAmount;
+
+    private BigDecimal remainingCreditAmount;
+
     private CreditNoteStatus status;
 
     private String reason;
 
-    private String approvalRemarks;
-
     private Long createdById;
-
-    private Long approvedById;
 
     private LocalDateTime createdAt;
 
+    // Account team review fields
+    private Long accountApprovedById;
+
+    private LocalDateTime accountApprovedAt;
+
+    private String accountApprovalRemarks;
+
+    // Final admin approval fields
+    private Long approvedById;
+
     private LocalDateTime approvedAt;
+
+    private String approvalRemarks;
 
     private String rejectionReason;
 

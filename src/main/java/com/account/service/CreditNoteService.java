@@ -11,6 +11,12 @@ public interface CreditNoteService {
 
     CreditNoteResponseDto createRefundCreditNote(CreateCreditNoteRefundRequestDto request);
 
+    CreditNoteResponseDto approveCreditNoteByAccount(
+            Long creditNoteId,
+            Long userId,
+            ApproveCreditNoteRequestDto request
+    );
+
     CreditNoteResponseDto approveCreditNote(
             Long creditNoteId,
             Long userId,
