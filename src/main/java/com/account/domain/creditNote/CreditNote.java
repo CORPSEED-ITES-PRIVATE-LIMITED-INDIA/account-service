@@ -143,4 +143,7 @@ public class CreditNote {
 
     private LocalDateTime accountApprovedAt;
 
+    @Column(name = "gst_portal_attachment")
+    private String gstPortalAttachment;
+
 }

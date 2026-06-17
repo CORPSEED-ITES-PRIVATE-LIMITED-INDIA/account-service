@@ -87,4 +87,8 @@ public class CreditNoteResponseDto {
     private LocalDateTime updatedAt;
 
     private List<CreditNoteInvoiceDetailResponseDto> invoices;
+
+    private String gstPortalAttachment;
+
+
 }

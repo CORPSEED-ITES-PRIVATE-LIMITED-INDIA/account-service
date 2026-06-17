@@ -39,7 +39,6 @@ public class CreditNoteServiceImpl implements CreditNoteService {
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
     private final InvoiceRepository invoiceRepository;
     private final UserRepository userRepository;
-    private final PaymentService paymentService;
     private final UnbilledService unbilledService;
 
     @Override
@@ -218,6 +217,9 @@ public class CreditNoteServiceImpl implements CreditNoteService {
         creditNote.setAccountApprovedAt(LocalDateTime.now());
         creditNote.setAccountApprovalRemarks(
                 request != null ? request.getApprovalRemarks() : null
+        );
+        creditNote.setGstPortalAttachment(
+                request != null ? request.getGstPortalAttachment() : null
         );
         creditNote.setUpdatedAt(LocalDateTime.now());
 
@@ -660,6 +662,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 .contactName(creditNote.getContactName())
 
                 .attachment(creditNote.getAttachment())
+                .gstPortalAttachment(creditNote.getGstPortalAttachment())
 
                 .totalAmount(creditNote.getTotalAmount())
                 .receivedAmount(creditNote.getReceivedAmount())
@@ -669,6 +672,7 @@ public class CreditNoteServiceImpl implements CreditNoteService {
                 .creditAmount(creditNote.getCreditAmount())
                 .utilizedCreditAmount(creditNote.getUtilizedCreditAmount())
                 .remainingCreditAmount(creditNote.getRemainingCreditAmount())
+
 
                 .status(creditNote.getStatus())
                 .reason(creditNote.getReason())

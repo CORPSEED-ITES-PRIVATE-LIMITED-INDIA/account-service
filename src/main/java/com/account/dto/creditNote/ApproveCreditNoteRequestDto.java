@@ -5,4 +5,5 @@ import lombok.Data;
 @Data
 public class ApproveCreditNoteRequestDto {
     private String approvalRemarks;
+    private String gstPortalAttachment;
 }
