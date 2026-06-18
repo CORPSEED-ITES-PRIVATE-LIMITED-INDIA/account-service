@@ -33,4 +33,5 @@ public class CreditNoteInvoiceDetailResponseDto {
     private BigDecimal invoiceIgstAmount;
 
     private String invoiceStatus;
+
 }

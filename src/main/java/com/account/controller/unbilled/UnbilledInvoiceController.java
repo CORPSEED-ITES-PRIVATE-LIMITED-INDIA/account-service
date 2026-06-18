@@ -184,17 +184,57 @@ public class UnbilledInvoiceController {
 
 
 
-    @PutMapping("/cancel/{userId}/{id}")
-    public ResponseEntity<?> cancelUnbilled(
+    // ────────────────────────────────────────────────
+// Request unbilled cancellation
+// Account user will call this API.
+// It will NOT cancel the unbilled immediately.
+// It only marks the unbilled as CANCEL_REQUESTED
+// so admin can approve/reject the cancellation.
+// ────────────────────────────────────────────────
+    @PutMapping("/cancel/request/{userId}/{id}")
+    public ResponseEntity<?> requestCancelUnbilled(
             @PathVariable Long userId,
             @PathVariable Long id,
             @RequestParam String reason,
             @RequestParam(required = false) String cancelAttachment
-            ) {
+    ) {
+        unbilledService.requestCancelUnbilled(userId, id, reason, cancelAttachment);
+        return ResponseEntity.ok("Cancel request sent to admin successfully");
+    }
 
-        unbilledService.cancelUnbilled(userId, id, reason, cancelAttachment);
 
-        return ResponseEntity.ok("Unbilled cancelled successfully");
+    // ────────────────────────────────────────────────
+// Approve unbilled cancellation
+// Admin will call this API.
+// Once approved, actual cancellation process will run:
+// unbilled, estimate, proposal, invoice, payment,
+// and operation project will be cancelled.
+// ────────────────────────────────────────────────
+    @PutMapping("/cancel/approve/{adminUserId}/{id}")
+    public ResponseEntity<?> approveCancelUnbilled(
+            @PathVariable Long adminUserId,
+            @PathVariable Long id
+    ) {
+        unbilledService.approveCancelUnbilled(adminUserId, id);
+        return ResponseEntity.ok("Unbilled cancellation approved successfully");
+    }
+
+
+    // ────────────────────────────────────────────────
+// Reject unbilled cancellation
+// Admin will call this API.
+// If rejected, unbilled will NOT be cancelled.
+// It will be marked as CANCEL_REJECTED
+// and visible back to account/user side.
+// ────────────────────────────────────────────────
+    @PutMapping("/cancel/reject/{adminUserId}/{id}")
+    public ResponseEntity<?> rejectCancelUnbilled(
+            @PathVariable Long adminUserId,
+            @PathVariable Long id,
+            @RequestParam String reason
+    ) {
+        unbilledService.rejectCancelUnbilled(adminUserId, id, reason);
+        return ResponseEntity.ok("Unbilled cancellation rejected successfully");
     }
 
     @GetMapping("/getExpences/{userId}/{unbilledId}")

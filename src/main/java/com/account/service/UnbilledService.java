@@ -31,4 +31,10 @@ public interface UnbilledService {
 
 
     void cancelUnbilled(Long userId, Long id, String reason, String cancelAttachment);
+
+    void requestCancelUnbilled(Long userId, Long id, String reason, String cancelAttachment);
+
+    void approveCancelUnbilled(Long adminUserId, Long id);
+
+    void rejectCancelUnbilled(Long adminUserId, Long id, String reason);
 }

@@ -60,260 +60,6 @@ public class UnbilledServiceImpl implements UnbilledService {
 
 
 
-    @Transactional
-    public UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(
-            Long unbilledId,
-            UnbilledInvoiceApprovalRequestDto request) {
-
-        log.info("Approving unbilled invoice | unbilledId: {}, approverId: {}",
-                unbilledId, request.getApproverUserId());
-
-        // 1. Fetch unbilled invoice
-        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Unbilled invoice not found with ID: " + unbilledId,
-                        "UNBILLED_NOT_FOUND",
-                        "UnbilledInvoice",
-                        unbilledId
-                ));
-
-        // 2. Validate current status
-        if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
-            throw new IllegalStateException(
-                    "Only PENDING_APPROVAL unbilled invoices can be approved. " +
-                            "Current status: " + unbilled.getStatus());
-        }
-
-        // 3. Get related entities
-        Company company = unbilled.getCompany();
-        CompanyUnit unit = unbilled.getUnit();
-
-        // 4. Determine approval eligibility
-        boolean companyApproved = company != null && company.getOnboardingStatus() == OnboardingStatus.APPROVED;
-        boolean unitApproved = unit == null || unit.getOnboardingStatus() == OnboardingStatus.APPROVED;
-
-        // 5. Block approval if company is not approved
-        if (!companyApproved) {
-            String companyStatus = (company != null) ? company.getOnboardingStatus().toString() : "N/A";
-            throw new ApprovalBlockedException(
-                    "Company must be APPROVED before unbilled invoice approval. " +
-                            "Current status: " + companyStatus, 
-                    companyApproved,
-                    unitApproved
-            );
-        }
-
-
-        // 7. Fetch approver
-        User approver = userRepository.findById(request.getApproverUserId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Approver not found with ID: " + request.getApproverUserId(),
-                        "USER_NOT_FOUND",
-                        "User",
-                        request.getApproverUserId()
-                ));
-        Estimate estimate  = unbilled.getEstimate();
-        // 8. Update unbilled invoice to APPROVED (temporary state)
-
-        if ("REJECTED".equals(request.getApprovalRemarks())) {
-
-            unbilled.setStatus(UnbilledStatus.REJECTED);
-            estimate.setStatus(EstimateStatus.REJECTED);
-
-            // ❗ Just discard pending amount
-            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
-
-            log.info(
-                    "Unbilled {} rejected → pending amount discarded, no financial impact",
-                    unbilled.getUnbilledNumber()
-            );
-
-        } else {
-
-            //   APPROVED FLOW
-            unbilled.setStatus(UnbilledStatus.APPROVED);
-            estimate.setStatus(EstimateStatus.APPROVED);
-
-            //  Move pending → actual received
-            BigDecimal updatedReceived = unbilled.getReceivedAmount()
-                    .add(unbilled.getCurrentReceivedAmount());
-
-            unbilled.setReceivedAmount(updatedReceived);
-
-            // Reset pending buffer
-            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
-
-            // Recalculate outstanding ONLY from approved amount
-            unbilled.setOutstandingAmount(
-                    unbilled.getTotalAmount()
-                            .subtract(updatedReceived)
-                            .max(BigDecimal.ZERO)
-                            .setScale(2, RoundingMode.HALF_UP)
-            );
-
-            log.info(
-                    "Unbilled {} approved → received={} outstanding={}",
-                    unbilled.getUnbilledNumber(),
-                    unbilled.getReceivedAmount(),
-                    unbilled.getOutstandingAmount()
-            );
-        }
-
-        estimateRepository.save(estimate);
-        unbilled.setApprovedBy(approver);
-        unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
-        unbilled.setApprovalRemarks(request.getApprovalRemarks());
-
-
-        // 9. Identify the first (triggering) payment receipt
-        PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
-                .filter(p -> p.getPaymentDate() != null)
-                .min(Comparator.comparing(PaymentReceipt::getPaymentDate))
-                .orElseThrow(() -> new IllegalStateException(
-                        "No payments found for unbilled invoice: "
-                                + unbilled.getUnbilledNumber()));
-
-        // 10. Generate actual GST invoice
-        if(request.getApprovalRemarks().equals("APPROVED")) {
-            Invoice generatedInvoice = invoiceService.generateInvoiceForPayment(
-                    unbilled, triggeringReceipt, approver);
-
-            log.info("Unbilled {} approved → final status: {}, invoice generated: {}",
-                    unbilled.getUnbilledNumber(), generatedInvoice.getInvoiceNumber());
-        }
-        unbilledInvoiceRepository.save(unbilled);
-
-        UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
-
-        // Project / Solution name fallback logic
-        response.setName(
-                estimate != null ? estimate.getSolutionName() :
-                        (company != null ? company.getName() + " - Project" : "Unnamed Project")
-        );
-
-        response.setProjectNo(generateProjectNumber());
-
-        response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        response.setSalesPersonName(
-                unbilled.getCreatedBy() != null
-                        ? (unbilled.getCreatedBy().getFullName() != null
-                        ? unbilled.getCreatedBy().getFullName()
-                        : unbilled.getCreatedBy().getEmail())
-                        : null
-        );
-
-
-        response.setProductId(estimate != null ? estimate.getSolutionId() : null);
-        response.setCompanyId(company != null ? company.getId() : null);
-        response.setCompanyUnitId(unbilled.getUnit().getId());
-        response.setUnbilledNumber(unbilled.getUnbilledNumber());
-        response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
-        response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
-        response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
-        response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
-        response.setLeadId(estimate != null ? estimate.getLeadId() : null);
-        response.setDate(LocalDate.now());
-        response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
-        response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
-        response.setPaymentTypeId(
-                triggeringReceipt.getPaymentType() != null ? triggeringReceipt.getPaymentType().getId() : null
-        );
-        response.setApprovedById(approver.getId());
-        response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-        response.setUpdatedBy(approver.getId());
-        response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
-
-
-        if ("REJECTED".equals(request.getApprovalRemarks())) {
-            log.info("Skipping operation sync because invoice is REJECTED");
-            return response;
-        }
-
-        System.out.println("response.getContactId(): "+response.getContactId());
-
-
-        try {
-
-            ResponseEntity<OperationProjectResponseDto> res =
-                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
-
-            if (res.getStatusCode().is2xxSuccessful() && res.getBody() != null) {
-
-                OperationProjectResponseDto project = res.getBody();
-
-                log.info("Project exists → syncing payment | projectId={}", project.getId());
-
-                // ===============================
-                // CALCULATE PAYMENT DELTA
-                // ===============================
-
-                double accountReceived = unbilled.getReceivedAmount() != null
-                        ? unbilled.getReceivedAmount().doubleValue()
-                        : 0.0;
-
-                double operationPaid = project.getTotalAmount() - project.getDueAmount();
-
-                double newPayment = accountReceived - operationPaid;
-
-                if (newPayment <= 0) {
-                    log.info("No new payment to sync | account={} operation={}",
-                            accountReceived, operationPaid);
-                    return response;
-                }
-
-                // ===============================
-                // CREATE PAYMENT DTO
-                // ===============================
-
-                OperationProjectPaymentTransactionDto dto = new OperationProjectPaymentTransactionDto();
-                dto.setAmount(newPayment);
-                dto.setPaymentDate(new Date());
-                dto.setCreatedBy(approver.getId());
-
-                // ===============================
-                // CALL OPERATION API
-                // ===============================
-
-                operationFeignClient.addPaymentTransaction(project.getUnbilledNumber(), dto);
-
-                log.info("Payment synced to operation | amount={}", newPayment);
-            }
-
-        } catch (FeignException ex) {
-
-            if (ex.status() == 404) {
-
-                //   ONLY CREATE PROJECT (NO PAYMENT CALL HERE)
-                if (!"APPROVED".equals(request.getApprovalRemarks())) {
-                    log.info("Skipping project creation because status is not APPROVED");
-                    return response;
-                }
-
-                log.info("Project not found → creating project");
-
-                this.operationProjectCreationMethod(unbilled, estimate, response);
-
-                //   DO NOT ADD PAYMENT HERE
-                // Payment already handled inside project creation
-
-            } else {
-
-                log.error(
-                        "Operation service error while checking project | unbilled={} | status={} | message={}",
-                        unbilled.getUnbilledNumber(),
-                        ex.status(),
-                        ex.getMessage()
-                );
-
-                throw ex;
-            }
-        }
-
-
-
-        return response;
-    }
-
 
     @Override
     @Transactional(readOnly = true)
@@ -436,6 +182,116 @@ public class UnbilledServiceImpl implements UnbilledService {
                 );
     }
 
+
+    @Override
+    @Transactional
+    public void requestCancelUnbilled(Long userId, Long unbilledId, String reason, String cancelAttachment) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: " + userId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        userId
+                ));
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
+
+        if (unbilled.isCancelled()) {
+            throw new IllegalStateException("Unbilled already cancelled");
+        }
+
+        if (unbilled.getStatus() == UnbilledStatus.CANCEL_REQUESTED) {
+            throw new IllegalStateException("Cancel request already pending for admin approval");
+        }
+
+        String finalReason = reason != null && !reason.trim().isEmpty()
+                ? reason.trim()
+                : "Unbilled cancellation requested";
+
+        String finalCancelAttachment = cancelAttachment != null && !cancelAttachment.trim().isEmpty()
+                ? cancelAttachment.trim()
+                : null;
+
+        unbilled.setStatus(UnbilledStatus.CANCEL_REQUESTED);
+        unbilled.setRejectionReason(finalReason);
+        unbilled.setCancelAttachment(finalCancelAttachment);
+        unbilled.setUpdatedBy(user);
+        unbilled.setUpdatedAt(LocalDateTime.now());
+
+        unbilledInvoiceRepository.save(unbilled);
+    }
+
+    @Override
+    @Transactional
+    public void rejectCancelUnbilled(Long adminUserId, Long unbilledId, String reason) {
+
+        User admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Admin user not found with ID: " + adminUserId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        adminUserId
+                ));
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
+
+        if (unbilled.getStatus() != UnbilledStatus.CANCEL_REQUESTED) {
+            throw new IllegalStateException(
+                    "Only CANCEL_REQUESTED unbilled can be rejected. Current status: "
+                            + unbilled.getStatus()
+            );
+        }
+
+        String finalReason = reason != null && !reason.trim().isEmpty()
+                ? reason.trim()
+                : "Cancellation rejected by admin";
+
+        unbilled.setStatus(UnbilledStatus.CANCEL_REJECTED);
+        unbilled.setRejectionReason(finalReason);
+        unbilled.setUpdatedBy(admin);
+        unbilled.setUpdatedAt(LocalDateTime.now());
+
+        unbilledInvoiceRepository.save(unbilled);
+    }
+
+    @Override
+    @Transactional
+    public void approveCancelUnbilled(Long adminUserId, Long unbilledId) {
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
+
+        if (unbilled.getStatus() != UnbilledStatus.CANCEL_REQUESTED) {
+            throw new IllegalStateException(
+                    "Only CANCEL_REQUESTED unbilled can be approved for cancellation. Current status: "
+                            + unbilled.getStatus()
+            );
+        }
+
+        String reason = unbilled.getRejectionReason();
+        String attachment = unbilled.getCancelAttachment();
+
+        // This calls your existing full cancellation logic
+        cancelUnbilled(adminUserId, unbilledId, reason, attachment);
+    }
 
     @Override
     public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(
