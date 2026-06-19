@@ -422,6 +422,8 @@ public class UnbilledServiceImpl implements UnbilledService {
         dto.setReceivedAmount(unbilled.getReceivedAmount());
         dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
+        dto.setCancelAttachment(unbilled.getCancelAttachment());
+        dto.setRejectionReason(unbilled.getRejectionReason());
 
         dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
         dto.setTdsActiveFlag(unbilled.isTdsActive());

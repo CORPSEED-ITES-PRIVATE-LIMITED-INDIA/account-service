@@ -69,6 +69,9 @@ public class UnbilledInvoiceSummaryDto {
     private String paymentStatus;
     private TdsResponseDto tdsResponseDto;
 
+    private String cancelAttachment;
+    private String rejectionReason;
+
 
 
 }
