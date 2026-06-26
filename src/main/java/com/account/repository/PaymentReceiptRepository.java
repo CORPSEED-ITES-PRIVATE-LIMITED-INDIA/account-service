@@ -15,18 +15,6 @@ public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, 
 
     Optional<PaymentReceipt> findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(UnbilledInvoice unbilledInvoice);
 
-    @Query("""
-    SELECT pr FROM PaymentReceipt pr
-    WHERE pr.unbilledInvoice.id = :unbilledId
-    AND pr.isCancelled = false
-    AND NOT EXISTS (
-        SELECT i FROM Invoice i
-        WHERE i.triggeringPayment.id = pr.id
-        AND i.isCancelled = false
-    )
-    ORDER BY pr.paymentDate ASC
-    """)
-    List<PaymentReceipt> findUninvoicedPaymentsByUnbilledId(@Param("unbilledId") Long unbilledId);
 
 
 }

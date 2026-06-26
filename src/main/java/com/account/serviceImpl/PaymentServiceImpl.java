@@ -4,6 +4,8 @@ import com.account.config.LeadFeignClient;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
+import com.account.domain.ledger.LedgerMaster;
+import com.account.domain.ledger.LedgerType;
 import com.account.dto.operationService.*;
 import com.account.dto.payment.*;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -19,6 +21,7 @@ import com.account.notification.NotificationPublisherService;
 import com.account.notification.dto.NotificationCreateRequestDto;
 import com.account.notification.dto.NotificationPriority;
 import com.account.repository.*;
+import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
 import com.account.util.DateTimeUtil;
@@ -62,6 +65,39 @@ public class PaymentServiceImpl implements PaymentService {
     private final GovernmentFeeRepository governmentFeeRepository;
     private final TdsRegistrationRepository tdsRegistrationRepository;
     private final NotificationPublisherService notificationPublisherService;
+    private final LedgerMasterRepository ledgerMasterRepository;
+
+    public PaymentServiceImpl(
+            EstimateRepository estimateRepository,
+            UnbilledInvoiceRepository unbilledInvoiceRepository,
+            PaymentReceiptRepository paymentReceiptRepository,
+            PaymentTypeRepository paymentTypeRepository,
+            UserRepository userRepository,
+            InvoiceService invoiceService,
+            DateTimeUtil dateTimeUtil,
+            ContactRepository contactRepository,
+            OperationFeignClient operationFeignClient,
+            InvoiceRepository invoiceRepository,
+            GovernmentFeeRepository governmentFeeRepository,
+            TdsRegistrationRepository tdsRegistrationRepository,
+            NotificationPublisherService notificationPublisherService,
+            LedgerMasterRepository ledgerMasterRepository
+    ) {
+        this.estimateRepository = estimateRepository;
+        this.unbilledInvoiceRepository = unbilledInvoiceRepository;
+        this.paymentReceiptRepository = paymentReceiptRepository;
+        this.paymentTypeRepository = paymentTypeRepository;
+        this.userRepository = userRepository;
+        this.invoiceService = invoiceService;
+        this.dateTimeUtil = dateTimeUtil;
+        this.contactRepository = contactRepository;
+        this.operationFeignClient = operationFeignClient;
+        this.invoiceRepository = invoiceRepository;
+        this.governmentFeeRepository = governmentFeeRepository;
+        this.tdsRegistrationRepository = tdsRegistrationRepository;
+        this.notificationPublisherService = notificationPublisherService;
+        this.ledgerMasterRepository = ledgerMasterRepository;
+    }
 
 
     @Override
@@ -119,6 +155,8 @@ public class PaymentServiceImpl implements PaymentService {
                         "PaymentType",
                         request.getPaymentTypeId()
                 ));
+
+        LedgerMaster bankLedger = validateAndGetBankLedger(request, reqAmount);
 
         // ===================================================================
         // ALLOW ZERO AMOUNT ONLY FOR PURCHASE_ORDER PAYMENT TYPE
@@ -298,6 +336,12 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setTransactionReference(request.getTransactionReference());
         receipt.setPaymentProof(request.getPaymentProof());
 
+        /*
+         * Save selected bank ledger with pending payment.
+         * Ledger voucher will be posted only after account approval.
+         */
+        receipt.setBankLedger(bankLedger);
+
 
         // EPR fields - saved only for product-related estimates (otherwise null)
         receipt.setEprFinancialYear(request.getEprFinancialYear());
@@ -354,6 +398,53 @@ public class PaymentServiceImpl implements PaymentService {
         );
 
         return response;
+    }
+
+    private LedgerMaster validateAndGetBankLedger(
+            PaymentRegistrationRequestDto request,
+            BigDecimal reqAmount
+    ) {
+        /*
+         * If actual amount is coming from customer, bank ledger is required.
+         *
+         * For PURCHASE_ORDER with zero amount, bank ledger is not required
+         * because no money is received yet.
+         */
+        if (reqAmount == null || reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+
+        if (request.getBankLedgerId() == null) {
+            throw new ValidationException(
+                    "Bank ledger is required for payment registration",
+                    "ERR_BANK_LEDGER_REQUIRED",
+                    "bankLedgerId"
+            );
+        }
+
+        LedgerMaster bankLedger = ledgerMasterRepository.findByIdAndDeletedFalse(request.getBankLedgerId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Bank ledger not found with ID: " + request.getBankLedgerId(),
+                        "BANK_LEDGER_NOT_FOUND"
+                ));
+
+        if (!bankLedger.isActive()) {
+            throw new ValidationException(
+                    "Selected bank ledger is inactive",
+                    "ERR_BANK_LEDGER_INACTIVE",
+                    "bankLedgerId"
+            );
+        }
+
+        if (bankLedger.getLedgerType() != LedgerType.BANK) {
+            throw new ValidationException(
+                    "Selected ledger must be a BANK ledger",
+                    "ERR_INVALID_BANK_LEDGER",
+                    "bankLedgerId"
+            );
+        }
+
+        return bankLedger;
     }
 
     private void validatePaymentRules(PaymentType paymentType,

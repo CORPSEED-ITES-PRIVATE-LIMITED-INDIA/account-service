@@ -1,5 +1,6 @@
 package com.account.domain;
 
+import com.account.domain.ledger.LedgerMaster;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedBy;
@@ -101,6 +102,21 @@ public class PaymentReceipt {
     @Column(length = 100)
     private String paymentTerms;             // e.g. "Net 90 Days", "Immediate"
 
+    /*
+     * Bank ledger selected during payment registration.
+     *
+     * Example:
+     * Yes Bank - Corpseed Current Account
+     * HDFC Bank - Corpseed Current Account
+     *
+     * This will be used later during account approval for:
+     *
+     * Dr Selected Bank Ledger
+     * Cr Customer Advance Ledger
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "bank_ledger_id")
+    private LedgerMaster bankLedger;
 
 
 }

@@ -31,6 +31,18 @@ public class PaymentRegistrationRequestDto {
     @NotBlank(message = "Payment proof is required")
     private String paymentProof;
 
+    /*
+     * Selected bank ledger where payment is expected/received.
+     *
+     * Example:
+     * Yes Bank - Corpseed Current Account
+     * HDFC Bank - Corpseed Current Account
+     * ICICI Bank - Corpseed Current Account
+     *
+     * This ID will come from LedgerMaster.
+     */
+    private Long bankLedgerId;
+
     // PO Payment Terms
     // Required only when payment type = PURCHASE_ORDER
     private Integer paymentTermsDays;
@@ -56,4 +68,3 @@ public class PaymentRegistrationRequestDto {
 
     private TdsRequestDto tds;
 }
-
