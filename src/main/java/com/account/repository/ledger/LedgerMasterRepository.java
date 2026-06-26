@@ -4,6 +4,8 @@ import com.account.domain.ledger.LedgerMaster;
 import com.account.domain.ledger.LedgerType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -20,14 +22,31 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
 
     List<LedgerMaster> findByDeletedFalseAndActiveTrueOrderByLedgerNameAsc();
 
-    Optional<LedgerMaster> findByCompany_IdAndUnit_IdAndLedgerTypeAndDeletedFalse(
-            Long companyId,
-            Long unitId,
-            LedgerType ledgerType
+    @Query("""
+            SELECT lm
+            FROM LedgerMaster lm
+            WHERE lm.company.id = :companyId
+              AND lm.unit.id = :unitId
+              AND lm.ledgerType = :ledgerType
+              AND lm.deleted = false
+            """)
+    Optional<LedgerMaster> findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+            @Param("companyId") Long companyId,
+            @Param("unitId") Long unitId,
+            @Param("ledgerType") LedgerType ledgerType
     );
 
-    Optional<LedgerMaster> findByCompany_IdAndLedgerTypeAndUnitIsNullAndDeletedFalse(
-            Long companyId,
-            LedgerType ledgerType
+    @Query("""
+            SELECT lm
+            FROM LedgerMaster lm
+            WHERE lm.company.id = :companyId
+              AND lm.ledgerType = :ledgerType
+              AND lm.deleted = false
+            """)
+    Optional<LedgerMaster> findByCompanyIdAndLedgerTypeAndDeletedFalse(
+            @Param("companyId") Long companyId,
+            @Param("ledgerType") LedgerType ledgerType
     );
+
+
 }

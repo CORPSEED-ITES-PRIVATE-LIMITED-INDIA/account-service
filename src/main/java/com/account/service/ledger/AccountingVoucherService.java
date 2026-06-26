@@ -6,8 +6,8 @@ import com.account.domain.ledger.VoucherType;
 import com.account.dto.ledger.AccountingVoucherRequestDto;
 import com.account.dto.ledger.AccountingVoucherResponseDto;
 import org.springframework.data.domain.Page;
-
 import java.time.LocalDate;
+
 
 public interface AccountingVoucherService {
 

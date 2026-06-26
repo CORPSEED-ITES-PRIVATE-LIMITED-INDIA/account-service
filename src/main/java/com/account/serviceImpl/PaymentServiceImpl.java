@@ -4,8 +4,9 @@ import com.account.config.LeadFeignClient;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
-import com.account.domain.ledger.LedgerMaster;
-import com.account.domain.ledger.LedgerType;
+import com.account.domain.ledger.*;
+import com.account.dto.ledger.AccountingVoucherEntryRequestDto;
+import com.account.dto.ledger.AccountingVoucherRequestDto;
 import com.account.dto.operationService.*;
 import com.account.dto.payment.*;
 import com.account.dto.unbilled.UnbilledInvoiceApprovalRequestDto;
@@ -21,9 +22,11 @@ import com.account.notification.NotificationPublisherService;
 import com.account.notification.dto.NotificationCreateRequestDto;
 import com.account.notification.dto.NotificationPriority;
 import com.account.repository.*;
+import com.account.repository.ledger.LedgerGroupRepository;
 import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.service.InvoiceService;
 import com.account.service.PaymentService;
+import com.account.service.ledger.AccountingVoucherService;
 import com.account.util.DateTimeUtil;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -66,6 +69,9 @@ public class PaymentServiceImpl implements PaymentService {
     private final NotificationPublisherService notificationPublisherService;
     private final LedgerMasterRepository ledgerMasterRepository;
 
+    private final AccountingVoucherService accountingVoucherService;
+    private final LedgerGroupRepository ledgerGroupRepository;
+
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
             UnbilledInvoiceRepository unbilledInvoiceRepository,
@@ -80,7 +86,9 @@ public class PaymentServiceImpl implements PaymentService {
             GovernmentFeeRepository governmentFeeRepository,
             TdsRegistrationRepository tdsRegistrationRepository,
             NotificationPublisherService notificationPublisherService,
-            LedgerMasterRepository ledgerMasterRepository
+            LedgerMasterRepository ledgerMasterRepository,
+            AccountingVoucherService accountingVoucherService,
+            LedgerGroupRepository ledgerGroupRepository
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -96,8 +104,9 @@ public class PaymentServiceImpl implements PaymentService {
         this.tdsRegistrationRepository = tdsRegistrationRepository;
         this.notificationPublisherService = notificationPublisherService;
         this.ledgerMasterRepository = ledgerMasterRepository;
+        this.accountingVoucherService = accountingVoucherService;
+        this.ledgerGroupRepository = ledgerGroupRepository;
     }
-
 
     @Override
     @Transactional
@@ -953,7 +962,9 @@ public class PaymentServiceImpl implements PaymentService {
         Estimate estimate  = unbilled.getEstimate();
 
         // 8. Update unbilled invoice to APPROVED (temporary state)
-        if ("REJECTED".equals(request.getApprovalRemarks())) {
+//        if ("REJECTED".equals(request.getApprovalRemarks())) {
+
+            if ("REJECTED".equals(approvalDecision)) {
 
             unbilled.setStatus(UnbilledStatus.REJECTED);
 
@@ -1021,33 +1032,63 @@ public class PaymentServiceImpl implements PaymentService {
 
         } else {
 
-            //   APPROVED FLOW
+            // ===============================
+            // APPROVED FLOW
+            // ===============================
             unbilled.setStatus(UnbilledStatus.APPROVED);
             estimate.setStatus(EstimateStatus.APPROVED);
 
-            //   Mark ALL pending payments as APPROVED
-            unbilled.getPayments().forEach(p -> {
-                if (p.getStatus() == PaymentStatus.PENDING) {
-                    p.setStatus(PaymentStatus.APPROVED);
-                }
-            });
+            /*
+             * Capture PENDING payments before changing status.
+             * Only newly approved payments should generate receipt vouchers.
+             */
+            List<PaymentReceipt> paymentsToApprove = unbilled.getPayments()
+                    .stream()
+                    .filter(p -> p.getStatus() == PaymentStatus.PENDING)
+                    .filter(p -> !p.isCancelled())
+                    .toList();
 
-            //  Move pending → actual received
-            BigDecimal updatedReceived = unbilled.getReceivedAmount()
-                    .add(unbilled.getCurrentReceivedAmount());
+            if (paymentsToApprove.isEmpty()) {
+                throw new ValidationException(
+                        "No pending payment found for approval",
+                        "ERR_NO_PENDING_PAYMENT_FOUND",
+                        "payments"
+                );
+            }
+
+            // Mark only newly pending payments as APPROVED
+            paymentsToApprove.forEach(p -> p.setStatus(PaymentStatus.APPROVED));
+
+            // Move pending amount into actual received amount
+            BigDecimal updatedReceived = safe2(unbilled.getReceivedAmount())
+                    .add(safe2(unbilled.getCurrentReceivedAmount()));
 
             unbilled.setReceivedAmount(updatedReceived);
 
             // Reset pending buffer
             unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
 
-            // Recalculate outstanding ONLY from approved amount
+            // Recalculate outstanding only from approved amount
             unbilled.setOutstandingAmount(
-                    unbilled.getTotalAmount()
+                    safe2(unbilled.getTotalAmount())
                             .subtract(updatedReceived)
                             .max(BigDecimal.ZERO)
                             .setScale(2, RoundingMode.HALF_UP)
             );
+
+            /*
+             * Create receipt voucher only after Accounts approval.
+             *
+             * Dr Bank Ledger
+             * Cr Customer Advance Ledger
+             */
+            for (PaymentReceipt payment : paymentsToApprove) {
+                postReceiptVoucherForApprovedPayment(
+                        unbilled,
+                        payment,
+                        approver
+                );
+            }
 
             // ===============================
             // APPROVE GOVERNMENT FEE IF EXISTS
@@ -1059,6 +1100,9 @@ public class PaymentServiceImpl implements PaymentService {
                         governmentFee.getId(), unbilled.getUnbilledNumber());
             });
 
+            // ===============================
+            // APPROVE TDS IF EXISTS
+            // ===============================
             tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
                     .ifPresent(tds -> {
                         tds.setStatus(TdsStatus.APPROVED);
@@ -1152,6 +1196,7 @@ public class PaymentServiceImpl implements PaymentService {
                     p.getCreatedAt());
         });
 
+
         List<PaymentReceipt> pendingPayments = allPayments.stream()
                 .filter(p -> p.getStatus() == PaymentStatus.PENDING)
                 .toList();
@@ -1184,7 +1229,8 @@ public class PaymentServiceImpl implements PaymentService {
                                 + unbilled.getUnbilledNumber()));
 
         // 10. Generate actual GST invoice
-        if (request.getApprovalRemarks().equals("APPROVED")) {
+//        if (request.getApprovalRemarks().equals("APPROVED")) {
+        if ("APPROVED".equals(approvalDecision)) {
             triggeringReceipt = unbilled.getPayments().stream()
                     .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
                     .filter(p -> p.getCreatedAt() != null)
@@ -1306,7 +1352,8 @@ public class PaymentServiceImpl implements PaymentService {
             if (ex.status() == 404) {
 
                 //   ONLY CREATE PROJECT (NO PAYMENT CALL HERE)
-                if (!"APPROVED".equals(request.getApprovalRemarks())) {
+//                if (!"APPROVED".equals(request.getApprovalRemarks())) {
+                if (!"APPROVED".equals(approvalDecision)) {
                     log.info("Skipping project creation because status is not APPROVED");
                     return response;
                 }
@@ -2367,6 +2414,187 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
+
+    private void postReceiptVoucherForApprovedPayment(
+            UnbilledInvoice unbilled,
+            PaymentReceipt paymentReceipt,
+            User approver
+    ) {
+        if (unbilled == null || paymentReceipt == null) {
+            return;
+        }
+
+        if (paymentReceipt.getAmount() == null
+                || paymentReceipt.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        if (paymentReceipt.getBankLedger() == null) {
+            throw new ValidationException(
+                    "Bank ledger is missing in payment receipt. Cannot post receipt voucher.",
+                    "ERR_PAYMENT_BANK_LEDGER_MISSING",
+                    "bankLedgerId"
+            );
+        }
+
+        LedgerMaster bankLedger = paymentReceipt.getBankLedger();
+
+        LedgerMaster customerAdvanceLedger = getOrCreateCustomerAdvanceLedger(
+                unbilled,
+                approver
+        );
+
+        AccountingVoucherEntryRequestDto bankDebitEntry =
+                AccountingVoucherEntryRequestDto.builder()
+                        .ledgerId(bankLedger.getId())
+                        .debitAmount(paymentReceipt.getAmount())
+                        .creditAmount(BigDecimal.ZERO)
+                        .narration("Payment received in " + bankLedger.getLedgerName())
+                        .build();
+
+        AccountingVoucherEntryRequestDto customerAdvanceCreditEntry =
+                AccountingVoucherEntryRequestDto.builder()
+                        .ledgerId(customerAdvanceLedger.getId())
+                        .debitAmount(BigDecimal.ZERO)
+                        .creditAmount(paymentReceipt.getAmount())
+                        .narration("Customer advance received")
+                        .build();
+
+        AccountingVoucherRequestDto voucherRequest =
+                AccountingVoucherRequestDto.builder()
+                        .voucherType(VoucherType.RECEIPT)
+                        .voucherDate(
+                                paymentReceipt.getPaymentDate() != null
+                                        ? paymentReceipt.getPaymentDate()
+                                        : LocalDate.now()
+                        )
+                        .sourceType(VoucherSourceType.PAYMENT_RECEIPT)
+                        .sourceId(paymentReceipt.getId())
+                        .narration(
+                                "Payment approved for unbilled: "
+                                        + unbilled.getUnbilledNumber()
+                                        + ", transaction ref: "
+                                        + paymentReceipt.getTransactionReference()
+                        )
+                        .entries(List.of(
+                                bankDebitEntry,
+                                customerAdvanceCreditEntry
+                        ))
+                        .build();
+
+        accountingVoucherService.createVoucher(voucherRequest);
+    }
+
+    private LedgerMaster getOrCreateCustomerAdvanceLedger(
+            UnbilledInvoice unbilled,
+            User createdBy
+    ) {
+        if (unbilled == null) {
+            throw new ValidationException(
+                    "Unbilled invoice is required to create customer advance ledger",
+                    "ERR_UNBILLED_REQUIRED_FOR_LEDGER",
+                    "unbilled"
+            );
+        }
+
+        Company company = unbilled.getCompany();
+        CompanyUnit unit = unbilled.getUnit();
+        Contact contact = unbilled.getContact();
+
+        if (company == null || company.getId() == null) {
+            throw new ValidationException(
+                    "Company is required to create customer advance ledger",
+                    "ERR_COMPANY_REQUIRED_FOR_LEDGER",
+                    "companyId"
+            );
+        }
+
+        Long companyId = company.getId();
+        Long unitId = unit != null ? unit.getId() : null;
+
+        Optional<LedgerMaster> existingLedger;
+
+        if (unitId != null) {
+            existingLedger = ledgerMasterRepository
+                    .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+                            companyId,
+                            unitId,
+                            LedgerType.CUSTOMER_ADVANCE
+                    );
+        } else {
+            existingLedger = ledgerMasterRepository
+                    .findByCompanyIdAndLedgerTypeAndDeletedFalse(
+                            companyId,
+                            LedgerType.CUSTOMER_ADVANCE
+                    );
+        }
+
+        if (existingLedger.isPresent()) {
+            return existingLedger.get();
+        }
+
+        LedgerGroup currentLiabilityGroup = ledgerGroupRepository
+                .findByGroupTypeAndDeletedFalse(LedgerGroupType.CURRENT_LIABILITIES)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Current Liabilities ledger group not found",
+                        "CURRENT_LIABILITIES_GROUP_NOT_FOUND"
+                ));
+
+        String companyName = company.getName() != null
+                ? company.getName().trim()
+                : "Company-" + companyId;
+
+        String unitName = unit != null && unit.getUnitName() != null
+                ? unit.getUnitName().trim()
+                : null;
+
+        String ledgerName = unitName != null && !unitName.isEmpty()
+                ? "Customer Advance - " + companyName + " - " + unitName
+                : "Customer Advance - " + companyName;
+
+        LedgerMaster ledger = new LedgerMaster();
+
+        ledger.setLedgerName(ledgerName);
+        ledger.setLedgerCode(generateLedgerCode("CUST-ADV"));
+
+        ledger.setLedgerType(LedgerType.CUSTOMER_ADVANCE);
+        ledger.setLedgerGroup(currentLiabilityGroup);
+
+        ledger.setCompany(company);
+
+        if (unit != null && unit.getId() != null) {
+            ledger.setUnit(unit);
+        }
+
+        if (contact != null && contact.getId() != null) {
+            ledger.setContact(contact);
+        }
+
+        ledger.setGstNo(unit != null ? unit.getGstNo() : null);
+        ledger.setPanNo(company.getPanNo());
+
+        ledger.setOpeningBalance(BigDecimal.ZERO);
+        ledger.setOpeningBalanceType(DebitCredit.CREDIT);
+
+        ledger.setCurrentBalance(BigDecimal.ZERO);
+        ledger.setCurrentBalanceType(DebitCredit.CREDIT);
+
+        ledger.setSystemCreated(true);
+        ledger.setActive(true);
+        ledger.setDeleted(false);
+
+        if (createdBy != null && createdBy.getId() != null) {
+            ledger.setCreatedBy(createdBy);
+            ledger.setUpdatedBy(createdBy);
+        }
+
+        return ledgerMasterRepository.save(ledger);
+    }
+
+    private String generateLedgerCode(String prefix) {
+        long count = ledgerMasterRepository.count() + 1;
+        return String.format("LED-%s-%06d", prefix, count);
+    }
 
 
 }

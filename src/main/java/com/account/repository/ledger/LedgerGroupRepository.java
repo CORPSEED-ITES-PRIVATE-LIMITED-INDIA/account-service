@@ -1,6 +1,7 @@
 package com.account.repository.ledger;
 
 import com.account.domain.ledger.LedgerGroup;
+import com.account.domain.ledger.LedgerGroupType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -62,4 +63,16 @@ public interface LedgerGroupRepository extends JpaRepository<LedgerGroup, Long>,
      * Used for dropdowns while creating LedgerMaster.
      */
     List<LedgerGroup> findByDeletedFalseAndActiveTrueOrderByNameAsc();
+
+    /*
+     * Used while auto-creating system ledgers.
+     *
+     * Example:
+     * LedgerGroupType.CURRENT_LIABILITIES
+     * LedgerGroupType.BANK_ACCOUNTS
+     * LedgerGroupType.SUNDRY_DEBTORS
+     */
+    Optional<LedgerGroup> findByGroupTypeAndDeletedFalse(LedgerGroupType groupType);
+
+
 }

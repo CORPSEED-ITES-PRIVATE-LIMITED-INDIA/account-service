@@ -67,29 +67,14 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         validateLedgerBusinessRules(request, company, unit);
 
-        LedgerMaster ledger = LedgerMaster.builder()
-                .ledgerName(ledgerName)
-                .ledgerCode(generateLedgerCode(request.getLedgerType()))
-                .ledgerType(request.getLedgerType())
-                .ledgerGroup(ledgerGroup)
-                .company(company)
-                .unit(unit)
-                .contact(contact)
-                .gstNo(clean(request.getGstNo()))
-                .panNo(clean(request.getPanNo()))
-                .bankName(clean(request.getBankName()))
-                .accountHolderName(clean(request.getAccountHolderName()))
-                .accountNumber(clean(request.getAccountNumber()))
-                .ifscCode(clean(request.getIfscCode()))
-                .branchName(clean(request.getBranchName()))
-                .openingBalance(safeMoney(request.getOpeningBalance()))
-                .openingBalanceType(request.getOpeningBalanceType())
-                .currentBalance(safeMoney(request.getOpeningBalance()))
-                .currentBalanceType(request.getOpeningBalanceType())
-                .systemCreated(false)
-                .active(request.getActive() == null || request.getActive())
-                .deleted(false)
-                .build();
+        LedgerMaster ledger = buildLedgerMaster(
+                request,
+                ledgerName,
+                ledgerGroup,
+                company,
+                unit,
+                contact
+        );
 
         LedgerMaster saved = ledgerMasterRepository.save(ledger);
 
@@ -490,5 +475,53 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .createdAt(ledger.getCreatedAt())
                 .updatedAt(ledger.getUpdatedAt())
                 .build();
+    }
+
+    private LedgerMaster buildLedgerMaster(
+            LedgerMasterRequestDto request,
+            String ledgerName,
+            LedgerGroup ledgerGroup,
+            Company company,
+            CompanyUnit unit,
+            Contact contact
+    ) {
+        BigDecimal openingBalance = safeMoney(request.getOpeningBalance());
+
+        LedgerMaster ledger = new LedgerMaster();
+
+        ledger.setLedgerName(ledgerName);
+        ledger.setLedgerCode(generateLedgerCode(request.getLedgerType()));
+
+        ledger.setLedgerType(request.getLedgerType());
+        ledger.setLedgerGroup(ledgerGroup);
+
+        ledger.setCompany(company);
+        ledger.setUnit(unit);
+        ledger.setContact(contact);
+
+        ledger.setGstNo(clean(request.getGstNo()));
+        ledger.setPanNo(clean(request.getPanNo()));
+
+        ledger.setBankName(clean(request.getBankName()));
+        ledger.setAccountHolderName(clean(request.getAccountHolderName()));
+        ledger.setAccountNumber(clean(request.getAccountNumber()));
+        ledger.setIfscCode(clean(request.getIfscCode()));
+        ledger.setBranchName(clean(request.getBranchName()));
+
+        ledger.setOpeningBalance(openingBalance);
+        ledger.setOpeningBalanceType(request.getOpeningBalanceType());
+
+        /*
+         * At the time of ledger creation, current balance should be same as opening balance.
+         * Later, voucher posting will update currentBalance.
+         */
+        ledger.setCurrentBalance(openingBalance);
+        ledger.setCurrentBalanceType(request.getOpeningBalanceType());
+
+        ledger.setSystemCreated(false);
+        ledger.setActive(request.getActive() == null || request.getActive());
+        ledger.setDeleted(false);
+
+        return ledger;
     }
 }
