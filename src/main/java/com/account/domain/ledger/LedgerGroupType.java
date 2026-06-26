@@ -1,0 +1,16 @@
+package com.account.domain.ledger;
+
+public enum LedgerGroupType {
+    SUNDRY_DEBTORS,
+    SUNDRY_CREDITORS,
+    BANK_ACCOUNTS,
+    CASH_IN_HAND,
+    SALES_ACCOUNTS,
+    DUTIES_AND_TAXES,
+    CURRENT_ASSETS,
+    CURRENT_LIABILITIES,
+    INDIRECT_EXPENSES,
+    DIRECT_EXPENSES,
+    INDIRECT_INCOME,
+    DIRECT_INCOME
+}
