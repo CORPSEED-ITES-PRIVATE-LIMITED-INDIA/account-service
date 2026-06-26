@@ -4,15 +4,20 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
 import com.account.dto.invoice.*;
+import com.account.dto.operationService.OperationProjectPaymentTransactionDto;
+import com.account.dto.operationService.OperationProjectRequestDto;
+import com.account.dto.operationService.OperationProjectResponseDto;
 import com.account.dto.taxation.*;
 import com.account.exception.AccessDeniedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
+import com.account.feignClient.OperationFeignClient;
 import com.account.repository.InvoiceRepository;
 import com.account.repository.OrganizationRepository;
 import com.account.repository.UserRepository;
 import com.account.service.InvoiceService;
 import com.account.util.DateTimeUtil;
+import feign.FeignException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Tuple;
@@ -22,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,10 +35,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -44,6 +47,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private final InvoiceRepository invoiceRepository;
 	private final UserRepository userRepository;
 	private final DateTimeUtil dateTimeUtil;
+	private final OperationFeignClient operationFeignClient;
+
+
 	@PersistenceContext
 	private EntityManager entityManager;
 
@@ -1490,6 +1496,333 @@ public class InvoiceServiceImpl implements InvoiceService {
 		);
 	}
 
+
+	@Override
+	@Transactional
+	public InvoiceDetailDto confirmEInvoiceAndCreateProject(
+			Long invoiceId,
+			ConfirmInvoiceEInvoiceRequestDto request
+	) {
+		if (invoiceId == null) {
+			throw new ValidationException(
+					"Invoice ID is required",
+					"ERR_INVOICE_ID_REQUIRED",
+					"invoiceId"
+			);
+		}
+
+		if (request == null || request.getUserId() == null) {
+			throw new ValidationException(
+					"User ID is required",
+					"ERR_USER_ID_REQUIRED",
+					"userId"
+			);
+		}
+
+		if (request.getEInvoiceAttachmentUrl() == null
+				|| request.getEInvoiceAttachmentUrl().trim().isEmpty()) {
+			throw new ValidationException(
+					"GST e-invoice attachment is required",
+					"ERR_E_INVOICE_ATTACHMENT_REQUIRED",
+					"eInvoiceAttachmentUrl"
+			);
+		}
+
+		User confirmedBy = userRepository.findById(request.getUserId())
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"User not found with ID: " + request.getUserId(),
+						"USER_NOT_FOUND",
+						"User",
+						request.getUserId()
+				));
+
+		Invoice invoice = invoiceRepository.findById(invoiceId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Invoice not found with ID: " + invoiceId,
+						"INVOICE_NOT_FOUND",
+						"Invoice",
+						invoiceId
+				));
+
+		if (invoice.isCancelled()) {
+			throw new ValidationException(
+					"Cancelled invoice cannot be confirmed",
+					"ERR_CANCELLED_INVOICE_CONFIRM_NOT_ALLOWED",
+					"invoiceId"
+			);
+		}
+
+		if (invoice.isOperationSynced()) {
+			throw new ValidationException(
+					"Operation project is already created/synced for this invoice",
+					"ERR_OPERATION_ALREADY_SYNCED",
+					"invoiceId"
+			);
+		}
+
+		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
+
+		if (unbilled == null) {
+			throw new ValidationException(
+					"Invoice is not linked with any unbilled invoice",
+					"ERR_UNBILLED_NOT_LINKED",
+					"invoiceId"
+			);
+		}
+
+		if (unbilled.getStatus() != UnbilledStatus.APPROVED) {
+			throw new ValidationException(
+					"Project can be created only after unbilled invoice is approved",
+					"ERR_UNBILLED_NOT_APPROVED",
+					"unbilledId"
+			);
+		}
+
+		// Save GST e-invoice confirmation details
+		invoice.setEInvoiceAttachmentUrl(request.getEInvoiceAttachmentUrl().trim());
+		invoice.setEInvoiceIrn(
+				request.getEInvoiceIrn() != null ? request.getEInvoiceIrn().trim() : null
+		);
+		invoice.setEInvoiceAckNo(
+				request.getEInvoiceAckNo() != null ? request.getEInvoiceAckNo().trim() : null
+		);
+		invoice.setEInvoiceAckDate(request.getEInvoiceAckDate());
+		invoice.setEInvoiceConfirmedAt(LocalDateTime.now());
+		invoice.setEInvoiceConfirmedBy(confirmedBy);
+		invoice.setUpdatedBy(confirmedBy);
+		invoice.setStatus(InvoiceStatus.E_INVOICE_CONFIRMED);
+
+		// Create or sync Operation project only after GST e-invoice confirmation
+		createOrSyncOperationProjectFromConfirmedInvoice(invoice, confirmedBy);
+
+		invoice.setOperationSynced(true);
+		invoice.setOperationSyncedAt(LocalDateTime.now());
+
+		Invoice savedInvoice = invoiceRepository.save(invoice);
+
+		log.info(
+				"GST e-invoice confirmed and Operation project synced | invoice={} | unbilled={}",
+				savedInvoice.getInvoiceNumber(),
+				unbilled.getUnbilledNumber()
+		);
+
+		return toDetailDto(savedInvoice);
+	}
+
+	private void createOrSyncOperationProjectFromConfirmedInvoice(
+			Invoice invoice,
+			User confirmedBy
+	) {
+		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
+		Estimate estimate = unbilled.getEstimate();
+
+		try {
+			ResponseEntity<OperationProjectResponseDto> res =
+					operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+			if (res.getStatusCode().is2xxSuccessful() && res.getBody() != null) {
+				OperationProjectResponseDto project = res.getBody();
+
+				log.info(
+						"Operation project already exists. Syncing payment | invoice={} | projectId={}",
+						invoice.getInvoiceNumber(),
+						project.getId()
+				);
+
+				syncPaymentToExistingOperationProject(unbilled, project, confirmedBy);
+
+				invoice.setOperationProjectNo(project.getProjectNo());
+				return;
+			}
+
+		} catch (FeignException ex) {
+			if (ex.status() == 404) {
+				log.info(
+						"Operation project not found. Creating project after GST e-invoice confirmation | invoice={} | unbilled={}",
+						invoice.getInvoiceNumber(),
+						unbilled.getUnbilledNumber()
+				);
+
+				OperationProjectRequestDto projectDto =
+						buildOperationProjectRequestDto(invoice, unbilled, estimate, confirmedBy);
+
+				operationFeignClient.createProject(projectDto);
+
+				invoice.setOperationProjectNo(projectDto.getProjectNo());
+
+				log.info(
+						"Operation project created successfully | projectNo={} | invoice={}",
+						projectDto.getProjectNo(),
+						invoice.getInvoiceNumber()
+				);
+
+				return;
+			}
+
+			log.error(
+					"Operation service error while project sync | invoice={} | unbilled={} | status={} | message={}",
+					invoice.getInvoiceNumber(),
+					unbilled.getUnbilledNumber(),
+					ex.status(),
+					ex.getMessage()
+			);
+
+			throw ex;
+		}
+	}
+
+	private void syncPaymentToExistingOperationProject(
+			UnbilledInvoice unbilled,
+			OperationProjectResponseDto project,
+			User confirmedBy
+	) {
+		double accountReceived = unbilled.getReceivedAmount() != null
+				? unbilled.getReceivedAmount().doubleValue()
+				: 0.0;
+
+		double operationPaid = project.getTotalAmount() - project.getDueAmount();
+
+		double newPayment = accountReceived - operationPaid;
+
+		if (newPayment <= 0) {
+			log.info(
+					"No new payment to sync | unbilled={} | accountReceived={} | operationPaid={}",
+					unbilled.getUnbilledNumber(),
+					accountReceived,
+					operationPaid
+			);
+			return;
+		}
+
+		OperationProjectPaymentTransactionDto dto = new OperationProjectPaymentTransactionDto();
+		dto.setAmount(newPayment);
+		dto.setPaymentDate(new Date());
+		dto.setCreatedBy(confirmedBy.getId());
+
+		operationFeignClient.addPaymentTransaction(project.getUnbilledNumber(), dto);
+
+		log.info(
+				"Payment synced to existing Operation project | unbilled={} | amount={}",
+				unbilled.getUnbilledNumber(),
+				newPayment
+		);
+	}
+
+	private OperationProjectRequestDto buildOperationProjectRequestDto(
+			Invoice invoice,
+			UnbilledInvoice unbilled,
+			Estimate estimate,
+			User confirmedBy
+	) {
+		PaymentReceipt receipt = invoice.getTriggeringPayment();
+
+		if (receipt == null && unbilled.getPayments() != null) {
+			receipt = unbilled.getPayments()
+					.stream()
+					.filter(p -> p.getStatus() == PaymentStatus.APPROVED)
+					.filter(p -> !p.isCancelled())
+					.max(
+							Comparator
+									.comparing(
+											PaymentReceipt::getCreatedAt,
+											Comparator.nullsFirst(Comparator.naturalOrder())
+									)
+									.thenComparing(
+											PaymentReceipt::getId,
+											Comparator.nullsFirst(Comparator.naturalOrder())
+									)
+					)
+					.orElse(null);
+		}
+
+		OperationProjectRequestDto projectDto = new OperationProjectRequestDto();
+
+		projectDto.setName(
+				estimate != null && estimate.getSolutionName() != null
+						? estimate.getSolutionName()
+						: (
+						unbilled.getCompany() != null
+								? unbilled.getCompany().getName() + " - Project"
+								: "Unnamed Project"
+				)
+		);
+
+		projectDto.setProjectNo(generateProjectNumberForOperation());
+
+		projectDto.setSalesPersonId(
+				unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null
+		);
+
+		projectDto.setSalesPersonName(
+				unbilled.getCreatedBy() != null
+						? (
+						unbilled.getCreatedBy().getFullName() != null
+								? unbilled.getCreatedBy().getFullName()
+								: unbilled.getCreatedBy().getEmail()
+				)
+						: null
+		);
+
+		projectDto.setProductId(estimate != null ? estimate.getSolutionId() : null);
+		projectDto.setCompanyId(
+				unbilled.getCompany() != null ? unbilled.getCompany().getId() : null
+		);
+
+		projectDto.setUnitId(
+				unbilled.getUnit() != null ? unbilled.getUnit().getId() : null
+		);
+
+		projectDto.setUnbilledNumber(unbilled.getUnbilledNumber());
+		projectDto.setEstimateNumber(
+				estimate != null ? estimate.getEstimateNumber() : null
+		);
+
+		projectDto.setContactId(
+				unbilled.getContact() != null ? unbilled.getContact().getId() : null
+		);
+
+		projectDto.setLeadId(estimate != null ? estimate.getLeadId() : null);
+
+		projectDto.setDate(LocalDate.now());
+
+		projectDto.setTotalAmount(
+				unbilled.getTotalAmount() != null
+						? unbilled.getTotalAmount().doubleValue()
+						: 0.0
+		);
+
+		projectDto.setPaidAmount(
+				unbilled.getReceivedAmount() != null
+						? unbilled.getReceivedAmount().doubleValue()
+						: 0.0
+		);
+
+		projectDto.setPaymentTypeId(
+				receipt != null && receipt.getPaymentType() != null
+						? receipt.getPaymentType().getId()
+						: null
+		);
+
+		projectDto.setApprovedById(confirmedBy.getId());
+
+		projectDto.setCreatedBy(
+				unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : confirmedBy.getId()
+		);
+
+		projectDto.setUpdatedBy(confirmedBy.getId());
+
+		return projectDto;
+	}
+
+	private String generateProjectNumberForOperation() {
+		String dateTimePart = LocalDateTime.now()
+				.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+
+		long count = invoiceRepository.count() + 1;
+		String sequence = String.format("%04d", count);
+
+		return "PRJ-" + dateTimePart + "-" + sequence;
+	}
 
 
 }

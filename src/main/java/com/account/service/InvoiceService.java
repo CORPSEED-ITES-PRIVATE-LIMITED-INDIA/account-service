@@ -1,10 +1,7 @@
 package com.account.service;
 
 import com.account.domain.*;
-import com.account.dto.invoice.InvoiceDetailDto;
-import com.account.dto.invoice.InvoiceReportDto;
-import com.account.dto.invoice.InvoiceSearchRequest;
-import com.account.dto.invoice.InvoiceSummaryDto;
+import com.account.dto.invoice.*;
 import com.account.dto.taxation.TaxationReportDto;
 import com.account.dto.taxation.TaxationReportRequest;
 
@@ -65,7 +62,5 @@ public interface InvoiceService {
 	);
 
 
-
-
-
+	InvoiceDetailDto confirmEInvoiceAndCreateProject(Long invoiceId, ConfirmInvoiceEInvoiceRequestDto request);
 }

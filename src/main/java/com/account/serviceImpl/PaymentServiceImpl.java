@@ -1278,7 +1278,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         response.setProductId(estimate != null ? estimate.getSolutionId() : null);
         response.setCompanyId(company != null ? company.getId() : null);
-        response.setCompanyUnitId(unbilled.getUnit().getId());
         response.setUnbilledNumber(unbilled.getUnbilledNumber());
         response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
         response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
@@ -1300,83 +1299,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         System.out.println("response.getContactId(): "+response.getContactId());
 
-        try {
 
-            ResponseEntity<OperationProjectResponseDto> res =
-                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
-
-            if (res.getStatusCode().is2xxSuccessful() && res.getBody() != null) {
-
-                OperationProjectResponseDto project = res.getBody();
-
-                log.info("Project exists → syncing payment | projectId={}", project.getId());
-
-                // ===============================
-                // CALCULATE PAYMENT DELTA
-                // ===============================
-
-                double accountReceived = unbilled.getReceivedAmount() != null
-                        ? unbilled.getReceivedAmount().doubleValue()
-                        : 0.0;
-
-                double operationPaid = project.getTotalAmount() - project.getDueAmount();
-
-                double newPayment = accountReceived - operationPaid;
-
-                if (newPayment <= 0) {
-                    log.info("No new payment to sync | account={} operation={}",
-                            accountReceived, operationPaid);
-                    return response;
-                }
-
-                // ===============================
-                // CREATE PAYMENT DTO
-                // ===============================
-
-                OperationProjectPaymentTransactionDto dto = new OperationProjectPaymentTransactionDto();
-                dto.setAmount(newPayment);
-                dto.setPaymentDate(new Date());
-                dto.setCreatedBy(approver.getId());
-
-                // ===============================
-                // CALL OPERATION API
-                // ===============================
-
-                operationFeignClient.addPaymentTransaction(project.getUnbilledNumber(), dto);
-
-                log.info("Payment synced to operation | amount={}", newPayment);
-            }
-
-        } catch (FeignException ex) {
-
-            if (ex.status() == 404) {
-
-                //   ONLY CREATE PROJECT (NO PAYMENT CALL HERE)
-//                if (!"APPROVED".equals(request.getApprovalRemarks())) {
-                if (!"APPROVED".equals(approvalDecision)) {
-                    log.info("Skipping project creation because status is not APPROVED");
-                    return response;
-                }
-
-                log.info("Project not found → creating project");
-
-                this.operationProjectCreationMethod(unbilled, estimate, response);
-
-                //   DO NOT ADD PAYMENT HERE
-                // Payment already handled inside project creation
-
-            } else {
-
-                log.error(
-                        "Operation service error while checking project | unbilled={} | status={} | message={}",
-                        unbilled.getUnbilledNumber(),
-                        ex.status(),
-                        ex.getMessage()
-                );
-
-                throw ex;
-            }
-        }
 
         return response;
     }
@@ -1953,59 +1876,6 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
-
-    private void operationProjectCreationMethod(UnbilledInvoice unbilled,
-                                                Estimate estimate,
-                                                UnbilledInvoiceApprovalResponseDto response) {
-
-        try {
-            log.info("Starting operation project creation | unbilled: {}", unbilled.getUnbilledNumber());
-
-
-            OperationProjectRequestDto projectDto = new OperationProjectRequestDto();
-
-            projectDto.setName(response.getName());
-            projectDto.setProjectNo(response.getProjectNo());
-
-            projectDto.setSalesPersonId(response.getSalesPersonId());
-            projectDto.setSalesPersonName(response.getSalesPersonName());
-
-            projectDto.setProductId(response.getProductId());
-            projectDto.setCompanyId(response.getCompanyId());
-
-            projectDto.setUnbilledNumber(response.getUnbilledNumber());
-            projectDto.setEstimateNumber(response.getEstimateNumber());
-
-            projectDto.setContactId(response.getContactId());
-            projectDto.setLeadId(response.getLeadId());
-
-            projectDto.setDate(response.getDate());
-
-            projectDto.setTotalAmount(response.getTotalAmount());
-            projectDto.setPaidAmount(response.getPaidAmount());
-
-            projectDto.setPaymentTypeId(response.getPaymentTypeId());
-
-            projectDto.setApprovedById(response.getApprovedById());
-            projectDto.setCreatedBy(response.getCreatedBy());
-            projectDto.setUpdatedBy(response.getUpdatedBy());
-
-            projectDto.setUnitId(response.getCompanyUnitId());
-
-            operationFeignClient.createProject(projectDto);
-
-            log.info("Project successfully created in operation-service | projectNo={}", projectDto.getProjectNo());
-
-        } catch (Error error) {
-            // ❗ DO NOT break main transaction (invoice approval)
-            log.error("Failed to create project in operation-service | unbilled={} | error={}",
-                    unbilled.getUnbilledNumber(), error.getMessage(), error);
-
-            throw error;
-
-            // Optional: push to retry queue / event / dead-letter
-        }
-    }
 
     private String generateProjectNumber() {
         String datePart = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));

@@ -1,10 +1,7 @@
 package com.account.controller.invoice;
 
 import com.account.domain.InvoiceStatus;
-import com.account.dto.invoice.InvoiceDetailDto;
-import com.account.dto.invoice.InvoiceReportDto;
-import com.account.dto.invoice.InvoiceSearchRequest;
-import com.account.dto.invoice.InvoiceSummaryDto;
+import com.account.dto.invoice.*;
 import com.account.dto.taxation.TaxationReportDto;
 import com.account.dto.taxation.TaxationReportRequest;
 import com.account.service.InvoiceService;
@@ -12,6 +9,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -263,6 +261,18 @@ public class InvoiceController {
     }
 
 
+    @PostMapping("/{invoiceId}/confirm-e-invoice")
+    @Operation(
+            summary = "Confirm GST e-invoice and create Operation project",
+            description = "Accounts uploads/confirms GST e-invoice details. After confirmation, Operation project is created or payment is synced."
+    )
+    public ResponseEntity<InvoiceDetailDto> confirmEInvoiceAndCreateProject(
+            @PathVariable Long invoiceId,
+            @Valid @RequestBody ConfirmInvoiceEInvoiceRequestDto request
+    ) {
+        InvoiceDetailDto response = invoiceService.confirmEInvoiceAndCreateProject(invoiceId, request);
+        return ResponseEntity.ok(response);
+    }
 
 
 

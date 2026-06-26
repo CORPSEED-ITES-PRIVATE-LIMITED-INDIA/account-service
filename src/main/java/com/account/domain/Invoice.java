@@ -167,6 +167,34 @@ public class Invoice {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
+    @Column(name = "e_invoice_attachment_url", columnDefinition = "TEXT")
+    private String eInvoiceAttachmentUrl;
+
+    @Column(name = "e_invoice_irn", length = 100)
+    private String eInvoiceIrn;
+
+    @Column(name = "e_invoice_ack_no", length = 100)
+    private String eInvoiceAckNo;
+
+    @Column(name = "e_invoice_ack_date")
+    private LocalDateTime eInvoiceAckDate;
+
+    @Column(name = "e_invoice_confirmed_at")
+    private LocalDateTime eInvoiceConfirmedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "e_invoice_confirmed_by")
+    private User eInvoiceConfirmedBy;
+
+    @Column(name = "operation_synced", nullable = false)
+    private boolean operationSynced = false;
+
+    @Column(name = "operation_synced_at")
+    private LocalDateTime operationSyncedAt;
+
+    @Column(name = "operation_project_no", length = 100)
+    private String operationProjectNo;
+
 
 
 }

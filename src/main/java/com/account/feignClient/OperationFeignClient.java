@@ -62,8 +62,6 @@ public interface OperationFeignClient {
             Pageable pageable
     );
 
-
-
     @GetMapping("/operationService/api/purchase-orders")
     ResponseEntity<?> getProcurementPurchaseOrders(
             @RequestParam(required = false) String status,
