@@ -3,7 +3,10 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
+import com.account.domain.ledger.*;
 import com.account.dto.invoice.*;
+import com.account.dto.ledger.AccountingVoucherEntryRequestDto;
+import com.account.dto.ledger.AccountingVoucherRequestDto;
 import com.account.dto.operationService.OperationProjectPaymentTransactionDto;
 import com.account.dto.operationService.OperationProjectRequestDto;
 import com.account.dto.operationService.OperationProjectResponseDto;
@@ -15,7 +18,10 @@ import com.account.feignClient.OperationFeignClient;
 import com.account.repository.InvoiceRepository;
 import com.account.repository.OrganizationRepository;
 import com.account.repository.UserRepository;
+import com.account.repository.ledger.LedgerGroupRepository;
+import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.service.InvoiceService;
+import com.account.service.ledger.AccountingVoucherService;
 import com.account.util.DateTimeUtil;
 import feign.FeignException;
 import jakarta.persistence.EntityManager;
@@ -55,6 +61,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	@Autowired
 	private final OrganizationRepository organizationRepository;
+
+	private final AccountingVoucherService accountingVoucherService;
+	private final LedgerMasterRepository ledgerMasterRepository;
+	private final LedgerGroupRepository ledgerGroupRepository;
 
 
 	/**
@@ -240,9 +250,19 @@ public class InvoiceServiceImpl implements InvoiceService {
 		// }
 
 		// Save and return
+		// Save invoice first because voucher sourceId requires invoice ID
 		invoice = invoiceRepository.save(invoice);
 
-		log.info("Invoice generated: {} | grandTotal: ₹{} | lines: {} | for payment: {}",
+		/*
+		 * Post sales invoice accounting voucher.
+		 *
+		 * Dr Customer Advance Ledger
+		 * Cr Service Income Ledger
+		 * Cr Output CGST / SGST / IGST Ledger
+		 */
+		postSalesInvoiceVoucher(invoice, unbilled, approver);
+
+		log.info("Invoice generated and sales voucher posted: {} | grandTotal: ₹{} | lines: {} | for payment: {}",
 				invoice.getInvoiceNumber(), invoice.getGrandTotal(),
 				invoiceLines.size(), receipt.getId());
 
@@ -1822,6 +1842,356 @@ public class InvoiceServiceImpl implements InvoiceService {
 		String sequence = String.format("%04d", count);
 
 		return "PRJ-" + dateTimePart + "-" + sequence;
+	}
+
+	private void postSalesInvoiceVoucher(
+			Invoice invoice,
+			UnbilledInvoice unbilled,
+			User approver
+	) {
+		if (invoice == null || invoice.getId() == null) {
+			throw new ValidationException(
+					"Saved invoice is required to post sales invoice voucher",
+					"ERR_INVOICE_REQUIRED_FOR_VOUCHER",
+					"invoice"
+			);
+		}
+
+		if (unbilled == null) {
+			throw new ValidationException(
+					"Unbilled invoice is required to post sales invoice voucher",
+					"ERR_UNBILLED_REQUIRED_FOR_VOUCHER",
+					"unbilled"
+			);
+		}
+
+		BigDecimal grandTotal = safeMoney(invoice.getGrandTotal());
+
+		if (grandTotal.compareTo(BigDecimal.ZERO) <= 0) {
+			log.info("Skipping sales invoice voucher for zero amount invoice: {}", invoice.getInvoiceNumber());
+			return;
+		}
+
+		LedgerMaster customerAdvanceLedger = getOrCreateCustomerAdvanceLedger(unbilled, approver);
+
+		LedgerMaster serviceIncomeLedger = getOrCreateSystemLedger(
+				LedgerType.SERVICE_INCOME,
+				LedgerGroupType.SALES_ACCOUNTS,
+				"Service Income",
+				DebitCredit.CREDIT,
+				approver
+		);
+
+		LedgerMaster outputCgstLedger = getOrCreateSystemLedger(
+				LedgerType.OUTPUT_CGST,
+				LedgerGroupType.DUTIES_AND_TAXES,
+				"Output CGST",
+				DebitCredit.CREDIT,
+				approver
+		);
+
+		LedgerMaster outputSgstLedger = getOrCreateSystemLedger(
+				LedgerType.OUTPUT_SGST,
+				LedgerGroupType.DUTIES_AND_TAXES,
+				"Output SGST",
+				DebitCredit.CREDIT,
+				approver
+		);
+
+		LedgerMaster outputIgstLedger = getOrCreateSystemLedger(
+				LedgerType.OUTPUT_IGST,
+				LedgerGroupType.DUTIES_AND_TAXES,
+				"Output IGST",
+				DebitCredit.CREDIT,
+				approver
+		);
+
+		BigDecimal cgstAmount = safeMoney(invoice.getCgstAmount());
+		BigDecimal sgstAmount = safeMoney(invoice.getSgstAmount());
+		BigDecimal igstAmount = safeMoney(invoice.getIgstAmount());
+
+		/*
+		 * Keep voucher balanced.
+		 * Sales amount = grand total - GST ledgers.
+		 */
+		BigDecimal totalTaxAmount = cgstAmount
+				.add(sgstAmount)
+				.add(igstAmount)
+				.setScale(2, RoundingMode.HALF_UP);
+
+		BigDecimal serviceIncomeAmount = grandTotal
+				.subtract(totalTaxAmount)
+				.max(BigDecimal.ZERO)
+				.setScale(2, RoundingMode.HALF_UP);
+
+		List<AccountingVoucherEntryRequestDto> entries = new ArrayList<>();
+
+		// Dr Customer Advance Ledger
+		entries.add(
+				buildVoucherEntry(
+						customerAdvanceLedger.getId(),
+						grandTotal,
+						BigDecimal.ZERO,
+						"Advance adjusted against invoice " + invoice.getInvoiceNumber()
+				)
+		);
+
+		// Cr Service Income Ledger
+		if (serviceIncomeAmount.compareTo(BigDecimal.ZERO) > 0) {
+			entries.add(
+					buildVoucherEntry(
+							serviceIncomeLedger.getId(),
+							BigDecimal.ZERO,
+							serviceIncomeAmount,
+							"Service income booked for invoice " + invoice.getInvoiceNumber()
+					)
+			);
+		}
+
+		// Cr Output CGST
+		if (cgstAmount.compareTo(BigDecimal.ZERO) > 0) {
+			entries.add(
+					buildVoucherEntry(
+							outputCgstLedger.getId(),
+							BigDecimal.ZERO,
+							cgstAmount,
+							"Output CGST booked for invoice " + invoice.getInvoiceNumber()
+					)
+			);
+		}
+
+		// Cr Output SGST
+		if (sgstAmount.compareTo(BigDecimal.ZERO) > 0) {
+			entries.add(
+					buildVoucherEntry(
+							outputSgstLedger.getId(),
+							BigDecimal.ZERO,
+							sgstAmount,
+							"Output SGST booked for invoice " + invoice.getInvoiceNumber()
+					)
+			);
+		}
+
+		// Cr Output IGST
+		if (igstAmount.compareTo(BigDecimal.ZERO) > 0) {
+			entries.add(
+					buildVoucherEntry(
+							outputIgstLedger.getId(),
+							BigDecimal.ZERO,
+							igstAmount,
+							"Output IGST booked for invoice " + invoice.getInvoiceNumber()
+					)
+			);
+		}
+
+		AccountingVoucherRequestDto voucherRequest =
+				AccountingVoucherRequestDto.builder()
+						.voucherType(VoucherType.SALES_INVOICE)
+						.voucherDate(invoice.getInvoiceDate() != null
+								? invoice.getInvoiceDate()
+								: LocalDate.now())
+						.sourceType(VoucherSourceType.INVOICE)
+						.sourceId(invoice.getId())
+						.narration(
+								"Sales invoice posted: "
+										+ invoice.getInvoiceNumber()
+										+ ", unbilled: "
+										+ unbilled.getUnbilledNumber()
+						)
+						.entries(entries)
+						.build();
+
+		accountingVoucherService.createVoucher(voucherRequest);
+
+		log.info(
+				"Sales invoice voucher posted | invoice={} | Dr Customer Advance={} | Cr Service Income={} | CGST={} | SGST={} | IGST={}",
+				invoice.getInvoiceNumber(),
+				grandTotal,
+				serviceIncomeAmount,
+				cgstAmount,
+				sgstAmount,
+				igstAmount
+		);
+	}
+
+	private AccountingVoucherEntryRequestDto buildVoucherEntry(
+			Long ledgerId,
+			BigDecimal debitAmount,
+			BigDecimal creditAmount,
+			String narration
+	) {
+		return AccountingVoucherEntryRequestDto.builder()
+				.ledgerId(ledgerId)
+				.debitAmount(safeMoney(debitAmount))
+				.creditAmount(safeMoney(creditAmount))
+				.narration(narration)
+				.build();
+	}
+
+	private LedgerMaster getOrCreateCustomerAdvanceLedger(
+			UnbilledInvoice unbilled,
+			User createdBy
+	) {
+		if (unbilled == null) {
+			throw new ValidationException(
+					"Unbilled invoice is required to create customer advance ledger",
+					"ERR_UNBILLED_REQUIRED_FOR_LEDGER",
+					"unbilled"
+			);
+		}
+
+		Company company = unbilled.getCompany();
+		CompanyUnit unit = unbilled.getUnit();
+		Contact contact = unbilled.getContact();
+
+		if (company == null || company.getId() == null) {
+			throw new ValidationException(
+					"Company is required to create customer advance ledger",
+					"ERR_COMPANY_REQUIRED_FOR_LEDGER",
+					"companyId"
+			);
+		}
+
+		Long companyId = company.getId();
+		Long unitId = unit != null ? unit.getId() : null;
+
+		Optional<LedgerMaster> existingLedger;
+
+		if (unitId != null) {
+			existingLedger = ledgerMasterRepository
+					.findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+							companyId,
+							unitId,
+							LedgerType.CUSTOMER_ADVANCE
+					);
+		} else {
+			existingLedger = ledgerMasterRepository
+					.findByCompanyIdAndLedgerTypeAndDeletedFalse(
+							companyId,
+							LedgerType.CUSTOMER_ADVANCE
+					);
+		}
+
+		if (existingLedger.isPresent()) {
+			return existingLedger.get();
+		}
+
+		LedgerGroup currentLiabilityGroup = ledgerGroupRepository
+				.findByGroupTypeAndDeletedFalse(LedgerGroupType.CURRENT_LIABILITIES)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Current Liabilities ledger group not found",
+						"CURRENT_LIABILITIES_GROUP_NOT_FOUND"
+				));
+
+		String companyName = company.getName() != null
+				? company.getName().trim()
+				: "Company-" + companyId;
+
+		String unitName = unit != null && unit.getUnitName() != null
+				? unit.getUnitName().trim()
+				: null;
+
+		String ledgerName = unitName != null && !unitName.isEmpty()
+				? "Customer Advance - " + companyName + " - " + unitName
+				: "Customer Advance - " + companyName;
+
+		LedgerMaster ledger = new LedgerMaster();
+
+		ledger.setLedgerName(ledgerName);
+		ledger.setLedgerCode(generateLedgerCode("CUST-ADV"));
+		ledger.setLedgerType(LedgerType.CUSTOMER_ADVANCE);
+		ledger.setLedgerGroup(currentLiabilityGroup);
+
+		ledger.setCompany(company);
+
+		if (unit != null && unit.getId() != null) {
+			ledger.setUnit(unit);
+		}
+
+		if (contact != null && contact.getId() != null) {
+			ledger.setContact(contact);
+		}
+
+		ledger.setGstNo(unit != null ? unit.getGstNo() : null);
+		ledger.setPanNo(company.getPanNo());
+
+		ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+		ledger.setOpeningBalanceType(DebitCredit.CREDIT);
+
+		ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+		ledger.setCurrentBalanceType(DebitCredit.CREDIT);
+
+		ledger.setSystemCreated(true);
+		ledger.setActive(true);
+		ledger.setDeleted(false);
+
+		if (createdBy != null && createdBy.getId() != null) {
+			ledger.setCreatedBy(createdBy);
+			ledger.setUpdatedBy(createdBy);
+		}
+
+		return ledgerMasterRepository.save(ledger);
+	}
+
+	private LedgerMaster getOrCreateSystemLedger(
+			LedgerType ledgerType,
+			LedgerGroupType ledgerGroupType,
+			String ledgerName,
+			DebitCredit balanceType,
+			User createdBy
+	) {
+		Optional<LedgerMaster> existingLedger =
+				ledgerMasterRepository.findByLedgerTypeAndDeletedFalse(ledgerType);
+
+		if (existingLedger.isPresent()) {
+			return existingLedger.get();
+		}
+
+		LedgerGroup ledgerGroup = ledgerGroupRepository
+				.findByGroupTypeAndDeletedFalse(ledgerGroupType)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						ledgerGroupType + " ledger group not found",
+						ledgerGroupType + "_GROUP_NOT_FOUND"
+				));
+
+		LedgerMaster ledger = new LedgerMaster();
+
+		ledger.setLedgerName(ledgerName);
+		ledger.setLedgerCode(generateLedgerCode(ledgerType.name()));
+		ledger.setLedgerType(ledgerType);
+		ledger.setLedgerGroup(ledgerGroup);
+
+		ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+		ledger.setOpeningBalanceType(balanceType);
+
+		ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+		ledger.setCurrentBalanceType(balanceType);
+
+		ledger.setSystemCreated(true);
+		ledger.setActive(true);
+		ledger.setDeleted(false);
+
+		if (createdBy != null && createdBy.getId() != null) {
+			ledger.setCreatedBy(createdBy);
+			ledger.setUpdatedBy(createdBy);
+		}
+
+		return ledgerMasterRepository.save(ledger);
+	}
+
+	private String generateLedgerCode(String prefix) {
+		String safePrefix = prefix == null || prefix.trim().isEmpty()
+				? "SYS"
+				: prefix.trim().replaceAll("[^A-Za-z0-9]", "-").toUpperCase();
+
+		long sequence = ledgerMasterRepository.count() + 1;
+		String ledgerCode;
+
+		do {
+			ledgerCode = String.format("LED-%s-%06d", safePrefix, sequence++);
+		} while (ledgerMasterRepository.existsByLedgerCodeIgnoreCase(ledgerCode));
+
+		return ledgerCode;
 	}
 
 

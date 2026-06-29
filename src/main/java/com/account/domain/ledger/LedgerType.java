@@ -24,7 +24,7 @@ public enum LedgerType {
     TDS_RECEIVABLE,
 
     // Adjustments
-    CREDIT_NOTE,
+    SALES_RETURN,
     REFUND_PAYABLE,
     ROUND_OFF,
 

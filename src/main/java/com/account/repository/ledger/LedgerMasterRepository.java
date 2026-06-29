@@ -36,17 +36,14 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
             @Param("ledgerType") LedgerType ledgerType
     );
 
-    @Query("""
-            SELECT lm
-            FROM LedgerMaster lm
-            WHERE lm.company.id = :companyId
-              AND lm.ledgerType = :ledgerType
-              AND lm.deleted = false
-            """)
+
+    Optional<LedgerMaster> findByLedgerTypeAndDeletedFalse(LedgerType ledgerType);
+
     Optional<LedgerMaster> findByCompanyIdAndLedgerTypeAndDeletedFalse(
-            @Param("companyId") Long companyId,
-            @Param("ledgerType") LedgerType ledgerType
+            Long companyId,
+            LedgerType ledgerType
     );
+
 
 
 }
