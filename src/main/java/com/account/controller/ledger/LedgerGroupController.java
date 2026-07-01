@@ -13,7 +13,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/accountService/api/v1/ledger-groups")
@@ -85,4 +87,29 @@ public class LedgerGroupController {
         ledgerGroupService.deleteLedgerGroup(id);
         return ResponseEntity.noContent().build();
     }
+
+
+    @GetMapping("/group-types")
+    @Operation(summary = "Get ledger group types")
+    public ResponseEntity<List<Map<String, String>>> getLedgerGroupTypes() {
+
+        List<Map<String, String>> response = Arrays.stream(LedgerGroupType.values())
+                .map(groupType -> Map.of(
+                        "value", groupType.name(),
+                        "label", formatGroupTypeLabel(groupType)
+                ))
+                .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    private String formatGroupTypeLabel(LedgerGroupType groupType) {
+        String[] words = groupType.name().toLowerCase().split("_");
+
+        return Arrays.stream(words)
+                .map(word -> word.substring(0, 1).toUpperCase() + word.substring(1))
+                .reduce((first, second) -> first + " " + second)
+                .orElse(groupType.name());
+    }
+
 }

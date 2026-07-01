@@ -9,4 +9,5 @@ public enum VoucherType {
     JOURNAL,
     CONTRA,
     PAYMENT
+
 }

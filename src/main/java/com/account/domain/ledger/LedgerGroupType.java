@@ -2,10 +2,6 @@ package com.account.domain.ledger;
 
 public enum LedgerGroupType {
 
-    // =========================
-    // 15 PRIMARY GROUPS - TALLY
-    // =========================
-
     BRANCH_DIVISIONS,
     CAPITAL_ACCOUNT,
     CURRENT_ASSETS,
