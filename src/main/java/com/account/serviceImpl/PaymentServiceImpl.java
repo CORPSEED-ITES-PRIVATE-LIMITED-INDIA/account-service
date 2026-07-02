@@ -540,7 +540,7 @@ public class PaymentServiceImpl implements PaymentService {
         // ==================== NEW PO TERMS VALIDATION ====================
         // For PURCHASE_ORDER, payment terms days is mandatory
         if (isPurchaseOrder) {
-            if (paymentTermsDays == null || paymentTermsDays <= 0) {
+            if (paymentTermsDays == null || paymentTermsDays < 0) {
                 throw new ValidationException(
                         "Payment terms days is required for Purchase Order payment type",
                         "ERR_PAYMENT_TERMS_DAYS_REQUIRED",
@@ -548,6 +548,7 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
         }
+
         // =================================================================
 
         if (reqAmount.compareTo(outstanding) > 0) {

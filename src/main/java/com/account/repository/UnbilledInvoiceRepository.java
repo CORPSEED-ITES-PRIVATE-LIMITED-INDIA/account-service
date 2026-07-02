@@ -27,22 +27,28 @@ SELECT u
 FROM UnbilledInvoice u
 WHERE
     (
-        (:cancelledStatus = true AND u.status = com.account.domain.status.UnbilledStatus.CANCELLED)
+        (:cancelledFilter = true AND u.status = :cancelledStatus)
         OR
-        (:cancelledStatus = false AND u.isCancelled = false)
+        (:cancelledFilter = false AND u.isCancelled = false)
     )
 AND
-    (:userId IS NULL
+    (
+        :userId IS NULL
         OR u.createdBy.id = :userId
-        OR u.approvedBy.id = :userId)
+        OR u.approvedBy.id = :userId
+    )
 AND
-    (:status IS NULL OR u.status = :status)
+    (
+        :status IS NULL
+        OR u.status = :status
+    )
 ORDER BY u.createdAt DESC
 """)
     Page<UnbilledInvoice> findUnbilledInvoices(
             @Param("userId") Long userId,
             @Param("status") UnbilledStatus status,
-            @Param("cancelledStatus") boolean cancelledStatus,
+            @Param("cancelledFilter") boolean cancelledFilter,
+            @Param("cancelledStatus") UnbilledStatus cancelledStatus,
             Pageable pageable
     );
 

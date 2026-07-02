@@ -314,15 +314,16 @@ public class UnbilledServiceImpl implements UnbilledService {
                 : userId;
 
         UnbilledStatus effectiveStatus =
-                status == UnbilledStatus.ALL ? null : status;
+                status == null || status == UnbilledStatus.ALL ? null : status;
 
-        boolean cancelledStatus = effectiveStatus == UnbilledStatus.CANCELLED;
+        boolean cancelledFilter = status == UnbilledStatus.CANCELLED;
 
         Page<UnbilledInvoice> unbilledInvoicePage =
                 unbilledInvoiceRepository.findUnbilledInvoices(
                         applicableUserId,
                         effectiveStatus,
-                        cancelledStatus,
+                        cancelledFilter,
+                        UnbilledStatus.CANCELLED,
                         pageable
                 );
 
