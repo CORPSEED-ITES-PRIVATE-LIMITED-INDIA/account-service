@@ -1,8 +1,8 @@
 package com.account.repository;
 
-import com.account.domain.unbilled.UnbilledInvoice;
-import com.account.domain.status.UnbilledStatus;
 import com.account.domain.estimate.Estimate;
+import com.account.domain.status.UnbilledStatus;
+import com.account.domain.unbilled.UnbilledInvoice;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -23,21 +23,22 @@ public interface UnbilledInvoiceRepository extends JpaRepository<UnbilledInvoice
     Optional<UnbilledInvoice> findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(Estimate estimate);
 
     @Query("""
-    SELECT u
-    FROM UnbilledInvoice u
-    WHERE
-        (
-            (:cancelledStatus = true AND u.status = com.account.domain.UnbilledStatus.CANCELLED)
-            OR
-            (:cancelledStatus = false AND u.isCancelled = false)
-        )
-    AND
-        (:userId IS NULL
-            OR u.createdBy.id = :userId
-            OR u.approvedBy.id = :userId)
-    AND
-        (:status IS NULL OR u.status = :status)
-    """)
+SELECT u
+FROM UnbilledInvoice u
+WHERE
+    (
+        (:cancelledStatus = true AND u.status = com.account.domain.status.UnbilledStatus.CANCELLED)
+        OR
+        (:cancelledStatus = false AND u.isCancelled = false)
+    )
+AND
+    (:userId IS NULL
+        OR u.createdBy.id = :userId
+        OR u.approvedBy.id = :userId)
+AND
+    (:status IS NULL OR u.status = :status)
+ORDER BY u.createdAt DESC
+""")
     Page<UnbilledInvoice> findUnbilledInvoices(
             @Param("userId") Long userId,
             @Param("status") UnbilledStatus status,
