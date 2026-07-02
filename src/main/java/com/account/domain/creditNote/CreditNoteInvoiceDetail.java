@@ -1,6 +1,6 @@
 package com.account.domain.creditNote;
 
-import com.account.domain.Invoice;
+import com.account.domain.invoice.Invoice;
 import jakarta.persistence.*;
 import lombok.*;
 

@@ -1,9 +1,7 @@
 package com.account.dto.unbilled;
 
-import com.account.domain.UnbilledStatus;
+import com.account.domain.status.UnbilledStatus;
 import com.account.dto.payment.TdsResponseDto;
-import jakarta.persistence.Column;
-import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 

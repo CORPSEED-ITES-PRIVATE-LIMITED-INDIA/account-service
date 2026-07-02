@@ -1,4 +1,4 @@
-package com.account.domain;
+package com.account.domain.status;
 
 public enum UnbilledStatus {
     ALL,

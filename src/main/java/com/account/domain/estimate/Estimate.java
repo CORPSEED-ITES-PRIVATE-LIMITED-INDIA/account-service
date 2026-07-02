@@ -1,6 +1,8 @@
 package com.account.domain.estimate;
 
 import com.account.domain.*;
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedBy;

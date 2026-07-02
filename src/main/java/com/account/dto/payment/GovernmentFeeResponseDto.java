@@ -1,6 +1,6 @@
 package com.account.dto.payment;
 
-import com.account.domain.GovernmentFeeStatus;
+import com.account.domain.status.GovernmentFeeStatus;
 import lombok.*;
 
 import java.math.BigDecimal;

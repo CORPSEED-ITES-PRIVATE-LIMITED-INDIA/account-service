@@ -1,5 +1,7 @@
 package com.account.domain;
 
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

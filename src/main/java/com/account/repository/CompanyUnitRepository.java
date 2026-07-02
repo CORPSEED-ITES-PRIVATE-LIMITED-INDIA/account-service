@@ -1,6 +1,6 @@
 package com.account.repository;
 
-import com.account.domain.CompanyUnit;
+import com.account.domain.company.CompanyUnit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;

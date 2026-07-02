@@ -1,4 +1,4 @@
-package com.account.domain;
+package com.account.domain.status;
 
 public enum InvoiceStatus {
     GENERATED,              // invoice generated, GST e-invoice not confirmed yet

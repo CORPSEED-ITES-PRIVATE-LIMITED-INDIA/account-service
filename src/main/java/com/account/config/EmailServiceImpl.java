@@ -1,6 +1,6 @@
 package com.account.config;
 
-import com.account.domain.CompanyUnit;
+import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;

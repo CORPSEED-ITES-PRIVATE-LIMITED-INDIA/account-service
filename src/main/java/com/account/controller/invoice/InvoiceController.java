@@ -1,6 +1,6 @@
 package com.account.controller.invoice;
 
-import com.account.domain.InvoiceStatus;
+import com.account.domain.status.InvoiceStatus;
 import com.account.dto.invoice.*;
 import com.account.dto.taxation.TaxationReportDto;
 import com.account.dto.taxation.TaxationReportRequest;
@@ -264,7 +264,8 @@ public class InvoiceController {
     @PostMapping("/{invoiceId}/confirm-e-invoice")
     @Operation(
             summary = "Confirm GST e-invoice and create Operation project",
-            description = "Accounts uploads/confirms GST e-invoice details. After confirmation, Operation project is created or payment is synced."
+            description = "Accounts uploads/confirms GST e-invoice details. After confirmation, " +
+                    "Operation project is created or payment is synced."
     )
     public ResponseEntity<InvoiceDetailDto> confirmEInvoiceAndCreateProject(
             @PathVariable Long invoiceId,

@@ -1,8 +1,8 @@
 package com.account.domain.creditNote;
 
-import com.account.domain.Company;
+import com.account.domain.company.Company;
 import com.account.domain.Contact;
-import com.account.domain.UnbilledInvoice;
+import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.domain.User;
 import com.account.domain.estimate.Estimate;
 import jakarta.persistence.*;

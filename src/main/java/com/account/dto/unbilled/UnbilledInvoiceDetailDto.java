@@ -1,7 +1,6 @@
 package com.account.dto.unbilled;
 
-import com.account.domain.UnbilledStatus;
-import lombok.Builder;
+import com.account.domain.status.UnbilledStatus;
 import lombok.Data;
 
 import java.math.BigDecimal;

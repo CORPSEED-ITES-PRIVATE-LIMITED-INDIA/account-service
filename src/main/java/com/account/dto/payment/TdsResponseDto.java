@@ -1,6 +1,6 @@
 package com.account.dto.payment;
 
-import com.account.domain.TdsStatus;
+import com.account.domain.status.TdsStatus;
 import lombok.*;
 
 import java.math.BigDecimal;

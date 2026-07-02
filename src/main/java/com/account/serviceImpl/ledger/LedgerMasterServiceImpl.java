@@ -1,9 +1,8 @@
 package com.account.serviceImpl.ledger;
 
-import com.account.domain.Company;
-import com.account.domain.CompanyUnit;
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
-import com.account.domain.ledger.DebitCredit;
 import com.account.domain.ledger.LedgerGroup;
 import com.account.domain.ledger.LedgerMaster;
 import com.account.domain.ledger.LedgerType;

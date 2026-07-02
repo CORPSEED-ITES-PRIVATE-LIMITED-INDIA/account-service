@@ -1,6 +1,6 @@
 package com.account.service;
 
-import com.account.domain.UnbilledStatus;
+import com.account.domain.status.UnbilledStatus;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.payment.GovernmentFeeResponseDto;
 import com.account.dto.payment.PaymentRegistrationRequestDto;

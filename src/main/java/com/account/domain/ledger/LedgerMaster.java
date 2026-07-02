@@ -1,7 +1,7 @@
 package com.account.domain.ledger;
 
-import com.account.domain.Company;
-import com.account.domain.CompanyUnit;
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
 import com.account.domain.User;
 import jakarta.persistence.*;

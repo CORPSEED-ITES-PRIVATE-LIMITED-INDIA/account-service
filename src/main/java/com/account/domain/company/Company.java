@@ -1,5 +1,7 @@
-package com.account.domain;
+package com.account.domain.company;
 
+import com.account.domain.User;
+import com.account.domain.status.OnboardingStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;

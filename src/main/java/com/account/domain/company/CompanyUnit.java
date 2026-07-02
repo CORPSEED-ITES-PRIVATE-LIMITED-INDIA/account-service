@@ -1,5 +1,8 @@
-package com.account.domain;
+package com.account.domain.company;
 
+import com.account.domain.Contact;
+import com.account.domain.User;
+import com.account.domain.status.OnboardingStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,7 +12,6 @@ import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Date;
 

@@ -1,7 +1,7 @@
 package com.account.repository;
 
-import com.account.domain.UnbilledInvoice;
-import com.account.domain.UnbilledStatus;
+import com.account.domain.unbilled.UnbilledInvoice;
+import com.account.domain.status.UnbilledStatus;
 import com.account.domain.estimate.Estimate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

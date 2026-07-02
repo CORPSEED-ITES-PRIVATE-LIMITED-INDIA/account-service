@@ -2,12 +2,17 @@ package com.account.serviceImpl;
 
 import com.account.config.LeadFeignClient;
 import com.account.domain.*;
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
+import com.account.domain.invoice.Invoice;
+import com.account.domain.status.InvoiceStatus;
+import com.account.domain.status.UnbilledStatus;
+import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.dto.operationService.*;
 import com.account.dto.payment.TdsResponseDto;
 import com.account.dto.unbilled.*;
-import com.account.exception.ApprovalBlockedException;
 import com.account.exception.ResourceNotFoundException;
 import com.account.feignClient.OperationFeignClient;
 import com.account.repository.*;
@@ -26,13 +31,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 

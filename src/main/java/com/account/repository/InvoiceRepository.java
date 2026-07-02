@@ -1,7 +1,7 @@
 package com.account.repository;
 
-import com.account.domain.Invoice;
-import com.account.domain.InvoiceStatus;
+import com.account.domain.invoice.Invoice;
+import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;

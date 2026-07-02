@@ -1,6 +1,11 @@
-package com.account.domain;
+package com.account.domain.unbilled;
 
+import com.account.domain.*;
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
 import com.account.domain.estimate.Estimate;
+import com.account.domain.invoice.Invoice;
+import com.account.domain.status.UnbilledStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.data.annotation.CreatedBy;
@@ -14,7 +19,6 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Entity
 @Table(name = "unbilled_invoice",

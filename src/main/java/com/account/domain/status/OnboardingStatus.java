@@ -1,4 +1,4 @@
-package com.account.domain;
+package com.account.domain.status;
 
 /**
  * Simplified onboarding status with only four states:

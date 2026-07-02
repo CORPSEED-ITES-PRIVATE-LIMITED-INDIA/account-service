@@ -1,5 +1,9 @@
-package com.account.domain;
+package com.account.domain.invoice;
 
+import com.account.domain.PaymentReceipt;
+import com.account.domain.User;
+import com.account.domain.status.InvoiceStatus;
+import com.account.domain.unbilled.UnbilledInvoice;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.Comment;
@@ -14,7 +18,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Entity
 @Table(name = "invoice",

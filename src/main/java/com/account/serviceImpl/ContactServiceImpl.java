@@ -1,7 +1,7 @@
 package com.account.serviceImpl;
 
-import com.account.domain.Company;
-import com.account.domain.CompanyUnit;
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
 import com.account.domain.contact.ContactCreationDto;
 import com.account.dto.contact.ContactRequestDto;
@@ -12,13 +12,9 @@ import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
 import com.account.repository.ContactRepository;
 import com.account.service.ContactService;
-import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
 import java.util.stream.Collectors;

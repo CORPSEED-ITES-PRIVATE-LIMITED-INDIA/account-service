@@ -1,6 +1,6 @@
 package com.account.repository;
 
-import com.account.domain.InvoiceLineItem;
+import com.account.domain.invoice.InvoiceLineItem;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

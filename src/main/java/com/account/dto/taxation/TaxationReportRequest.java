@@ -1,7 +1,7 @@
 package com.account.dto.taxation;
 
-import com.account.domain.InvoiceStatus;
-import com.account.domain.TdsStatus;
+import com.account.domain.status.InvoiceStatus;
+import com.account.domain.status.TdsStatus;
 import lombok.Data;
 
 import java.math.BigDecimal;

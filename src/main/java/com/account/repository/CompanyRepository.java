@@ -1,7 +1,7 @@
 package com.account.repository;
 
-import com.account.domain.Company;
-import com.account.domain.OnboardingStatus;
+import com.account.domain.company.Company;
+import com.account.domain.status.OnboardingStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

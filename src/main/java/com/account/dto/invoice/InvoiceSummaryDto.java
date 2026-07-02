@@ -1,6 +1,6 @@
 package com.account.dto.invoice;
 
-import com.account.domain.InvoiceStatus;
+import com.account.domain.status.InvoiceStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

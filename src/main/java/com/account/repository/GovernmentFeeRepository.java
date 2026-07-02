@@ -1,7 +1,7 @@
 package com.account.repository;
 
 import com.account.domain.GovernmentFee;
-import com.account.domain.UnbilledInvoice;
+import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.domain.estimate.Estimate;
 import org.springframework.data.jpa.repository.JpaRepository;
 

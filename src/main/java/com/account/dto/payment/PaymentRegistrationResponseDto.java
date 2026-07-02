@@ -1,10 +1,7 @@
 package com.account.dto.payment;
 
-import com.account.domain.UnbilledStatus;
+import com.account.domain.status.UnbilledStatus;
 import lombok.*;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 @Setter
 @Getter
