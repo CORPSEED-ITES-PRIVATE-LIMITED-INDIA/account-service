@@ -152,6 +152,37 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        // ===================================================================
+        // BLOCK PAYMENT REGISTRATION IF COMPANY IS NOT APPROVED BY ACCOUNTS
+        // ===================================================================
+        Company company = estimate.getCompany();
+
+        boolean companyApproved =
+                company != null
+                        && !company.isDeleted()
+                        && (
+                        company.isAccountsApproved()
+                                || company.getOnboardingStatus() == OnboardingStatus.APPROVED
+                );
+
+        if (!companyApproved) {
+            String companyName = company != null && company.getName() != null
+                    ? company.getName()
+                    : "N/A";
+
+            String companyStatus = company != null && company.getOnboardingStatus() != null
+                    ? company.getOnboardingStatus().name()
+                    : "N/A";
+
+            throw new ValidationException(
+                    "Payment registration is not allowed because company is not approved by Accounts. " +
+                            "Company: " + companyName + ", Status: " + companyStatus,
+                    "ERR_COMPANY_NOT_APPROVED_FOR_PAYMENT",
+                    "companyId"
+            );
+        }
+        // ===================================================================
+
         User salesperson = userRepository.findById(salespersonUserId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Salesperson not found with ID: " + salespersonUserId,
@@ -457,7 +488,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         return response;
     }
-
 
 
     private LedgerMaster validateAndGetBankLedger(
