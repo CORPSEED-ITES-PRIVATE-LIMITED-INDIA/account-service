@@ -23,5 +23,7 @@ public interface LeadFeignClient {
 			@PathVariable("proposalId") Long proposalId,
 			@RequestParam(value = "reason", required = false) String reason
 	);
+
+
 	
 }
