@@ -8,7 +8,7 @@ import java.util.List;
 
 
 @Data
-public class OperationCompanyRequestDto {
+public class  OperationCompanyRequestDto {
 
     // Company basic info
     private String name;
@@ -21,6 +21,9 @@ public class OperationCompanyRequestDto {
 
     // Who is creating this company
     private Long createdBy;                 // Required - user ID
+
+    private String rating;
+
 
     // Optional: List of units to create along with company
     private List<OperationCompanyUnitRequestDto> units = new ArrayList<>();

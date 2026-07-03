@@ -28,6 +28,7 @@ public class CompanyCreationRequestDto {
     private String industry;
     private String subIndustry;
     private String subsubIndustry;
+    private String rating;
 
     private String paymentTerm;
     private boolean aggrementPresent;

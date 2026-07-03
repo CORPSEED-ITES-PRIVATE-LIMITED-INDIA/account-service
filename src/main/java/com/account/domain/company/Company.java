@@ -98,6 +98,8 @@ public class Company {
 	)
 	private List<CompanyUnit> units = new ArrayList<>();
 
+	private String rating;
+
 	@Enumerated(EnumType.STRING)
 	@Column(name = "onboarding_status")
 	private OnboardingStatus onboardingStatus = OnboardingStatus.MINIMAL;

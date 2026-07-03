@@ -15,8 +15,6 @@ public class CompanyRequestDto {
     @NotNull(message = "leadCompanyId is required to maintain mapping with lead service")
     private Long leadCompanyId;
 
-
-
     @NotBlank(message = "Company name is required")
     private String name;
 

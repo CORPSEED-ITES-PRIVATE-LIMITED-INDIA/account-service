@@ -265,6 +265,7 @@ public class CompanyServiceImpl implements CompanyService {
 
         company.setUpdatedBy(updatedBy);
         company.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
+        company.setRating(dto.getRating());
 
         // ==================== UNIT UPDATE ====================
 
@@ -1282,6 +1283,7 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setIndustries(company.getIndustries());
         dto.setSubIndustry(company.getSubIndustry());
         dto.setSubSubIndustry(company.getSubsubIndustry());
+        dto.setRating(company.getRating());
 
         if (company.getCreatedBy() != null) {
             dto.setCreatedBy(company.getCreatedBy().getId());
