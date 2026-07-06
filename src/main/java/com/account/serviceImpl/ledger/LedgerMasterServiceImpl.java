@@ -59,7 +59,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             );
         }
 
-        LedgerGroup ledgerGroup = getLedgerGroup(request.getLedgerGroupId());
+        LedgerGroup ledgerGroup = resolveLedgerGroupForLedgerType(
+                request.getLedgerType(),
+                request.getLedgerGroupId()
+        );
+
 
         Company company = getCompany(request.getCompanyId());
         CompanyUnit unit = getUnit(request.getUnitId());
@@ -103,7 +107,10 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             );
         }
 
-        LedgerGroup ledgerGroup = getLedgerGroup(request.getLedgerGroupId());
+        LedgerGroup ledgerGroup = resolveLedgerGroupForLedgerType(
+                request.getLedgerType(),
+                request.getLedgerGroupId()
+        );
 
         Company company = getCompany(request.getCompanyId());
         CompanyUnit unit = getUnit(request.getUnitId());
@@ -589,5 +596,66 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         ledger.setDeleted(false);
 
         return ledger;
+    }
+
+    private LedgerGroup resolveLedgerGroupForLedgerType(
+            LedgerType ledgerType,
+            Long ledgerGroupId
+    ) {
+        /*
+         * If frontend sends ledgerGroupId, respect it.
+         * If frontend does not send ledgerGroupId, auto-resolve from ledgerType.
+         */
+        if (ledgerGroupId != null && ledgerGroupId > 0) {
+            return getLedgerGroup(ledgerGroupId);
+        }
+
+        LedgerGroupType defaultGroupType = resolveDefaultGroupTypeFromLedgerType(ledgerType);
+
+        return getOrCreateLedgerGroupByType(defaultGroupType);
+    }
+
+    private LedgerGroup getOrCreateLedgerGroupByType(LedgerGroupType groupType) {
+
+        if (groupType == null) {
+            throw new ValidationException(
+                    "Ledger group type is required",
+                    "ERR_LEDGER_GROUP_TYPE_REQUIRED",
+                    "groupType"
+            );
+        }
+
+        return ledgerGroupRepository.findByGroupTypeAndDeletedFalse(groupType)
+                .map(existingGroup -> {
+                    if (!existingGroup.isActive()) {
+                        existingGroup.setActive(true);
+                        return ledgerGroupRepository.save(existingGroup);
+                    }
+                    return existingGroup;
+                })
+                .orElseGet(() -> {
+                    LedgerGroup ledgerGroup = LedgerGroup.builder()
+                            .name(formatGroupTypeLabel(groupType))
+                            .groupType(groupType)
+                            .description("System-created default ledger group")
+                            .systemDefault(true)
+                            .active(true)
+                            .deleted(false)
+                            .build();
+
+                    return ledgerGroupRepository.save(ledgerGroup);
+                });
+    }
+
+    private String formatGroupTypeLabel(LedgerGroupType groupType) {
+
+        if (groupType == null) {
+            return null;
+        }
+
+        return java.util.Arrays.stream(groupType.name().toLowerCase().split("_"))
+                .map(word -> word.substring(0, 1).toUpperCase() + word.substring(1))
+                .reduce((first, second) -> first + " " + second)
+                .orElse(groupType.name());
     }
 }
