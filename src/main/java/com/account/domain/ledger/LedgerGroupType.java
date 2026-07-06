@@ -17,7 +17,6 @@ public enum LedgerGroupType {
     PURCHASE_ACCOUNTS,
     SALES_ACCOUNTS,
     SUSPENSE_ACCOUNT,
-
     BANK_ACCOUNTS,
     BANK_OD_ACCOUNT,
     CASH_IN_HAND,

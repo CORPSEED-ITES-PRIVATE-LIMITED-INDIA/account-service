@@ -2928,12 +2928,12 @@ public class PaymentServiceImpl implements PaymentService {
             return existingLedger.get();
         }
 
-        LedgerGroup currentLiabilityGroup = ledgerGroupRepository
-                .findByGroupTypeAndDeletedFalse(LedgerGroupType.CURRENT_LIABILITIES)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Current Liabilities ledger group not found",
-                        "CURRENT_LIABILITIES_GROUP_NOT_FOUND"
-                ));
+//        LedgerGroup currentLiabilityGroup = ledgerGroupRepository
+//                .findByGroupTypeAndDeletedFalse(LedgerGroupType.CURRENT_LIABILITIES)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Current Liabilities ledger group not found",
+//                        "CURRENT_LIABILITIES_GROUP_NOT_FOUND"
+//                ));
 
         String companyName = company.getName() != null
                 ? company.getName().trim()
@@ -2953,7 +2953,7 @@ public class PaymentServiceImpl implements PaymentService {
         ledger.setLedgerCode(generateLedgerCode("CUST-ADV"));
 
         ledger.setLedgerType(LedgerType.CUSTOMER_ADVANCE);
-        ledger.setLedgerGroup(currentLiabilityGroup);
+//        ledger.setLedgerGroup(currentLiabilityGroup);
 
         ledger.setCompany(company);
 
