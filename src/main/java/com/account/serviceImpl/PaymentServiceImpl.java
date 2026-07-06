@@ -3014,9 +3014,7 @@ public class PaymentServiceImpl implements PaymentService {
                 ? unit.getUnitName().trim()
                 : null;
 
-        String ledgerName = unitName != null && !unitName.isEmpty()
-                ? "Customer  - " + companyName + " - " + unitName
-                : "Customer  - " + companyName;
+        String ledgerName = companyName != null ? companyName : "";
 
         LedgerMaster ledger = new LedgerMaster();
 
