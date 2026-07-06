@@ -20,6 +20,16 @@ public class UnbilledInvoiceDetailDto {
     private String estimateNumber;
     private String companyName;
     private String contactName;
+
+    // NEW FIELDS
+    private String email;
+    private String emails;
+
+    private String gstNo;
+    private String stateName;
+    private String stateCode;
+    private String address;
+
     private LocalDate invoiceDate;
     private String currency;
     private UnbilledStatus status;

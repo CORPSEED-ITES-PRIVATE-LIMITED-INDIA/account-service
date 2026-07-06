@@ -1973,6 +1973,9 @@ public class PaymentServiceImpl implements PaymentService {
 
     private UnbilledInvoiceDetailDto mapToDetailDto(UnbilledInvoice unbilled) {
         Estimate estimate = unbilled.getEstimate();
+        Company company = unbilled.getCompany();
+        CompanyUnit unit = unbilled.getUnit();
+        Contact contact = unbilled.getContact();
 
         String placeOfSupply = estimate != null ? estimate.getPlaceOfSupplyStateCode() : null;
         boolean isIntraState = "09".equals(placeOfSupply);
@@ -1999,7 +2002,11 @@ public class PaymentServiceImpl implements PaymentService {
                     lineDto.setLineTotalExGst(item.getLineTotalExGst());
                     lineDto.setGstRate(item.getGstRate());
                     lineDto.setGstAmount(gstAmount);
-                    lineDto.setLineTotalWithGst(item.getLineTotalExGst().add(gstAmount));
+                    lineDto.setLineTotalWithGst(
+                            item.getLineTotalExGst() != null
+                                    ? item.getLineTotalExGst().add(gstAmount)
+                                    : gstAmount
+                    );
                     lineDto.setCgstAmount(cgstAmount);
                     lineDto.setSgstAmount(sgstAmount);
                     lineDto.setIgstAmount(igstAmount);
@@ -2022,8 +2029,19 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
         dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
         dto.setSolutionType(estimate != null ? estimate.getSolutionType() : null);
-        dto.setCompanyName(unbilled.getCompany() != null ? unbilled.getCompany().getName() : null);
-        dto.setContactName(unbilled.getContact() != null ? unbilled.getContact().getName() : null);
+
+        dto.setCompanyName(company != null ? company.getName() : null);
+        dto.setContactName(contact != null ? contact.getName() : null);
+
+        // NEW DETAILS
+        dto.setEmail(contact != null ? contact.getEmails() : null);
+        dto.setEmail(firstEmail(contact));
+
+        dto.setGstNo(unit != null ? unit.getGstNo() : null);
+        dto.setStateName(unit != null ? unit.getState() : null);
+        dto.setStateCode(resolveStateCode(estimate, unit));
+        dto.setAddress(buildUnitAddress(unit));
+
         dto.setInvoiceDate(unbilled.getCreatedAt() != null ? unbilled.getCreatedAt().toLocalDate() : null);
         dto.setCurrency(estimate != null ? estimate.getCurrency() : null);
         dto.setStatus(unbilled.getStatus());
@@ -2047,6 +2065,61 @@ public class PaymentServiceImpl implements PaymentService {
 
         return dto;
     }
+
+    private String firstEmail(Contact contact) {
+        if (contact == null || contact.getEmails() == null || contact.getEmails().trim().isEmpty()) {
+            return null;
+        }
+
+        String emails = contact.getEmails().trim();
+
+        if (emails.contains(",")) {
+            return emails.split(",")[0].trim();
+        }
+
+        return emails;
+    }
+
+
+    private String resolveStateCode(Estimate estimate, CompanyUnit unit) {
+        if (estimate != null
+                && estimate.getPlaceOfSupplyStateCode() != null
+                && !estimate.getPlaceOfSupplyStateCode().trim().isEmpty()) {
+            return estimate.getPlaceOfSupplyStateCode().trim();
+        }
+
+        if (unit != null
+                && unit.getGstNo() != null
+                && unit.getGstNo().trim().length() >= 2) {
+            return unit.getGstNo().trim().substring(0, 2);
+        }
+
+        return null;
+    }
+
+    private String buildUnitAddress(CompanyUnit unit) {
+        if (unit == null) {
+            return null;
+        }
+
+        List<String> parts = new ArrayList<>();
+
+        addAddressPart(parts, unit.getAddressLine1());
+        addAddressPart(parts, unit.getAddressLine2());
+        addAddressPart(parts, unit.getCity());
+        addAddressPart(parts, unit.getState());
+        addAddressPart(parts, unit.getCountry());
+        addAddressPart(parts, unit.getPinCode());
+
+        return parts.isEmpty() ? null : String.join(", ", parts);
+    }
+
+    private void addAddressPart(List<String> parts, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            parts.add(value.trim());
+        }
+    }
+
 
     private void pushPaymentRegisteredNotificationToAccountUsers(
             UnbilledInvoice unbilled,

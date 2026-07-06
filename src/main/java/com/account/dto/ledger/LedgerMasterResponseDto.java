@@ -28,6 +28,14 @@ public class LedgerMasterResponseDto {
     private Long companyId;
     private String companyName;
 
+    private String addressLine1;
+    private String addressLine2;
+    private String city;
+    private String state;
+    private String country;
+    private String pinCode;
+    private String fullAddress;
+
     private Long unitId;
     private String unitName;
 

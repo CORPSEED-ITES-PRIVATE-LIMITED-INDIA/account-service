@@ -90,6 +90,7 @@ public class LedgerMasterController {
             @RequestParam(required = false) Boolean active,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size
+
     ) {
         Page<LedgerMasterResponseDto> response = ledgerMasterService.getLedgers(
                 search,

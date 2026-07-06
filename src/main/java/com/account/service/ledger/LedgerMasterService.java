@@ -31,4 +31,5 @@ public interface LedgerMasterService {
     void deleteLedger(Long id);
 
     LedgerStatementResponseDto getLedgerTransactions(Long id, LocalDate fromDate, LocalDate toDate, int i, int size);
+
 }

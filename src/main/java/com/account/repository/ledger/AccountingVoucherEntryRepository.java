@@ -14,7 +14,6 @@ import java.util.List;
 @Repository
 public interface AccountingVoucherEntryRepository extends JpaRepository<AccountingVoucherEntry, Long> {
 
-    List<AccountingVoucherEntry> findByVoucher_IdOrderByDisplayOrderAsc(Long voucherId);
 
     @Query("""
             SELECT e
