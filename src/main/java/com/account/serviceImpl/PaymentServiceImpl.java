@@ -512,6 +512,7 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+
         LedgerMaster bankLedger = ledgerMasterRepository.findByIdAndDeletedFalse(request.getBankLedgerId())
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Bank ledger not found with ID: " + request.getBankLedgerId(),
@@ -526,10 +527,14 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        if (bankLedger.getLedgerType() != LedgerType.BANK) {
+        if (
+                bankLedger.getLedgerType() != LedgerType.BANK
+                        && bankLedger.getLedgerType() != LedgerType.CASH
+                        && bankLedger.getLedgerType() != LedgerType.PAYMENT_GATEWAY
+        ) {
             throw new ValidationException(
-                    "Selected ledger must be a BANK ledger",
-                    "ERR_INVALID_BANK_LEDGER",
+                    "Selected ledger must be a BANK, CASH, or PAYMENT_GATEWAY ledger",
+                    "ERR_INVALID_RECEIPT_LEDGER",
                     "bankLedgerId"
             );
         }

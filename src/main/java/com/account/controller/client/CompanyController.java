@@ -90,6 +90,7 @@ public class CompanyController {
         return ResponseEntity.ok(response);
     }
 
+
     @Operation(summary = "Fetch companies with pagination and filters")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Companies fetched successfully"),

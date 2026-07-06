@@ -21,6 +21,8 @@ public class CompanyResponseDto {
 
     private Date createDate;
     private Date updateDate;
+    private String rating;
+
 
     private List<CompanyUnitResponseDto> units = new ArrayList<>();
 }

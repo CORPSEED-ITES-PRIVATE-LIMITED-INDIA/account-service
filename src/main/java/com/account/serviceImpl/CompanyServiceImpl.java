@@ -999,6 +999,8 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setName(company.getName());
         dto.setPanNo(company.getPanNo());
         dto.setOnboardingStatus(company.getOnboardingStatus().name());
+        dto.setRating(company.getRating()); // ADD THIS
+
 
         dto.setCreateDate(
                 dateTimeUtil.toDate(company.getCreatedAt())
@@ -1043,6 +1045,8 @@ public class CompanyServiceImpl implements CompanyService {
 
         return dto;
     }
+
+
     private String normalizeUnique(String value) {
         return StringUtils.hasText(value) ? value.trim() : null;
     }

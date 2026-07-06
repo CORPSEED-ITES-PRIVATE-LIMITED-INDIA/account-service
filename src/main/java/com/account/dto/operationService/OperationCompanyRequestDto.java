@@ -30,4 +30,5 @@ public class  OperationCompanyRequestDto {
 
     // Optional: List of contacts (company-level or unit-level)
     private List<OperationContactRequestDto> contacts = new ArrayList<>();
+
 }
