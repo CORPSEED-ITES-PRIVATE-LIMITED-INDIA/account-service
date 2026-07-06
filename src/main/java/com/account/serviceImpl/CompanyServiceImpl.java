@@ -129,6 +129,9 @@ public class CompanyServiceImpl implements CompanyService {
         company.setUuid(dateTimeUtil.generateUuid());
         company.setIsConsultant(false);
         company.setOnboardingStatus(OnboardingStatus.MINIMAL);
+        if (StringUtils.hasText(dto.getRating())) {
+            company.setRating(dto.getRating().trim());
+        }
         company.setDeleted(false);
         company.setCreatedAt(now);
         company.setUpdatedAt(now);
@@ -188,6 +191,8 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional
     public CompanyResponseDto updateFullCompanyDetails(Long companyId, CompanyRequestDto dto, Long updatedById) {
+
+        System.out.println("Rating " + dto.getRating());
 
         Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -384,17 +389,35 @@ public class CompanyServiceImpl implements CompanyService {
             company.setAccountsRemark(null);
         }
 
-        Company savedCompany = companyRepository.save(company);
 
         /*
          * Send approval notification only when company is NOT already approved.
          * Approved company update should not go for approval again.
          */
+        Company savedCompany = companyRepository.save(company);
+
         if (!companyApproved) {
-            pushCompanyApprovalRequiredNotification(savedCompany, updatedById);
+            try {
+                pushCompanyApprovalRequiredNotification(savedCompany, updatedById);
+            } catch (Exception ex) {
+                logger.warn(
+                        "Company approval notification failed but company update completed | companyId={} | updatedById={} | error={}",
+                        savedCompany.getId(),
+                        updatedById,
+                        ex.getMessage()
+                );
+
+                logger.error(
+                        "Company approval notification exception details | companyId={} | updatedById={}",
+                        savedCompany.getId(),
+                        updatedById,
+                        ex
+                );
+            }
         }
 
         return mapToResponseDto(savedCompany);
+
     }
 
 
@@ -1119,6 +1142,7 @@ public class CompanyServiceImpl implements CompanyService {
             company.setOnboardingStatus(OnboardingStatus.MINIMAL);
             company.setCreatedBy(creator);
             company.setDeleted(false);
+            company.setRating(request.getRating());
 
             if (creator != null) {
                 company.setCreatedBy(creator);
@@ -1131,10 +1155,19 @@ public class CompanyServiceImpl implements CompanyService {
             company = companyRepository.save(company);
             logger.info("New company created successfully - ID: {}, UUID: {}",
                     company.getId(), company.getUuid());
-        } else {
-            logger.info("Found existing company - ID: {}, Name: {}, PAN: {}",
-                    company.getId(), company.getName(), company.getPanNo());
+        }  else {
+        logger.info("Found existing company - ID: {}, Name: {}, PAN: {}",
+                company.getId(), company.getName(), company.getPanNo());
+
+        if (StringUtils.hasText(request.getRating())) {
+            company.setRating(request.getRating().trim());
         }
+
+        company.setUpdatedBy(creator);
+        company.setUpdatedAt(LocalDateTime.now());
+
+        company = companyRepository.save(company);
+    }
 
         // 2. Process units
         if (request.getUnits() != null && !request.getUnits().isEmpty()) {

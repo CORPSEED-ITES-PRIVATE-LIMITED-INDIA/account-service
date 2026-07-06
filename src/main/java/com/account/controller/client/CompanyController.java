@@ -83,6 +83,8 @@ public class CompanyController {
             @PathVariable Long companyId,
             @RequestParam(value = "updatedBy", required = true) Long updatedById,
             @Valid @RequestBody CompanyRequestDto dto) {
+
+        System.out.println("Value check" + dto.getRating());
         if (updatedById == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "updatedBy user is required");
         }
