@@ -51,7 +51,7 @@ public class LedgerMaster {
     private LedgerType ledgerType;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "ledger_group_id", nullable = false)
+    @JoinColumn(name = "ledger_group_id", nullable = true)
     private LedgerGroup ledgerGroup;
 
     // For customer/vendor ledgers

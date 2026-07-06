@@ -2880,6 +2880,7 @@ public class PaymentServiceImpl implements PaymentService {
         accountingVoucherService.createVoucher(voucherRequest);
     }
 
+
     private LedgerMaster getOrCreateCustomerAdvanceLedger(
             UnbilledInvoice unbilled,
             User createdBy
@@ -2928,14 +2929,11 @@ public class PaymentServiceImpl implements PaymentService {
             return existingLedger.get();
         }
 
-//        LedgerGroup currentLiabilityGroup = ledgerGroupRepository
-//                .findByGroupTypeAndDeletedFalse(LedgerGroupType.CURRENT_LIABILITIES)
-//                .orElseThrow(() -> new ResourceNotFoundException(
-//                        "Current Liabilities ledger group not found",
-//                        "CURRENT_LIABILITIES_GROUP_NOT_FOUND"
-//                ));
 
-        String companyName = company.getName() != null
+        LedgerGroup currentLiabilityGroup =
+                getOrCreateLedgerGroupByType(LedgerGroupType.CURRENT_LIABILITIES);
+
+        String companyName = company.getName() != null && !company.getName().trim().isEmpty()
                 ? company.getName().trim()
                 : "Company-" + companyId;
 
@@ -2953,7 +2951,7 @@ public class PaymentServiceImpl implements PaymentService {
         ledger.setLedgerCode(generateLedgerCode("CUST-ADV"));
 
         ledger.setLedgerType(LedgerType.CUSTOMER_ADVANCE);
-//        ledger.setLedgerGroup(currentLiabilityGroup);
+        ledger.setLedgerGroup(currentLiabilityGroup);
 
         ledger.setCompany(company);
 
@@ -2985,6 +2983,52 @@ public class PaymentServiceImpl implements PaymentService {
 
         return ledgerMasterRepository.save(ledger);
     }
+    private LedgerGroup getOrCreateLedgerGroupByType(LedgerGroupType groupType) {
+
+        if (groupType == null) {
+            throw new ValidationException(
+                    "Ledger group type is required",
+                    "ERR_LEDGER_GROUP_TYPE_REQUIRED",
+                    "groupType"
+            );
+        }
+
+        return ledgerGroupRepository.findByGroupTypeAndDeletedFalse(groupType)
+                .map(existingGroup -> {
+                    if (!existingGroup.isActive()) {
+                        existingGroup.setActive(true);
+                        return ledgerGroupRepository.save(existingGroup);
+                    }
+                    return existingGroup;
+                })
+                .orElseGet(() -> {
+                    LedgerGroup ledgerGroup = LedgerGroup.builder()
+                            .name(formatGroupTypeLabel(groupType))
+                            .groupType(groupType)
+                            .description("System-created default ledger group")
+                            .systemDefault(true)
+                            .active(true)
+                            .deleted(false)
+                            .build();
+
+                    return ledgerGroupRepository.save(ledgerGroup);
+                });
+    }
+
+
+
+    private String formatGroupTypeLabel(LedgerGroupType groupType) {
+
+        if (groupType == null) {
+            return null;
+        }
+
+        return Arrays.stream(groupType.name().toLowerCase().split("_"))
+                .map(word -> word.substring(0, 1).toUpperCase() + word.substring(1))
+                .reduce((first, second) -> first + " " + second)
+                .orElse(groupType.name());
+    }
+
 
     private String generateLedgerCode(String prefix) {
         long count = ledgerMasterRepository.count() + 1;

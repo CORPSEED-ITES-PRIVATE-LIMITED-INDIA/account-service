@@ -4,6 +4,7 @@ import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
 import com.account.domain.ledger.LedgerGroup;
+import com.account.domain.ledger.LedgerGroupType;
 import com.account.domain.ledger.LedgerMaster;
 import com.account.domain.ledger.LedgerType;
 import com.account.dto.ledger.LedgerMasterRequestDto;
@@ -413,6 +414,72 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         } while (ledgerMasterRepository.existsByLedgerCodeIgnoreCase(code));
 
         return code;
+    }
+
+    private LedgerGroupType resolveDefaultGroupTypeFromLedgerType(LedgerType ledgerType) {
+
+        if (ledgerType == null) {
+            throw new ValidationException(
+                    "Ledger type is required",
+                    "ERR_LEDGER_TYPE_REQUIRED",
+                    "ledgerType"
+            );
+        }
+
+        return switch (ledgerType) {
+
+            case CASH -> LedgerGroupType.CASH_IN_HAND;
+
+            case BANK,
+                    PAYMENT_GATEWAY -> LedgerGroupType.BANK_ACCOUNTS;
+
+            case CUSTOMER -> LedgerGroupType.SUNDRY_DEBTORS;
+
+            case SUPPLIER,
+                    VENDOR,
+                    VENDOR_PAYABLE -> LedgerGroupType.SUNDRY_CREDITORS;
+
+            case CUSTOMER_ADVANCE,
+                    LIABILITY,
+                    REFUND_PAYABLE -> LedgerGroupType.CURRENT_LIABILITIES;
+
+            case SALES,
+                    SERVICE_INCOME,
+                    SALES_RETURN -> LedgerGroupType.SALES_ACCOUNTS;
+
+            case PURCHASE -> LedgerGroupType.PURCHASE_ACCOUNTS;
+
+            case TAX,
+                    OUTPUT_IGST,
+                    OUTPUT_CGST,
+                    OUTPUT_SGST,
+                    TDS_RECEIVABLE -> LedgerGroupType.DUTIES_AND_TAXES;
+
+            case EXPENSE,
+                    ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;
+
+            case INCOME -> LedgerGroupType.INDIRECT_INCOMES;
+
+            case ASSET -> LedgerGroupType.CURRENT_ASSETS;
+
+            case LOAN -> LedgerGroupType.LOANS_LIABILITY;
+
+            case CAPITAL -> LedgerGroupType.CAPITAL_ACCOUNT;
+
+            case INVESTMENT -> LedgerGroupType.INVESTMENTS;
+
+            case STOCK -> LedgerGroupType.STOCK_IN_HAND;
+
+            case SUSPENSE -> LedgerGroupType.SUSPENSE_ACCOUNT;
+
+            case BRANCH -> LedgerGroupType.BRANCH_DIVISIONS;
+
+            default -> throw new ValidationException(
+                    "No default ledger group mapping found for ledger type: " + ledgerType,
+                    "ERR_LEDGER_GROUP_MAPPING_NOT_FOUND",
+                    "ledgerType"
+            );
+        };
     }
 
     private String normalizeName(String value) {
