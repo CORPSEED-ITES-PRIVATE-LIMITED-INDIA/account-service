@@ -3,17 +3,17 @@ package com.account.serviceImpl.ledger;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
-import com.account.domain.ledger.LedgerGroup;
-import com.account.domain.ledger.LedgerGroupType;
-import com.account.domain.ledger.LedgerMaster;
-import com.account.domain.ledger.LedgerType;
+import com.account.domain.ledger.*;
 import com.account.dto.ledger.LedgerMasterRequestDto;
 import com.account.dto.ledger.LedgerMasterResponseDto;
+import com.account.dto.ledger.LedgerStatementResponseDto;
+import com.account.dto.ledger.LedgerTransactionResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
 import com.account.repository.ContactRepository;
+import com.account.repository.ledger.AccountingVoucherEntryRepository;
 import com.account.repository.ledger.LedgerGroupRepository;
 import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.service.ledger.LedgerMasterService;
@@ -30,6 +30,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -42,6 +44,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     private final CompanyRepository companyRepository;
     private final CompanyUnitRepository companyUnitRepository;
     private final ContactRepository contactRepository;
+    private final AccountingVoucherEntryRepository accountingVoucherEntryRepository;
 
     @Override
     @Transactional
@@ -199,6 +202,211 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public LedgerStatementResponseDto getLedgerTransactions(
+            Long ledgerId,
+            LocalDate fromDate,
+            LocalDate toDate,
+            int page,
+            int size
+    ) {
+        if (ledgerId == null || ledgerId <= 0) {
+            throw new ValidationException(
+                    "Ledger ID is required",
+                    "ERR_LEDGER_ID_REQUIRED",
+                    "ledgerId"
+            );
+        }
+
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new ValidationException(
+                    "From date cannot be after to date",
+                    "ERR_INVALID_DATE_RANGE",
+                    "fromDate"
+            );
+        }
+
+        LedgerMaster ledger = ledgerMasterRepository.findByIdAndDeletedFalse(ledgerId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ledger not found with ID: " + ledgerId,
+                        "LEDGER_NOT_FOUND"
+                ));
+
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 || size > 200 ? 20 : size;
+
+        /*
+         * Opening balance logic:
+         * DEBIT  = positive balance
+         * CREDIT = negative balance
+         */
+        BigDecimal openingSignedBalance = toSignedBalanceForStatement(
+                ledger.getOpeningBalance(),
+                ledger.getOpeningBalanceType()
+        );
+
+        /*
+         * If fromDate is given, opening balance should include all posted
+         * entries before fromDate.
+         */
+        if (fromDate != null) {
+            BigDecimal debitBefore = moneyForStatement(
+                    accountingVoucherEntryRepository.sumDebitBeforeDate(
+                            ledgerId,
+                            fromDate,
+                            VoucherStatus.POSTED
+                    )
+            );
+
+            BigDecimal creditBefore = moneyForStatement(
+                    accountingVoucherEntryRepository.sumCreditBeforeDate(
+                            ledgerId,
+                            fromDate,
+                            VoucherStatus.POSTED
+                    )
+            );
+
+            openingSignedBalance = openingSignedBalance
+                    .add(debitBefore)
+                    .subtract(creditBefore)
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+
+        /*
+         * Only POSTED vouchers are shown.
+         * DRAFT / CANCELLED / REVERSED vouchers are excluded.
+         */
+        List<AccountingVoucherEntry> entries =
+                accountingVoucherEntryRepository.findLedgerEntriesForStatement(
+                        ledgerId,
+                        fromDate,
+                        toDate,
+                        VoucherStatus.POSTED
+                );
+
+        BigDecimal runningSignedBalance = openingSignedBalance;
+
+        BigDecimal totalDebit = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalCredit = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        List<LedgerTransactionResponseDto> allRows = new ArrayList<>();
+
+        for (AccountingVoucherEntry entry : entries) {
+
+            AccountingVoucher voucher = entry.getVoucher();
+
+            BigDecimal debit = moneyForStatement(entry.getDebitAmount());
+            BigDecimal credit = moneyForStatement(entry.getCreditAmount());
+
+            totalDebit = totalDebit.add(debit).setScale(2, RoundingMode.HALF_UP);
+            totalCredit = totalCredit.add(credit).setScale(2, RoundingMode.HALF_UP);
+
+            runningSignedBalance = runningSignedBalance
+                    .add(debit)
+                    .subtract(credit)
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            String narration = entry.getNarration();
+
+            if ((narration == null || narration.trim().isEmpty()) && voucher != null) {
+                narration = voucher.getNarration();
+            }
+
+            allRows.add(
+                    LedgerTransactionResponseDto.builder()
+                            .entryId(entry.getId())
+
+                            .voucherId(voucher != null ? voucher.getId() : null)
+                            .voucherNumber(voucher != null ? voucher.getVoucherNumber() : null)
+                            .voucherType(voucher != null ? voucher.getVoucherType() : null)
+                            .voucherDate(voucher != null ? voucher.getVoucherDate() : null)
+
+                            .sourceType(voucher != null ? voucher.getSourceType() : null)
+                            .sourceId(voucher != null ? voucher.getSourceId() : null)
+                            .status(voucher != null ? voucher.getStatus() : null)
+
+                            .ledgerId(ledger.getId())
+                            .ledgerName(ledger.getLedgerName())
+                            .ledgerCode(ledger.getLedgerCode())
+
+                            .debitAmount(debit)
+                            .creditAmount(credit)
+
+                            .runningBalanceAmount(absAmountForStatement(runningSignedBalance))
+                            .runningBalanceType(balanceTypeForStatement(runningSignedBalance))
+
+                            .narration(narration)
+                            .build()
+            );
+        }
+
+        int totalElements = allRows.size();
+
+        int totalPages = totalElements == 0
+                ? 0
+                : (int) Math.ceil((double) totalElements / safeSize);
+
+        int start = Math.min(safePage * safeSize, totalElements);
+        int end = Math.min(start + safeSize, totalElements);
+
+        List<LedgerTransactionResponseDto> pagedRows = allRows.subList(start, end);
+
+        return LedgerStatementResponseDto.builder()
+                .ledgerId(ledger.getId())
+                .ledgerName(ledger.getLedgerName())
+                .ledgerCode(ledger.getLedgerCode())
+                .ledgerType(ledger.getLedgerType())
+
+                .fromDate(fromDate)
+                .toDate(toDate)
+
+                .openingBalanceAmount(absAmountForStatement(openingSignedBalance))
+                .openingBalanceType(balanceTypeForStatement(openingSignedBalance))
+
+                .closingBalanceAmount(absAmountForStatement(runningSignedBalance))
+                .closingBalanceType(balanceTypeForStatement(runningSignedBalance))
+
+                .totalDebit(totalDebit)
+                .totalCredit(totalCredit)
+
+                .page(safePage + 1)
+                .size(safeSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+
+                .transactions(pagedRows)
+                .build();
+    }
+
+    private BigDecimal moneyForStatement(BigDecimal value) {
+        return value == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal toSignedBalanceForStatement(BigDecimal amount, DebitCredit type) {
+        BigDecimal value = moneyForStatement(amount);
+
+        if (type == DebitCredit.CREDIT) {
+            return value.negate().setScale(2, RoundingMode.HALF_UP);
+        }
+
+        return value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal absAmountForStatement(BigDecimal signedAmount) {
+        return moneyForStatement(signedAmount).abs().setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private DebitCredit balanceTypeForStatement(BigDecimal signedAmount) {
+        if (signedAmount == null || signedAmount.compareTo(BigDecimal.ZERO) >= 0) {
+            return DebitCredit.DEBIT;
+        }
+
+        return DebitCredit.CREDIT;
     }
 
     @Override

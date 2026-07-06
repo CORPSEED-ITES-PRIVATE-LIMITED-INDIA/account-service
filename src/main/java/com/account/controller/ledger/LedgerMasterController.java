@@ -3,15 +3,19 @@ package com.account.controller.ledger;
 import com.account.domain.ledger.LedgerType;
 import com.account.dto.ledger.LedgerMasterRequestDto;
 import com.account.dto.ledger.LedgerMasterResponseDto;
+import com.account.dto.ledger.LedgerStatementResponseDto;
 import com.account.service.ledger.LedgerMasterService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/accountService/api/v1/ledgers")
@@ -46,6 +50,34 @@ public class LedgerMasterController {
             @PathVariable Long id
     ) {
         LedgerMasterResponseDto response = ledgerMasterService.getLedgerById(id);
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/transactions")
+    @Operation(summary = "Get ledger transactions / ledger statement by ledger ID")
+    public ResponseEntity<LedgerStatementResponseDto> getLedgerTransactions(
+            @PathVariable Long id,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate,
+
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        LedgerStatementResponseDto response =
+                ledgerMasterService.getLedgerTransactions(
+                        id,
+                        fromDate,
+                        toDate,
+                        page - 1,
+                        size
+                );
+
         return ResponseEntity.ok(response);
     }
 

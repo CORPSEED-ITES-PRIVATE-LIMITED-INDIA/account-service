@@ -20,5 +20,4 @@ public interface AccountingVoucherRepository extends JpaRepository<AccountingVou
             Long sourceId,
             VoucherStatus status
     );
-
 }
