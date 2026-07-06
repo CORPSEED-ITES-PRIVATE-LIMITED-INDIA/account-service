@@ -163,6 +163,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         return mapToResponse(ledger);
     }
 
+
     @Override
     @Transactional(readOnly = true)
     public Page<LedgerMasterResponseDto> getLedgers(
@@ -715,24 +716,37 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             return null;
         }
 
+        Company company = ledger.getCompany();
+        CompanyUnit unit = ledger.getUnit();
+        Contact contact = ledger.getContact();
+        LedgerGroup ledgerGroup = ledger.getLedgerGroup();
+
         return LedgerMasterResponseDto.builder()
                 .id(ledger.getId())
                 .ledgerName(ledger.getLedgerName())
                 .ledgerCode(ledger.getLedgerCode())
                 .ledgerType(ledger.getLedgerType())
 
-                .ledgerGroupId(ledger.getLedgerGroup() != null ? ledger.getLedgerGroup().getId() : null)
-                .ledgerGroupName(ledger.getLedgerGroup() != null ? ledger.getLedgerGroup().getName() : null)
-                .ledgerGroupType(ledger.getLedgerGroup() != null ? ledger.getLedgerGroup().getGroupType() : null)
+                .ledgerGroupId(ledgerGroup != null ? ledgerGroup.getId() : null)
+                .ledgerGroupName(ledgerGroup != null ? ledgerGroup.getName() : null)
+                .ledgerGroupType(ledgerGroup != null ? ledgerGroup.getGroupType() : null)
 
-                .companyId(ledger.getCompany() != null ? ledger.getCompany().getId() : null)
-                .companyName(ledger.getCompany() != null ? ledger.getCompany().getName() : null)
+                .companyId(company != null ? company.getId() : null)
+                .companyName(company != null ? company.getName() : null)
 
-                .unitId(ledger.getUnit() != null ? ledger.getUnit().getId() : null)
-                .unitName(ledger.getUnit() != null ? ledger.getUnit().getUnitName() : null)
+                .unitId(unit != null ? unit.getId() : null)
+                .unitName(unit != null ? unit.getUnitName() : null)
 
-                .contactId(ledger.getContact() != null ? ledger.getContact().getId() : null)
-                .contactName(ledger.getContact() != null ? ledger.getContact().getName() : null)
+                .addressLine1(unit != null ? unit.getAddressLine1() : null)
+                .addressLine2(unit != null ? unit.getAddressLine2() : null)
+                .city(unit != null ? unit.getCity() : null)
+                .state(unit != null ? unit.getState() : null)
+                .country(unit != null ? unit.getCountry() : null)
+                .pinCode(unit != null ? unit.getPinCode() : null)
+                .fullAddress(buildFullAddress(unit))
+
+                .contactId(contact != null ? contact.getId() : null)
+                .contactName(contact != null ? contact.getName() : null)
 
                 .gstNo(ledger.getGstNo())
                 .panNo(ledger.getPanNo())
@@ -758,6 +772,42 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .build();
     }
 
+    private String buildFullAddress(CompanyUnit unit) {
+
+        if (unit == null) {
+            return null;
+        }
+
+        List<String> addressParts = new ArrayList<>();
+
+        if (unit.getAddressLine1() != null && !unit.getAddressLine1().trim().isEmpty()) {
+            addressParts.add(unit.getAddressLine1().trim());
+        }
+
+        if (unit.getAddressLine2() != null && !unit.getAddressLine2().trim().isEmpty()) {
+            addressParts.add(unit.getAddressLine2().trim());
+        }
+
+        if (unit.getCity() != null && !unit.getCity().trim().isEmpty()) {
+            addressParts.add(unit.getCity().trim());
+        }
+
+        if (unit.getState() != null && !unit.getState().trim().isEmpty()) {
+            addressParts.add(unit.getState().trim());
+        }
+
+        if (unit.getCountry() != null && !unit.getCountry().trim().isEmpty()) {
+            addressParts.add(unit.getCountry().trim());
+        }
+
+        if (unit.getPinCode() != null && !unit.getPinCode().trim().isEmpty()) {
+            addressParts.add(unit.getPinCode().trim());
+        }
+
+        return addressParts.isEmpty()
+                ? null
+                : String.join(", ", addressParts);
+    }
     private LedgerMaster buildLedgerMaster(
             LedgerMasterRequestDto request,
             String ledgerName,
