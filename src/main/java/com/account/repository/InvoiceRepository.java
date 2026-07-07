@@ -3,6 +3,7 @@ package com.account.repository;
 import com.account.domain.invoice.Invoice;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
+import com.account.dto.dashboard.TopSellingServiceItemDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,6 +18,7 @@ import java.util.Optional;
 
 @Repository
 public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpecificationExecutor<Invoice> {
+
 
     @Query("""
         SELECT i FROM Invoice i
@@ -181,4 +183,34 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("fromDate") LocalDate fromDate,
             @Param("toDate") LocalDate toDate
     );
+
+    @Query("""
+            SELECT new com.account.dto.dashboard.TopSellingServiceItemDto(
+                i.solutionId,
+                i.solutionName,
+                COUNT(DISTINCT e.leadId),
+                COUNT(DISTINCT i.id),
+                SUM(i.grandTotal)
+            )
+            FROM Invoice i
+            JOIN i.unbilledInvoice u
+            LEFT JOIN u.estimate e
+            WHERE i.isCancelled = false
+              AND i.status = :status
+              AND i.invoiceDate >= :fromDate
+              AND i.invoiceDate <= :toDate
+              AND u.createdBy.id = :userId
+              AND i.solutionName IS NOT NULL
+              AND TRIM(i.solutionName) <> ''
+            GROUP BY i.solutionId, i.solutionName
+            ORDER BY SUM(i.grandTotal) DESC, COUNT(DISTINCT i.id) DESC
+            """)
+    List<TopSellingServiceItemDto> findTopSellingServicesForSalesperson(
+            @Param("userId") Long userId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            Pageable pageable
+    );
+
 }
