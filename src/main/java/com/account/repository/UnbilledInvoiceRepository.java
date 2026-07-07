@@ -213,5 +213,47 @@ ORDER BY u.createdAt DESC
     );
 
 
+    @Query("""
+        SELECT COALESCE(SUM(u.totalAmount), 0)
+        FROM UnbilledInvoice u
+        WHERE u.isCancelled = false
+          AND u.createdBy.id = :userId
+          AND u.createdAt >= :fromDateTime
+          AND u.createdAt < :toDateTime
+        """)
+    BigDecimal sumTotalBilledForSalesperson(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+    @Query("""
+        SELECT COALESCE(SUM(u.receivedAmount), 0)
+        FROM UnbilledInvoice u
+        WHERE u.isCancelled = false
+          AND u.createdBy.id = :userId
+          AND u.createdAt >= :fromDateTime
+          AND u.createdAt < :toDateTime
+        """)
+    BigDecimal sumReceivedForSalesperson(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+    @Query("""
+        SELECT COALESCE(SUM(u.outstandingAmount), 0)
+        FROM UnbilledInvoice u
+        WHERE u.isCancelled = false
+          AND u.createdBy.id = :userId
+          AND u.createdAt >= :fromDateTime
+          AND u.createdAt < :toDateTime
+        """)
+    BigDecimal sumPendingForSalesperson(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
 
 }

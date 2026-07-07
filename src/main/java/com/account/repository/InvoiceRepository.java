@@ -4,6 +4,7 @@ import com.account.domain.invoice.Invoice;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
 import com.account.dto.dashboard.RevenueByServiceItemDto;
+import com.account.dto.dashboard.TopCompanyItemDto;
 import com.account.dto.dashboard.TopConvertedLeadItemDto;
 import com.account.dto.dashboard.TopSellingServiceItemDto;
 import org.springframework.data.domain.Page;
@@ -315,6 +316,34 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             Pageable pageable
     );
 
+    @Query("""
+        SELECT new com.account.dto.dashboard.TopCompanyItemDto(
+            c.id,
+            c.name,
+            SUM(i.grandTotal),
+            COUNT(DISTINCT i.id)
+        )
+        FROM Invoice i
+        JOIN i.unbilledInvoice u
+        JOIN u.company c
+        WHERE i.isCancelled = false
+          AND i.status = :status
+          AND u.createdBy.id = :userId
+          AND i.invoiceDate >= :fromDate
+          AND i.invoiceDate <= :toDate
+          AND c.isDeleted = false
+          AND c.name IS NOT NULL
+          AND TRIM(c.name) <> ''
+        GROUP BY c.id, c.name
+        ORDER BY SUM(i.grandTotal) DESC
+        """)
+    List<TopCompanyItemDto> findTopCompaniesForSalesperson(
+            @Param("userId") Long userId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            Pageable pageable
+    );
 
 
 

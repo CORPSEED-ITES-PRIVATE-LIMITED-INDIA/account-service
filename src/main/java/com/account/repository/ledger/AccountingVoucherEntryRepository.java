@@ -62,4 +62,20 @@ public interface AccountingVoucherEntryRepository extends JpaRepository<Accounti
             @Param("fromDate") LocalDate fromDate,
             @Param("status") VoucherStatus status
     );
+
+    @Query("""
+        SELECT e
+        FROM AccountingVoucherEntry e
+        LEFT JOIN FETCH e.ledger l
+        WHERE e.voucher.id = :voucherId
+          AND e.ledger.id <> :ledgerId
+        ORDER BY e.id ASC
+        """)
+    List<AccountingVoucherEntry> findOtherEntriesByVoucherId(
+            @Param("voucherId") Long voucherId,
+            @Param("ledgerId") Long ledgerId
+    );
+
+
+
 }

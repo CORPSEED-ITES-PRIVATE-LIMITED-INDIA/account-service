@@ -309,4 +309,8 @@ public class PaymentLegalVerificationServiceImpl implements PaymentLegalVerifica
 
         return dto;
     }
+
+
+
+
 }

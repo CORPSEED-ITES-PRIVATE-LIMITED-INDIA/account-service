@@ -160,6 +160,65 @@ public class DashboardController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/top-companies")
+    @Operation(summary = "Get top companies by generated invoice revenue")
+    public ResponseEntity<TopCompaniesResponseDto> getTopCompanies(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate,
+
+            @RequestParam(required = false, defaultValue = "5")
+            Integer limit
+    ) {
+        TopCompaniesResponseDto response =
+                dashboardService.getTopCompanies(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate,
+                        limit
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/payment-summary")
+    @Operation(summary = "Get payment summary for dashboard")
+    public ResponseEntity<PaymentSummaryResponseDto> getPaymentSummary(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        PaymentSummaryResponseDto response =
+                dashboardService.getPaymentSummary(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+
 
 
 

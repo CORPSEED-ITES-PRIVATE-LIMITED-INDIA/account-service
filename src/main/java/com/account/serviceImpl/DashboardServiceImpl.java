@@ -531,6 +531,117 @@ public class DashboardServiceImpl implements DashboardService {
                 .build();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public TopCompaniesResponseDto getTopCompanies(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+        int safeLimit = resolveLimit(limit);
+
+        Pageable pageable = PageRequest.of(0, safeLimit);
+
+        List<TopCompanyItemDto> items =
+                invoiceRepository.findTopCompaniesForSalesperson(
+                        userId,
+                        InvoiceStatus.GENERATED,
+                        dateRange.fromDate(),
+                        dateRange.toDate(),
+                        pageable
+                );
+
+        items.forEach(item -> item.setTotalRevenue(safeMoney(item.getTotalRevenue())));
+
+        return TopCompaniesResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .limit(safeLimit)
+                .topCompanies(items)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaymentSummaryResponseDto getPaymentSummary(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+
+        LocalDateTime fromDateTime = dateRange.fromDate().atStartOfDay();
+        LocalDateTime toDateTime = dateRange.toDate().plusDays(1).atStartOfDay();
+
+        BigDecimal totalBilled = safeMoney(
+                unbilledInvoiceRepository.sumTotalBilledForSalesperson(
+                        userId,
+                        fromDateTime,
+                        toDateTime
+                )
+        );
+
+        BigDecimal received = safeMoney(
+                unbilledInvoiceRepository.sumReceivedForSalesperson(
+                        userId,
+                        fromDateTime,
+                        toDateTime
+                )
+        );
+
+        BigDecimal pending = safeMoney(
+                unbilledInvoiceRepository.sumPendingForSalesperson(
+                        userId,
+                        fromDateTime,
+                        toDateTime
+                )
+        );
+
+        BigDecimal collectionPercentage = calculateCollectionPercentage(
+                received,
+                totalBilled
+        );
+
+        return PaymentSummaryResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .totalBilled(totalBilled)
+                .received(received)
+                .pending(pending)
+                .collectionPercentage(collectionPercentage)
+                .build();
+    }
+
+
+
+    private BigDecimal calculateCollectionPercentage(
+            BigDecimal received,
+            BigDecimal totalBilled
+    ) {
+        BigDecimal safeReceived = safeMoney(received);
+        BigDecimal safeTotalBilled = safeMoney(totalBilled);
+
+        if (safeTotalBilled.compareTo(BigDecimal.ZERO) == 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        return safeReceived
+                .multiply(new BigDecimal("100"))
+                .divide(safeTotalBilled, 2, RoundingMode.HALF_UP);
+    }
+
 
 
 }

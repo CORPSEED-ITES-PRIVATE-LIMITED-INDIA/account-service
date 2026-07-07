@@ -41,4 +41,19 @@ public interface DashboardService {
             LocalDate toDate,
             Integer limit
     );
+
+    TopCompaniesResponseDto getTopCompanies(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    );
+
+    PaymentSummaryResponseDto getPaymentSummary(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
 }
