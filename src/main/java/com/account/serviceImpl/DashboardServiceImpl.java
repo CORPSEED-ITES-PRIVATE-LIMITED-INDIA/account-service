@@ -643,5 +643,189 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
 
+    @Override
+    @Transactional(readOnly = true)
+    public BillingOverviewResponseDto getBillingOverview(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        validateUser(userId);
+
+        DateRange currentRange = resolveDateRange(period, fromDate, toDate);
+        DateRange previousRange = resolvePreviousDateRange(currentRange);
+
+        LocalDateTime currentFrom = currentRange.fromDate().atStartOfDay();
+        LocalDateTime currentTo = currentRange.toDate().plusDays(1).atStartOfDay();
+
+        LocalDateTime previousFrom = previousRange.fromDate().atStartOfDay();
+        LocalDateTime previousTo = previousRange.toDate().plusDays(1).atStartOfDay();
+
+        BigDecimal currentTotalBilled = safeMoney(
+                unbilledInvoiceRepository.sumTotalBilledByUserAndDateRange(
+                        userId,
+                        currentFrom,
+                        currentTo
+                )
+        );
+
+        BigDecimal previousTotalBilled = safeMoney(
+                unbilledInvoiceRepository.sumTotalBilledByUserAndDateRange(
+                        userId,
+                        previousFrom,
+                        previousTo
+                )
+        );
+
+        BigDecimal currentReceived = safeMoney(
+                invoiceRepository.sumInvoiceReceivedByUserAndDateRange(
+                        userId,
+                        InvoiceStatus.GENERATED,
+                        currentRange.fromDate(),
+                        currentRange.toDate()
+                )
+        );
+
+        BigDecimal previousReceived = safeMoney(
+                invoiceRepository.sumInvoiceReceivedByUserAndDateRange(
+                        userId,
+                        InvoiceStatus.GENERATED,
+                        previousRange.fromDate(),
+                        previousRange.toDate()
+                )
+        );
+
+        BigDecimal currentOutstanding = safeMoney(
+                unbilledInvoiceRepository.sumOutstandingByUserAndDateRange(
+                        userId,
+                        currentFrom,
+                        currentTo
+                )
+        );
+
+        BigDecimal previousOutstanding = safeMoney(
+                unbilledInvoiceRepository.sumOutstandingByUserAndDateRange(
+                        userId,
+                        previousFrom,
+                        previousTo
+                )
+        );
+
+        Long pendingApprovalCount =
+                unbilledInvoiceRepository.countPendingApprovalsByUserAndDateRange(
+                        userId,
+                        UnbilledStatus.PENDING_APPROVAL,
+                        currentFrom,
+                        currentTo
+                );
+
+        LocalDate today = LocalDate.now();
+
+        Long urgentTodayCount =
+                unbilledInvoiceRepository.countPendingApprovalsTodayByUser(
+                        userId,
+                        UnbilledStatus.PENDING_APPROVAL,
+                        today.atStartOfDay(),
+                        today.plusDays(1).atStartOfDay()
+                );
+
+        BillingOverviewCardDto totalBilledCard = buildMoneyCard(
+                currentTotalBilled,
+                previousTotalBilled,
+                currentRange,
+                false
+        );
+
+        BillingOverviewCardDto receivedCard = buildMoneyCard(
+                currentReceived,
+                previousReceived,
+                currentRange,
+                false
+        );
+
+        /*
+         * For outstanding, lower value is better.
+         * So if outstanding decreases, growthDirection should be DOWN.
+         */
+        BillingOverviewCardDto outstandingCard = buildMoneyCard(
+                currentOutstanding,
+                previousOutstanding,
+                currentRange,
+                true
+        );
+
+        PendingApprovalCardDto pendingApprovalCard = new PendingApprovalCardDto(
+                pendingApprovalCount,
+                urgentTodayCount,
+                null
+        );
+        pendingApprovalCard.normalize();
+
+        return BillingOverviewResponseDto.builder()
+                .userId(userId)
+                .period(currentRange.period())
+                .fromDate(currentRange.fromDate())
+                .toDate(currentRange.toDate())
+                .totalBilled(totalBilledCard)
+                .paymentReceived(receivedCard)
+                .outstanding(outstandingCard)
+                .pendingApprovals(pendingApprovalCard)
+                .build();
+    }
+
+    private BillingOverviewCardDto buildMoneyCard(
+            BigDecimal currentValue,
+            BigDecimal previousValue,
+            DateRange currentRange,
+            boolean lowerIsBetter
+    ) {
+        BigDecimal growth = calculateGrowthPercentage(currentValue, previousValue);
+
+        String direction;
+
+        if (growth.compareTo(BigDecimal.ZERO) == 0) {
+            direction = "SAME";
+        } else if (growth.compareTo(BigDecimal.ZERO) > 0) {
+            direction = lowerIsBetter ? "DOWN_BAD" : "UP";
+        } else {
+            direction = lowerIsBetter ? "DOWN" : "DOWN_BAD";
+        }
+
+        BillingOverviewCardDto card = new BillingOverviewCardDto(
+                safeMoney(currentValue),
+                growth.abs().setScale(2, RoundingMode.HALF_UP),
+                direction,
+                buildComparisonLabel(currentRange.period())
+        );
+
+        card.normalize();
+        return card;
+    }
+
+
+
+
+    private String buildComparisonLabel(String currentPeriod) {
+        if ("TODAY".equals(currentPeriod)) {
+            return "vs yesterday";
+        }
+
+        if ("WEEK".equals(currentPeriod)) {
+            return "vs last week";
+        }
+
+        if ("MONTH".equals(currentPeriod)) {
+            return "vs last month";
+        }
+
+        if ("YEAR".equals(currentPeriod)) {
+            return "vs last year";
+        }
+
+        return "vs previous period";
+    }
+
+
 
 }

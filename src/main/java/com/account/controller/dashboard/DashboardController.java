@@ -218,6 +218,32 @@ public class DashboardController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/billing-overview")
+    @Operation(summary = "Get billing, payment received, outstanding and pending approval overview")
+    public ResponseEntity<BillingOverviewResponseDto> getBillingOverview(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        BillingOverviewResponseDto response =
+                dashboardService.getBillingOverview(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate
+                );
+
+        return ResponseEntity.ok(response);
+    }
 
 
 

@@ -256,4 +256,65 @@ ORDER BY u.createdAt DESC
     );
 
 
+    @Query("""
+            SELECT COALESCE(SUM(u.totalAmount), 0)
+            FROM UnbilledInvoice u
+            WHERE u.isCancelled = false
+              AND u.createdBy.id = :userId
+              AND u.createdAt >= :fromDateTime
+              AND u.createdAt < :toDateTime
+            """)
+    BigDecimal sumTotalBilledByUserAndDateRange(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+    @Query("""
+            SELECT COALESCE(SUM(u.outstandingAmount), 0)
+            FROM UnbilledInvoice u
+            WHERE u.isCancelled = false
+              AND u.createdBy.id = :userId
+              AND u.createdAt >= :fromDateTime
+              AND u.createdAt < :toDateTime
+            """)
+    BigDecimal sumOutstandingByUserAndDateRange(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+    @Query("""
+            SELECT COUNT(u.id)
+            FROM UnbilledInvoice u
+            WHERE u.isCancelled = false
+              AND u.createdBy.id = :userId
+              AND u.status = :status
+              AND u.createdAt >= :fromDateTime
+              AND u.createdAt < :toDateTime
+            """)
+    Long countPendingApprovalsByUserAndDateRange(
+            @Param("userId") Long userId,
+            @Param("status") UnbilledStatus status,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+    @Query("""
+            SELECT COUNT(u.id)
+            FROM UnbilledInvoice u
+            WHERE u.isCancelled = false
+              AND u.createdBy.id = :userId
+              AND u.status = :status
+              AND u.createdAt >= :todayStart
+              AND u.createdAt < :tomorrowStart
+            """)
+    Long countPendingApprovalsTodayByUser(
+            @Param("userId") Long userId,
+            @Param("status") UnbilledStatus status,
+            @Param("todayStart") LocalDateTime todayStart,
+            @Param("tomorrowStart") LocalDateTime tomorrowStart
+    );
+
+
 }

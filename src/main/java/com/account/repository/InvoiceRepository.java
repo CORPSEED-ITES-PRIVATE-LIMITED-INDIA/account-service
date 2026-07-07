@@ -346,5 +346,24 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
     );
 
 
+    @Query("""
+        SELECT COALESCE(SUM(i.grandTotal), 0)
+        FROM Invoice i
+        JOIN i.unbilledInvoice u
+        WHERE i.isCancelled = false
+          AND i.status = :status
+          AND u.isCancelled = false
+          AND u.createdBy.id = :userId
+          AND i.invoiceDate >= :fromDate
+          AND i.invoiceDate <= :toDate
+        """)
+    BigDecimal sumInvoiceReceivedByUserAndDateRange(
+            @Param("userId") Long userId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
+
+
 
 }
