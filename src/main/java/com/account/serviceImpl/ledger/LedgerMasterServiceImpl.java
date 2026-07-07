@@ -3,16 +3,15 @@ package com.account.serviceImpl.ledger;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
+import com.account.domain.invoice.Invoice;
 import com.account.domain.ledger.*;
-import com.account.dto.ledger.LedgerMasterRequestDto;
-import com.account.dto.ledger.LedgerMasterResponseDto;
-import com.account.dto.ledger.LedgerStatementResponseDto;
-import com.account.dto.ledger.LedgerTransactionResponseDto;
+import com.account.dto.ledger.*;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.repository.CompanyRepository;
 import com.account.repository.CompanyUnitRepository;
 import com.account.repository.ContactRepository;
+import com.account.repository.InvoiceRepository;
 import com.account.repository.ledger.AccountingVoucherEntryRepository;
 import com.account.repository.ledger.LedgerGroupRepository;
 import com.account.repository.ledger.LedgerMasterRepository;
@@ -32,8 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -45,6 +44,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     private final CompanyUnitRepository companyUnitRepository;
     private final ContactRepository contactRepository;
     private final AccountingVoucherEntryRepository accountingVoucherEntryRepository;
+    private final InvoiceRepository invoiceRepository;
 
     @Override
     @Transactional
@@ -170,6 +170,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             String search,
             LedgerType ledgerType,
             Long ledgerGroupId,
+            LedgerGroupType ledgerGroupType,
+            Long companyId,
+            Long unitId,
             Boolean active,
             int page,
             int size
@@ -188,6 +191,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 search,
                 ledgerType,
                 ledgerGroupId,
+                ledgerGroupType,
+                companyId,
+                unitId,
                 active
         );
 
@@ -196,12 +202,12 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
                     LedgerMasterResponseDto response = mapToResponse(ledger);
 
-                    /*
-                     * Load first 20 posted transactions for each ledger.
-                     * page = 0 because service method accepts zero-based page.
-                     */
                     LedgerStatementResponseDto statement = getLedgerTransactions(
                             ledger.getId(),
+                            null,
+                            null,
+                            null,
+                            null,
                             null,
                             null,
                             0,
@@ -939,4 +945,577 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .reduce((first, second) -> first + " " + second)
                 .orElse(groupType.name());
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public LedgerStatementResponseDto getLedgerTransactions(
+            Long ledgerId,
+            LocalDate fromDate,
+            LocalDate toDate,
+            String search,
+            String voucherType,
+            String sourceType,
+            String entryType,
+            int page,
+            int size
+    ) {
+        if (ledgerId == null || ledgerId <= 0) {
+            throw new ValidationException(
+                    "Ledger ID is required",
+                    "ERR_LEDGER_ID_REQUIRED",
+                    "ledgerId"
+            );
+        }
+
+        if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            throw new ValidationException(
+                    "From date cannot be after to date",
+                    "ERR_INVALID_DATE_RANGE",
+                    "fromDate"
+            );
+        }
+
+        LedgerMaster ledger = ledgerMasterRepository.findByIdAndDeletedFalse(ledgerId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ledger not found with ID: " + ledgerId,
+                        "LEDGER_NOT_FOUND"
+                ));
+
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 || size > 200 ? 20 : size;
+
+        BigDecimal openingSignedBalance = toSignedBalanceForStatement(
+                ledger.getOpeningBalance(),
+                ledger.getOpeningBalanceType()
+        );
+
+        if (fromDate != null) {
+            BigDecimal debitBefore = moneyForStatement(
+                    accountingVoucherEntryRepository.sumDebitBeforeDate(
+                            ledgerId,
+                            fromDate,
+                            VoucherStatus.POSTED
+                    )
+            );
+
+            BigDecimal creditBefore = moneyForStatement(
+                    accountingVoucherEntryRepository.sumCreditBeforeDate(
+                            ledgerId,
+                            fromDate,
+                            VoucherStatus.POSTED
+                    )
+            );
+
+            openingSignedBalance = openingSignedBalance
+                    .add(debitBefore)
+                    .subtract(creditBefore)
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+
+        List<AccountingVoucherEntry> entries =
+                accountingVoucherEntryRepository.findLedgerEntriesForStatement(
+                        ledgerId,
+                        fromDate,
+                        toDate,
+                        VoucherStatus.POSTED
+                );
+
+        BigDecimal runningSignedBalance = openingSignedBalance;
+
+        List<LedgerTransactionResponseDto> allRows = new ArrayList<>();
+
+        Map<Long, Invoice> invoiceCache = new HashMap<>();
+        Map<Long, List<AccountingVoucherEntry>> otherEntriesCache = new HashMap<>();
+
+        for (AccountingVoucherEntry entry : entries) {
+
+            AccountingVoucher voucher = entry.getVoucher();
+
+            BigDecimal debit = moneyForStatement(entry.getDebitAmount());
+            BigDecimal credit = moneyForStatement(entry.getCreditAmount());
+
+            runningSignedBalance = runningSignedBalance
+                    .add(debit)
+                    .subtract(credit)
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            String narration = entry.getNarration();
+
+            if ((narration == null || narration.trim().isEmpty()) && voucher != null) {
+                narration = voucher.getNarration();
+            }
+
+            Optional<Invoice> salesInvoiceOptional = getSalesInvoice(voucher, invoiceCache);
+
+            Invoice salesInvoice = salesInvoiceOptional.orElse(null);
+
+            String serviceName = salesInvoice != null
+                    ? clean(salesInvoice.getSolutionName())
+                    : null;
+
+            String receiptBankName = isReceiptVoucher(voucher)
+                    ? resolveReceiptBankName(ledger, voucher, otherEntriesCache)
+                    : null;
+
+            String particulars = buildParticulars(
+                    ledger,
+                    voucher,
+                    narration,
+                    serviceName,
+                    receiptBankName,
+                    otherEntriesCache
+            );
+
+            LedgerTransactionGstDetailsDto gstDetails = salesInvoice != null
+                    ? buildGstDetails(salesInvoice)
+                    : null;
+
+            allRows.add(
+                    LedgerTransactionResponseDto.builder()
+                            .entryId(entry.getId())
+
+                            .voucherId(voucher != null ? voucher.getId() : null)
+                            .voucherNumber(voucher != null ? voucher.getVoucherNumber() : null)
+                            .voucherType(voucher != null ? voucher.getVoucherType() : null)
+                            .voucherDate(voucher != null ? voucher.getVoucherDate() : null)
+
+                            .sourceType(voucher != null ? voucher.getSourceType() : null)
+                            .sourceId(voucher != null ? voucher.getSourceId() : null)
+                            .status(voucher != null ? voucher.getStatus() : null)
+
+                            .ledgerId(ledger.getId())
+                            .ledgerName(ledger.getLedgerName())
+                            .ledgerCode(ledger.getLedgerCode())
+
+                            .debitAmount(debit)
+                            .creditAmount(credit)
+
+                            .runningBalanceAmount(absAmountForStatement(runningSignedBalance))
+                            .runningBalanceType(balanceTypeForStatement(runningSignedBalance))
+
+                            .narration(narration)
+                            .particulars(particulars)
+                            .serviceName(serviceName)
+                            .bankName(receiptBankName)
+//
+//                            /*
+//                             * GST details only for sales invoice voucher rows.
+//                             * Receipt / payment / journal rows will return null.
+//                             */
+                            .gstDetails(gstDetails)
+
+                            .build()
+            );
+        }
+
+        List<LedgerTransactionResponseDto> filteredRows = allRows.stream()
+                .filter(row -> matchesTransactionFilters(
+                        row,
+                        search,
+                        voucherType,
+                        sourceType,
+                        entryType
+                ))
+                .collect(Collectors.toList());
+
+        BigDecimal totalDebit = filteredRows.stream()
+                .map(LedgerTransactionResponseDto::getDebitAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal totalCredit = filteredRows.stream()
+                .map(LedgerTransactionResponseDto::getCreditAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        int totalElements = filteredRows.size();
+
+        int totalPages = totalElements == 0
+                ? 0
+                : (int) Math.ceil((double) totalElements / safeSize);
+
+        int start = Math.min(safePage * safeSize, totalElements);
+        int end = Math.min(start + safeSize, totalElements);
+
+        List<LedgerTransactionResponseDto> pagedRows = filteredRows.subList(start, end);
+
+        return LedgerStatementResponseDto.builder()
+                .ledgerId(ledger.getId())
+                .ledgerName(ledger.getLedgerName())
+                .ledgerCode(ledger.getLedgerCode())
+                .ledgerType(ledger.getLedgerType())
+
+                .fromDate(fromDate)
+                .toDate(toDate)
+
+                .openingBalanceAmount(absAmountForStatement(openingSignedBalance))
+                .openingBalanceType(balanceTypeForStatement(openingSignedBalance))
+
+                .closingBalanceAmount(absAmountForStatement(runningSignedBalance))
+                .closingBalanceType(balanceTypeForStatement(runningSignedBalance))
+
+                .totalDebit(totalDebit)
+                .totalCredit(totalCredit)
+
+                .page(safePage + 1)
+                .size(safeSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+
+                .transactions(pagedRows)
+                .build();
+    }
+
+    private Specification<LedgerMaster> buildSpecification(
+            String search,
+            LedgerType ledgerType,
+            Long ledgerGroupId,
+            LedgerGroupType ledgerGroupType,
+            Long companyId,
+            Long unitId,
+            Boolean active
+    ) {
+        return (root, query, criteriaBuilder) -> {
+
+            query.distinct(true);
+
+            List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(criteriaBuilder.isFalse(root.get("deleted")));
+
+            Join<LedgerMaster, LedgerGroup> groupJoin = root.join("ledgerGroup", JoinType.LEFT);
+            Join<LedgerMaster, Company> companyJoin = root.join("company", JoinType.LEFT);
+            Join<LedgerMaster, CompanyUnit> unitJoin = root.join("unit", JoinType.LEFT);
+            Join<LedgerMaster, Contact> contactJoin = root.join("contact", JoinType.LEFT);
+
+            if (search != null && !search.trim().isEmpty()) {
+                String likeSearch = "%" + search.trim().toLowerCase() + "%";
+
+                predicates.add(
+                        criteriaBuilder.or(
+                                criteriaBuilder.like(criteriaBuilder.lower(root.get("ledgerName")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(root.get("ledgerCode")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(root.get("gstNo")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(root.get("panNo")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(root.get("bankName")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(root.get("accountNumber")), likeSearch),
+
+                                criteriaBuilder.like(criteriaBuilder.lower(groupJoin.get("name")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(companyJoin.get("name")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(unitJoin.get("unitName")), likeSearch),
+                                criteriaBuilder.like(criteriaBuilder.lower(contactJoin.get("name")), likeSearch)
+                        )
+                );
+            }
+
+            if (ledgerType != null) {
+                predicates.add(criteriaBuilder.equal(root.get("ledgerType"), ledgerType));
+            }
+
+            if (ledgerGroupId != null) {
+                predicates.add(criteriaBuilder.equal(groupJoin.get("id"), ledgerGroupId));
+            }
+
+            if (ledgerGroupType != null) {
+                predicates.add(criteriaBuilder.equal(groupJoin.get("groupType"), ledgerGroupType));
+            }
+
+            if (companyId != null) {
+                predicates.add(criteriaBuilder.equal(companyJoin.get("id"), companyId));
+            }
+
+            if (unitId != null) {
+                predicates.add(criteriaBuilder.equal(unitJoin.get("id"), unitId));
+            }
+
+            if (active != null) {
+                predicates.add(criteriaBuilder.equal(root.get("active"), active));
+            }
+
+            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+        };
+    }
+
+    private Optional<Invoice> getSalesInvoice(
+            AccountingVoucher voucher,
+            Map<Long, Invoice> invoiceCache
+    ) {
+        if (!isSalesInvoiceVoucher(voucher)) {
+            return Optional.empty();
+        }
+
+        if (voucher.getSourceId() == null || voucher.getSourceId() <= 0) {
+            return Optional.empty();
+        }
+
+        Long invoiceId = voucher.getSourceId();
+
+        if (invoiceCache.containsKey(invoiceId)) {
+            return Optional.ofNullable(invoiceCache.get(invoiceId));
+        }
+
+        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+        invoiceCache.put(invoiceId, invoice);
+
+        return Optional.ofNullable(invoice);
+    }
+
+    private boolean isSalesInvoiceVoucher(AccountingVoucher voucher) {
+        return isSourceType(
+                voucher,
+                "SALES_INVOICE",
+                "TAX_INVOICE",
+                "INVOICE"
+        );
+    }
+
+    private boolean isReceiptVoucher(AccountingVoucher voucher) {
+        return isSourceType(
+                voucher,
+                "RECEIPT",
+                "PAYMENT_RECEIPT",
+                "PAYMENT"
+        );
+    }
+
+    private boolean isSourceType(AccountingVoucher voucher, String... acceptedNames) {
+        if (voucher == null || voucher.getSourceType() == null) {
+            return false;
+        }
+
+        String actual = voucher.getSourceType().name();
+
+        for (String acceptedName : acceptedNames) {
+            if (acceptedName.equalsIgnoreCase(actual)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private LedgerTransactionGstDetailsDto buildGstDetails(Invoice invoice) {
+        if (invoice == null) {
+            return null;
+        }
+
+        return LedgerTransactionGstDetailsDto.builder()
+                .gstNo(clean(invoice.getBuyerGstin()))
+                .subTotalExGst(moneyForStatement(invoice.getSubTotalExGst()))
+                .totalGstAmount(moneyForStatement(invoice.getTotalGstAmount()))
+                .cgstAmount(moneyForStatement(invoice.getCgstAmount()))
+                .sgstAmount(moneyForStatement(invoice.getSgstAmount()))
+                .igstAmount(moneyForStatement(invoice.getIgstAmount()))
+                .grandTotal(moneyForStatement(invoice.getGrandTotal()))
+                .build();
+    }
+
+    private String buildParticulars(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            String narration,
+            String serviceName,
+            String receiptBankName,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        /*
+         * Requirement 2:
+         * Sales invoice row particulars should show service name.
+         */
+        if (serviceName != null && !serviceName.trim().isEmpty()) {
+            return serviceName;
+        }
+
+        /*
+         * Requirement 3:
+         * Receipt row particulars should show bank name.
+         */
+        if (receiptBankName != null && !receiptBankName.trim().isEmpty()) {
+            return receiptBankName;
+        }
+
+        /*
+         * Normal accounting fallback:
+         * show opposite ledger name.
+         */
+        String oppositeLedger = resolveOppositeLedgerName(
+                currentLedger,
+                voucher,
+                otherEntriesCache
+        );
+
+        if (oppositeLedger != null && !oppositeLedger.trim().isEmpty()) {
+            return oppositeLedger;
+        }
+
+        return narration;
+    }
+
+    private String resolveReceiptBankName(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        if (currentLedger != null && isBankOrCashLedger(currentLedger)) {
+            return displayBankLedgerName(currentLedger);
+        }
+
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger != null ? currentLedger.getId() : null,
+                otherEntriesCache
+        );
+
+        for (AccountingVoucherEntry otherEntry : otherEntries) {
+            LedgerMaster otherLedger = otherEntry.getLedger();
+
+            if (otherLedger != null && isBankOrCashLedger(otherLedger)) {
+                return displayBankLedgerName(otherLedger);
+            }
+        }
+
+        return null;
+    }
+
+    private String resolveOppositeLedgerName(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger != null ? currentLedger.getId() : null,
+                otherEntriesCache
+        );
+
+        if (otherEntries.isEmpty()) {
+            return null;
+        }
+
+        return otherEntries.stream()
+                .map(AccountingVoucherEntry::getLedger)
+                .filter(Objects::nonNull)
+                .map(LedgerMaster::getLedgerName)
+                .filter(name -> name != null && !name.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining(", "));
+    }
+
+    private List<AccountingVoucherEntry> getOtherVoucherEntries(
+            AccountingVoucher voucher,
+            Long currentLedgerId,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        if (voucher == null || voucher.getId() == null || currentLedgerId == null) {
+            return new ArrayList<>();
+        }
+
+        Long voucherId = voucher.getId();
+
+        if (otherEntriesCache.containsKey(voucherId)) {
+            return otherEntriesCache.get(voucherId);
+        }
+
+        List<AccountingVoucherEntry> otherEntries =
+                accountingVoucherEntryRepository.findOtherEntriesByVoucherId(
+                        voucherId,
+                        currentLedgerId
+                );
+
+        otherEntriesCache.put(voucherId, otherEntries);
+
+        return otherEntries;
+    }
+
+    private boolean isBankOrCashLedger(LedgerMaster ledger) {
+        if (ledger == null || ledger.getLedgerType() == null) {
+            return false;
+        }
+
+        return ledger.getLedgerType() == LedgerType.BANK
+                || ledger.getLedgerType() == LedgerType.PAYMENT_GATEWAY
+                || ledger.getLedgerType() == LedgerType.CASH;
+    }
+
+    private String displayBankLedgerName(LedgerMaster ledger) {
+        if (ledger == null) {
+            return null;
+        }
+
+        if (ledger.getBankName() != null && !ledger.getBankName().trim().isEmpty()) {
+            return ledger.getBankName().trim();
+        }
+
+        return ledger.getLedgerName();
+    }
+
+    private boolean matchesTransactionFilters(
+            LedgerTransactionResponseDto row,
+            String search,
+            String voucherType,
+            String sourceType,
+            String entryType
+    ) {
+        if (row == null) {
+            return false;
+        }
+
+        if (voucherType != null && !voucherType.trim().isEmpty()) {
+            if (row.getVoucherType() == null
+                    || !row.getVoucherType().name().equalsIgnoreCase(voucherType.trim())) {
+                return false;
+            }
+        }
+
+        if (sourceType != null && !sourceType.trim().isEmpty()) {
+            if (row.getSourceType() == null
+                    || !row.getSourceType().name().equalsIgnoreCase(sourceType.trim())) {
+                return false;
+            }
+        }
+
+        if (entryType != null && !entryType.trim().isEmpty()) {
+            String normalizedEntryType = entryType.trim().toUpperCase();
+
+            if ("DEBIT".equals(normalizedEntryType)
+                    && row.getDebitAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                return false;
+            }
+
+            if ("CREDIT".equals(normalizedEntryType)
+                    && row.getCreditAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                return false;
+            }
+        }
+
+        if (search != null && !search.trim().isEmpty()) {
+            String value = search.trim().toLowerCase();
+
+            return containsIgnoreCase(row.getVoucherNumber(), value)
+                    || containsIgnoreCase(row.getLedgerName(), value)
+                    || containsIgnoreCase(row.getLedgerCode(), value)
+                    || containsIgnoreCase(row.getNarration(), value)
+//                    || containsIgnoreCase(row.getpa(), value)
+//                    || containsIgnoreCase(row.getServiceName(), value)
+//                    || containsIgnoreCase(row.getBankName(), value)
+                    || enumContainsIgnoreCase(row.getVoucherType(), value)
+                    || enumContainsIgnoreCase(row.getSourceType(), value)
+                    || enumContainsIgnoreCase(row.getStatus(), value);
+        }
+
+        return true;
+    }
+
+    private boolean containsIgnoreCase(String actual, String search) {
+        return actual != null && actual.toLowerCase().contains(search);
+    }
+
+    private boolean enumContainsIgnoreCase(Enum<?> actual, String search) {
+        return actual != null && actual.name().toLowerCase().contains(search);
+    }
+
+
+
 }

@@ -37,5 +37,17 @@ public class LedgerTransactionResponseDto {
     private BigDecimal runningBalanceAmount;
     private DebitCredit runningBalanceType;
 
+    // New frontend column field
+    private String particulars;
+
+    // For sales invoice entry
+    private String serviceName;
+
+    // For receipt entry
+    private String bankName;
+
     private String narration;
+
+    // Only for sales invoice entry
+    private LedgerTransactionGstDetailsDto gstDetails;
 }

@@ -1,5 +1,6 @@
 package com.account.controller.ledger;
 
+import com.account.domain.ledger.LedgerGroupType;
 import com.account.domain.ledger.LedgerType;
 import com.account.dto.ledger.LedgerMasterRequestDto;
 import com.account.dto.ledger.LedgerMasterResponseDto;
@@ -66,6 +67,17 @@ public class LedgerMasterController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate toDate,
 
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String voucherType,
+            @RequestParam(required = false) String sourceType,
+
+            /*
+             * entryType values:
+             * DEBIT
+             * CREDIT
+             */
+            @RequestParam(required = false) String entryType,
+
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
@@ -74,6 +86,10 @@ public class LedgerMasterController {
                         id,
                         fromDate,
                         toDate,
+                        search,
+                        voucherType,
+                        sourceType,
+                        entryType,
                         page - 1,
                         size
                 );
@@ -88,20 +104,24 @@ public class LedgerMasterController {
             @RequestParam(required = false) String search,
             @RequestParam(required = false) LedgerType ledgerType,
             @RequestParam(required = false) Long ledgerGroupId,
+            @RequestParam(required = false) LedgerGroupType ledgerGroupType,
+            @RequestParam(required = false) Long companyId,
+            @RequestParam(required = false) Long unitId,
             @RequestParam(required = false) Boolean active,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size
-
     ) {
         Page<LedgerMasterResponseDto> response = ledgerMasterService.getLedgers(
                 search,
                 ledgerType,
                 ledgerGroupId,
+                ledgerGroupType,
+                companyId,
+                unitId,
                 active,
                 page - 1,
                 size
         );
-
 
         return ResponseEntity.ok(response);
     }
@@ -120,4 +140,7 @@ public class LedgerMasterController {
         ledgerMasterService.deleteLedger(id);
         return ResponseEntity.noContent().build();
     }
+
+
+
 }
