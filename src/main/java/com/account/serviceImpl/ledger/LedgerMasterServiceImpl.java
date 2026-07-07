@@ -192,7 +192,30 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         );
 
         return ledgerMasterRepository.findAll(specification, pageable)
-                .map(this::mapToResponse);
+                .map(ledger -> {
+
+                    LedgerMasterResponseDto response = mapToResponse(ledger);
+
+                    /*
+                     * Load first 20 posted transactions for each ledger.
+                     * page = 0 because service method accepts zero-based page.
+                     */
+                    LedgerStatementResponseDto statement = getLedgerTransactions(
+                            ledger.getId(),
+                            null,
+                            null,
+                            0,
+                            20
+                    );
+
+                    response.setTransactions(
+                            statement != null && statement.getTransactions() != null
+                                    ? statement.getTransactions()
+                                    : new ArrayList<>()
+                    );
+
+                    return response;
+                });
     }
 
     @Override

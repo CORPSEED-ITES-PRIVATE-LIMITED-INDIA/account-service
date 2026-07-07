@@ -81,6 +81,7 @@ public class LedgerMasterController {
         return ResponseEntity.ok(response);
     }
 
+    // Demanded by Frontend Developer not from backend
     @GetMapping
     @Operation(summary = "Get paginated ledgers")
     public ResponseEntity<Page<LedgerMasterResponseDto>> getLedgers(
@@ -100,6 +101,7 @@ public class LedgerMasterController {
                 page - 1,
                 size
         );
+
 
         return ResponseEntity.ok(response);
     }
