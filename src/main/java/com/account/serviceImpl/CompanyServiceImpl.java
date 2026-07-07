@@ -68,8 +68,6 @@ public class CompanyServiceImpl implements CompanyService {
     private  NotificationPublisherService notificationPublisherService;
 
 
-
-
     public CompanyServiceImpl(
             CompanyRepository companyRepository,
             CompanyUnitRepository companyUnitRepository,

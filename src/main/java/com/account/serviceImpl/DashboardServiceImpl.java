@@ -1,6 +1,8 @@
 package com.account.serviceImpl;
 
 import com.account.domain.status.InvoiceStatus;
+import com.account.dto.dashboard.TopConvertedLeadItemDto;
+import com.account.dto.dashboard.TopConvertedLeadsResponseDto;
 import com.account.dto.dashboard.TopSellingServiceItemDto;
 import com.account.dto.dashboard.TopSellingServicesResponseDto;
 import com.account.exception.ResourceNotFoundException;
@@ -143,4 +145,53 @@ public class DashboardServiceImpl implements DashboardService {
             LocalDate toDate
     ) {
     }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public TopConvertedLeadsResponseDto getTopConvertedLeads(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    ) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("userId is required and must be positive");
+        }
+
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException(
+                    "User not found with ID: " + userId,
+                    "USER_NOT_FOUND"
+            );
+        }
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+        int safeLimit = resolveLimit(limit);
+
+        Pageable pageable = PageRequest.of(0, safeLimit);
+
+        List<TopConvertedLeadItemDto> items =
+                invoiceRepository.findTopConvertedLeadsForSalesperson(
+                        userId,
+                        InvoiceStatus.GENERATED,
+                        dateRange.fromDate(),
+                        dateRange.toDate(),
+                        pageable
+                );
+
+        return TopConvertedLeadsResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .limit(safeLimit)
+                .topConvertedLeads(items)
+                .build();
+    }
+
+
+
+
 }

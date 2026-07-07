@@ -3,6 +3,7 @@ package com.account.repository;
 import com.account.domain.invoice.Invoice;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
+import com.account.dto.dashboard.TopConvertedLeadItemDto;
 import com.account.dto.dashboard.TopSellingServiceItemDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -206,6 +207,42 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             ORDER BY SUM(i.grandTotal) DESC, COUNT(DISTINCT i.id) DESC
             """)
     List<TopSellingServiceItemDto> findTopSellingServicesForSalesperson(
+            @Param("userId") Long userId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            Pageable pageable
+    );
+
+
+    @Query("""
+        SELECT new com.account.dto.dashboard.TopConvertedLeadItemDto(
+            i.id,
+            i.invoiceNumber,
+            c.id,
+            c.name,
+            cu.id,
+            cu.unitName,
+            e.leadId,
+            i.solutionId,
+            i.solutionName,
+            i.grandTotal,
+            i.invoiceDate
+        )
+        FROM Invoice i
+        JOIN i.unbilledInvoice u
+        LEFT JOIN u.company c
+        LEFT JOIN u.unit cu
+        LEFT JOIN u.estimate e
+        WHERE i.isCancelled = false
+          AND i.status = :status
+          AND i.invoiceDate >= :fromDate
+          AND i.invoiceDate <= :toDate
+          AND u.createdBy.id = :userId
+          AND c.name IS NOT NULL
+        ORDER BY i.grandTotal DESC, i.invoiceDate DESC
+        """)
+    List<TopConvertedLeadItemDto> findTopConvertedLeadsForSalesperson(
             @Param("userId") Long userId,
             @Param("status") InvoiceStatus status,
             @Param("fromDate") LocalDate fromDate,

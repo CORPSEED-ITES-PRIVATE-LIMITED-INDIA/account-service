@@ -1,5 +1,6 @@
 package com.account.controller.dashboard;
 
+import com.account.dto.dashboard.TopConvertedLeadsResponseDto;
 import com.account.dto.dashboard.TopSellingServicesResponseDto;
 import com.account.service.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -48,6 +49,47 @@ public class DashboardController {
                         limit
                 );
 
+        //
+
         return ResponseEntity.ok(response);
     }
+
+    @GetMapping("/top-converted-leads")
+    @Operation(summary = "Get top converted leads by highest invoice value")
+    public ResponseEntity<TopConvertedLeadsResponseDto> getTopConvertedLeads(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate,
+
+            @RequestParam(required = false, defaultValue = "5")
+            Integer limit
+    ) {
+        TopConvertedLeadsResponseDto response =
+                dashboardService.getTopConvertedLeads(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate,
+                        limit
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+
+
+
+
+
+
+
 }
