@@ -13,6 +13,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -248,6 +249,42 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("fromDate") LocalDate fromDate,
             @Param("toDate") LocalDate toDate,
             Pageable pageable
+    );
+
+
+    @Query("""
+            SELECT SUM(i.grandTotal)
+            FROM Invoice i
+            JOIN i.unbilledInvoice u
+            WHERE i.isCancelled = false
+              AND i.status = :status
+              AND u.createdBy.id = :userId
+              AND i.invoiceDate >= :fromDate
+              AND i.invoiceDate <= :toDate
+            """)
+    BigDecimal sumGeneratedRevenueForSalesperson(
+            @Param("userId") Long userId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
+
+    @Query("""
+            SELECT i.invoiceDate, i.grandTotal
+            FROM Invoice i
+            JOIN i.unbilledInvoice u
+            WHERE i.isCancelled = false
+              AND i.status = :status
+              AND u.createdBy.id = :userId
+              AND i.invoiceDate >= :fromDate
+              AND i.invoiceDate <= :toDate
+            ORDER BY i.invoiceDate ASC
+            """)
+    List<Object[]> findRevenueTrendRowsForSalesperson(
+            @Param("userId") Long userId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
     );
 
 }

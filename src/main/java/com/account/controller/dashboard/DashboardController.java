@@ -1,5 +1,7 @@
 package com.account.controller.dashboard;
 
+import com.account.dto.dashboard.RevenueCardsResponseDto;
+import com.account.dto.dashboard.RevenueTrendResponseDto;
 import com.account.dto.dashboard.TopConvertedLeadsResponseDto;
 import com.account.dto.dashboard.TopSellingServicesResponseDto;
 import com.account.service.DashboardService;
@@ -88,6 +90,46 @@ public class DashboardController {
 
 
 
+    @GetMapping("/revenue-cards")
+    @Operation(summary = "Get revenue and revenue pipeline cards")
+    public ResponseEntity<RevenueCardsResponseDto> getRevenueCards(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        RevenueCardsResponseDto response =
+                dashboardService.getRevenueCards(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/revenue-trend")
+    @Operation(summary = "Get monthly revenue trend from generated invoices")
+    public ResponseEntity<RevenueTrendResponseDto> getRevenueTrend(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "6")
+            Integer months
+    ) {
+        RevenueTrendResponseDto response =
+                dashboardService.getRevenueTrend(userId, months);
+
+        return ResponseEntity.ok(response);
+    }
 
 
 

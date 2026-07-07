@@ -10,7 +10,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -172,4 +174,44 @@ ORDER BY u.createdAt DESC
             @Param("fromDateTime") LocalDateTime fromDateTime,
             @Param("toDateTime") LocalDateTime toDateTime
     );
+
+
+    @Query("""
+            SELECT SUM(u.outstandingAmount)
+            FROM UnbilledInvoice u
+            WHERE u.isCancelled = false
+              AND u.createdBy.id = :userId
+              AND u.status IN :statuses
+              AND u.createdAt >= :fromDateTime
+              AND u.createdAt < :toDateTime
+              AND u.outstandingAmount > :zeroAmount
+            """)
+    BigDecimal sumRevenuePipelineForSalesperson(
+            @Param("userId") Long userId,
+            @Param("statuses") Collection<UnbilledStatus> statuses,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime,
+            @Param("zeroAmount") BigDecimal zeroAmount
+    );
+
+    @Query("""
+            SELECT COUNT(DISTINCT u.id)
+            FROM UnbilledInvoice u
+            WHERE u.isCancelled = false
+              AND u.createdBy.id = :userId
+              AND u.status IN :statuses
+              AND u.createdAt >= :fromDateTime
+              AND u.createdAt < :toDateTime
+              AND u.outstandingAmount > :zeroAmount
+            """)
+    Long countRevenuePipelineDealsForSalesperson(
+            @Param("userId") Long userId,
+            @Param("statuses") Collection<UnbilledStatus> statuses,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime,
+            @Param("zeroAmount") BigDecimal zeroAmount
+    );
+
+
+
 }
