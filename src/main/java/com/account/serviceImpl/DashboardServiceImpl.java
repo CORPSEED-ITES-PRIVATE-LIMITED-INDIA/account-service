@@ -471,5 +471,66 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
 
+    @Override
+    @Transactional(readOnly = true)
+    public RevenueByServiceResponseDto getRevenueByService(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+        int safeLimit = resolveLimit(limit);
+
+        Pageable pageable = PageRequest.of(0, safeLimit);
+
+        List<RevenueByServiceItemDto> items =
+                invoiceRepository.findRevenueByServiceForSalesperson(
+                        userId,
+                        InvoiceStatus.GENERATED,
+                        dateRange.fromDate(),
+                        dateRange.toDate(),
+                        pageable
+                );
+
+        BigDecimal totalRevenue = items.stream()
+                .map(item -> safeMoney(item.getRevenue()))
+                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add);
+
+        BigDecimal maxRevenue = items.stream()
+                .map(item -> safeMoney(item.getRevenue()))
+                .max(BigDecimal::compareTo)
+                .orElse(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+
+        for (RevenueByServiceItemDto item : items) {
+            BigDecimal revenue = safeMoney(item.getRevenue());
+
+            BigDecimal percentage = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+            if (maxRevenue.compareTo(BigDecimal.ZERO) > 0) {
+                percentage = revenue
+                        .multiply(new BigDecimal("100"))
+                        .divide(maxRevenue, 2, RoundingMode.HALF_UP);
+            }
+
+            item.setRevenue(revenue);
+            item.setPercentage(percentage);
+        }
+
+        return RevenueByServiceResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .limit(safeLimit)
+                .totalRevenue(safeMoney(totalRevenue))
+                .revenueByServices(items)
+                .build();
+    }
+
+
 
 }

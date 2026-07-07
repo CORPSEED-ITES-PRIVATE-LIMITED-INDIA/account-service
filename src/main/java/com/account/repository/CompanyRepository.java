@@ -13,7 +13,6 @@ import java.util.Optional;
 public interface CompanyRepository extends JpaRepository<Company, Long> {
 
 
-
     boolean existsByNameIgnoreCaseAndIsDeletedFalse(String name);
 
     boolean existsByPanNoAndIsDeletedFalse(String panNo);

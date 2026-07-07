@@ -3,6 +3,7 @@ package com.account.repository;
 import com.account.domain.invoice.Invoice;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
+import com.account.dto.dashboard.RevenueByServiceItemDto;
 import com.account.dto.dashboard.TopConvertedLeadItemDto;
 import com.account.dto.dashboard.TopSellingServiceItemDto;
 import org.springframework.data.domain.Page;
@@ -286,5 +287,35 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("fromDate") LocalDate fromDate,
             @Param("toDate") LocalDate toDate
     );
+
+    @Query("""
+        SELECT new com.account.dto.dashboard.RevenueByServiceItemDto(
+            i.solutionId,
+            i.solutionName,
+            SUM(i.grandTotal),
+            COUNT(DISTINCT i.id)
+        )
+        FROM Invoice i
+        JOIN i.unbilledInvoice u
+        WHERE i.isCancelled = false
+          AND i.status = :status
+          AND u.createdBy.id = :userId
+          AND i.invoiceDate >= :fromDate
+          AND i.invoiceDate <= :toDate
+          AND i.solutionName IS NOT NULL
+          AND TRIM(i.solutionName) <> ''
+        GROUP BY i.solutionId, i.solutionName
+        ORDER BY SUM(i.grandTotal) DESC
+        """)
+    List<RevenueByServiceItemDto> findRevenueByServiceForSalesperson(
+            @Param("userId") Long userId,
+            @Param("status") InvoiceStatus status,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            Pageable pageable
+    );
+
+
+
 
 }

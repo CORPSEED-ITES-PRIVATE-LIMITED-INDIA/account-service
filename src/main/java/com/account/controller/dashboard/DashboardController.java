@@ -1,9 +1,6 @@
 package com.account.controller.dashboard;
 
-import com.account.dto.dashboard.RevenueCardsResponseDto;
-import com.account.dto.dashboard.RevenueTrendResponseDto;
-import com.account.dto.dashboard.TopConvertedLeadsResponseDto;
-import com.account.dto.dashboard.TopSellingServicesResponseDto;
+import com.account.dto.dashboard.*;
 import com.account.service.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -130,6 +127,40 @@ public class DashboardController {
 
         return ResponseEntity.ok(response);
     }
+
+
+    @GetMapping("/revenue-by-service")
+    @Operation(summary = "Get revenue by service/solution from generated invoices")
+    public ResponseEntity<RevenueByServiceResponseDto> getRevenueByService(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate,
+
+            @RequestParam(required = false, defaultValue = "5")
+            Integer limit
+    ) {
+        RevenueByServiceResponseDto response =
+                dashboardService.getRevenueByService(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate,
+                        limit
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+
 
 
 
