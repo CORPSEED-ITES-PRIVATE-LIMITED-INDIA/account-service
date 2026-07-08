@@ -78,5 +78,14 @@ public interface DashboardService {
             LocalDate toDate
     );
 
+    ApprovalQueueResponseDto getApprovalQueue(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    );
+
+
 
 }

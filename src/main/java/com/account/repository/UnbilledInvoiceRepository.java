@@ -337,4 +337,182 @@ ORDER BY u.createdAt DESC
     );
 
 
+    @Query(
+            value = """
+        SELECT *
+        FROM (
+            SELECT
+                u.id AS itemId,
+                'UNBILLED_INVOICE_APPROVAL' AS itemType,
+                'Unbilled Invoice Approval' AS title,
+                c.name AS subTitle,
+                c.id AS companyId,
+                c.name AS companyName,
+                u.id AS referenceId,
+                u.unbilled_number AS referenceNumber,
+                CASE
+                    WHEN COALESCE(u.current_received_amount, 0) > 0
+                    THEN COALESCE(u.current_received_amount, 0)
+                    ELSE COALESCE(u.total_amount, 0)
+                END AS amount,
+                u.status AS sourceStatus,
+                'Pending' AS badge,
+                'PENDING' AS priority,
+                u.created_at AS createdAt
+            FROM unbilled_invoice u
+            LEFT JOIN company c ON c.id = u.company_id
+            WHERE u.is_cancelled = 0
+              AND u.status = 'PENDING_APPROVAL'
+              AND u.created_by = :userId
+              AND u.created_at >= :fromDateTime
+              AND u.created_at < :toDateTime
+
+            UNION ALL
+
+            SELECT
+                u.id AS itemId,
+                'CANCEL_REQUEST' AS itemType,
+                'Cancel Request' AS title,
+                c.name AS subTitle,
+                c.id AS companyId,
+                c.name AS companyName,
+                u.id AS referenceId,
+                u.unbilled_number AS referenceNumber,
+                COALESCE(u.total_amount, 0) AS amount,
+                u.status AS sourceStatus,
+                'Urgent' AS badge,
+                'URGENT' AS priority,
+                COALESCE(u.updated_at, u.created_at) AS createdAt
+            FROM unbilled_invoice u
+            LEFT JOIN company c ON c.id = u.company_id
+            WHERE u.is_cancelled = 0
+              AND u.status = 'CANCEL_REQUESTED'
+              AND u.created_by = :userId
+              AND COALESCE(u.updated_at, u.created_at) >= :fromDateTime
+              AND COALESCE(u.updated_at, u.created_at) < :toDateTime
+
+            UNION ALL
+
+            SELECT
+                p.id AS itemId,
+                'PAYMENT_RECEIPT_VERIFICATION' AS itemType,
+                'Payment Receipt Verification' AS title,
+                c.name AS subTitle,
+                c.id AS companyId,
+                c.name AS companyName,
+                u.id AS referenceId,
+                u.unbilled_number AS referenceNumber,
+                COALESCE(p.amount, 0) AS amount,
+                p.status AS sourceStatus,
+                'Review' AS badge,
+                'REVIEW' AS priority,
+                p.created_at AS createdAt
+            FROM payment_receipt p
+            JOIN unbilled_invoice u ON u.id = p.unbilled_invoice_id
+            LEFT JOIN company c ON c.id = u.company_id
+            WHERE p.is_cancelled = 0
+              AND u.is_cancelled = 0
+              AND p.status = 'PENDING'
+              AND u.created_by = :userId
+              AND p.created_at >= :fromDateTime
+              AND p.created_at < :toDateTime
+
+            UNION ALL
+
+            SELECT
+                t.id AS itemId,
+                'TDS_REGISTRATION' AS itemType,
+                'TDS Registration' AS title,
+                c.name AS subTitle,
+                c.id AS companyId,
+                c.name AS companyName,
+                u.id AS referenceId,
+                u.unbilled_number AS referenceNumber,
+                COALESCE(t.tds_amount, 0) AS amount,
+                t.status AS sourceStatus,
+                'Pending' AS badge,
+                'PENDING' AS priority,
+                t.created_at AS createdAt
+            FROM tds_registration t
+            JOIN unbilled_invoice u ON u.id = t.unbilled_invoice_id
+            LEFT JOIN company c ON c.id = t.company_id
+            WHERE t.is_deleted = 0
+              AND u.is_cancelled = 0
+              AND t.status = 'PENDING'
+              AND u.created_by = :userId
+              AND t.created_at >= :fromDateTime
+              AND t.created_at < :toDateTime
+        ) approvalQueue
+        ORDER BY approvalQueue.createdAt DESC
+        """,
+            countQuery = """
+        SELECT COUNT(*)
+        FROM (
+            SELECT u.id
+            FROM unbilled_invoice u
+            WHERE u.is_cancelled = 0
+              AND u.status = 'PENDING_APPROVAL'
+              AND u.created_by = :userId
+              AND u.created_at >= :fromDateTime
+              AND u.created_at < :toDateTime
+
+            UNION ALL
+
+            SELECT u.id
+            FROM unbilled_invoice u
+            WHERE u.is_cancelled = 0
+              AND u.status = 'CANCEL_REQUESTED'
+              AND u.created_by = :userId
+              AND COALESCE(u.updated_at, u.created_at) >= :fromDateTime
+              AND COALESCE(u.updated_at, u.created_at) < :toDateTime
+
+            UNION ALL
+
+            SELECT p.id
+            FROM payment_receipt p
+            JOIN unbilled_invoice u ON u.id = p.unbilled_invoice_id
+            WHERE p.is_cancelled = 0
+              AND u.is_cancelled = 0
+              AND p.status = 'PENDING'
+              AND u.created_by = :userId
+              AND p.created_at >= :fromDateTime
+              AND p.created_at < :toDateTime
+
+            UNION ALL
+
+            SELECT t.id
+            FROM tds_registration t
+            JOIN unbilled_invoice u ON u.id = t.unbilled_invoice_id
+            WHERE t.is_deleted = 0
+              AND u.is_cancelled = 0
+              AND t.status = 'PENDING'
+              AND u.created_by = :userId
+              AND t.created_at >= :fromDateTime
+              AND t.created_at < :toDateTime
+        ) approvalQueueCount
+        """,
+            nativeQuery = true
+    )
+    Page<Object[]> findApprovalQueueForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime,
+            Pageable pageable
+    );
+
+    @Query(value = """
+    SELECT COUNT(*)
+    FROM unbilled_invoice u
+    WHERE u.is_cancelled = 0
+      AND u.status = 'CANCEL_REQUESTED'
+      AND u.created_by = :userId
+      AND COALESCE(u.updated_at, u.created_at) >= :fromDateTime
+      AND COALESCE(u.updated_at, u.created_at) < :toDateTime
+    """, nativeQuery = true)
+    Long countUrgentApprovalQueueForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
 }

@@ -10,6 +10,7 @@ import com.account.repository.UnbilledInvoiceRepository;
 import com.account.repository.UserRepository;
 import com.account.service.DashboardService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -1019,7 +1020,126 @@ public class DashboardServiceImpl implements DashboardService {
         return BigDecimal.valueOf(count)
                 .multiply(BigDecimal.valueOf(100))
                 .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP)
+
                 .doubleValue();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApprovalQueueResponseDto getApprovalQueue(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+
+        LocalDateTime fromDateTime = dateRange.fromDate().atStartOfDay();
+        LocalDateTime toDateTime = dateRange.toDate().plusDays(1).atStartOfDay();
+
+        int safeLimit = limit == null || limit <= 0 ? 4 : Math.min(limit, 50);
+
+        Pageable pageable = PageRequest.of(0, safeLimit);
+
+        Page<Object[]> page =
+                unbilledInvoiceRepository.findApprovalQueueForDashboard(
+                        userId,
+                        fromDateTime,
+                        toDateTime,
+                        pageable
+                );
+
+        List<ApprovalQueueItemDto> items = page.getContent()
+                .stream()
+                .map(this::mapApprovalQueueRow)
+                .toList();
+
+        Long urgentCount =
+                unbilledInvoiceRepository.countUrgentApprovalQueueForDashboard(
+                        userId,
+                        fromDateTime,
+                        toDateTime
+                );
+
+        return ApprovalQueueResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .limit(safeLimit)
+                .totalPendingApprovals(page.getTotalElements())
+                .urgentCount(urgentCount == null ? 0L : urgentCount)
+                .items(items)
+                .build();
+    }
+
+    private ApprovalQueueItemDto mapApprovalQueueRow(Object[] row) {
+        return new ApprovalQueueItemDto(
+                toLong(row[0]),              // itemId
+                toStringValue(row[1]),       // itemType
+                toStringValue(row[2]),       // title
+                toStringValue(row[3]),       // subTitle
+                toLong(row[4]),              // companyId
+                toStringValue(row[5]),       // companyName
+                toLong(row[6]),              // referenceId
+                toStringValue(row[7]),       // referenceNumber
+                toBigDecimal(row[8]),        // amount
+                toStringValue(row[9]),       // sourceStatus
+                toStringValue(row[10]),      // badge
+                toStringValue(row[11]),      // priority
+                toLocalDateTime(row[12])     // createdAt
+        );
+    }
+
+    private Long toLong(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+
+        return Long.valueOf(value.toString());
+    }
+
+    private String toStringValue(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        return new BigDecimal(value.toString()).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private LocalDateTime toLocalDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toLocalDateTime();
+        }
+
+        return LocalDateTime.parse(value.toString());
     }
 
 

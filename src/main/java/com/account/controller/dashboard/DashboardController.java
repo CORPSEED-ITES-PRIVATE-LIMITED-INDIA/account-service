@@ -301,6 +301,38 @@ public class DashboardController {
     }
 
 
+    @GetMapping("/approval-queue")
+    @Operation(summary = "Get approval queue for unbilled, cancellation, receipt and TDS approvals")
+    public ResponseEntity<ApprovalQueueResponseDto> getApprovalQueue(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate,
+
+            @RequestParam(required = false, defaultValue = "4")
+            Integer limit
+    ) {
+        ApprovalQueueResponseDto response =
+                dashboardService.getApprovalQueue(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate,
+                        limit
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+
 
 
 
