@@ -1,6 +1,5 @@
 package com.account.dto.payment;
 
-import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
 import java.math.BigDecimal;

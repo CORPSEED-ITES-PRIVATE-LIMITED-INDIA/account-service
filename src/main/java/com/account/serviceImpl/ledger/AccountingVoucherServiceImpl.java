@@ -73,6 +73,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             }
 
 
+
             BigDecimal debit = safeMoney(entryRequest.getDebitAmount());
             BigDecimal credit = safeMoney(entryRequest.getCreditAmount());
 

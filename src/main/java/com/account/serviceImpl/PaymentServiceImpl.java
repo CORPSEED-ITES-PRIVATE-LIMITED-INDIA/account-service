@@ -108,6 +108,9 @@ public class PaymentServiceImpl implements PaymentService {
         this.paymentLegalVerificationService = paymentLegalVerificationService;
     }
 
+
+
+
     @Override
     @Transactional
     public PaymentRegistrationResponseDto registerPayment(PaymentRegistrationRequestDto request, Long salespersonUserId) {
@@ -332,23 +335,45 @@ public class PaymentServiceImpl implements PaymentService {
                     }
                 });
 
+        BigDecimal tdsAmountForThisRegistration = calculateTdsAmountIfRequired(
+                request,
+                estimate,
+                unbilled
+        );
+
         validatePaymentRules(
                 paymentType,
                 reqAmount,
                 unbilled,
-                request.getPaymentTermsDays()
+                request.getPaymentTermsDays(),
+                tdsAmountForThisRegistration
         );
 
-        createTdsIfRequired(request, estimate, unbilled, paymentType, salesperson);
+        createTdsIfRequired(
+                request,
+                estimate,
+                unbilled,
+                paymentType,
+                salesperson,
+                tdsAmountForThisRegistration
+        );
+
+//        createTdsIfRequired(request, estimate, unbilled, paymentType, salesperson);
 
         // Prevent approved + pending + current request from exceeding total amount
         BigDecimal approvedAmount = safe2(unbilled.getReceivedAmount());
         BigDecimal pendingAmount = safe2(unbilled.getCurrentReceivedAmount());
         BigDecimal totalAmount = safe2(unbilled.getTotalAmount());
 
+        BigDecimal settlementAmountForThisRegistration = reqAmount
+                .add(tdsAmountForThisRegistration)
+                .setScale(2, RoundingMode.HALF_UP);
+
         BigDecimal totalAfterThisRegistration = approvedAmount
                 .add(pendingAmount)
-                .add(reqAmount);
+                .add(settlementAmountForThisRegistration);
+
+
 
         if (totalAfterThisRegistration.compareTo(totalAmount) > 0) {
             BigDecimal remainingAllowed = totalAmount.subtract(approvedAmount.add(pendingAmount))
@@ -431,7 +456,7 @@ public class PaymentServiceImpl implements PaymentService {
         createGovernmentFeeIfRequired(request, estimate, unbilled, salesperson);
 
         // Update unbilled totals
-        unbilled.applyPayment(reqAmount);
+        unbilled.applyPayment(settlementAmountForThisRegistration);
         unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
         unbilledInvoiceRepository.save(unbilled);
 
@@ -537,10 +562,13 @@ public class PaymentServiceImpl implements PaymentService {
         return bankLedger;
     }
 
-    private void validatePaymentRules(PaymentType paymentType,
-                                      BigDecimal reqAmount,
-                                      UnbilledInvoice unbilled,
-                                      Integer paymentTermsDays) {
+    private void validatePaymentRules(
+            PaymentType paymentType,
+            BigDecimal reqAmount,
+            UnbilledInvoice unbilled,
+            Integer paymentTermsDays,
+            BigDecimal tdsAmount
+    ) {
 
         if (paymentType == null || paymentType.getCode() == null) {
             throw new ValidationException(
@@ -552,23 +580,34 @@ public class PaymentServiceImpl implements PaymentService {
 
         BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
         BigDecimal total = safe2(unbilled.getTotalAmount());
+        BigDecimal safeReqAmount = safe2(reqAmount);
+        BigDecimal safeTdsAmount = safe2(tdsAmount);
+
+        /*
+         * If TDS is active:
+         * actual customer settlement = bank received + TDS receivable.
+         *
+         * Example:
+         * Bank received = 216
+         * TDS = 20
+         * Settlement = 236
+         */
+        BigDecimal settlementAmount = safeReqAmount
+                .add(safeTdsAmount)
+                .setScale(2, RoundingMode.HALF_UP);
+
         String code = paymentType.getCode().trim().toUpperCase();
 
-        // ==================== OLD LOGIC - SAME ====================
-        // Allow ZERO amount only for PURCHASE_ORDER payment type
         boolean isPurchaseOrder = "PURCHASE_ORDER".equals(code);
 
-        if (!isPurchaseOrder && reqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (!isPurchaseOrder && safeReqAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
                     "Amount must be positive",
                     "ERR_AMOUNT_NOT_POSITIVE",
                     "amount"
             );
         }
-        // ==========================================================
 
-        // ==================== NEW PO TERMS VALIDATION ====================
-        // For PURCHASE_ORDER, payment terms days is mandatory
         if (isPurchaseOrder) {
             if (paymentTermsDays == null || paymentTermsDays < 0) {
                 throw new ValidationException(
@@ -579,20 +618,24 @@ public class PaymentServiceImpl implements PaymentService {
             }
         }
 
-        // =================================================================
-
-        if (reqAmount.compareTo(outstanding) > 0) {
+        if (settlementAmount.compareTo(outstanding) > 0) {
             throw new ValidationException(
-                    "Amount is greater than outstanding amount",
+                    "Settlement amount is greater than outstanding amount. Bank amount: "
+                            + safeReqAmount + ", TDS amount: " + safeTdsAmount
+                            + ", Settlement amount: " + settlementAmount
+                            + ", Outstanding: " + outstanding,
                     "ERR_AMOUNT_EXCEEDS_OUTSTANDING",
                     "amount"
             );
         }
 
         if ("FULL".equals(code)) {
-            if (reqAmount.compareTo(outstanding) != 0) {
+            if (settlementAmount.compareTo(outstanding) != 0) {
                 throw new ValidationException(
-                        "FULL payment must equal outstanding amount",
+                        "FULL payment settlement must equal outstanding amount. Bank amount: "
+                                + safeReqAmount + ", TDS amount: " + safeTdsAmount
+                                + ", Settlement amount: " + settlementAmount
+                                + ", Outstanding: " + outstanding,
                         "ERR_FULL_AMOUNT_MISMATCH",
                         "amount"
                 );
@@ -609,9 +652,12 @@ public class PaymentServiceImpl implements PaymentService {
                     ? outstanding
                     : half;
 
-            if (reqAmount.compareTo(expected) != 0) {
+            if (settlementAmount.compareTo(expected) != 0) {
                 throw new ValidationException(
-                        "PARTIAL payment must be " + expected + " (50% of total or remaining outstanding)",
+                        "PARTIAL payment settlement must be " + expected
+                                + ". Bank amount: " + safeReqAmount
+                                + ", TDS amount: " + safeTdsAmount
+                                + ", Settlement amount: " + settlementAmount,
                         "ERR_PARTIAL_AMOUNT_MISMATCH",
                         "amount"
                 );
@@ -806,32 +852,13 @@ public class PaymentServiceImpl implements PaymentService {
             Estimate estimate,
             UnbilledInvoice unbilled,
             PaymentType paymentType,
-            User salesperson
+            User salesperson,
+            BigDecimal tdsAmount
     ) {
         if (!Boolean.TRUE.equals(request.getTdsActive())) {
             return;
         }
 
-        String paymentTypeCode = paymentType.getCode().trim().toUpperCase();
-
-        if (!"FULL".equals(paymentTypeCode) && !"PURCHASE_ORDER".equals(paymentTypeCode)) {
-            throw new ValidationException(
-                    "TDS can be registered only for FULL or PURCHASE_ORDER payment type",
-                    "ERR_TDS_NOT_ALLOWED_FOR_PAYMENT_TYPE",
-                    "tds"
-            );
-        }
-
-        /*
-         * TDS is only for first successful payment cycle.
-         *
-         * Do NOT depend only on isFirstPayment.
-         * Because if first payment is rejected, unbilled already exists.
-         *
-         * Correct rule:
-         * - If any APPROVED payment already exists, TDS cannot be newly added.
-         * - If only rejected/pending discarded payments exist, TDS can be added.
-         */
         boolean hasApprovedPayment = unbilled.getPayments() != null
                 && unbilled.getPayments().stream()
                 .anyMatch(p -> p.getStatus() == PaymentStatus.APPROVED && !p.isCancelled());
@@ -858,7 +885,6 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
 
-
             if (existingTds.getStatus() == TdsStatus.APPROVED) {
                 throw new ValidationException(
                         "TDS is already approved for this unbilled invoice and cannot be added again",
@@ -874,13 +900,8 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-
         BigDecimal taxableAmount = calculateTdsTaxableAmount(estimate, unbilled);
         BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
-
-        BigDecimal tdsAmount = taxableAmount
-                .multiply(tdsPercentage)
-                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
 
         TdsRegistration tds = new TdsRegistration();
         tds.setPublicUuid(UUID.randomUUID().toString());
@@ -889,7 +910,7 @@ public class PaymentServiceImpl implements PaymentService {
         tds.setUnbilledInvoice(unbilled);
         tds.setTdsPercentage(tdsPercentage);
         tds.setTaxableAmount(taxableAmount);
-        tds.setTdsAmount(tdsAmount);
+        tds.setTdsAmount(safe2(tdsAmount));
         tds.setStatus(TdsStatus.PENDING);
         tds.setDeleted(false);
         tds.setCreatedBy(salesperson);
@@ -906,6 +927,10 @@ public class PaymentServiceImpl implements PaymentService {
                 tdsAmount
         );
     }
+
+
+
+
     private BigDecimal calculateTdsTaxableAmount(Estimate estimate, UnbilledInvoice unbilled) {
 
         /*
@@ -1215,11 +1240,18 @@ public class PaymentServiceImpl implements PaymentService {
          * Calculate amount from newly approved payments.
          * This is safer than blindly using currentReceivedAmount.
          */
-        BigDecimal newlyApprovedAmount = paymentsToApprove.stream()
+        BigDecimal tdsAmountForLedger = getPendingTdsAmountForLedger(unbilled);
+
+        BigDecimal newlyApprovedBankAmount = paymentsToApprove.stream()
                 .map(PaymentReceipt::getAmount)
                 .filter(Objects::nonNull)
                 .map(this::safe2)
                 .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add);
+
+        BigDecimal newlyApprovedAmount = newlyApprovedBankAmount
+                .add(tdsAmountForLedger)
+                .setScale(2, RoundingMode.HALF_UP);
+
 
         // Move pending amount into actual received amount
         BigDecimal updatedReceived = safe2(unbilled.getReceivedAmount())
@@ -1239,16 +1271,7 @@ public class PaymentServiceImpl implements PaymentService {
                         .setScale(2, RoundingMode.HALF_UP)
         );
 
-        /*
-         * IMPORTANT:
-         * Voucher is created here only after Accounts approval.
-         *
-         * Dr Bank Ledger
-         * Cr Customer Advance Ledger
-         *
-         * Do NOT call this method inside registerPayment().
-         */
-        BigDecimal tdsAmountForLedger = getPendingTdsAmountForLedger(unbilled);
+
         boolean tdsPosted = false;
 
         for (PaymentReceipt payment : paymentsToApprove) {
@@ -2846,6 +2869,31 @@ public class PaymentServiceImpl implements PaymentService {
         } while (ledgerMasterRepository.existsByLedgerCodeIgnoreCase(code));
 
         return code;
+    }
+
+    private BigDecimal calculateTdsAmountIfRequired(
+            PaymentRegistrationRequestDto request,
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        if (!Boolean.TRUE.equals(request.getTdsActive())) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (request.getTds() == null || request.getTds().getTdsPercentage() == null) {
+            throw new ValidationException(
+                    "TDS percentage is required when TDS is active",
+                    "ERR_TDS_PERCENTAGE_REQUIRED",
+                    "tds.tdsPercentage"
+            );
+        }
+
+        BigDecimal taxableAmount = calculateTdsTaxableAmount(estimate, unbilled);
+        BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
+
+        return taxableAmount
+                .multiply(tdsPercentage)
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
     }
 
 
