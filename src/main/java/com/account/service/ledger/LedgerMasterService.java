@@ -38,5 +38,7 @@ public interface LedgerMasterService {
                                              LedgerGroupType ledgerGroupType, Long companyId, Long unitId, Boolean active, int i, int size);
 
 
+    List<LedgerMasterResponseDto> getReceiptLedgers();
+
 
 }

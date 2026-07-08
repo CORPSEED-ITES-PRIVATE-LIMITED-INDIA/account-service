@@ -23,6 +23,10 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
 
     List<LedgerMaster> findByDeletedFalseAndActiveTrueOrderByLedgerNameAsc();
 
+    List<LedgerMaster> findByDeletedFalseAndActiveTrueAndLedgerTypeInOrderByLedgerNameAsc(
+            Collection<LedgerType> ledgerTypes
+    );
+
     @Query("""
             SELECT lm
             FROM LedgerMaster lm
@@ -37,14 +41,12 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
             @Param("ledgerType") LedgerType ledgerType
     );
 
-
     Optional<LedgerMaster> findByLedgerTypeAndDeletedFalse(LedgerType ledgerType);
 
     Optional<LedgerMaster> findByCompanyIdAndLedgerTypeAndDeletedFalse(
             Long companyId,
             LedgerType ledgerType
     );
-
 
     @Query("""
         SELECT lm
@@ -58,9 +60,6 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
             @Param("companyId") Long companyId,
             @Param("ledgerTypes") List<LedgerType> ledgerTypes
     );
-
-
-
 
 
 }

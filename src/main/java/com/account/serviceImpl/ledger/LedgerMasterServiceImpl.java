@@ -1263,42 +1263,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 || ledger.getLedgerType() == LedgerType.CASH;
     }
 
-    /*
-     * Frontend display requirement:
-     * In actual accounting, CASH/BANK receipt is posted as DEBIT.
-     *
-     * But for ledger statement UI, received money should be shown
-     * under CREDIT column for CASH / BANK / PAYMENT_GATEWAY ledgers.
-     *
-     * This method only changes API display.
-     * It does NOT change actual voucher posting.
-     */
-    private boolean shouldShowReceiptBankCashAsCredit(
-            LedgerMaster ledger,
-            AccountingVoucher voucher,
-            BigDecimal debit,
-            BigDecimal credit
-    ) {
-        if (ledger == null || voucher == null) {
-            return false;
-        }
-
-        if (!isBankOrCashLedger(ledger)) {
-            return false;
-        }
-
-        if (voucher.getVoucherType() != VoucherType.RECEIPT) {
-            return false;
-        }
-
-        if (!isReceiptVoucher(voucher)) {
-            return false;
-        }
-
-        return debit != null
-                && debit.compareTo(BigDecimal.ZERO) > 0
-                && (credit == null || credit.compareTo(BigDecimal.ZERO) == 0);
-    }
 
     private String displayBankLedgerName(LedgerMaster ledger) {
         if (ledger == null) {
@@ -1375,6 +1339,24 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
     private boolean enumContainsIgnoreCase(Enum<?> actual, String search) {
         return actual != null && actual.name().toLowerCase().contains(search);
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LedgerMasterResponseDto> getReceiptLedgers() {
+
+        List<LedgerType> allowedTypes = List.of(
+                LedgerType.BANK,
+                LedgerType.CASH,
+                LedgerType.PAYMENT_GATEWAY
+        );
+
+        return ledgerMasterRepository
+                .findByDeletedFalseAndActiveTrueAndLedgerTypeInOrderByLedgerNameAsc(allowedTypes)
+                .stream()
+                .map(this::mapToResponse)
+                .toList();
     }
 
 

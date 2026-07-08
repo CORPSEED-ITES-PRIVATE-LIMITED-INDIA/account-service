@@ -15,6 +15,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.util.List;
 
 import java.time.LocalDate;
 
@@ -22,6 +23,7 @@ import java.time.LocalDate;
 @RequestMapping("/accountService/api/v1/ledgers")
 @RequiredArgsConstructor
 @Tag(name = "Ledger Master", description = "APIs for ledger master")
+
 public class LedgerMasterController {
 
     private final LedgerMasterService ledgerMasterService;
@@ -139,6 +141,13 @@ public class LedgerMasterController {
     ) {
         ledgerMasterService.deleteLedger(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/receipt-ledgers")
+    @Operation(summary = "Get active BANK, CASH and PAYMENT_GATEWAY ledgers")
+    public ResponseEntity<List<LedgerMasterResponseDto>> getReceiptLedgers() {
+        List<LedgerMasterResponseDto> response = ledgerMasterService.getReceiptLedgers();
+        return ResponseEntity.ok(response);
     }
 
 
