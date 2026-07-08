@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,6 +43,19 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
     Optional<LedgerMaster> findByCompanyIdAndLedgerTypeAndDeletedFalse(
             Long companyId,
             LedgerType ledgerType
+    );
+
+    @Query("""
+        SELECT lm
+        FROM LedgerMaster lm
+        WHERE lm.company.id = :companyId
+          AND lm.ledgerType IN :ledgerTypes
+          AND lm.deleted = false
+        ORDER BY lm.id ASC
+        """)
+    List<LedgerMaster> findCustomerLedgersByCompanyAndTypes(
+            @Param("companyId") Long companyId,
+            @Param("ledgerTypes") Collection<LedgerType> ledgerTypes
     );
 
 
