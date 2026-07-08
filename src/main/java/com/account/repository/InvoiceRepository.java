@@ -410,4 +410,44 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
     );
 
 
+    @Query(value = """
+    SELECT
+        COUNT(i.id) AS totalCount,
+        COALESCE(SUM(i.grand_total), 0) AS totalAmount
+    FROM invoice i
+    JOIN unbilled_invoice u
+        ON u.id = i.unbilled_invoice_id
+    WHERE i.is_cancelled = 0
+      AND u.is_cancelled = 0
+      AND u.created_by = :userId
+      AND i.invoice_date >= :fromDate
+      AND i.invoice_date <= :toDate
+    """, nativeQuery = true)
+    Object[] getTaxInvoiceSummaryForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
+
+    @Query(value = """
+    SELECT
+        COUNT(i.id) AS totalCount,
+        COALESCE(SUM(i.grand_total), 0) AS totalAmount
+    FROM invoice i
+    JOIN unbilled_invoice u
+        ON u.id = i.unbilled_invoice_id
+    WHERE (
+            i.is_cancelled = 1
+            OR i.status = 'CANCELLED'
+          )
+      AND u.created_by = :userId
+      AND i.invoice_date >= :fromDate
+      AND i.invoice_date <= :toDate
+    """, nativeQuery = true)
+    Object[] getCancelledInvoiceSummaryForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
+
 }

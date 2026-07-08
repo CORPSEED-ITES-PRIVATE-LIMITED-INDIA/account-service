@@ -516,6 +516,77 @@ ORDER BY u.createdAt DESC
     );
 
 
+    @Query(value = """
+    SELECT
+        c.id AS companyId,
+        c.name AS companyName,
+        COALESCE(SUM(u.outstanding_amount), 0) AS outstandingAmount,
+        MIN(pr.next_payment_due_date) AS earliestDueDate,
+        CASE
+            WHEN MIN(pr.next_payment_due_date) IS NOT NULL
+                 AND MIN(pr.next_payment_due_date) < CURRENT_DATE()
+            THEN DATEDIFF(CURRENT_DATE(), MIN(pr.next_payment_due_date))
+            ELSE 0
+        END AS overdueDays,
+        COUNT(DISTINCT u.id) AS unbilledCount
+    FROM unbilled_invoice u
+    LEFT JOIN company c 
+        ON c.id = u.company_id
+    LEFT JOIN payment_receipt pr
+        ON pr.unbilled_invoice_id = u.id
+       AND pr.is_cancelled = 0
+       AND pr.next_payment_due_date IS NOT NULL
+    WHERE u.is_cancelled = 0
+      AND u.status = 'APPROVED'
+      AND u.created_by = :userId
+      AND COALESCE(u.outstanding_amount, 0) > 0
+      AND u.created_at >= :fromDateTime
+      AND u.created_at < :toDateTime
+    GROUP BY c.id, c.name
+    ORDER BY outstandingAmount DESC
+    LIMIT :limit
+    """, nativeQuery = true)
+    List<Object[]> findTopOutstandingCompaniesForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime,
+            @Param("limit") Integer limit
+    );
+
+
+    @Query(value = """
+    SELECT COALESCE(SUM(u.outstanding_amount), 0)
+    FROM unbilled_invoice u
+    WHERE u.is_cancelled = 0
+      AND u.status = 'APPROVED'
+      AND u.created_by = :userId
+      AND COALESCE(u.outstanding_amount, 0) > 0
+      AND u.created_at >= :fromDateTime
+      AND u.created_at < :toDateTime
+    """, nativeQuery = true)
+    BigDecimal sumOutstandingAmountForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+
+    @Query(value = """
+    SELECT
+        COUNT(u.id) AS totalCount,
+        COALESCE(SUM(u.total_amount), 0) AS totalAmount
+    FROM unbilled_invoice u
+    WHERE u.is_cancelled = 0
+      AND u.created_by = :userId
+      AND u.created_at >= :fromDateTime
+      AND u.created_at < :toDateTime
+    """, nativeQuery = true)
+    Object[] getUnbilledInvoiceSummaryForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
 
 
 }

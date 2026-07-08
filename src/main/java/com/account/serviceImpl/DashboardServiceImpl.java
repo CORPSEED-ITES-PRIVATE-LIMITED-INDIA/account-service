@@ -1095,37 +1095,6 @@ public class DashboardServiceImpl implements DashboardService {
         );
     }
 
-    private Long toLong(Object value) {
-        if (value == null) {
-            return null;
-        }
-
-        if (value instanceof Number number) {
-            return number.longValue();
-        }
-
-        return Long.valueOf(value.toString());
-    }
-
-    private String toStringValue(Object value) {
-        return value == null ? null : value.toString();
-    }
-
-    private BigDecimal toBigDecimal(Object value) {
-        if (value == null) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-
-        if (value instanceof BigDecimal bigDecimal) {
-            return bigDecimal.setScale(2, RoundingMode.HALF_UP);
-        }
-
-        if (value instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue()).setScale(2, RoundingMode.HALF_UP);
-        }
-
-        return new BigDecimal(value.toString()).setScale(2, RoundingMode.HALF_UP);
-    }
 
     private LocalDateTime toLocalDateTime(Object value) {
         if (value == null) {
@@ -1216,6 +1185,224 @@ public class DashboardServiceImpl implements DashboardService {
             case PENDING -> "Clearing";
             case REJECTED -> "Rejected";
         };
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public TopOutstandingCompaniesResponseDto getTopOutstandingCompanies(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+
+        LocalDateTime fromDateTime = dateRange.fromDate().atStartOfDay();
+        LocalDateTime toDateTime = dateRange.toDate().plusDays(1).atStartOfDay();
+
+        int safeLimit = limit == null || limit <= 0 ? 4 : Math.min(limit, 50);
+
+        List<Object[]> rows =
+                unbilledInvoiceRepository.findTopOutstandingCompaniesForDashboard(
+                        userId,
+                        fromDateTime,
+                        toDateTime,
+                        safeLimit
+                );
+
+        List<TopOutstandingCompanyItemDto> items = rows.stream()
+                .map(this::mapTopOutstandingCompanyRow)
+                .toList();
+
+        BigDecimal totalOutstandingAmount =
+                unbilledInvoiceRepository.sumOutstandingAmountForDashboard(
+                        userId,
+                        fromDateTime,
+                        toDateTime
+                );
+
+        return TopOutstandingCompaniesResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .limit(safeLimit)
+                .totalOutstandingAmount(safeMoney(totalOutstandingAmount))
+                .topOutstandingCompanies(items)
+                .build();
+    }
+
+
+
+    private TopOutstandingCompanyItemDto mapTopOutstandingCompanyRow(Object[] row) {
+        return new TopOutstandingCompanyItemDto(
+                toLong(row[0]),          // companyId
+                toStringValue(row[1]),   // companyName
+                toBigDecimal(row[2]),    // outstandingAmount
+                toLocalDate(row[3]),     // earliestDueDate
+                toLong(row[4]),          // overdueDays
+                toLong(row[5])           // unbilledCount
+        );
+    }
+
+    private Long toLong(Object value) {
+        if (value == null) {
+            return 0L;
+        }
+
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+
+        return Long.valueOf(value.toString());
+    }
+
+    private String toStringValue(Object value) {
+        return value == null ? null : value.toString();
+    }
+
+    private BigDecimal toBigDecimal(Object value) {
+        if (value == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (value instanceof BigDecimal bigDecimal) {
+            return bigDecimal.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (value instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue())
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+
+        return new BigDecimal(value.toString())
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private LocalDate toLocalDate(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        if (value instanceof LocalDate localDate) {
+            return localDate;
+        }
+
+        if (value instanceof java.sql.Date sqlDate) {
+            return sqlDate.toLocalDate();
+        }
+
+        return LocalDate.parse(value.toString());
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public AccountSummaryResponseDto getAccountSummary(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+
+        LocalDateTime fromDateTime = dateRange.fromDate().atStartOfDay();
+        LocalDateTime toDateTime = dateRange.toDate().plusDays(1).atStartOfDay();
+
+        Object[] unbilledRow =
+                unbilledInvoiceRepository.getUnbilledInvoiceSummaryForDashboard(
+                        userId,
+                        fromDateTime,
+                        toDateTime
+                );
+
+        Object[] taxInvoiceRow =
+                invoiceRepository.getTaxInvoiceSummaryForDashboard(
+                        userId,
+                        dateRange.fromDate(),
+                        dateRange.toDate()
+                );
+
+        Object[] advancePaymentRow =
+                paymentReceiptRepository.getAdvancePaymentSummaryForDashboard(
+                        userId,
+                        dateRange.fromDate(),
+                        dateRange.toDate()
+                );
+
+        Object[] cancelledInvoiceRow =
+                invoiceRepository.getCancelledInvoiceSummaryForDashboard(
+                        userId,
+                        dateRange.fromDate(),
+                        dateRange.toDate()
+                );
+
+        List<AccountSummaryCardDto> cards = List.of(
+                new AccountSummaryCardDto(
+                        "Unbilled Invoices",
+                        getCount(unbilledRow),
+                        getAmount(unbilledRow)
+                ),
+                new AccountSummaryCardDto(
+                        "Tax Invoices",
+                        getCount(taxInvoiceRow),
+                        getAmount(taxInvoiceRow)
+                ),
+                new AccountSummaryCardDto(
+                        "Advance Payments",
+                        getCount(advancePaymentRow),
+                        getAmount(advancePaymentRow)
+                ),
+                new AccountSummaryCardDto(
+                        "Cancelled Invoices",
+                        getCount(cancelledInvoiceRow),
+                        getAmount(cancelledInvoiceRow)
+                )
+        );
+
+        return AccountSummaryResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .summaryCards(cards)
+                .build();
+    }
+
+    private Long getCount(Object[] row) {
+        if (row == null || row.length == 0 || row[0] == null) {
+            return 0L;
+        }
+
+        if (row[0] instanceof Number number) {
+            return number.longValue();
+        }
+
+        return Long.valueOf(row[0].toString());
+    }
+
+    private BigDecimal getAmount(Object[] row) {
+        if (row == null || row.length < 2 || row[1] == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (row[1] instanceof BigDecimal bigDecimal) {
+            return bigDecimal.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        if (row[1] instanceof Number number) {
+            return BigDecimal.valueOf(number.doubleValue())
+                    .setScale(2, RoundingMode.HALF_UP);
+        }
+
+        return new BigDecimal(row[1].toString())
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
 

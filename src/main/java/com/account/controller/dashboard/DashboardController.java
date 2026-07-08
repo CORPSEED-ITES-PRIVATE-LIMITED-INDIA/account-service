@@ -373,5 +373,68 @@ public class DashboardController {
     }
 
 
+    @GetMapping("/top-outstanding-companies")
+    @Operation(summary = "Get top outstanding companies by pending receivable amount")
+    public ResponseEntity<TopOutstandingCompaniesResponseDto> getTopOutstandingCompanies(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate,
+
+            @RequestParam(required = false, defaultValue = "4")
+            Integer limit
+    ) {
+        TopOutstandingCompaniesResponseDto response =
+                dashboardService.getTopOutstandingCompanies(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate,
+                        limit
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+
+    @GetMapping("/account-summary")
+    @Operation(summary = "Get account summary cards for invoices and payments")
+    public ResponseEntity<AccountSummaryResponseDto> getAccountSummary(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        AccountSummaryResponseDto response =
+                dashboardService.getAccountSummary(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+
+
+
+
 
 }

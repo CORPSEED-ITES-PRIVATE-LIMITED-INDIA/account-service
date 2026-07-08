@@ -28,4 +28,5 @@ public class RecentPaymentItemDto {
     private PaymentStatus paymentStatus;
 
     private String displayStatus; // Received, Clearing, Rejected
+
 }

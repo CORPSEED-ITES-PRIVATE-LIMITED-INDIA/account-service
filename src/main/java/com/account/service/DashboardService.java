@@ -97,6 +97,21 @@ public interface DashboardService {
             Integer size
     );
 
+    TopOutstandingCompaniesResponseDto getTopOutstandingCompanies(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            Integer limit
+    );
+
+    AccountSummaryResponseDto getAccountSummary(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
+
 
 
 }

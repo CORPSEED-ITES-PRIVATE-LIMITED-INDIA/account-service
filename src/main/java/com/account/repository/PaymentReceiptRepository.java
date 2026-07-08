@@ -90,5 +90,24 @@ public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, 
     );
 
 
+    @Query(value = """
+    SELECT
+        COUNT(p.id) AS totalCount,
+        COALESCE(SUM(p.amount), 0) AS totalAmount
+    FROM payment_receipt p
+    JOIN unbilled_invoice u
+        ON u.id = p.unbilled_invoice_id
+    WHERE p.is_cancelled = 0
+      AND u.is_cancelled = 0
+      AND u.created_by = :userId
+      AND p.payment_date >= :fromDate
+      AND p.payment_date <= :toDate
+    """, nativeQuery = true)
+    Object[] getAdvancePaymentSummaryForDashboard(
+            @Param("userId") Long userId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
+
 
 }
