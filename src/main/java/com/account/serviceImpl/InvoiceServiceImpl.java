@@ -2101,8 +2101,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 				: null;
 
 		String ledgerName = unitName != null && !unitName.isEmpty()
-				? "Customer Advance - " + companyName + " - " + unitName
-				: "Customer Advance - " + companyName;
+				? companyName + " - " + unitName
+				: companyName;
 
 		LedgerMaster ledger = new LedgerMaster();
 
