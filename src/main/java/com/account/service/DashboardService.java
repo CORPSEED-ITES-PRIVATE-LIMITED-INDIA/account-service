@@ -63,4 +63,13 @@ public interface DashboardService {
             LocalDate fromDate,
             LocalDate toDate
     );
+
+    BillingCollectionTrendResponseDto getBillingVsCollectionTrend(
+            Long userId,
+            Integer months,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
+
+
 }

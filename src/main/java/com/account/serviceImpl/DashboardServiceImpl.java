@@ -5,6 +5,7 @@ import com.account.domain.status.UnbilledStatus;
 import com.account.dto.dashboard.*;
 import com.account.exception.ResourceNotFoundException;
 import com.account.repository.InvoiceRepository;
+import com.account.repository.PaymentReceiptRepository;
 import com.account.repository.UnbilledInvoiceRepository;
 import com.account.repository.UserRepository;
 import com.account.service.DashboardService;
@@ -20,6 +21,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
@@ -30,6 +32,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final InvoiceRepository invoiceRepository;
     private final UserRepository userRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
+    private final PaymentReceiptRepository paymentReceiptRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -641,6 +644,114 @@ public class DashboardServiceImpl implements DashboardService {
                 .multiply(new BigDecimal("100"))
                 .divide(safeTotalBilled, 2, RoundingMode.HALF_UP);
     }
+    @Override
+    @Transactional(readOnly = true)
+    public BillingCollectionTrendResponseDto getBillingVsCollectionTrend(
+            Long userId,
+            Integer months,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        validateUser(userId);
+
+        LocalDate today = LocalDate.now();
+
+        LocalDate resolvedFromDate;
+        LocalDate resolvedToDate;
+
+        if (fromDate != null || toDate != null) {
+            if (fromDate == null || toDate == null) {
+                throw new IllegalArgumentException("Both fromDate and toDate are required");
+            }
+
+            if (fromDate.isAfter(toDate)) {
+                throw new IllegalArgumentException("fromDate cannot be after toDate");
+            }
+
+            resolvedFromDate = fromDate.withDayOfMonth(1);
+            resolvedToDate = toDate;
+        } else {
+            int safeMonths = months == null || months <= 0 ? 6 : Math.min(months, 24);
+
+            YearMonth currentMonth = YearMonth.now();
+            YearMonth startMonth = currentMonth.minusMonths(safeMonths - 1L);
+
+            resolvedFromDate = startMonth.atDay(1);
+            resolvedToDate = today;
+        }
+
+        LocalDateTime fromDateTime = resolvedFromDate.atStartOfDay();
+        LocalDateTime toDateTime = resolvedToDate.plusDays(1).atStartOfDay();
+
+        List<MonthlyAmountProjection> billedRows =
+                unbilledInvoiceRepository.findMonthlyBilledAmountForSalesperson(
+                        userId,
+                        fromDateTime,
+                        toDateTime
+                );
+
+        List<MonthlyAmountProjection> collectedRows =
+                paymentReceiptRepository.findMonthlyCollectionAmountForSalesperson(
+                        userId,
+                        resolvedFromDate,
+                        resolvedToDate
+                );
+
+        Map<String, BigDecimal> billedMap = new HashMap<>();
+        Map<String, BigDecimal> collectedMap = new HashMap<>();
+
+        for (MonthlyAmountProjection row : billedRows) {
+            billedMap.put(row.getMonthKey(), safeMoney(row.getAmount()));
+        }
+
+        for (MonthlyAmountProjection row : collectedRows) {
+            collectedMap.put(row.getMonthKey(), safeMoney(row.getAmount()));
+        }
+
+        YearMonth startMonth = YearMonth.from(resolvedFromDate);
+        YearMonth endMonth = YearMonth.from(resolvedToDate);
+
+        List<BillingCollectionTrendPointDto> points = new ArrayList<>();
+
+        BigDecimal totalBilled = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalCollected = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
+        YearMonth runningMonth = startMonth;
+
+        while (!runningMonth.isAfter(endMonth)) {
+            String monthKey = runningMonth.toString();
+
+            BigDecimal billed = safeMoney(billedMap.get(monthKey));
+            BigDecimal collected = safeMoney(collectedMap.get(monthKey));
+
+            String label = runningMonth
+                    .getMonth()
+                    .getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
+
+            points.add(new BillingCollectionTrendPointDto(
+                    monthKey,
+                    label,
+                    billed,
+                    collected
+            ));
+
+            totalBilled = totalBilled.add(billed);
+            totalCollected = totalCollected.add(collected);
+
+            runningMonth = runningMonth.plusMonths(1);
+        }
+
+        return BillingCollectionTrendResponseDto.builder()
+                .userId(userId)
+                .groupBy("MONTHLY")
+                .fromDate(resolvedFromDate)
+                .toDate(resolvedToDate)
+                .totalBilled(safeMoney(totalBilled))
+                .totalCollected(safeMoney(totalCollected))
+                .points(points)
+                .build();
+    }
+
 
 
     @Override

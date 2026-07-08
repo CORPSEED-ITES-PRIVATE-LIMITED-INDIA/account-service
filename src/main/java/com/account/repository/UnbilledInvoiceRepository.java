@@ -3,6 +3,7 @@ package com.account.repository;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.status.UnbilledStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
+import com.account.dto.dashboard.MonthlyAmountProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -314,6 +315,25 @@ ORDER BY u.createdAt DESC
             @Param("status") UnbilledStatus status,
             @Param("todayStart") LocalDateTime todayStart,
             @Param("tomorrowStart") LocalDateTime tomorrowStart
+    );
+
+
+    @Query(value = """
+    SELECT 
+        DATE_FORMAT(u.created_at, '%Y-%m') AS monthKey,
+        COALESCE(SUM(u.total_amount), 0) AS amount
+    FROM unbilled_invoice u
+    WHERE u.is_cancelled = false
+      AND u.created_by = :userId
+      AND u.created_at >= :fromDateTime
+      AND u.created_at < :toDateTime
+    GROUP BY DATE_FORMAT(u.created_at, '%Y-%m')
+    ORDER BY monthKey
+    """, nativeQuery = true)
+    List<MonthlyAmountProjection> findMonthlyBilledAmountForSalesperson(
+            @Param("userId") Long userId,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
     );
 
 

@@ -245,6 +245,33 @@ public class DashboardController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/billing-vs-collection")
+    @Operation(summary = "Get monthly billing vs collection trend")
+    public ResponseEntity<BillingCollectionTrendResponseDto> getBillingVsCollectionTrend(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "6")
+            Integer months,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        BillingCollectionTrendResponseDto response =
+                dashboardService.getBillingVsCollectionTrend(
+                        userId,
+                        months,
+                        fromDate,
+                        toDate
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
 
 
 
