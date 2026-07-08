@@ -129,9 +129,10 @@ public class LedgerMasterController {
     }
 
     @GetMapping("/active")
-    @Operation(summary = "Get active ledgers")
-    public ResponseEntity<?> getActiveLedgers() {
-        return ResponseEntity.ok(ledgerMasterService.getActiveLedgers());
+    @Operation(summary = "Get active BANK, CASH and PAYMENT_GATEWAY ledgers")
+    public ResponseEntity<List<LedgerMasterResponseDto>> getReceiptLedgers() {
+        List<LedgerMasterResponseDto> response = ledgerMasterService.getReceiptLedgers();
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{id}")
@@ -143,12 +144,6 @@ public class LedgerMasterController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/receipt-ledgers")
-    @Operation(summary = "Get active BANK, CASH and PAYMENT_GATEWAY ledgers")
-    public ResponseEntity<List<LedgerMasterResponseDto>> getReceiptLedgers() {
-        List<LedgerMasterResponseDto> response = ledgerMasterService.getReceiptLedgers();
-        return ResponseEntity.ok(response);
-    }
 
 
 
