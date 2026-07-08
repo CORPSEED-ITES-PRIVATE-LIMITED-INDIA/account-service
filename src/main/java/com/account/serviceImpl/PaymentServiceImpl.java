@@ -2545,22 +2545,26 @@ public class PaymentServiceImpl implements PaymentService {
 
         Long companyId = company.getId();
 
-        /*
-         * Requirement:
-         * Only ONE ledger should exist per company.
-         *
-         * Example:
-         * Nestle
-         *
-         * Do not create separate:
-         * Customer Advance - Nestle
-         * Customer Ledger - Nestle
-         */
         LedgerGroup sundryDebtorsGroup =
                 getOrCreateLedgerGroupByType(LedgerGroupType.SUNDRY_DEBTORS);
 
-        List<LedgerMaster> existingCompanyLedgers =
-                ledgerMasterRepository.findCustomerLedgersByCompanyAndTypes(
+        String companyName = company.getName() != null && !company.getName().trim().isEmpty()
+                ? company.getName().trim()
+                : "Company-" + companyId;
+
+        /*
+         * IMPORTANT:
+         * Only ONE ledger per company.
+         *
+         * If old CUSTOMER_ADVANCE ledger already exists,
+         * reuse and convert it to CUSTOMER / SUNDRY_DEBTORS.
+         *
+         * Do not create separate:
+         * 1. CUSTOMER_ADVANCE
+         * 2. CUSTOMER
+         */
+        List<LedgerMaster> existingLedgers =
+                ledgerMasterRepository.findByCompanyIdAndLedgerTypeInAndDeletedFalse(
                         companyId,
                         List.of(
                                 LedgerType.CUSTOMER,
@@ -2568,21 +2572,11 @@ public class PaymentServiceImpl implements PaymentService {
                         )
                 );
 
-        if (existingCompanyLedgers != null && !existingCompanyLedgers.isEmpty()) {
+        if (existingLedgers != null && !existingLedgers.isEmpty()) {
+            LedgerMaster ledger = existingLedgers.get(0);
 
-            /*
-             * Reuse existing company ledger.
-             * If old ledger was CUSTOMER_ADVANCE / CURRENT_LIABILITIES,
-             * convert it to CUSTOMER / SUNDRY_DEBTORS.
-             */
-            LedgerMaster existingLedger = existingCompanyLedgers.get(0);
-
-            existingLedger.setLedgerType(LedgerType.CUSTOMER);
-            existingLedger.setLedgerGroup(sundryDebtorsGroup);
-
-            String companyName = company.getName() != null && !company.getName().trim().isEmpty()
-                    ? company.getName().trim()
-                    : "Company-" + companyId;
+            ledger.setLedgerType(LedgerType.CUSTOMER);
+            ledger.setLedgerGroup(sundryDebtorsGroup);
 
             /*
              * Ledger name should be company name only.
@@ -2590,45 +2584,41 @@ public class PaymentServiceImpl implements PaymentService {
              */
             if (!ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(
                     companyName,
-                    existingLedger.getId()
+                    ledger.getId()
             )) {
-                existingLedger.setLedgerName(companyName);
+                ledger.setLedgerName(companyName);
             }
 
-            existingLedger.setCompany(company);
+            ledger.setCompany(company);
 
             /*
-             * Keep latest unit/contact details inside same company ledger.
-             * This does NOT create unit-wise ledger.
+             * Keep latest unit/contact details in the same company ledger.
+             * Do NOT create unit-wise separate ledger.
              */
             if (unit != null && unit.getId() != null) {
-                existingLedger.setUnit(unit);
-                existingLedger.setGstNo(unit.getGstNo());
+                ledger.setUnit(unit);
+                ledger.setGstNo(unit.getGstNo());
             }
 
             if (contact != null && contact.getId() != null) {
-                existingLedger.setContact(contact);
+                ledger.setContact(contact);
             }
 
-            existingLedger.setPanNo(company.getPanNo());
-            existingLedger.setSystemCreated(true);
-            existingLedger.setActive(true);
-            existingLedger.setDeleted(false);
+            ledger.setPanNo(company.getPanNo());
+            ledger.setSystemCreated(true);
+            ledger.setActive(true);
+            ledger.setDeleted(false);
 
             if (createdBy != null && createdBy.getId() != null) {
-                existingLedger.setUpdatedBy(createdBy);
+                ledger.setUpdatedBy(createdBy);
             }
 
-            return ledgerMasterRepository.save(existingLedger);
+            return ledgerMasterRepository.save(ledger);
         }
 
         /*
-         * No old ledger exists, so create only ONE new company ledger.
+         * No old ledger found, so create only ONE new company ledger.
          */
-        String companyName = company.getName() != null && !company.getName().trim().isEmpty()
-                ? company.getName().trim()
-                : "Company-" + companyId;
-
         LedgerMaster ledger = new LedgerMaster();
 
         ledger.setLedgerName(companyName);
@@ -2667,7 +2657,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         return ledgerMasterRepository.save(ledger);
     }
-
 
     private LedgerGroup getOrCreateLedgerGroupByType(LedgerGroupType groupType) {
 
