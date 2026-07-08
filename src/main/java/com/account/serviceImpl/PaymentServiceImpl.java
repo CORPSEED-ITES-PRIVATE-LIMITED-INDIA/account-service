@@ -62,17 +62,14 @@ public class PaymentServiceImpl implements PaymentService {
     private final UserRepository userRepository;
     private final InvoiceService invoiceService;
     private final DateTimeUtil dateTimeUtil;
-    private final ContactRepository contactRepository;
     private final OperationFeignClient operationFeignClient;
     private final InvoiceRepository invoiceRepository;
     private final GovernmentFeeRepository governmentFeeRepository;
     private final TdsRegistrationRepository tdsRegistrationRepository;
     private final NotificationPublisherService notificationPublisherService;
     private final LedgerMasterRepository ledgerMasterRepository;
-
     private final AccountingVoucherService accountingVoucherService;
     private final LedgerGroupRepository ledgerGroupRepository;
-
     private final PaymentLegalVerificationService paymentLegalVerificationService;
 
     public PaymentServiceImpl(
@@ -83,7 +80,6 @@ public class PaymentServiceImpl implements PaymentService {
             UserRepository userRepository,
             InvoiceService invoiceService,
             DateTimeUtil dateTimeUtil,
-            ContactRepository contactRepository,
             OperationFeignClient operationFeignClient,
             InvoiceRepository invoiceRepository,
             GovernmentFeeRepository governmentFeeRepository,
@@ -101,7 +97,6 @@ public class PaymentServiceImpl implements PaymentService {
         this.userRepository = userRepository;
         this.invoiceService = invoiceService;
         this.dateTimeUtil = dateTimeUtil;
-        this.contactRepository = contactRepository;
         this.operationFeignClient = operationFeignClient;
         this.invoiceRepository = invoiceRepository;
         this.governmentFeeRepository = governmentFeeRepository;
@@ -1253,6 +1248,9 @@ public class PaymentServiceImpl implements PaymentService {
          *
          * Do NOT call this method inside registerPayment().
          */
+        BigDecimal tdsAmountForLedger = getPendingTdsAmountForLedger(unbilled);
+        boolean tdsPosted = false;
+
         for (PaymentReceipt payment : paymentsToApprove) {
 
             BigDecimal paymentAmount = safe2(payment.getAmount());
@@ -1262,11 +1260,22 @@ public class PaymentServiceImpl implements PaymentService {
              * Zero amount means no actual money received, so no receipt voucher.
              */
             if (paymentAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+                BigDecimal tdsAmountForThisVoucher = !tdsPosted
+                        ? tdsAmountForLedger
+                        : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+
                 postReceiptVoucherForApprovedPayment(
                         unbilled,
                         payment,
-                        approver
+                        approver,
+                        tdsAmountForThisVoucher
                 );
+
+                if (tdsAmountForThisVoucher.compareTo(BigDecimal.ZERO) > 0) {
+                    tdsPosted = true;
+                }
+
             } else {
                 log.info("Skipping receipt voucher for zero amount paymentReceiptId: {}", payment.getId());
             }
@@ -2438,20 +2447,28 @@ public class PaymentServiceImpl implements PaymentService {
     private void postReceiptVoucherForApprovedPayment(
             UnbilledInvoice unbilled,
             PaymentReceipt paymentReceipt,
-            User approver
+            User approver,
+            BigDecimal tdsAmount
     ) {
-        if (unbilled == null || paymentReceipt == null) {
-            return;
-        }
-
-        if (paymentReceipt.getAmount() == null
-                || paymentReceipt.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-
-        if (paymentReceipt.getBankLedger() == null) {
+        if (unbilled == null) {
             throw new ValidationException(
-                    "Bank ledger is missing in payment receipt. Cannot post receipt voucher.",
+                    "Unbilled invoice is required for receipt voucher",
+                    "ERR_UNBILLED_REQUIRED_FOR_RECEIPT_VOUCHER",
+                    "unbilled"
+            );
+        }
+
+        if (paymentReceipt == null || paymentReceipt.getId() == null) {
+            throw new ValidationException(
+                    "Payment receipt is required for receipt voucher",
+                    "ERR_PAYMENT_RECEIPT_REQUIRED_FOR_VOUCHER",
+                    "paymentReceipt"
+            );
+        }
+
+        if (paymentReceipt.getBankLedger() == null || paymentReceipt.getBankLedger().getId() == null) {
+            throw new ValidationException(
+                    "Bank ledger is missing in payment receipt",
                     "ERR_PAYMENT_BANK_LEDGER_MISSING",
                     "bankLedgerId"
             );
@@ -2459,38 +2476,76 @@ public class PaymentServiceImpl implements PaymentService {
 
         LedgerMaster bankLedger = paymentReceipt.getBankLedger();
 
-        /*
-         * Requirement:
-         * On payment approval, received payment should be posted
-         * against Customer Ledger under SUNDRY_DEBTORS,
-         * not Customer Advance under CURRENT_LIABILITIES.
-         */
         LedgerMaster customerLedger = getOrCreateCustomerLedger(
                 unbilled,
                 approver
         );
 
+        BigDecimal bankAmount = safe2(paymentReceipt.getAmount());
+        BigDecimal safeTdsAmount = safe2(tdsAmount);
+
+        /*
+         * Customer credit should be Bank amount + TDS amount.
+         *
+         * Example:
+         * Invoice/customer settlement = 98,000 received in bank + 2,000 TDS
+         *
+         * Dr Bank              98,000
+         * Dr TDS Receivable     2,000
+         * Cr Customer          100,000
+         */
+        BigDecimal customerCreditAmount = bankAmount
+                .add(safeTdsAmount)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        List<AccountingVoucherEntryRequestDto> entries = new ArrayList<>();
+
         /*
          * Dr Bank / Cash Ledger
          */
-        AccountingVoucherEntryRequestDto bankDebitEntry =
+        entries.add(
                 AccountingVoucherEntryRequestDto.builder()
                         .ledgerId(bankLedger.getId())
-                        .debitAmount(paymentReceipt.getAmount())
+                        .debitAmount(bankAmount)
                         .creditAmount(BigDecimal.ZERO)
                         .narration("Payment received in " + bankLedger.getLedgerName())
-                        .build();
+                        .build()
+        );
+
+        /*
+         * Dr TDS Receivable Ledger
+         */
+        if (safeTdsAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            LedgerMaster tdsReceivableLedger = getOrCreateSystemLedger(
+                    LedgerType.TDS_RECEIVABLE,
+                    LedgerGroupType.DUTIES_AND_TAXES,
+                    "TDS Receivable",
+                    DebitCredit.DEBIT,
+                    approver
+            );
+
+            entries.add(
+                    AccountingVoucherEntryRequestDto.builder()
+                            .ledgerId(tdsReceivableLedger.getId())
+                            .debitAmount(safeTdsAmount)
+                            .creditAmount(BigDecimal.ZERO)
+                            .narration("TDS receivable booked for unbilled " + unbilled.getUnbilledNumber())
+                            .build()
+            );
+        }
 
         /*
          * Cr Customer Ledger / Sundry Debtors
          */
-        AccountingVoucherEntryRequestDto customerCreditEntry =
+        entries.add(
                 AccountingVoucherEntryRequestDto.builder()
                         .ledgerId(customerLedger.getId())
                         .debitAmount(BigDecimal.ZERO)
-                        .creditAmount(paymentReceipt.getAmount())
+                        .creditAmount(customerCreditAmount)
                         .narration("Payment received from customer")
-                        .build();
+                        .build()
+        );
 
         AccountingVoucherRequestDto voucherRequest =
                 AccountingVoucherRequestDto.builder()
@@ -2508,14 +2563,20 @@ public class PaymentServiceImpl implements PaymentService {
                                         + ", transaction ref: "
                                         + paymentReceipt.getTransactionReference()
                         )
-                        .entries(List.of(
-                                bankDebitEntry,
-                                customerCreditEntry
-                        ))
+                        .entries(entries)
                         .build();
 
         accountingVoucherService.createVoucher(voucherRequest);
+
+        log.info(
+                "Receipt voucher posted | paymentReceiptId={} | bankAmount={} | tdsAmount={} | customerCreditAmount={}",
+                paymentReceipt.getId(),
+                bankAmount,
+                safeTdsAmount,
+                customerCreditAmount
+        );
     }
+
 
 
 
@@ -2708,6 +2769,83 @@ public class PaymentServiceImpl implements PaymentService {
     private String generateLedgerCode(String prefix) {
         long count = ledgerMasterRepository.count() + 1;
         return String.format("LED-%s-%06d", prefix, count);
+    }
+    private BigDecimal getPendingTdsAmountForLedger(UnbilledInvoice unbilled) {
+
+        if (unbilled == null) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+
+        return tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                .filter(tds -> tds.getStatus() == TdsStatus.PENDING)
+                .map(tds -> safe2(tds.getTdsAmount()))
+                .orElse(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+    }
+
+
+
+    private LedgerMaster getOrCreateSystemLedger(
+            LedgerType ledgerType,
+            LedgerGroupType ledgerGroupType,
+            String ledgerName,
+            DebitCredit balanceType,
+            User createdBy
+    ) {
+        Optional<LedgerMaster> existingLedger =
+                ledgerMasterRepository.findByLedgerTypeAndDeletedFalse(ledgerType);
+
+        if (existingLedger.isPresent()) {
+            return existingLedger.get();
+        }
+
+        LedgerGroup ledgerGroup = ledgerGroupRepository
+                .findByGroupTypeAndDeletedFalse(ledgerGroupType)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        ledgerGroupType + " ledger group not found",
+                        ledgerGroupType + "_GROUP_NOT_FOUND"
+                ));
+
+        LedgerMaster ledger = new LedgerMaster();
+        ledger.setLedgerName(ledgerName);
+        ledger.setLedgerCode(generateSystemLedgerCode(ledgerType));
+        ledger.setLedgerType(ledgerType);
+        ledger.setLedgerGroup(ledgerGroup);
+
+        ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        ledger.setOpeningBalanceType(balanceType);
+
+        ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        ledger.setCurrentBalanceType(balanceType);
+
+        ledger.setSystemCreated(true);
+        ledger.setActive(true);
+        ledger.setDeleted(false);
+        ledger.setCreatedBy(createdBy);
+        ledger.setUpdatedBy(createdBy);
+
+        return ledgerMasterRepository.save(ledger);
+    }
+
+    private String generateSystemLedgerCode(LedgerType ledgerType) {
+
+        String prefix = switch (ledgerType) {
+            case TDS_RECEIVABLE -> "LED-TDS-REC-";
+            case OUTPUT_CGST -> "LED-OUT-CGST-";
+            case OUTPUT_SGST -> "LED-OUT-SGST-";
+            case OUTPUT_IGST -> "LED-OUT-IGST-";
+            case INPUT_CGST -> "LED-IN-CGST-";
+            case INPUT_SGST -> "LED-IN-SGST-";
+            case INPUT_IGST -> "LED-IN-IGST-";
+            default -> "LED-SYS-";
+        };
+
+        String code;
+
+        do {
+            code = prefix + System.currentTimeMillis();
+        } while (ledgerMasterRepository.existsByLedgerCodeIgnoreCase(code));
+
+        return code;
     }
 
 

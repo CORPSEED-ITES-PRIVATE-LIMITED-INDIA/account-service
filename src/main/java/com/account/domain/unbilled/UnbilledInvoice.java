@@ -57,7 +57,6 @@ public class UnbilledInvoice {
     private boolean governmentFeeActive = false;
     private boolean tdsActive = false;
 
-
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "estimate_id", nullable = false, unique = true)
     private Estimate estimate;
@@ -80,7 +79,6 @@ public class UnbilledInvoice {
     private BigDecimal receivedAmount = BigDecimal.ZERO;
 
     private BigDecimal currentReceivedAmount = BigDecimal.ZERO;
-
 
     @Column(precision = 15, scale = 2, nullable = false)
     private BigDecimal outstandingAmount = BigDecimal.ZERO;
@@ -152,4 +150,7 @@ public class UnbilledInvoice {
         // Outstanding should reflect only APPROVED amount
         this.outstandingAmount = this.totalAmount.subtract(this.receivedAmount);
     }
+
+
+
 }
