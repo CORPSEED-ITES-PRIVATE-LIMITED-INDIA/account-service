@@ -333,6 +333,44 @@ public class DashboardController {
     }
 
 
+    @GetMapping("/recent-payments")
+    @Operation(summary = "Get recent payments for dashboard")
+    public ResponseEntity<RecentPaymentsResponseDto> getRecentPayments(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate,
+
+            @RequestParam(required = false)
+            String status,
+
+            @RequestParam(required = false, defaultValue = "1")
+            Integer page,
+
+            @RequestParam(required = false, defaultValue = "4")
+            Integer size
+    ) {
+        RecentPaymentsResponseDto response =
+                dashboardService.getRecentPayments(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate,
+                        status,
+                        page,
+                        size
+                );
+
+        return ResponseEntity.ok(response);
+    }
 
 
 

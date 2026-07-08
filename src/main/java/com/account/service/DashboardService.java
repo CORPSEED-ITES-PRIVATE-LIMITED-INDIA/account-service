@@ -87,5 +87,16 @@ public interface DashboardService {
     );
 
 
+    RecentPaymentsResponseDto getRecentPayments(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            String status,
+            Integer page,
+            Integer size
+    );
+
+
 
 }

@@ -1,6 +1,7 @@
 package com.account.serviceImpl;
 
 import com.account.domain.status.InvoiceStatus;
+import com.account.domain.status.PaymentStatus;
 import com.account.domain.status.UnbilledStatus;
 import com.account.dto.dashboard.*;
 import com.account.exception.ResourceNotFoundException;
@@ -1140,6 +1141,81 @@ public class DashboardServiceImpl implements DashboardService {
         }
 
         return LocalDateTime.parse(value.toString());
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public RecentPaymentsResponseDto getRecentPayments(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate,
+            String status,
+            Integer page,
+            Integer size
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+
+        int safePage = page == null || page <= 0 ? 0 : page - 1;
+        int safeSize = size == null || size <= 0 ? 4 : Math.min(size, 100);
+
+        PaymentStatus paymentStatus = resolvePaymentStatus(status);
+
+        Pageable pageable = PageRequest.of(safePage, safeSize);
+
+        Page<RecentPaymentItemDto> resultPage =
+                paymentReceiptRepository.findRecentPaymentsForDashboard(
+                        userId,
+                        dateRange.fromDate(),
+                        dateRange.toDate(),
+                        paymentStatus,
+                        pageable
+                );
+
+        resultPage.getContent().forEach(item ->
+                item.setDisplayStatus(resolvePaymentDisplayStatus(item.getPaymentStatus()))
+        );
+
+        return RecentPaymentsResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .page(safePage + 1)
+                .size(safeSize)
+                .totalElements(resultPage.getTotalElements())
+                .totalPages(resultPage.getTotalPages())
+                .recentPayments(resultPage.getContent())
+                .build();
+    }
+
+    private PaymentStatus resolvePaymentStatus(String status) {
+        if (status == null || status.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return PaymentStatus.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(
+                    "Invalid payment status. Allowed values are PENDING, APPROVED, REJECTED"
+            );
+        }
+    }
+
+    private String resolvePaymentDisplayStatus(PaymentStatus status) {
+        if (status == null) {
+            return "Unknown";
+        }
+
+        return switch (status) {
+            case APPROVED -> "Received";
+            case PENDING -> "Clearing";
+            case REJECTED -> "Rejected";
+        };
     }
 
 
