@@ -328,15 +328,39 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
             AccountingVoucher voucher = entry.getVoucher();
 
+//            BigDecimal debit = moneyForStatement(entry.getDebitAmount());
+//            BigDecimal credit = moneyForStatement(entry.getCreditAmount());
+//
+//            totalDebit = totalDebit.add(debit).setScale(2, RoundingMode.HALF_UP);
+//            totalCredit = totalCredit.add(credit).setScale(2, RoundingMode.HALF_UP);
+
             BigDecimal debit = moneyForStatement(entry.getDebitAmount());
             BigDecimal credit = moneyForStatement(entry.getCreditAmount());
 
-            totalDebit = totalDebit.add(debit).setScale(2, RoundingMode.HALF_UP);
-            totalCredit = totalCredit.add(credit).setScale(2, RoundingMode.HALF_UP);
+            /*
+             * Actual voucher values from database.
+             * We keep them unchanged.
+             */
+            BigDecimal displayDebit = debit;
+            BigDecimal displayCredit = credit;
 
+            /*
+             * Frontend display requirement:
+             * For CASH / BANK / PAYMENT_GATEWAY receipt entries,
+             * show received money in CREDIT column instead of DEBIT column.
+             */
+            if (shouldShowReceiptBankCashAsCredit(ledger, voucher, debit, credit)) {
+                displayDebit = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                displayCredit = debit;
+            }
+
+            /*
+             * Running balance is also calculated from display values
+             * so CASH/BANK receipt rows show CREDIT balance in API response.
+             */
             runningSignedBalance = runningSignedBalance
-                    .add(debit)
-                    .subtract(credit)
+                    .add(displayDebit)
+                    .subtract(displayCredit)
                     .setScale(2, RoundingMode.HALF_UP);
 
             String narration = entry.getNarration();
@@ -362,8 +386,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             .ledgerName(ledger.getLedgerName())
                             .ledgerCode(ledger.getLedgerCode())
 
-                            .debitAmount(debit)
-                            .creditAmount(credit)
+                            .debitAmount(displayDebit)
+                            .creditAmount(displayCredit)
 
                             .runningBalanceAmount(absAmountForStatement(runningSignedBalance))
                             .runningBalanceType(balanceTypeForStatement(runningSignedBalance))
@@ -1437,6 +1461,43 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         return ledger.getLedgerType() == LedgerType.BANK
                 || ledger.getLedgerType() == LedgerType.PAYMENT_GATEWAY
                 || ledger.getLedgerType() == LedgerType.CASH;
+    }
+
+    /*
+     * Frontend display requirement:
+     * In actual accounting, CASH/BANK receipt is posted as DEBIT.
+     *
+     * But for ledger statement UI, received money should be shown
+     * under CREDIT column for CASH / BANK / PAYMENT_GATEWAY ledgers.
+     *
+     * This method only changes API display.
+     * It does NOT change actual voucher posting.
+     */
+    private boolean shouldShowReceiptBankCashAsCredit(
+            LedgerMaster ledger,
+            AccountingVoucher voucher,
+            BigDecimal debit,
+            BigDecimal credit
+    ) {
+        if (ledger == null || voucher == null) {
+            return false;
+        }
+
+        if (!isBankOrCashLedger(ledger)) {
+            return false;
+        }
+
+        if (voucher.getVoucherType() != VoucherType.RECEIPT) {
+            return false;
+        }
+
+        if (!isReceiptVoucher(voucher)) {
+            return false;
+        }
+
+        return debit != null
+                && debit.compareTo(BigDecimal.ZERO) > 0
+                && (credit == null || credit.compareTo(BigDecimal.ZERO) == 0);
     }
 
     private String displayBankLedgerName(LedgerMaster ledger) {

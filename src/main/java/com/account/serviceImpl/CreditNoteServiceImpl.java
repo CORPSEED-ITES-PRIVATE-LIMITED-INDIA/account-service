@@ -952,8 +952,8 @@
                     : null;
     
             String ledgerName = unitName != null && !unitName.isBlank()
-                    ? "Customer - " + companyName + " - " + unitName
-                    : "Customer - " + companyName;
+                    ?   companyName + " - " + unitName
+                    : companyName;
     
             LedgerMaster ledger = new LedgerMaster();
     
