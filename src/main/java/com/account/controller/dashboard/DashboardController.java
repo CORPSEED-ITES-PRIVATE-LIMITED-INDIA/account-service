@@ -273,6 +273,33 @@ public class DashboardController {
     }
 
 
+    @GetMapping("/invoice-status-overview")
+    @Operation(summary = "Get invoice status overview for dashboard")
+    public ResponseEntity<InvoiceStatusOverviewResponseDto> getInvoiceStatusOverview(
+            @RequestParam Long userId,
+
+            @RequestParam(required = false, defaultValue = "MONTH")
+            String period,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate fromDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate toDate
+    ) {
+        InvoiceStatusOverviewResponseDto response =
+                dashboardService.getInvoiceStatusOverview(
+                        userId,
+                        period,
+                        fromDate,
+                        toDate
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
 
 
 

@@ -71,5 +71,12 @@ public interface DashboardService {
             LocalDate toDate
     );
 
+    InvoiceStatusOverviewResponseDto getInvoiceStatusOverview(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
+
 
 }

@@ -938,5 +938,89 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
 
+    @Override
+    @Transactional(readOnly = true)
+    public InvoiceStatusOverviewResponseDto getInvoiceStatusOverview(
+            Long userId,
+            String period,
+            LocalDate fromDate,
+            LocalDate toDate
+    ) {
+        validateUser(userId);
+
+        DateRange dateRange = resolveDateRange(period, fromDate, toDate);
+
+        List<InvoiceStatusCountProjection> rows =
+                invoiceRepository.findInvoiceStatusOverviewForSalesperson(
+                        userId,
+                        dateRange.fromDate(),
+                        dateRange.toDate()
+                );
+
+        Map<String, Long> countMap = new HashMap<>();
+
+        countMap.put("GENERATED", 0L);
+        countMap.put("PAID", 0L);
+        countMap.put("PARTIALLY_PAID", 0L);
+        countMap.put("OVERDUE", 0L);
+
+        for (InvoiceStatusCountProjection row : rows) {
+            if (row.getStatus() != null) {
+                countMap.put(row.getStatus(), row.getCount() == null ? 0L : row.getCount());
+            }
+        }
+
+        long totalInvoices = countMap.values()
+                .stream()
+                .mapToLong(Long::longValue)
+                .sum();
+
+        List<InvoiceStatusOverviewItemDto> statuses = new ArrayList<>();
+
+        statuses.add(new InvoiceStatusOverviewItemDto(
+                "Generated",
+                countMap.get("GENERATED"),
+                calculateStatusPercentage(countMap.get("GENERATED"), totalInvoices)
+        ));
+
+        statuses.add(new InvoiceStatusOverviewItemDto(
+                "Paid",
+                countMap.get("PAID"),
+                calculateStatusPercentage(countMap.get("PAID"), totalInvoices)
+        ));
+
+        statuses.add(new InvoiceStatusOverviewItemDto(
+                "Partially Paid",
+                countMap.get("PARTIALLY_PAID"),
+                calculateStatusPercentage(countMap.get("PARTIALLY_PAID"), totalInvoices)
+        ));
+
+        statuses.add(new InvoiceStatusOverviewItemDto(
+                "Overdue",
+                countMap.get("OVERDUE"),
+                calculateStatusPercentage(countMap.get("OVERDUE"), totalInvoices)
+        ));
+
+        return InvoiceStatusOverviewResponseDto.builder()
+                .userId(userId)
+                .period(dateRange.period())
+                .fromDate(dateRange.fromDate())
+                .toDate(dateRange.toDate())
+                .totalInvoices(totalInvoices)
+                .statuses(statuses)
+                .build();
+    }
+
+    private Double calculateStatusPercentage(Long count, Long total) {
+        if (count == null || total == null || total == 0) {
+            return 0.0;
+        }
+
+        return BigDecimal.valueOf(count)
+                .multiply(BigDecimal.valueOf(100))
+                .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP)
+                .doubleValue();
+    }
+
 
 }

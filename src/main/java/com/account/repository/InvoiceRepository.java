@@ -3,10 +3,7 @@ package com.account.repository;
 import com.account.domain.invoice.Invoice;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
-import com.account.dto.dashboard.RevenueByServiceItemDto;
-import com.account.dto.dashboard.TopCompanyItemDto;
-import com.account.dto.dashboard.TopConvertedLeadItemDto;
-import com.account.dto.dashboard.TopSellingServiceItemDto;
+import com.account.dto.dashboard.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -364,6 +361,53 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("toDate") LocalDate toDate
     );
 
+
+    @Query(value = """
+    SELECT 
+        bucket.status AS status,
+        COUNT(*) AS count
+    FROM (
+        SELECT 
+            i.id AS invoice_id,
+            CASE
+                WHEN u.outstanding_amount > 0
+                     AND EXISTS (
+                        SELECT 1
+                        FROM payment_receipt pr
+                        WHERE pr.unbilled_invoice_id = u.id
+                          AND pr.is_cancelled = false
+                          AND pr.next_payment_due_date IS NOT NULL
+                          AND pr.next_payment_due_date < CURRENT_DATE()
+                     )
+                THEN 'OVERDUE'
+
+                WHEN COALESCE(u.received_amount, 0) >= COALESCE(u.total_amount, 0)
+                     AND COALESCE(u.total_amount, 0) > 0
+                THEN 'PAID'
+
+                WHEN COALESCE(u.received_amount, 0) > 0
+                     AND COALESCE(u.received_amount, 0) < COALESCE(u.total_amount, 0)
+                THEN 'PARTIALLY_PAID'
+
+                ELSE 'GENERATED'
+            END AS status
+        FROM invoice i
+        JOIN unbilled_invoice u 
+            ON u.id = i.unbilled_invoice_id
+        WHERE i.is_cancelled = false
+          AND u.is_cancelled = false
+          AND i.status IN ('GENERATED', 'E_INVOICE_CONFIRMED')
+          AND u.created_by = :userId
+          AND i.invoice_date >= :fromDate
+          AND i.invoice_date <= :toDate
+    ) bucket
+    GROUP BY bucket.status
+    """, nativeQuery = true)
+    List<InvoiceStatusCountProjection> findInvoiceStatusOverviewForSalesperson(
+            @Param("userId") Long userId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
 
 
 }
