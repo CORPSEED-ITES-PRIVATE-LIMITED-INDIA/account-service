@@ -943,455 +943,6 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
-//    @Override
-//    @Transactional
-//    public UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(
-//            Long unbilledId,
-//            UnbilledInvoiceApprovalRequestDto request) {
-//
-//        log.info("Approving unbilled invoice | unbilledId: {}, approverId: {}",
-//                unbilledId, request.getApproverUserId());
-//
-//        // 1. Fetch unbilled invoice
-//        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-//                .orElseThrow(() -> new ResourceNotFoundException(
-//                        "Unbilled invoice not found with ID: " + unbilledId,
-//                        "UNBILLED_NOT_FOUND",
-//                        "UnbilledInvoice",
-//                        unbilledId
-//                ));
-//
-//        // 2. Validate current status
-//        if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
-//            throw new IllegalStateException(
-//                    "Only PENDING_APPROVAL unbilled invoices can be approved. " +
-//                            "Current status: " + unbilled.getStatus());
-//        }
-//
-//        // 3. Get related entities
-//        Company company = unbilled.getCompany();
-//        CompanyUnit unit = unbilled.getUnit();
-//
-//// Normalize approval decision
-//        String approvalDecision = request.getApprovalRemarks() != null
-//                ? request.getApprovalRemarks().trim().toUpperCase()
-//                : "";
-//
-//        if (!"APPROVED".equals(approvalDecision) && !"REJECTED".equals(approvalDecision)) {
-//            throw new ValidationException(
-//                    "Invalid approval decision. Allowed values are APPROVED or REJECTED",
-//                    "ERR_INVALID_APPROVAL_DECISION",
-//                    "approvalRemarks"
-//            );
-//        }
-//
-//        /*
-//         * Company and Unit approval validation should block only APPROVED flow.
-//         * Rejection should still be allowed even if company/unit is pending.
-//         */
-//        if ("APPROVED".equals(approvalDecision)) {
-//
-//            boolean companyApproved =
-//                    company != null
-//                            && !company.isDeleted()
-//                            && (
-//                            company.isAccountsApproved()
-//                                    || company.getOnboardingStatus() == OnboardingStatus.APPROVED
-//                    );
-//
-//            boolean unitApproved =
-//                    unit != null
-//                            && !unit.isDeleted()
-//                            && (
-//                            unit.isAccountsApproved()
-//                                    || unit.getOnboardingStatus() == OnboardingStatus.APPROVED
-//                    );
-//
-//            if (!companyApproved || !unitApproved) {
-//
-//                String companyStatus = company != null && company.getOnboardingStatus() != null
-//                        ? company.getOnboardingStatus().name()
-//                        : "N/A";
-//
-//                String unitStatus = unit != null && unit.getOnboardingStatus() != null
-//                        ? unit.getOnboardingStatus().name()
-//                        : "N/A";
-//
-//                String companyName = company != null && company.getName() != null
-//                        ? company.getName()
-//                        : "N/A";
-//
-//                String unitName = unit != null && unit.getUnitName() != null
-//                        ? unit.getUnitName()
-//                        : "N/A";
-//
-//                throw new ApprovalBlockedException(
-//                        "Cannot approve unbilled invoice. Company and Company Unit must both be approved before invoice approval. " +
-//                                "Company: " + companyName +
-//                                ", Company Status: " + companyStatus +
-//                                ", Company Accounts Approved: " + companyApproved +
-//                                ". Unit: " + unitName +
-//                                ", Unit Status: " + unitStatus +
-//                                ", Unit Accounts Approved: " + unitApproved + ".",
-//                        companyApproved,
-//                        unitApproved
-//                );
-//            }
-//        }
-//
-//        // 7. Fetch approver
-//        User approver = userRepository.findById(request.getApproverUserId())
-//                .orElseThrow(() -> new ResourceNotFoundException(
-//                        "Approver not found with ID: " + request.getApproverUserId(),
-//                        "USER_NOT_FOUND",
-//                        "User",
-//                        request.getApproverUserId()
-//                ));
-//        Estimate estimate  = unbilled.getEstimate();
-//
-//        // 8. Update unbilled invoice to APPROVED (temporary state)
-////        if ("REJECTED".equals(request.getApprovalRemarks())) {
-//
-//            if ("REJECTED".equals(approvalDecision)) {
-//
-//            unbilled.setStatus(UnbilledStatus.REJECTED);
-//
-//                        //   Mark all pending payments as REJECTED
-//            unbilled.getPayments().forEach(p -> {
-//                if (p.getStatus() == PaymentStatus.PENDING) {
-//                    p.setStatus(PaymentStatus.REJECTED);
-//                }
-//            });
-//
-//            // ❗ Just discard pending amount
-//            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
-//
-//            // ===============================
-//            // DELETE GOVERNMENT FEE ON REJECTION
-//            // ===============================
-//            governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(governmentFee -> {
-//                if (governmentFee.getStatus() == GovernmentFeeStatus.PENDING) {
-//                    log.info("Deleting PENDING government fee {} because parent unbilled {} was rejected",
-//                            governmentFee.getId(), unbilled.getUnbilledNumber());
-//                    governmentFeeRepository.delete(governmentFee);
-//                    unbilled.setGovernmentFeeActive(false);
-//                } else if (governmentFee.getStatus() == GovernmentFeeStatus.APPROVED) {
-//                    log.info("Government fee {} is already APPROVED for unbilled {}. Skipping delete on rejection.",
-//                            governmentFee.getId(), unbilled.getUnbilledNumber());
-//                }
-//            });
-//
-//            // ===============================
-//            // DELETE PENDING TDS ON REJECTION
-//            // ===============================
-//            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
-//                    .ifPresent(tds -> {
-//                        if (tds.getStatus() == TdsStatus.PENDING) {
-//                            log.info(
-//                                    "Deleting PENDING TDS {} because parent unbilled {} was rejected",
-//                                    tds.getId(),
-//                                    unbilled.getUnbilledNumber()
-//                            );
-//
-//                            /*
-//                             * Hard delete because TDS is unique against unbilled_invoice_id.
-//                             * This allows rejected first-payment cycle to register TDS again.
-//                             */
-//                            tdsRegistrationRepository.delete(tds);
-//
-//                            // DISPLAY FLAG RESET
-//                            unbilled.setTdsActive(false);
-//
-//                        } else if (tds.getStatus() == TdsStatus.APPROVED) {
-//                            log.info(
-//                                    "TDS {} is already APPROVED for unbilled {}. Skipping delete on rejection.",
-//                                    tds.getId(),
-//                                    unbilled.getUnbilledNumber()
-//                            );
-//                        }
-//                    });
-//
-//            log.info(
-//                    "Unbilled {} rejected → pending amount discarded, no financial impact",
-//                    unbilled.getUnbilledNumber()
-//            );
-//
-//
-//
-//        } else {
-//
-//            // ===============================
-//            // APPROVED FLOW
-//            // ===============================
-//            unbilled.setStatus(UnbilledStatus.APPROVED);
-//            estimate.setStatus(EstimateStatus.APPROVED);
-//
-//            /*
-//             * Capture PENDING payments before changing status.
-//             * Only newly approved payments should generate receipt vouchers.
-//             */
-//            List<PaymentReceipt> paymentsToApprove = unbilled.getPayments()
-//                    .stream()
-//                    .filter(p -> p.getStatus() == PaymentStatus.PENDING)
-//                    .filter(p -> !p.isCancelled())
-//                    .toList();
-//
-//            if (paymentsToApprove.isEmpty()) {
-//                throw new ValidationException(
-//                        "No pending payment found for approval",
-//                        "ERR_NO_PENDING_PAYMENT_FOUND",
-//                        "payments"
-//                );
-//            }
-//
-//            // Mark only newly pending payments as APPROVED
-//            paymentsToApprove.forEach(p -> p.setStatus(PaymentStatus.APPROVED));
-//
-//            // Move pending amount into actual received amount
-//            BigDecimal updatedReceived = safe2(unbilled.getReceivedAmount())
-//                    .add(safe2(unbilled.getCurrentReceivedAmount()));
-//
-//            unbilled.setReceivedAmount(updatedReceived);
-//
-//            // Reset pending buffer
-//            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
-//
-//            // Recalculate outstanding only from approved amount
-//            unbilled.setOutstandingAmount(
-//                    safe2(unbilled.getTotalAmount())
-//                            .subtract(updatedReceived)
-//                            .max(BigDecimal.ZERO)
-//                            .setScale(2, RoundingMode.HALF_UP)
-//            );
-//
-//            /*
-//             * Create receipt voucher only after Accounts approval.
-//             *
-//             * Dr Bank Ledger
-//             * Cr Customer Advance Ledger
-//             */
-//            for (PaymentReceipt payment : paymentsToApprove) {
-//                postReceiptVoucherForApprovedPayment(
-//                        unbilled,
-//                        payment,
-//                        approver
-//                );
-//            }
-//
-//            // ===============================
-//            // APPROVE GOVERNMENT FEE IF EXISTS
-//            // ===============================
-//            governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(governmentFee -> {
-//                governmentFee.setStatus(GovernmentFeeStatus.APPROVED);
-//                governmentFeeRepository.save(governmentFee);
-//                log.info("Government fee {} approved for unbilled {}",
-//                        governmentFee.getId(), unbilled.getUnbilledNumber());
-//            });
-//
-//            // ===============================
-//            // APPROVE TDS IF EXISTS
-//            // ===============================
-//            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
-//                    .ifPresent(tds -> {
-//                        tds.setStatus(TdsStatus.APPROVED);
-//                        tds.setUpdatedBy(approver);
-//                        tdsRegistrationRepository.save(tds);
-//
-//                        unbilled.setTdsActive(true);
-//
-//                        log.info("TDS {} approved for unbilled {}",
-//                                tds.getId(), unbilled.getUnbilledNumber());
-//                    });
-//
-//            log.info(
-//                    "Unbilled {} approved → received={} outstanding={}",
-//                    unbilled.getUnbilledNumber(),
-//                    unbilled.getReceivedAmount(),
-//                    unbilled.getOutstandingAmount()
-//            );
-//        }
-//
-//        estimateRepository.save(estimate);
-//        unbilled.setApprovedBy(approver);
-//        unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
-//        unbilled.setApprovalRemarks(request.getApprovalRemarks());
-//
-//        // ===============================
-//        // EARLY RETURN FOR REJECTION
-//        // ===============================
-//        if ("REJECTED".equals(request.getApprovalRemarks())) {
-//            unbilledInvoiceRepository.save(unbilled);
-//
-//            pushPaymentApprovalDecisionNotificationToSalesperson(
-//                    unbilled,
-//                    estimate,
-//                    approver,
-//                    false,
-//                    request.getApprovalRemarks()
-//            );
-//
-//            UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
-//
-//            response.setName(
-//                    estimate != null ? estimate.getSolutionName() :
-//                            (company != null ? company.getName() + " - Project" : "Unnamed Project")
-//            );
-//
-//            response.setProjectNo(generateProjectNumber());
-//
-//            response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-//            response.setSalesPersonName(
-//                    unbilled.getCreatedBy() != null
-//                            ? (unbilled.getCreatedBy().getFullName() != null
-//                            ? unbilled.getCreatedBy().getFullName()
-//                            : unbilled.getCreatedBy().getEmail())
-//                            : null
-//            );
-//
-//            response.setProductId(estimate != null ? estimate.getSolutionId() : null);
-//            response.setCompanyId(company != null ? company.getId() : null);
-//            response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
-//            response.setUnbilledNumber(unbilled.getUnbilledNumber());
-//            response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
-//            response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
-//            response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
-//            response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
-//            response.setLeadId(estimate != null ? estimate.getLeadId() : null);
-//            response.setDate(LocalDate.now());
-//            response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
-//            response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
-//            response.setPaymentTypeId(null);
-//            response.setApprovedById(approver.getId());
-//            response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-//            response.setUpdatedBy(approver.getId());
-//            response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
-//
-//            log.info("Skipping invoice generation and operation sync because invoice is REJECTED");
-//            return response;
-//        }
-//
-//        log.info("========== PAYMENT DEBUG START ==========");
-//
-//        List<PaymentReceipt> allPayments = unbilled.getPayments();
-//
-//        log.info("Total payments: {}", allPayments.size());
-//
-//        allPayments.forEach(p -> {
-//            log.info("Payment -> id: {}, status: {}, amount: {}, createdAt: {}",
-//                    p.getId(),
-//                    p.getStatus(),
-//                    p.getAmount(),
-//                    p.getCreatedAt());
-//        });
-//
-//
-//        List<PaymentReceipt> pendingPayments = allPayments.stream()
-//                .filter(p -> p.getStatus() == PaymentStatus.PENDING)
-//                .toList();
-//
-//        log.info("Pending payments count: {}", pendingPayments.size());
-//
-//        pendingPayments.forEach(p -> {
-//            log.info("PENDING -> id: {}, createdAt: {}", p.getId(), p.getCreatedAt());
-//        });
-//
-//        List<PaymentReceipt> approvedPayments = allPayments.stream()
-//                .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
-//                .toList();
-//
-//        log.info("Approved payments count: {}", approvedPayments.size());
-//
-//        approvedPayments.forEach(p -> {
-//            log.info("APPROVED -> id: {}, createdAt: {}", p.getId(), p.getCreatedAt());
-//        });
-//
-//        log.info("========== PAYMENT DEBUG END ==========");
-//
-//        // 9. Identify the first (triggering) payment receipt
-//        PaymentReceipt triggeringReceipt = unbilled.getPayments().stream()
-//                .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
-//                .filter(p -> p.getCreatedAt() != null) // IMPORTANT
-//                .max(Comparator.comparing(PaymentReceipt::getCreatedAt))
-//                .orElseThrow(() -> new IllegalStateException(
-//                        "No valid APPROVED payments found for unbilled invoice: "
-//                                + unbilled.getUnbilledNumber()));
-//
-//        // 10. Generate actual GST invoice
-////        if (request.getApprovalRemarks().equals("APPROVED")) {
-//        if ("APPROVED".equals(approvalDecision)) {
-//            triggeringReceipt = unbilled.getPayments().stream()
-//                    .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
-//                    .filter(p -> p.getCreatedAt() != null)
-//                    .max(Comparator.comparing(PaymentReceipt::getCreatedAt))
-//                    .orElseThrow(() -> new IllegalStateException(
-//                            "No valid APPROVED payments found for unbilled invoice: "
-//                                    + unbilled.getUnbilledNumber()));
-//            unbilled.getPayments().stream()
-//                    .filter(p -> p.getStatus() == PaymentStatus.APPROVED)
-//                    .filter(p -> !invoiceRepository.existsByTriggeringPayment(p))
-//                    .forEach(p -> {
-//                        invoiceService.generateInvoiceForPayment(unbilled, p, approver);
-//                    });
-//        }
-//
-//        unbilledInvoiceRepository.save(unbilled);
-//
-//        pushPaymentApprovalDecisionNotificationToSalesperson(
-//                unbilled,
-//                estimate,
-//                approver,
-//                true,
-//                request.getApprovalRemarks()
-//        );
-//
-//
-//        UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
-//
-//        // Project / Solution name fallback logic
-//        response.setName(
-//                estimate != null ? estimate.getSolutionName() :
-//                        (company != null ? company.getName() + " - Project" : "Unnamed Project")
-//        );
-//
-//        response.setProjectNo(generateProjectNumber());
-//
-//        response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-//        response.setSalesPersonName(
-//                unbilled.getCreatedBy() != null
-//                        ? (unbilled.getCreatedBy().getFullName() != null
-//                        ? unbilled.getCreatedBy().getFullName()
-//                        : unbilled.getCreatedBy().getEmail())
-//                        : null
-//        );
-//
-//        response.setProductId(estimate != null ? estimate.getSolutionId() : null);
-//        response.setCompanyId(company != null ? company.getId() : null);
-//        response.setUnbilledNumber(unbilled.getUnbilledNumber());
-//        response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
-//        response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
-//        response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
-//        response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
-//        response.setLeadId(estimate != null ? estimate.getLeadId() : null);
-//        response.setDate(LocalDate.now());
-//        response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
-//        response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
-//        response.setPaymentTypeId(
-//                triggeringReceipt != null && triggeringReceipt.getPaymentType() != null
-//                        ? triggeringReceipt.getPaymentType().getId()
-//                        : null
-//        );
-//        response.setApprovedById(approver.getId());
-//        response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
-//        response.setUpdatedBy(approver.getId());
-//        response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
-//
-//        System.out.println("response.getContactId(): "+response.getContactId());
-//
-//
-//
-//        return response;
-//    }
-
     @Override
     @Transactional
     public UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(
@@ -2907,11 +2458,20 @@ public class PaymentServiceImpl implements PaymentService {
 
         LedgerMaster bankLedger = paymentReceipt.getBankLedger();
 
-        LedgerMaster customerAdvanceLedger = getOrCreateCustomerAdvanceLedger(
+        /*
+         * Requirement:
+         * On payment approval, received payment should be posted
+         * against Customer Ledger under SUNDRY_DEBTORS,
+         * not Customer Advance under CURRENT_LIABILITIES.
+         */
+        LedgerMaster customerLedger = getOrCreateCustomerLedger(
                 unbilled,
                 approver
         );
 
+        /*
+         * Dr Bank / Cash Ledger
+         */
         AccountingVoucherEntryRequestDto bankDebitEntry =
                 AccountingVoucherEntryRequestDto.builder()
                         .ledgerId(bankLedger.getId())
@@ -2920,12 +2480,15 @@ public class PaymentServiceImpl implements PaymentService {
                         .narration("Payment received in " + bankLedger.getLedgerName())
                         .build();
 
-        AccountingVoucherEntryRequestDto customerAdvanceCreditEntry =
+        /*
+         * Cr Customer Ledger / Sundry Debtors
+         */
+        AccountingVoucherEntryRequestDto customerCreditEntry =
                 AccountingVoucherEntryRequestDto.builder()
-                        .ledgerId(customerAdvanceLedger.getId())
+                        .ledgerId(customerLedger.getId())
                         .debitAmount(BigDecimal.ZERO)
                         .creditAmount(paymentReceipt.getAmount())
-                        .narration("Customer advance received")
+                        .narration("Payment received from customer")
                         .build();
 
         AccountingVoucherRequestDto voucherRequest =
@@ -2946,7 +2509,7 @@ public class PaymentServiceImpl implements PaymentService {
                         )
                         .entries(List.of(
                                 bankDebitEntry,
-                                customerAdvanceCreditEntry
+                                customerCreditEntry
                         ))
                         .build();
 
@@ -2954,13 +2517,14 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
-    private LedgerMaster getOrCreateCustomerAdvanceLedger(
+
+    private LedgerMaster getOrCreateCustomerLedger(
             UnbilledInvoice unbilled,
             User createdBy
     ) {
         if (unbilled == null) {
             throw new ValidationException(
-                    "Unbilled invoice is required to create customer advance ledger",
+                    "Unbilled invoice is required to create customer ledger",
                     "ERR_UNBILLED_REQUIRED_FOR_LEDGER",
                     "unbilled"
             );
@@ -2972,7 +2536,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (company == null || company.getId() == null) {
             throw new ValidationException(
-                    "Company is required to create customer advance ledger",
+                    "Company is required to create customer ledger",
                     "ERR_COMPANY_REQUIRED_FOR_LEDGER",
                     "companyId"
             );
@@ -2988,13 +2552,13 @@ public class PaymentServiceImpl implements PaymentService {
                     .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
                             companyId,
                             unitId,
-                            LedgerType.CUSTOMER_ADVANCE
+                            LedgerType.CUSTOMER
                     );
         } else {
             existingLedger = ledgerMasterRepository
                     .findByCompanyIdAndLedgerTypeAndDeletedFalse(
                             companyId,
-                            LedgerType.CUSTOMER_ADVANCE
+                            LedgerType.CUSTOMER
                     );
         }
 
@@ -3002,9 +2566,11 @@ public class PaymentServiceImpl implements PaymentService {
             return existingLedger.get();
         }
 
-
-        LedgerGroup currentLiabilityGroup =
-                getOrCreateLedgerGroupByType(LedgerGroupType.CURRENT_LIABILITIES);
+        /*
+         * CUSTOMER ledger must be created under SUNDRY_DEBTORS.
+         */
+        LedgerGroup sundryDebtorsGroup =
+                getOrCreateLedgerGroupByType(LedgerGroupType.SUNDRY_DEBTORS);
 
         String companyName = company.getName() != null && !company.getName().trim().isEmpty()
                 ? company.getName().trim()
@@ -3014,15 +2580,21 @@ public class PaymentServiceImpl implements PaymentService {
                 ? unit.getUnitName().trim()
                 : null;
 
-        String ledgerName = companyName != null ? companyName : "";
+        /*
+         * Keep this name different from Customer Advance ledger name
+         * because ledger_name is unique.
+         */
+        String ledgerName = unitName != null && !unitName.isBlank()
+                ? "Customer Ledger - " + companyName + " - " + unitName
+                : "Customer Ledger - " + companyName;
 
         LedgerMaster ledger = new LedgerMaster();
 
         ledger.setLedgerName(ledgerName);
-        ledger.setLedgerCode(generateLedgerCode("CUST-ADV"));
+        ledger.setLedgerCode(generateLedgerCode("CUST"));
 
-        ledger.setLedgerType(LedgerType.CUSTOMER_ADVANCE);
-        ledger.setLedgerGroup(currentLiabilityGroup);
+        ledger.setLedgerType(LedgerType.CUSTOMER);
+        ledger.setLedgerGroup(sundryDebtorsGroup);
 
         ledger.setCompany(company);
 
@@ -3037,11 +2609,11 @@ public class PaymentServiceImpl implements PaymentService {
         ledger.setGstNo(unit != null ? unit.getGstNo() : null);
         ledger.setPanNo(company.getPanNo());
 
-        ledger.setOpeningBalance(BigDecimal.ZERO);
-        ledger.setOpeningBalanceType(DebitCredit.CREDIT);
+        ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        ledger.setOpeningBalanceType(DebitCredit.DEBIT);
 
-        ledger.setCurrentBalance(BigDecimal.ZERO);
-        ledger.setCurrentBalanceType(DebitCredit.CREDIT);
+        ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        ledger.setCurrentBalanceType(DebitCredit.DEBIT);
 
         ledger.setSystemCreated(true);
         ledger.setActive(true);
@@ -3054,6 +2626,8 @@ public class PaymentServiceImpl implements PaymentService {
 
         return ledgerMasterRepository.save(ledger);
     }
+
+
     private LedgerGroup getOrCreateLedgerGroupByType(LedgerGroupType groupType) {
 
         if (groupType == null) {
