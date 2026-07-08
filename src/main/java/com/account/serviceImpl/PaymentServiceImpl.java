@@ -2585,8 +2585,8 @@ public class PaymentServiceImpl implements PaymentService {
          * because ledger_name is unique.
          */
         String ledgerName = unitName != null && !unitName.isBlank()
-                ? "Customer Ledger - " + companyName + " - " + unitName
-                : "Customer Ledger - " + companyName;
+                ?  companyName + " - " + unitName
+                :   companyName;
 
         LedgerMaster ledger = new LedgerMaster();
 
