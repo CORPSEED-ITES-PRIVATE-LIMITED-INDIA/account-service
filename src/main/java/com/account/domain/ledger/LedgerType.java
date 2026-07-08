@@ -31,7 +31,9 @@ public enum LedgerType {
     INPUT_IGST,
     INPUT_CGST,
     INPUT_SGST,
+
     TDS_RECEIVABLE,
+    TDS_PAYABLE,
 
     // Expenses
     EXPENSE,

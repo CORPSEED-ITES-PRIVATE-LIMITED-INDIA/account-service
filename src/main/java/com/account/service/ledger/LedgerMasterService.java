@@ -18,8 +18,6 @@ public interface LedgerMasterService {
 
     LedgerMasterResponseDto getLedgerById(Long id);
 
-    List<LedgerMasterResponseDto> getActiveLedgers();
-
     void deleteLedger(Long id);
 
     LedgerStatementResponseDto getLedgerTransactions(

@@ -224,16 +224,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 });
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<LedgerMasterResponseDto> getActiveLedgers() {
-
-        return ledgerMasterRepository.findByDeletedFalseAndActiveTrueOrderByLedgerNameAsc()
-                .stream()
-                .map(this::mapToResponse)
-                .toList();
-    }
-
 
     private BigDecimal moneyForStatement(BigDecimal value) {
         return value == null
@@ -522,7 +512,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     OUTPUT_IGST,
                     OUTPUT_CGST,
                     OUTPUT_SGST,
-                    TDS_RECEIVABLE -> LedgerGroupType.DUTIES_AND_TAXES;
+                    INPUT_IGST,
+                    INPUT_CGST,
+                    INPUT_SGST,
+                    TDS_RECEIVABLE,
+                    TDS_PAYABLE -> LedgerGroupType.DUTIES_AND_TAXES;
 
             case EXPENSE,
                     ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;

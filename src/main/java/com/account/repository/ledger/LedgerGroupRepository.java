@@ -75,4 +75,7 @@ public interface LedgerGroupRepository extends JpaRepository<LedgerGroup, Long>,
     Optional<LedgerGroup> findByGroupTypeAndDeletedFalse(LedgerGroupType groupType);
 
 
+    Optional<LedgerGroup> findByGroupType(LedgerGroupType groupType);
+
+
 }

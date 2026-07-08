@@ -38,6 +38,7 @@ import java.util.List;
 @ToString(exclude = {"estimate", "payments", "taxInvoices"})
 public class UnbilledInvoice {
 
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

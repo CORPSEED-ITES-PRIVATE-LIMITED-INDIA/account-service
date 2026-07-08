@@ -21,8 +21,6 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
 
     boolean existsByLedgerCodeIgnoreCase(String ledgerCode);
 
-    List<LedgerMaster> findByDeletedFalseAndActiveTrueOrderByLedgerNameAsc();
-
     List<LedgerMaster> findByDeletedFalseAndActiveTrueAndLedgerTypeInOrderByLedgerNameAsc(
             Collection<LedgerType> ledgerTypes
     );
@@ -61,5 +59,9 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
             @Param("ledgerTypes") List<LedgerType> ledgerTypes
     );
 
+
+    Optional<LedgerMaster> findByLedgerNameIgnoreCase(String ledgerName);
+
+    Optional<LedgerMaster> findByLedgerCodeIgnoreCase(String ledgerCode);
 
 }
