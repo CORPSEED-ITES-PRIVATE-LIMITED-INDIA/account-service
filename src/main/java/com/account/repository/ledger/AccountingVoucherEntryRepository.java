@@ -63,6 +63,7 @@ public interface AccountingVoucherEntryRepository extends JpaRepository<Accounti
             @Param("status") VoucherStatus status
     );
 
+
     @Query("""
         SELECT e
         FROM AccountingVoucherEntry e
@@ -77,6 +78,7 @@ public interface AccountingVoucherEntryRepository extends JpaRepository<Accounti
     );
 
     List<AccountingVoucherEntry> findByVoucherId(Long voucherId);
+
 
 
 }
