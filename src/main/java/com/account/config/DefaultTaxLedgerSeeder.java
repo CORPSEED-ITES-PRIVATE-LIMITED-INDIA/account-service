@@ -34,13 +34,13 @@ public class DefaultTaxLedgerSeeder implements ApplicationRunner {
                         "TDS Receivable",
                         "LED-TDS-RECEIVABLE",
                         LedgerType.TDS_RECEIVABLE,
-                        DebitCredit.CREDIT
+                        DebitCredit.DEBIT
                 ),
                 new DefaultLedger(
                         "TDS Payable",
                         "LED-TDS-PAYABLE",
                         LedgerType.TDS_PAYABLE,
-                        DebitCredit.DEBIT
+                        DebitCredit.CREDIT
                 ),
                 new DefaultLedger(
                         "Output CGST",
