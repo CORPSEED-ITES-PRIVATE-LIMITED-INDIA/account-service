@@ -21,7 +21,8 @@ import java.util.UUID;
         name = "tds_registration",
         indexes = {
                 @Index(name = "idx_tds_public_uuid_unique", columnList = "public_uuid", unique = true),
-                @Index(name = "idx_tds_unbilled_unique", columnList = "unbilled_invoice_id", unique = true),
+                @Index(name = "idx_tds_unbilled_id", columnList = "unbilled_invoice_id"),
+                @Index(name = "idx_tds_payment_receipt_id", columnList = "payment_receipt_id"),
                 @Index(name = "idx_tds_estimate_id", columnList = "estimate_id"),
                 @Index(name = "idx_tds_status", columnList = "status")
         }
@@ -48,10 +49,6 @@ public class TdsRegistration {
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "company_id", nullable = false)
     private Company company;
-
-    @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "unbilled_invoice_id", nullable = false, unique = true)
-    private UnbilledInvoice unbilledInvoice;
 
     @Column(name = "tds_percentage", precision = 5, scale = 2, nullable = false)
     private BigDecimal tdsPercentage;
@@ -85,5 +82,13 @@ public class TdsRegistration {
 
     @LastModifiedDate
     private LocalDateTime updatedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "unbilled_invoice_id", nullable = false)
+    private UnbilledInvoice unbilledInvoice;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "payment_receipt_id")
+    private PaymentReceipt paymentReceipt;
 
 }
