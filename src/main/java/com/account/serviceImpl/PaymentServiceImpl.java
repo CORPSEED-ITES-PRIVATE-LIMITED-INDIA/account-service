@@ -342,6 +342,25 @@ public class PaymentServiceImpl implements PaymentService {
                 request, estimate, unbilled
         );
 
+        BigDecimal outstandingBeforeThisPayment = safe2(unbilled.getOutstandingAmount());
+
+        BigDecimal settlementAmountForThisRegistration = reqAmount
+                .add(tdsAmountForThisRegistration)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (settlementAmountForThisRegistration.compareTo(outstandingBeforeThisPayment) > 0) {
+            throw new ValidationException(
+                    "Payment settlement exceeds outstanding amount. Bank amount: ₹"
+                            + reqAmount
+                            + ", TDS amount: ₹" + tdsAmountForThisRegistration
+                            + ", settlement amount: ₹" + settlementAmountForThisRegistration
+                            + ", outstanding amount: ₹" + outstandingBeforeThisPayment
+                            + ". Please reduce bank amount or do not apply TDS.",
+                    "ERR_SETTLEMENT_EXCEEDS_OUTSTANDING",
+                    "amount"
+            );
+        }
+
         // =====================================================
         // 13. VALIDATE PAYMENT RULES (including TDS settlement)
         // =====================================================
