@@ -35,6 +35,7 @@ public interface LedgerMasterService {
             int size
     );
 
+
     Page<LedgerMasterResponseDto> getLedgers(String search, LedgerType ledgerType, Long ledgerGroupId,
                                              LedgerGroupType ledgerGroupType, Long companyId, Long unitId, Boolean active, int i, int size);
 
