@@ -80,5 +80,7 @@ public interface AccountingVoucherEntryRepository extends JpaRepository<Accounti
     List<AccountingVoucherEntry> findByVoucherId(Long voucherId);
 
 
+    List<AccountingVoucherEntry> findByVoucherIdOrderByDisplayOrderAsc(Long voucherId);
+
 
 }

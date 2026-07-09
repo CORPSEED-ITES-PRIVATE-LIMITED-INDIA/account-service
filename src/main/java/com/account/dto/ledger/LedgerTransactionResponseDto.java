@@ -8,6 +8,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 @Getter
 @Setter
@@ -48,11 +49,7 @@ public class LedgerTransactionResponseDto {
 
     private String narration;
 
-    private BigDecimal actualBankReceivedAmount;
-    private BigDecimal tdsAmount;
-    private BigDecimal settlementAmount;
 
     // Only for sales invoice entry
     private LedgerTransactionGstDetailsDto gstDetails;
-
 }

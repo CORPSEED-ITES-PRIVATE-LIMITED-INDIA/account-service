@@ -884,55 +884,54 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     otherEntriesCache
             );
 
-            BigDecimal actualBankReceivedAmount = resolveBankReceivedAmount(voucher, otherEntriesCache);
-            BigDecimal tdsAmount = resolveTdsAmount(voucher, otherEntriesCache);
-            BigDecimal settlementAmount = resolveSettlementAmount(voucher, otherEntriesCache);
-
-
             LedgerTransactionGstDetailsDto gstDetails = salesInvoice != null
                     ? buildGstDetails(salesInvoice)
                     : null;
+            List<LedgerTransactionResponseDto> lineItems = buildReceiptLineItems(
+                    ledger,
+                    voucher,
+                    voucherEntriesCache
+            );
 
-            allRows.add(
-                    LedgerTransactionResponseDto.builder()
-                            .entryId(entry.getId())
 
-                            .voucherId(voucher != null ? voucher.getId() : null)
-                            .voucherNumber(voucher != null ? voucher.getVoucherNumber() : null)
-                            .voucherType(voucher != null ? voucher.getVoucherType() : null)
-                            .voucherDate(voucher != null ? voucher.getVoucherDate() : null)
+            LedgerTransactionResponseDto mainRow = LedgerTransactionResponseDto.builder()
+                    .entryId(entry.getId())
 
-                            .sourceType(voucher != null ? voucher.getSourceType() : null)
-                            .sourceId(voucher != null ? voucher.getSourceId() : null)
-                            .status(voucher != null ? voucher.getStatus() : null)
+                    .voucherId(voucher != null ? voucher.getId() : null)
+                    .voucherNumber(voucher != null ? voucher.getVoucherNumber() : null)
+                    .voucherType(voucher != null ? voucher.getVoucherType() : null)
+                    .voucherDate(voucher != null ? voucher.getVoucherDate() : null)
 
-                            .ledgerId(ledger.getId())
-                            .ledgerName(ledger.getLedgerName())
-                            .ledgerCode(ledger.getLedgerCode())
+                    .sourceType(voucher != null ? voucher.getSourceType() : null)
+                    .sourceId(voucher != null ? voucher.getSourceId() : null)
+                    .status(voucher != null ? voucher.getStatus() : null)
 
-                            .debitAmount(debit)
-                            .creditAmount(credit)
+                    .ledgerId(ledger.getId())
+                    .ledgerName(ledger.getLedgerName())
+                    .ledgerCode(ledger.getLedgerCode())
 
-                            .runningBalanceAmount(absAmountForStatement(runningSignedBalance))
-                            .runningBalanceType(balanceTypeForStatement(runningSignedBalance))
+                    .debitAmount(debit)
+                    .creditAmount(credit)
 
-                            .narration(narration)
-                            .particulars(particulars)
-                            .serviceName(serviceName)
-                            .bankName(receiptBankName)
-                            .actualBankReceivedAmount(actualBankReceivedAmount)
-                            .tdsAmount(tdsAmount)
-                            .settlementAmount(settlementAmount)
-                            .gstDetails(gstDetails)
+                    .runningBalanceAmount(absAmountForStatement(runningSignedBalance))
+                    .runningBalanceType(balanceTypeForStatement(runningSignedBalance))
 
-//                            /*
-//                             * GST details only for sales invoice voucher rows.
-//                             * Receipt / payment / journal rows will return null.
-//                             */
+                    .narration(narration)
+                    .particulars(particulars)
+                    .serviceName(serviceName)
+                    .bankName(receiptBankName)
+                    .gstDetails(gstDetails)
 
-                            .gstDetails(gstDetails)
+                    .build();
 
-                            .build()
+            allRows.add(mainRow);
+
+            allRows.addAll(
+                    buildAdditionalReceiptRows(
+                            ledger,
+                            voucher,
+                            otherEntriesCache
+                    )
             );
         }
 
@@ -1542,69 +1541,12 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .toList();
     }
 
-    private BigDecimal resolveBankReceivedAmount(
-            AccountingVoucher voucher,
-            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
-    ) {
-        if (!isReceiptVoucher(voucher)) {
-            return null;
-        }
 
-        List<AccountingVoucherEntry> entries = getVoucherEntries(
-                voucher,
-                otherEntriesCache
-        );
 
-        return entries.stream()
-                .filter(entry -> entry.getLedger() != null)
-                .filter(entry -> isBankOrCashLedger(entry.getLedger()))
-                .map(AccountingVoucherEntry::getDebitAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal resolveTdsAmount(
-            AccountingVoucher voucher,
-            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
-    ) {
-        if (!isReceiptVoucher(voucher)) {
-            return null;
-        }
-
-        List<AccountingVoucherEntry> entries = getVoucherEntries(
-                voucher,
-                otherEntriesCache
-        );
-
-        return entries.stream()
-                .filter(entry -> entry.getLedger() != null)
-                .filter(entry -> entry.getLedger().getLedgerType() == LedgerType.TDS_RECEIVABLE)
-                .map(AccountingVoucherEntry::getDebitAmount)
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private BigDecimal resolveSettlementAmount(
-            AccountingVoucher voucher,
-            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
-    ) {
-        BigDecimal bankReceived = resolveBankReceivedAmount(voucher, otherEntriesCache);
-        BigDecimal tdsAmount = resolveTdsAmount(voucher, otherEntriesCache);
-
-        if (bankReceived == null && tdsAmount == null) {
-            return null;
-        }
-
-        return safeMoney(bankReceived)
-                .add(safeMoney(tdsAmount))
-                .setScale(2, RoundingMode.HALF_UP);
-    }
 
     private List<AccountingVoucherEntry> getVoucherEntries(
             AccountingVoucher voucher,
-            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+            Map<Long, List<AccountingVoucherEntry>> voucherEntriesCache
     ) {
         if (voucher == null || voucher.getId() == null) {
             return new ArrayList<>();
@@ -1612,19 +1554,185 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         Long voucherId = voucher.getId();
 
-        if (otherEntriesCache.containsKey(voucherId)) {
-            return otherEntriesCache.get(voucherId);
+        if (voucherEntriesCache.containsKey(voucherId)) {
+            return voucherEntriesCache.get(voucherId);
         }
 
         List<AccountingVoucherEntry> entries =
-                accountingVoucherEntryRepository.findByVoucherId(voucherId);
+                accountingVoucherEntryRepository.findByVoucherIdOrderByDisplayOrderAsc(voucherId);
 
-        otherEntriesCache.put(voucherId, entries);
+        voucherEntriesCache.put(voucherId, entries);
 
         return entries;
     }
 
 
+    private List<LedgerTransactionResponseDto> buildReceiptLineItems(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> voucherEntriesCache
+    ) {
+        if (currentLedger == null || currentLedger.getLedgerType() == null) {
+            return new ArrayList<>();
+        }
+
+        if (!isReceiptVoucher(voucher)) {
+            return new ArrayList<>();
+        }
+
+        /*
+         * Show lineItems only inside CUSTOMER / CUSTOMER_ADVANCE ledger.
+         *
+         * Main row:
+         *      Customer Cr 59000
+         *
+         * lineItems:
+         *      Bank Dr 54000
+         *      TDS Receivable Dr 5000
+         */
+        if (currentLedger.getLedgerType() != LedgerType.CUSTOMER
+                && currentLedger.getLedgerType() != LedgerType.CUSTOMER_ADVANCE) {
+            return new ArrayList<>();
+        }
+
+        List<AccountingVoucherEntry> voucherEntries = getVoucherEntries(
+                voucher,
+                voucherEntriesCache
+        );
+
+        if (voucherEntries == null || voucherEntries.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String companyName = displayPartyLedgerName(currentLedger);
+
+        return voucherEntries.stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> entry.getLedger().getId() != null)
+                .filter(entry -> !entry.getLedger().getId().equals(currentLedger.getId()))
+                .filter(entry ->
+                        isBankOrCashLedger(entry.getLedger())
+                                || entry.getLedger().getLedgerType() == LedgerType.TDS_RECEIVABLE
+                )
+                .map(entry -> {
+                    LedgerMaster lineLedger = entry.getLedger();
+
+                    String lineParticulars = companyName;
+
+                    String lineBankName = isBankOrCashLedger(lineLedger)
+                            ? displayBankLedgerName(lineLedger)
+                            : null;
+
+                    return LedgerTransactionResponseDto.builder()
+                            .entryId(entry.getId())
+
+                            .voucherId(voucher.getId())
+                            .voucherNumber(voucher.getVoucherNumber())
+                            .voucherType(voucher.getVoucherType())
+                            .voucherDate(voucher.getVoucherDate())
+
+                            .sourceType(voucher.getSourceType())
+                            .sourceId(voucher.getSourceId())
+                            .status(voucher.getStatus())
+
+                            .ledgerId(lineLedger.getId())
+                            .ledgerName(lineLedger.getLedgerName())
+                            .ledgerCode(lineLedger.getLedgerCode())
+
+                            .debitAmount(moneyForStatement(entry.getDebitAmount()))
+                            .creditAmount(moneyForStatement(entry.getCreditAmount()))
+
+                            .runningBalanceAmount(null)
+                            .runningBalanceType(null)
+
+                            .particulars(lineParticulars)
+                            .serviceName(null)
+                            .bankName(lineBankName)
+
+                            .narration(
+                                    entry.getNarration() != null && !entry.getNarration().trim().isEmpty()
+                                            ? entry.getNarration()
+                                            : voucher.getNarration()
+                            )
+
+                            .gstDetails(null)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
+
+    private List<LedgerTransactionResponseDto> buildAdditionalReceiptRows(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        if (currentLedger == null || currentLedger.getLedgerType() == null) {
+            return new ArrayList<>();
+        }
+
+        if (!isReceiptVoucher(voucher)) {
+            return new ArrayList<>();
+        }
+
+        if (currentLedger.getLedgerType() != LedgerType.CUSTOMER
+                && currentLedger.getLedgerType() != LedgerType.CUSTOMER_ADVANCE) {
+            return new ArrayList<>();
+        }
+
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger.getId(),
+                otherEntriesCache
+        );
+
+        if (otherEntries == null || otherEntries.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        String companyName = displayPartyLedgerName(currentLedger);
+
+        return otherEntries.stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> entry.getLedger().getLedgerType() == LedgerType.TDS_RECEIVABLE)
+                .filter(entry -> moneyForStatement(entry.getDebitAmount()).compareTo(BigDecimal.ZERO) > 0)
+                .map(entry -> {
+                    LedgerMaster tdsLedger = entry.getLedger();
+
+                    return LedgerTransactionResponseDto.builder()
+                            .entryId(entry.getId())
+
+                            .voucherId(voucher.getId())
+                            .voucherNumber(voucher.getVoucherNumber())
+                            .voucherType(voucher.getVoucherType())
+                            .voucherDate(voucher.getVoucherDate())
+
+                            .sourceType(voucher.getSourceType())
+                            .sourceId(voucher.getSourceId())
+                            .status(voucher.getStatus())
+
+                            .ledgerId(tdsLedger.getId())
+                            .ledgerName(tdsLedger.getLedgerName())
+                            .ledgerCode(tdsLedger.getLedgerCode())
+
+                            .debitAmount(moneyForStatement(entry.getDebitAmount()))
+                            .creditAmount(moneyForStatement(entry.getCreditAmount()))
+
+                            .runningBalanceAmount(null)
+                            .runningBalanceType(null)
+
+                            .particulars(companyName)
+                            .serviceName(null)
+                            .bankName(null)
+                            .narration(
+                                    entry.getNarration() != null && !entry.getNarration().trim().isEmpty()
+                                            ? entry.getNarration()
+                                            : "TDS deducted by customer"
+                            )
+                            .gstDetails(null)
+                            .build();
+                })
+                .collect(Collectors.toList());
+    }
 
 
 
