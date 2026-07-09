@@ -1701,17 +1701,25 @@ public class PaymentServiceImpl implements PaymentService {
                         ? estimate.getSolutionName()
                         : (company != null ? company.getName() + " - Project" : "Unnamed Project")
         );
-
-        // ==================== TDS RESPONSE DTO ====================
+// ==================== TDS RESPONSE DTO ====================
         if (Boolean.TRUE.equals(unbilled.isTdsActive())) {
-            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
-                    .ifPresent(tds -> {
-                        dto.setTdsResponseDto(mapToTdsResponseDtoForSummary(tds));
-                    });
+            List<TdsRegistration> tdsList =
+                    tdsRegistrationRepository.findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled);
+
+            tdsList.stream()
+                    .filter(tds -> tds.getStatus() == TdsStatus.PENDING || tds.getStatus() == TdsStatus.APPROVED)
+                    .max(Comparator.comparing(
+                            TdsRegistration::getCreatedAt,
+                            Comparator.nullsLast(Comparator.naturalOrder())
+                    ))
+                    .ifPresentOrElse(
+                            tds -> dto.setTdsResponseDto(mapToTdsResponseDtoForSummary(tds)),
+                            () -> dto.setTdsResponseDto(null)
+                    );
         } else {
             dto.setTdsResponseDto(null);
         }
-        // =========================================================
+// =========================================================
 
         return dto;
     }
@@ -2571,7 +2579,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    @Transactional
+    @Transactional(readOnly = true)
     public TdsResponseDto getTds(Long unbilledId, Long estimateId) {
 
         if (unbilledId == null && estimateId == null) {
@@ -2582,7 +2590,7 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        TdsRegistration tds;
+        List<TdsRegistration> tdsList;
 
         if (unbilledId != null) {
             UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
@@ -2593,13 +2601,8 @@ public class PaymentServiceImpl implements PaymentService {
                             unbilledId
                     ));
 
-            tds = tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "TDS not found for unbilled invoice ID: " + unbilledId,
-                            "TDS_NOT_FOUND",
-                            "TdsRegistration",
-                            unbilledId
-                    ));
+            tdsList = tdsRegistrationRepository.findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled);
+
         } else {
             Estimate estimate = estimateRepository.findById(estimateId)
                     .orElseThrow(() -> new ResourceNotFoundException(
@@ -2609,16 +2612,23 @@ public class PaymentServiceImpl implements PaymentService {
                             estimateId
                     ));
 
-            tds = tdsRegistrationRepository.findByEstimateAndIsDeletedFalse(estimate)
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "TDS not found for estimate ID: " + estimateId,
-                            "TDS_NOT_FOUND",
-                            "TdsRegistration",
-                            estimateId
-                    ));
+            tdsList = tdsRegistrationRepository.findAllByEstimateAndIsDeletedFalse(estimate);
         }
 
-        return mapToTdsResponseDto(tds);
+        TdsRegistration latestTds = tdsList.stream()
+                .filter(tds -> tds.getStatus() == TdsStatus.PENDING || tds.getStatus() == TdsStatus.APPROVED)
+                .max(Comparator.comparing(
+                        TdsRegistration::getCreatedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "TDS not found",
+                        "TDS_NOT_FOUND",
+                        "TdsRegistration",
+                        unbilledId != null ? unbilledId : estimateId
+                ));
+
+        return mapToTdsResponseDto(latestTds);
     }
 
     private TdsResponseDto mapToTdsResponseDto(TdsRegistration tds) {
