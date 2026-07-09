@@ -1139,18 +1139,62 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
     ) {
         /*
-         * Requirement 2:
-         * Sales invoice row particulars should show service name.
+         * Tax / TDS ledgers should show party/company name.
+         *
+         * Example Receipt Voucher:
+         * Dr Corpseed HDFC Bank
+         * Dr TDS Receivable
+         *      Cr Customer Company
+         *
+         * In TDS Receivable ledger statement, particulars should be Customer Company,
+         * not Corpseed HDFC Bank.
+         */
+        if (isTaxOrTdsLedger(currentLedger)) {
+            String partyName = resolvePartyLedgerName(
+                    currentLedger,
+                    voucher,
+                    otherEntriesCache
+            );
+
+            if (partyName != null && !partyName.trim().isEmpty()) {
+                return partyName;
+            }
+        }
+
+        /*
+         * Sales invoice non-tax rows should show service name.
+         *
+         * Example:
+         * Customer Dr
+         *      To Service Income
          */
         if (serviceName != null && !serviceName.trim().isEmpty()) {
             return serviceName;
         }
 
         /*
-         * Requirement 3:
-         * Receipt row particulars should show bank name.
+         * Bank / Cash / Payment Gateway ledger row should show its own bank/payment name.
+         *
+         * Example:
+         * Corpseed HDFC Bank
          */
-        if (receiptBankName != null && !receiptBankName.trim().isEmpty()) {
+        if (currentLedger != null
+                && isBankOrCashLedger(currentLedger)
+                && receiptBankName != null
+                && !receiptBankName.trim().isEmpty()) {
+            return receiptBankName;
+        }
+
+        /*
+         * Customer ledger row in receipt should show bank name.
+         *
+         * Example:
+         * Customer ledger statement:
+         * Particulars = Corpseed HDFC Bank
+         */
+        if (isReceiptVoucher(voucher)
+                && receiptBankName != null
+                && !receiptBankName.trim().isEmpty()) {
             return receiptBankName;
         }
 
@@ -1169,6 +1213,94 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         return narration;
+    }
+
+    private boolean isTaxOrTdsLedger(LedgerMaster ledger) {
+        if (ledger == null || ledger.getLedgerType() == null) {
+            return false;
+        }
+
+        return ledger.getLedgerType() == LedgerType.TDS_RECEIVABLE
+                || ledger.getLedgerType() == LedgerType.TDS_PAYABLE
+
+                || ledger.getLedgerType() == LedgerType.OUTPUT_CGST
+                || ledger.getLedgerType() == LedgerType.OUTPUT_SGST
+                || ledger.getLedgerType() == LedgerType.OUTPUT_IGST
+
+                || ledger.getLedgerType() == LedgerType.INPUT_CGST
+                || ledger.getLedgerType() == LedgerType.INPUT_SGST
+                || ledger.getLedgerType() == LedgerType.INPUT_IGST;
+    }
+
+    private String resolvePartyLedgerName(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger != null ? currentLedger.getId() : null,
+                otherEntriesCache
+        );
+
+        if (otherEntries == null || otherEntries.isEmpty()) {
+            return null;
+        }
+
+        Optional<LedgerMaster> customerLedger = otherEntries.stream()
+                .map(AccountingVoucherEntry::getLedger)
+                .filter(Objects::nonNull)
+                .filter(ledger ->
+                        ledger.getLedgerType() == LedgerType.CUSTOMER
+                                || ledger.getLedgerType() == LedgerType.CUSTOMER_ADVANCE
+                )
+                .findFirst();
+
+        if (customerLedger.isPresent()) {
+            return displayPartyLedgerName(customerLedger.get());
+        }
+
+        Optional<LedgerMaster> vendorLedger = otherEntries.stream()
+                .map(AccountingVoucherEntry::getLedger)
+                .filter(Objects::nonNull)
+                .filter(ledger ->
+                        ledger.getLedgerType() == LedgerType.SUPPLIER
+                                || ledger.getLedgerType() == LedgerType.VENDOR
+                                || ledger.getLedgerType() == LedgerType.VENDOR_PAYABLE
+                )
+                .findFirst();
+
+        if (vendorLedger.isPresent()) {
+            return displayPartyLedgerName(vendorLedger.get());
+        }
+
+        Optional<LedgerMaster> companyMappedLedger = otherEntries.stream()
+                .map(AccountingVoucherEntry::getLedger)
+                .filter(Objects::nonNull)
+                .filter(ledger -> ledger.getCompany() != null)
+                .findFirst();
+
+        return companyMappedLedger
+                .map(this::displayPartyLedgerName)
+                .orElse(null);
+    }
+
+    private String displayPartyLedgerName(LedgerMaster ledger) {
+        if (ledger == null) {
+            return null;
+        }
+
+        if (ledger.getCompany() != null
+                && ledger.getCompany().getName() != null
+                && !ledger.getCompany().getName().trim().isEmpty()) {
+            return ledger.getCompany().getName().trim();
+        }
+
+        if (ledger.getLedgerName() != null && !ledger.getLedgerName().trim().isEmpty()) {
+            return ledger.getLedgerName().trim();
+        }
+
+        return null;
     }
 
     private String resolveReceiptBankName(
