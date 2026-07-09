@@ -333,15 +333,21 @@ public class PaymentServiceImpl implements PaymentService {
                     }
                 });
 
+
         // =====================================================
-        // 12. TDS CALCULATION
-        // =====================================================
-        // Important: TDS is calculated on taxable value (excluding GST).
-        // Settlement Amount = Bank Amount (reqAmount) + TDS Amount
+// 12. TDS CALCULATION
+// =====================================================
+// Important: TDS is calculated on taxable value excluding GST.
+// Settlement Amount = Bank Amount + TDS Amount
         BigDecimal tdsAmountForThisRegistration = calculateTdsAmountIfRequired(
-                request, estimate, unbilled
+                request,
+                estimate,
+                unbilled
         );
 
+// =====================================================
+// 12.1 SETTLEMENT VALIDATION BEFORE PAYMENT RULES
+// =====================================================
         BigDecimal outstandingBeforeThisPayment = safe2(unbilled.getOutstandingAmount());
 
         BigDecimal settlementAmountForThisRegistration = reqAmount
@@ -361,9 +367,9 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        // =====================================================
-        // 13. VALIDATE PAYMENT RULES (including TDS settlement)
-        // =====================================================
+// =====================================================
+// 13. VALIDATE PAYMENT RULES
+// =====================================================
         validatePaymentRules(
                 paymentType,
                 reqAmount,
@@ -372,10 +378,9 @@ public class PaymentServiceImpl implements PaymentService {
                 tdsAmountForThisRegistration
         );
 
-        // =====================================================
-        // 14. CREATE TDS RECORD (if applicable)
-        // =====================================================
-        // TDS can only be created before the first payment is approved.
+// =====================================================
+// 14. CREATE TDS RECORD IF REQUIRED
+// =====================================================
         createTdsIfRequired(
                 request,
                 estimate,
@@ -385,35 +390,36 @@ public class PaymentServiceImpl implements PaymentService {
                 tdsAmountForThisRegistration
         );
 
-        // =====================================================
-        // 15. PREVENT PAYMENT FROM EXCEEDING TOTAL OUTSTANDING
-        // =====================================================
+// =====================================================
+// 15. PREVENT PAYMENT FROM EXCEEDING TOTAL AMOUNT
+// =====================================================
         BigDecimal approvedAmount = safe2(unbilled.getReceivedAmount());
         BigDecimal pendingAmount = safe2(unbilled.getCurrentReceivedAmount());
         BigDecimal totalAmount = safe2(unbilled.getTotalAmount());
 
-        // Settlement = Bank Received + TDS (this is what customer actually paid)
-        BigDecimal settlementAmountForThisRegistration = reqAmount
-                .add(tdsAmountForThisRegistration)
-                .setScale(2, RoundingMode.HALF_UP);
-
         BigDecimal totalAfterThisRegistration = approvedAmount
                 .add(pendingAmount)
-                .add(settlementAmountForThisRegistration);
+                .add(settlementAmountForThisRegistration)
+                .setScale(2, RoundingMode.HALF_UP);
 
         if (totalAfterThisRegistration.compareTo(totalAmount) > 0) {
             BigDecimal remainingAllowed = totalAmount.subtract(approvedAmount.add(pendingAmount))
                     .max(BigDecimal.ZERO)
                     .setScale(2, RoundingMode.HALF_UP);
 
-            BigDecimal excessAmount = reqAmount.subtract(remainingAllowed)
+            BigDecimal excessAmount = totalAfterThisRegistration
+                    .subtract(totalAmount)
                     .max(BigDecimal.ZERO)
                     .setScale(2, RoundingMode.HALF_UP);
 
             throw new ValidationException(
                     String.format(
-                            "Payment exceeds allowed amount. Approved amount is ₹%s, pending approval amount is ₹%s, remaining payable amount is ₹%s, and the current payment of ₹%s exceeds it by ₹%s.",
-                            approvedAmount, pendingAmount, remainingAllowed, reqAmount, excessAmount
+                            "Payment exceeds allowed amount. Approved amount is ₹%s, pending approval amount is ₹%s, remaining payable amount is ₹%s, current settlement amount is ₹%s, and it exceeds by ₹%s.",
+                            approvedAmount,
+                            pendingAmount,
+                            remainingAllowed,
+                            settlementAmountForThisRegistration,
+                            excessAmount
                     ),
                     "ERR_PAYMENT_EXCEEDS_TOTAL_AMOUNT",
                     "amount"
