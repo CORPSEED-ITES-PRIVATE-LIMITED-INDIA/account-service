@@ -1,3 +1,7 @@
+
+
+
+
 package com.account.service;
 
 import com.account.domain.*;
@@ -8,6 +12,7 @@ import com.account.dto.invoice.*;
 import com.account.dto.taxation.TaxationReportDto;
 import com.account.dto.taxation.TaxationReportRequest;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -28,7 +33,15 @@ public interface InvoiceService {
 
 	InvoiceDetailDto getInvoiceById(Long id, Long userId);
 
-	Invoice generateInvoiceForPayment(UnbilledInvoice unbilled, PaymentReceipt triggeringReceipt, User approver);
+//	Invoice generateInvoiceForPayment(UnbilledInvoice unbilled, PaymentReceipt triggeringReceipt, User approver);
+
+
+	Invoice generateInvoiceForPayment(
+			UnbilledInvoice unbilled,
+			PaymentReceipt receipt,
+			User approver,
+			BigDecimal tdsAmount
+	);
 
 	InvoiceReportDto invoiceReport(InvoiceSearchRequest request);
 
