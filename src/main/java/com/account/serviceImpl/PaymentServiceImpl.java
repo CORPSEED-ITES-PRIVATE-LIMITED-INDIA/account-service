@@ -1703,6 +1703,7 @@ public class PaymentServiceImpl implements PaymentService {
         estimateRepository.save(estimate);
         unbilledInvoiceRepository.save(unbilled);
 
+<<<<<<< HEAD
         boolean tdsUsedForInvoice = false;
 
         for (PaymentReceipt payment : paymentsToApprove) {
@@ -1722,6 +1723,11 @@ public class PaymentServiceImpl implements PaymentService {
                 if (tdsForInvoice.compareTo(BigDecimal.ZERO) > 0) {
                     tdsUsedForInvoice = true;
                 }
+=======
+        for (PaymentReceipt payment : paymentsToApprove) {
+            if (!invoiceRepository.existsByTriggeringPayment(payment)) {
+                invoiceService.generateInvoiceForPayment(unbilled, payment, approver);
+>>>>>>> 4b3c462584952f36144ff5b448aa9a3489cb672f
             }
         }
 
@@ -1768,6 +1774,460 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
+<<<<<<< HEAD
+=======
+//    @Override
+//    @Transactional
+//    public UnbilledInvoiceApprovalResponseDto updateUnbilledInvoiceStatus(
+//            Long unbilledId,
+//            UnbilledInvoiceApprovalRequestDto request) {
+//
+//        if (request == null) {
+//            throw new ValidationException(
+//                    "Approval request is required",
+//                    "ERR_APPROVAL_REQUEST_REQUIRED",
+//                    "request"
+//            );
+//        }
+//
+//        if (request.getApproverUserId() == null) {
+//            throw new ValidationException(
+//                    "Approver user ID is required",
+//                    "ERR_APPROVER_USER_REQUIRED",
+//                    "approverUserId"
+//            );
+//        }
+//
+//        log.info("Approving unbilled invoice | unbilledId: {}, approverId: {}",
+//                unbilledId, request.getApproverUserId());
+//
+//        // 1. Fetch unbilled invoice
+//        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Unbilled invoice not found with ID: " + unbilledId,
+//                        "UNBILLED_NOT_FOUND",
+//                        "UnbilledInvoice",
+//                        unbilledId
+//                ));
+//
+//        // 2. Validate current status
+//        if (unbilled.getStatus() != UnbilledStatus.PENDING_APPROVAL) {
+//            throw new IllegalStateException(
+//                    "Only PENDING_APPROVAL unbilled invoices can be approved/rejected. Current status: "
+//                            + unbilled.getStatus()
+//            );
+//        }
+//
+//        // 3. Normalize approval decision
+//        String approvalDecision = request.getApprovalRemarks() != null
+//                ? request.getApprovalRemarks().trim().toUpperCase()
+//                : "";
+//
+//        if (!"APPROVED".equals(approvalDecision) && !"REJECTED".equals(approvalDecision)) {
+//            throw new ValidationException(
+//                    "Invalid approval decision. Allowed values are APPROVED or REJECTED",
+//                    "ERR_INVALID_APPROVAL_DECISION",
+//                    "approvalRemarks"
+//            );
+//        }
+//
+//        Company company = unbilled.getCompany();
+//        CompanyUnit unit = unbilled.getUnit();
+//        Estimate estimate = unbilled.getEstimate();
+//
+//        if (estimate == null) {
+//            throw new ResourceNotFoundException(
+//                    "Estimate not found for unbilled invoice: " + unbilled.getUnbilledNumber(),
+//                    "ESTIMATE_NOT_FOUND"
+//            );
+//        }
+//
+//        // 4. Fetch approver
+//        User approver = userRepository.findById(request.getApproverUserId())
+//                .orElseThrow(() -> new ResourceNotFoundException(
+//                        "Approver not found with ID: " + request.getApproverUserId(),
+//                        "USER_NOT_FOUND",
+//                        "User",
+//                        request.getApproverUserId()
+//                ));
+//
+//        /*
+//         * Company and Unit approval validation should block only APPROVED flow.
+//         * Rejection should still be allowed even if company/unit is pending.
+//         */
+//        if ("APPROVED".equals(approvalDecision)) {
+//
+//            boolean companyApproved =
+//                    company != null
+//                            && !company.isDeleted()
+//                            && (
+//                            company.isAccountsApproved()
+//                                    || company.getOnboardingStatus() == OnboardingStatus.APPROVED
+//                    );
+//
+//            boolean unitApproved =
+//                    unit != null
+//                            && !unit.isDeleted()
+//                            && (
+//                            unit.isAccountsApproved()
+//                                    || unit.getOnboardingStatus() == OnboardingStatus.APPROVED
+//                    );
+//
+//            if (!companyApproved || !unitApproved) {
+//
+//                String companyStatus = company != null && company.getOnboardingStatus() != null
+//                        ? company.getOnboardingStatus().name()
+//                        : "N/A";
+//
+//                String unitStatus = unit != null && unit.getOnboardingStatus() != null
+//                        ? unit.getOnboardingStatus().name()
+//                        : "N/A";
+//
+//                String companyName = company != null && company.getName() != null
+//                        ? company.getName()
+//                        : "N/A";
+//
+//                String unitName = unit != null && unit.getUnitName() != null
+//                        ? unit.getUnitName()
+//                        : "N/A";
+//
+//                throw new ApprovalBlockedException(
+//                        "Cannot approve unbilled invoice. Company and Company Unit must both be approved before invoice approval. " +
+//                                "Company: " + companyName +
+//                                ", Company Status: " + companyStatus +
+//                                ", Company Accounts Approved: " + companyApproved +
+//                                ". Unit: " + unitName +
+//                                ", Unit Status: " + unitStatus +
+//                                ", Unit Accounts Approved: " + unitApproved + ".",
+//                        companyApproved,
+//                        unitApproved
+//                );
+//            }
+//        }
+//
+//        // =====================================================
+//        // REJECTED FLOW
+//        // =====================================================
+//        if ("REJECTED".equals(approvalDecision)) {
+//
+//            unbilled.setStatus(UnbilledStatus.REJECTED);
+//
+//            // Mark all pending payments as REJECTED
+//            if (unbilled.getPayments() != null) {
+//                unbilled.getPayments().forEach(payment -> {
+//                    if (payment.getStatus() == PaymentStatus.PENDING) {
+//                        payment.setStatus(PaymentStatus.REJECTED);
+//                    }
+//                });
+//            }
+//
+//            /*
+//             * No accounting voucher on rejection.
+//             * Reason: money is not approved by Accounts.
+//             */
+//            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
+//
+//            // Delete pending government fee on rejection
+//            governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(governmentFee -> {
+//                if (governmentFee.getStatus() == GovernmentFeeStatus.PENDING) {
+//                    log.info("Deleting PENDING government fee {} because parent unbilled {} was rejected",
+//                            governmentFee.getId(), unbilled.getUnbilledNumber());
+//
+//                    governmentFeeRepository.delete(governmentFee);
+//                    unbilled.setGovernmentFeeActive(false);
+//                } else if (governmentFee.getStatus() == GovernmentFeeStatus.APPROVED) {
+//                    log.info("Government fee {} is already APPROVED for unbilled {}. Skipping delete on rejection.",
+//                            governmentFee.getId(), unbilled.getUnbilledNumber());
+//                }
+//            });
+//
+//            // Delete pending TDS on rejection
+//            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+//                    .ifPresent(tds -> {
+//                        if (tds.getStatus() == TdsStatus.PENDING) {
+//                            log.info("Deleting PENDING TDS {} because parent unbilled {} was rejected",
+//                                    tds.getId(), unbilled.getUnbilledNumber());
+//
+//                            /*
+//                             * Hard delete because TDS is unique against unbilled_invoice_id.
+//                             * This allows rejected first-payment cycle to register TDS again.
+//                             */
+//                            tdsRegistrationRepository.delete(tds);
+//                            unbilled.setTdsActive(false);
+//
+//                        } else if (tds.getStatus() == TdsStatus.APPROVED) {
+//                            log.info("TDS {} is already APPROVED for unbilled {}. Skipping delete on rejection.",
+//                                    tds.getId(), unbilled.getUnbilledNumber());
+//                        }
+//                    });
+//
+//            unbilled.setApprovedBy(approver);
+//            unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
+//            unbilled.setApprovalRemarks(request.getApprovalRemarks());
+//
+//            if (estimate != null) {
+//                estimateRepository.save(estimate);
+//            }
+//
+//            unbilledInvoiceRepository.save(unbilled);
+//
+//            pushPaymentApprovalDecisionNotificationToSalesperson(
+//                    unbilled,
+//                    estimate,
+//                    approver,
+//                    false,
+//                    request.getApprovalRemarks()
+//            );
+//
+//            log.info("Unbilled {} rejected. Pending payment amount discarded. No voucher created.",
+//                    unbilled.getUnbilledNumber());
+//
+//            UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
+//
+//            response.setName(
+//                    estimate != null ? estimate.getSolutionName() :
+//                            (company != null ? company.getName() + " - Project" : "Unnamed Project")
+//            );
+//
+//            response.setProjectNo(generateProjectNumber());
+//            response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
+//            response.setSalesPersonName(
+//                    unbilled.getCreatedBy() != null
+//                            ? (unbilled.getCreatedBy().getFullName() != null
+//                            ? unbilled.getCreatedBy().getFullName()
+//                            : unbilled.getCreatedBy().getEmail())
+//                            : null
+//            );
+//
+//            response.setProductId(estimate != null ? estimate.getSolutionId() : null);
+//            response.setCompanyId(company != null ? company.getId() : null);
+//            response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
+//            response.setUnbilledNumber(unbilled.getUnbilledNumber());
+//            response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+//            response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
+//            response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+//            response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
+//            response.setLeadId(estimate != null ? estimate.getLeadId() : null);
+//            response.setDate(LocalDate.now());
+//            response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
+//            response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
+//            response.setPaymentTypeId(null);
+//            response.setApprovedById(approver.getId());
+//            response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
+//            response.setUpdatedBy(approver.getId());
+//
+//            return response;
+//        }
+//
+//        // =====================================================
+//        // APPROVED FLOW
+//        // =====================================================
+//
+//        unbilled.setStatus(UnbilledStatus.APPROVED);
+//        estimate.setStatus(EstimateStatus.APPROVED);
+//
+//        /*
+//         * Capture PENDING payments before changing their status.
+//         * Only these newly-approved payments should generate receipt vouchers.
+//         */
+//        List<PaymentReceipt> paymentsToApprove = unbilled.getPayments() == null
+//                ? List.of()
+//                : unbilled.getPayments()
+//                .stream()
+//                .filter(payment -> payment.getStatus() == PaymentStatus.PENDING)
+//                .filter(payment -> !payment.isCancelled())
+//                .toList();
+//
+//        if (paymentsToApprove.isEmpty()) {
+//            throw new ValidationException(
+//                    "No pending payment found for approval",
+//                    "ERR_NO_PENDING_PAYMENT_FOUND",
+//                    "payments"
+//            );
+//        }
+//
+//        // Mark only newly pending payments as APPROVED
+//        paymentsToApprove.forEach(payment -> payment.setStatus(PaymentStatus.APPROVED));
+//
+//        /*
+//         * Calculate amount from newly approved payments.
+//         * This is safer than blindly using currentReceivedAmount.
+//         */
+//        BigDecimal tdsAmountForLedger = getPendingTdsAmountForLedger(unbilled);
+//
+//        BigDecimal newlyApprovedBankAmount = paymentsToApprove.stream()
+//                .map(PaymentReceipt::getAmount)
+//                .filter(Objects::nonNull)
+//                .map(this::safe2)
+//                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add);
+//
+//        BigDecimal newlyApprovedAmount = newlyApprovedBankAmount
+//                .add(tdsAmountForLedger)
+//                .setScale(2, RoundingMode.HALF_UP);
+//
+//
+//        // Move pending amount into actual received amount
+//        BigDecimal updatedReceived = safe2(unbilled.getReceivedAmount())
+//                .add(newlyApprovedAmount)
+//                .setScale(2, RoundingMode.HALF_UP);
+//
+//        unbilled.setReceivedAmount(updatedReceived);
+//
+//        // Reset pending buffer
+//        unbilled.setCurrentReceivedAmount(BigDecimal.ZERO);
+//
+//        // Recalculate outstanding only from approved amount
+//        unbilled.setOutstandingAmount(
+//                safe2(unbilled.getTotalAmount())
+//                        .subtract(updatedReceived)
+//                        .max(BigDecimal.ZERO)
+//                        .setScale(2, RoundingMode.HALF_UP)
+//        );
+//
+//
+//        boolean tdsPosted = false;
+//
+//        for (PaymentReceipt payment : paymentsToApprove) {
+//
+//            BigDecimal paymentAmount = safe2(payment.getAmount());
+//
+//            /*
+//             * PURCHASE_ORDER can have zero amount.
+//             * Zero amount means no actual money received, so no receipt voucher.
+//             */
+//            if (paymentAmount.compareTo(BigDecimal.ZERO) > 0) {
+//
+//                BigDecimal tdsAmountForThisVoucher = !tdsPosted
+//                        ? tdsAmountForLedger
+//                        : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+//
+//                postReceiptVoucherForApprovedPayment(
+//                        unbilled,
+//                        payment,
+//                        approver,
+//                        tdsAmountForThisVoucher
+//                );
+//
+//                if (tdsAmountForThisVoucher.compareTo(BigDecimal.ZERO) > 0) {
+//                    tdsPosted = true;
+//                }
+//
+//            } else {
+//                log.info("Skipping receipt voucher for zero amount paymentReceiptId: {}", payment.getId());
+//            }
+//        }
+//
+//        // Approve government fee if exists
+//        governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(governmentFee -> {
+//            if (governmentFee.getStatus() == GovernmentFeeStatus.PENDING) {
+//                governmentFee.setStatus(GovernmentFeeStatus.APPROVED);
+//                governmentFeeRepository.save(governmentFee);
+//
+//                log.info("Government fee {} approved for unbilled {}",
+//                        governmentFee.getId(), unbilled.getUnbilledNumber());
+//            }
+//        });
+//
+//        // Approve TDS if exists
+//        tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+//                .ifPresent(tds -> {
+//                    if (tds.getStatus() == TdsStatus.PENDING) {
+//                        tds.setStatus(TdsStatus.APPROVED);
+//                        tds.setUpdatedBy(approver);
+//                        tdsRegistrationRepository.save(tds);
+//
+//                        unbilled.setTdsActive(true);
+//
+//                        log.info("TDS {} approved for unbilled {}",
+//                                tds.getId(), unbilled.getUnbilledNumber());
+//                    }
+//                });
+//
+//        unbilled.setApprovedBy(approver);
+//        unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
+//        unbilled.setApprovalRemarks(request.getApprovalRemarks());
+//
+//        estimateRepository.save(estimate);
+//        unbilledInvoiceRepository.save(unbilled);
+//
+//        log.info("Unbilled {} approved. Received: {}, Outstanding: {}",
+//                unbilled.getUnbilledNumber(),
+//                unbilled.getReceivedAmount(),
+//                unbilled.getOutstandingAmount());
+//
+//        /*
+//         * Generate invoices only for newly approved payments.
+//         * Also check existsByTriggeringPayment() to avoid duplicate invoice generation.
+//         */
+//        for (PaymentReceipt payment : paymentsToApprove) {
+//            if (!invoiceRepository.existsByTriggeringPayment(payment)) {
+//                invoiceService.generateInvoiceForPayment(unbilled, payment, approver);
+//            } else {
+//                log.info("Invoice already exists for paymentReceiptId: {}. Skipping invoice generation.",
+//                        payment.getId());
+//            }
+//        }
+//
+//        PaymentReceipt triggeringReceipt = paymentsToApprove.stream()
+//                .filter(payment -> payment.getCreatedAt() != null)
+//                .max(Comparator.comparing(PaymentReceipt::getCreatedAt))
+//                .orElse(paymentsToApprove.get(paymentsToApprove.size() - 1));
+//
+//        pushPaymentApprovalDecisionNotificationToSalesperson(
+//                unbilled,
+//                estimate,
+//                approver,
+//                true,
+//                request.getApprovalRemarks()
+//        );
+//
+//        UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
+//
+//        response.setName(
+//                estimate != null ? estimate.getSolutionName() :
+//                        (company != null ? company.getName() + " - Project" : "Unnamed Project")
+//        );
+//
+//        response.setProjectNo(generateProjectNumber());
+//
+//        response.setSalesPersonId(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
+//        response.setSalesPersonName(
+//                unbilled.getCreatedBy() != null
+//                        ? (unbilled.getCreatedBy().getFullName() != null
+//                        ? unbilled.getCreatedBy().getFullName()
+//                        : unbilled.getCreatedBy().getEmail())
+//                        : null
+//        );
+//
+//        response.setProductId(estimate != null ? estimate.getSolutionId() : null);
+//        response.setCompanyId(company != null ? company.getId() : null);
+//        response.setCompanyUnitId(unbilled.getUnit() != null ? unbilled.getUnit().getId() : null);
+//        response.setUnbilledNumber(unbilled.getUnbilledNumber());
+//        response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
+//        response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
+//        response.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
+//        response.setContactId(unbilled.getContact() != null ? unbilled.getContact().getId() : null);
+//        response.setLeadId(estimate != null ? estimate.getLeadId() : null);
+//        response.setDate(LocalDate.now());
+//        response.setTotalAmount(unbilled.getTotalAmount() != null ? unbilled.getTotalAmount().doubleValue() : 0.0);
+//        response.setPaidAmount(unbilled.getReceivedAmount() != null ? unbilled.getReceivedAmount().doubleValue() : 0.0);
+//
+//        response.setPaymentTypeId(
+//                triggeringReceipt != null && triggeringReceipt.getPaymentType() != null
+//                        ? triggeringReceipt.getPaymentType().getId()
+//                        : null
+//        );
+//
+//        response.setApprovedById(approver.getId());
+//        response.setCreatedBy(unbilled.getCreatedBy() != null ? unbilled.getCreatedBy().getId() : null);
+//        response.setUpdatedBy(approver.getId());
+//
+//        return response;
+//    }
+
+
+
+>>>>>>> 4b3c462584952f36144ff5b448aa9a3489cb672f
     private String getUserDisplayName(User user) {
         if (user == null) return null;
         return user.getFullName() != null ? user.getFullName() : user.getEmail();
