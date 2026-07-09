@@ -1,5 +1,6 @@
 package com.account.serviceImpl.ledger;
 
+import com.account.domain.User;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
@@ -8,10 +9,7 @@ import com.account.domain.ledger.*;
 import com.account.dto.ledger.*;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
-import com.account.repository.CompanyRepository;
-import com.account.repository.CompanyUnitRepository;
-import com.account.repository.ContactRepository;
-import com.account.repository.InvoiceRepository;
+import com.account.repository.*;
 import com.account.repository.ledger.AccountingVoucherEntryRepository;
 import com.account.repository.ledger.LedgerGroupRepository;
 import com.account.repository.ledger.LedgerMasterRepository;
@@ -45,6 +43,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     private final ContactRepository contactRepository;
     private final AccountingVoucherEntryRepository accountingVoucherEntryRepository;
     private final InvoiceRepository invoiceRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional
@@ -87,10 +86,60 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         return mapToResponse(saved);
     }
+    private void validateAdminUserForLedgerEdit(Long userId) {
+
+        if (userId == null) {
+            throw new ValidationException(
+                    "User ID is required to edit ledger",
+                    "ERR_USER_ID_REQUIRED",
+                    "userId"
+            );
+        }
+
+        User user = userRepository.findByIdAndNotDeleted(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: " + userId,
+                        "USER_NOT_FOUND"
+                ));
+
+        if (!user.isActive()) {
+            throw new ValidationException(
+                    "Inactive user cannot edit ledger",
+                    "ERR_INACTIVE_USER_LEDGER_EDIT_NOT_ALLOWED",
+                    "userId"
+            );
+        }
+
+        boolean isAdminFromRoleList =
+                user.getRole() != null
+                        && user.getRole().stream()
+                        .filter(Objects::nonNull)
+                        .anyMatch(role -> "ADMIN".equalsIgnoreCase(role.trim()));
+
+        boolean isAdminFromUserRole =
+                user.getUserRole() != null
+                        && user.getUserRole().stream()
+                        .filter(Objects::nonNull)
+                        .anyMatch(role ->
+                                role.getName() != null
+                                        && "ADMIN".equalsIgnoreCase(role.getName().trim())
+                        );
+
+        if (!isAdminFromRoleList && !isAdminFromUserRole) {
+            throw new ValidationException(
+                    "Only ADMIN role can edit ledger",
+                    "ERR_LEDGER_EDIT_ADMIN_ONLY",
+                    "userId"
+            );
+        }
+    }
+
 
     @Override
     @Transactional
-    public LedgerMasterResponseDto updateLedger(Long id, LedgerMasterRequestDto request) {
+    public LedgerMasterResponseDto updateLedger(Long id, LedgerMasterRequestDto request, Long userId) {
+
+        validateAdminUserForLedgerEdit(userId);
 
         validateRequest(request);
 
@@ -887,12 +936,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             LedgerTransactionGstDetailsDto gstDetails = salesInvoice != null
                     ? buildGstDetails(salesInvoice)
                     : null;
-            List<LedgerTransactionResponseDto> lineItems = buildReceiptLineItems(
-                    ledger,
-                    voucher,
-                    voucherEntriesCache
-            );
-
 
             LedgerTransactionResponseDto mainRow = LedgerTransactionResponseDto.builder()
                     .entryId(entry.getId())
@@ -946,16 +989,20 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .collect(Collectors.toList());
 
         BigDecimal totalDebit = filteredRows.stream()
+                .filter(row -> row.getRunningBalanceType() != null)
                 .map(LedgerTransactionResponseDto::getDebitAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal totalCredit = filteredRows.stream()
+                .filter(row -> row.getRunningBalanceType() != null)
                 .map(LedgerTransactionResponseDto::getCreditAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
+
+
 
         int totalElements = filteredRows.size();
 
@@ -1171,6 +1218,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                         voucher,
                         otherEntriesCache
                 );
+
+
 
                 if (partyName != null && !partyName.trim().isEmpty()) {
                     return partyName;
@@ -1542,125 +1591,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     }
 
 
-
-
-    private List<AccountingVoucherEntry> getVoucherEntries(
-            AccountingVoucher voucher,
-            Map<Long, List<AccountingVoucherEntry>> voucherEntriesCache
-    ) {
-        if (voucher == null || voucher.getId() == null) {
-            return new ArrayList<>();
-        }
-
-        Long voucherId = voucher.getId();
-
-        if (voucherEntriesCache.containsKey(voucherId)) {
-            return voucherEntriesCache.get(voucherId);
-        }
-
-        List<AccountingVoucherEntry> entries =
-                accountingVoucherEntryRepository.findByVoucherIdOrderByDisplayOrderAsc(voucherId);
-
-        voucherEntriesCache.put(voucherId, entries);
-
-        return entries;
-    }
-
-
-    private List<LedgerTransactionResponseDto> buildReceiptLineItems(
-            LedgerMaster currentLedger,
-            AccountingVoucher voucher,
-            Map<Long, List<AccountingVoucherEntry>> voucherEntriesCache
-    ) {
-        if (currentLedger == null || currentLedger.getLedgerType() == null) {
-            return new ArrayList<>();
-        }
-
-        if (!isReceiptVoucher(voucher)) {
-            return new ArrayList<>();
-        }
-
-        /*
-         * Show lineItems only inside CUSTOMER / CUSTOMER_ADVANCE ledger.
-         *
-         * Main row:
-         *      Customer Cr 59000
-         *
-         * lineItems:
-         *      Bank Dr 54000
-         *      TDS Receivable Dr 5000
-         */
-        if (currentLedger.getLedgerType() != LedgerType.CUSTOMER
-                && currentLedger.getLedgerType() != LedgerType.CUSTOMER_ADVANCE) {
-            return new ArrayList<>();
-        }
-
-        List<AccountingVoucherEntry> voucherEntries = getVoucherEntries(
-                voucher,
-                voucherEntriesCache
-        );
-
-        if (voucherEntries == null || voucherEntries.isEmpty()) {
-            return new ArrayList<>();
-        }
-
-        String companyName = displayPartyLedgerName(currentLedger);
-
-        return voucherEntries.stream()
-                .filter(entry -> entry != null && entry.getLedger() != null)
-                .filter(entry -> entry.getLedger().getId() != null)
-                .filter(entry -> !entry.getLedger().getId().equals(currentLedger.getId()))
-                .filter(entry ->
-                        isBankOrCashLedger(entry.getLedger())
-                                || entry.getLedger().getLedgerType() == LedgerType.TDS_RECEIVABLE
-                )
-                .map(entry -> {
-                    LedgerMaster lineLedger = entry.getLedger();
-
-                    String lineParticulars = companyName;
-
-                    String lineBankName = isBankOrCashLedger(lineLedger)
-                            ? displayBankLedgerName(lineLedger)
-                            : null;
-
-                    return LedgerTransactionResponseDto.builder()
-                            .entryId(entry.getId())
-
-                            .voucherId(voucher.getId())
-                            .voucherNumber(voucher.getVoucherNumber())
-                            .voucherType(voucher.getVoucherType())
-                            .voucherDate(voucher.getVoucherDate())
-
-                            .sourceType(voucher.getSourceType())
-                            .sourceId(voucher.getSourceId())
-                            .status(voucher.getStatus())
-
-                            .ledgerId(lineLedger.getId())
-                            .ledgerName(lineLedger.getLedgerName())
-                            .ledgerCode(lineLedger.getLedgerCode())
-
-                            .debitAmount(moneyForStatement(entry.getDebitAmount()))
-                            .creditAmount(moneyForStatement(entry.getCreditAmount()))
-
-                            .runningBalanceAmount(null)
-                            .runningBalanceType(null)
-
-                            .particulars(lineParticulars)
-                            .serviceName(null)
-                            .bankName(lineBankName)
-
-                            .narration(
-                                    entry.getNarration() != null && !entry.getNarration().trim().isEmpty()
-                                            ? entry.getNarration()
-                                            : voucher.getNarration()
-                            )
-
-                            .gstDetails(null)
-                            .build();
-                })
-                .collect(Collectors.toList());
-    }
-
     private List<LedgerTransactionResponseDto> buildAdditionalReceiptRows(
             LedgerMaster currentLedger,
             AccountingVoucher voucher,
@@ -1674,6 +1604,22 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             return new ArrayList<>();
         }
 
+        /*
+         * Extra TDS row should be shown only when user opens
+         * Customer / Customer Advance ledger.
+         *
+         * Example:
+         * Actual voucher saved in DB:
+         *
+         * HDFC Bank Dr             54,000
+         * TDS Receivable Dr         5,000
+         *      To Microsoft              59,000
+         *
+         * In Microsoft customer ledger response, show extra display row:
+         *
+         * Microsoft Cr              5,000
+         * Particulars = TDS Receivable
+         */
         if (currentLedger.getLedgerType() != LedgerType.CUSTOMER
                 && currentLedger.getLedgerType() != LedgerType.CUSTOMER_ADVANCE) {
             return new ArrayList<>();
@@ -1689,14 +1635,13 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             return new ArrayList<>();
         }
 
-        String companyName = displayPartyLedgerName(currentLedger);
-
         return otherEntries.stream()
                 .filter(entry -> entry != null && entry.getLedger() != null)
                 .filter(entry -> entry.getLedger().getLedgerType() == LedgerType.TDS_RECEIVABLE)
                 .filter(entry -> moneyForStatement(entry.getDebitAmount()).compareTo(BigDecimal.ZERO) > 0)
                 .map(entry -> {
                     LedgerMaster tdsLedger = entry.getLedger();
+                    BigDecimal tdsAmount = moneyForStatement(entry.getDebitAmount());
 
                     return LedgerTransactionResponseDto.builder()
                             .entryId(entry.getId())
@@ -1710,24 +1655,41 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             .sourceId(voucher.getSourceId())
                             .status(voucher.getStatus())
 
-                            .ledgerId(tdsLedger.getId())
-                            .ledgerName(tdsLedger.getLedgerName())
-                            .ledgerCode(tdsLedger.getLedgerCode())
+                            /*
+                             * IMPORTANT:
+                             * Since user opened customer ledger,
+                             * keep ledger as current customer ledger.
+                             */
+                            .ledgerId(currentLedger.getId())
+                            .ledgerName(currentLedger.getLedgerName())
+                            .ledgerCode(currentLedger.getLedgerCode())
 
-                            .debitAmount(moneyForStatement(entry.getDebitAmount()))
-                            .creditAmount(moneyForStatement(entry.getCreditAmount()))
+                            /*
+                             * In customer ledger, TDS should be shown as credit.
+                             */
+                            .debitAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
+                            .creditAmount(tdsAmount)
 
+                            /*
+                             * Do not calculate running balance for this display row,
+                             * otherwise customer balance will double-count TDS.
+                             */
                             .runningBalanceAmount(null)
                             .runningBalanceType(null)
 
-                            .particulars(companyName)
+                            /*
+                             * Customer ledger particulars should show TDS Receivable.
+                             */
+                            .particulars(tdsLedger.getLedgerName())
                             .serviceName(null)
                             .bankName(null)
+
                             .narration(
                                     entry.getNarration() != null && !entry.getNarration().trim().isEmpty()
                                             ? entry.getNarration()
                                             : "TDS deducted by customer"
                             )
+
                             .gstDetails(null)
                             .build();
                 })

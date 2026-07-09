@@ -41,9 +41,10 @@ public class LedgerMasterController {
     @Operation(summary = "Update ledger")
     public ResponseEntity<LedgerMasterResponseDto> updateLedger(
             @PathVariable Long id,
+            @RequestParam Long userId,
             @Valid @RequestBody LedgerMasterRequestDto request
     ) {
-        LedgerMasterResponseDto response = ledgerMasterService.updateLedger(id, request);
+        LedgerMasterResponseDto response = ledgerMasterService.updateLedger(id, request, userId);
         return ResponseEntity.ok(response);
     }
 
@@ -127,6 +128,7 @@ public class LedgerMasterController {
 
         return ResponseEntity.ok(response);
     }
+
 
     @GetMapping("/active")
     @Operation(summary = "Get active BANK, CASH and PAYMENT_GATEWAY ledgers")

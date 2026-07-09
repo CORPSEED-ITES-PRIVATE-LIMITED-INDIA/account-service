@@ -17,7 +17,6 @@ public interface LedgerMasterService {
 
     LedgerMasterResponseDto createLedger(LedgerMasterRequestDto request);
 
-    LedgerMasterResponseDto updateLedger(Long id, LedgerMasterRequestDto request);
 
     LedgerMasterResponseDto getLedgerById(Long id);
 
@@ -42,7 +41,5 @@ public interface LedgerMasterService {
 
     List<LedgerMasterResponseDto> getReceiptLedgers();
 
-    Map<Long, List<AccountingVoucherEntry>> voucherEntriesCache = new HashMap<>();
-
-
+    LedgerMasterResponseDto updateLedger(Long id, LedgerMasterRequestDto request, Long userId);
 }
