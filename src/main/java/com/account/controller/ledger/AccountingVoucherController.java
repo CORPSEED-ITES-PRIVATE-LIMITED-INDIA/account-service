@@ -36,6 +36,7 @@ public class AccountingVoucherController {
     }
 
 
+
     @GetMapping("/{id}")
     @Operation(summary = "Get accounting voucher by ID")
     public ResponseEntity<AccountingVoucherResponseDto> getVoucherById(
