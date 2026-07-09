@@ -884,6 +884,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     otherEntriesCache
             );
 
+            BigDecimal actualBankReceivedAmount = resolveBankReceivedAmount(voucher, otherEntriesCache);
+            BigDecimal tdsAmount = resolveTdsAmount(voucher, otherEntriesCache);
+            BigDecimal settlementAmount = resolveSettlementAmount(voucher, otherEntriesCache);
+
+
             LedgerTransactionGstDetailsDto gstDetails = salesInvoice != null
                     ? buildGstDetails(salesInvoice)
                     : null;
@@ -915,11 +920,16 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             .particulars(particulars)
                             .serviceName(serviceName)
                             .bankName(receiptBankName)
-//
+                            .actualBankReceivedAmount(actualBankReceivedAmount)
+                            .tdsAmount(tdsAmount)
+                            .settlementAmount(settlementAmount)
+                            .gstDetails(gstDetails)
+
 //                            /*
 //                             * GST details only for sales invoice voucher rows.
 //                             * Receipt / payment / journal rows will return null.
 //                             */
+
                             .gstDetails(gstDetails)
 
                             .build()
@@ -1139,15 +1149,88 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
     ) {
         /*
-         * Tax / TDS ledgers should show party/company name.
+         * RECEIPT VOUCHER LOGIC
          *
-         * Example Receipt Voucher:
-         * Dr Corpseed HDFC Bank
-         * Dr TDS Receivable
-         *      Cr Customer Company
+         * Example:
+         * HDFC Bank Dr              54,000
+         * TDS Receivable Dr          5,000
+         *      To Microsoft Customer        59,000
          *
-         * In TDS Receivable ledger statement, particulars should be Customer Company,
-         * not Corpseed HDFC Bank.
+         * If current ledger = Microsoft Customer -> particulars = HDFC Bank
+         * If current ledger = HDFC Bank          -> particulars = Microsoft
+         * If current ledger = TDS Receivable     -> particulars = Microsoft
+         */
+        if (isReceiptVoucher(voucher)) {
+
+            /*
+             * If user opened Bank / Cash / Payment Gateway ledger,
+             * particulars should show customer/company name.
+             */
+            if (currentLedger != null && isBankOrCashLedger(currentLedger)) {
+                String partyName = resolvePartyLedgerName(
+                        currentLedger,
+                        voucher,
+                        otherEntriesCache
+                );
+
+                if (partyName != null && !partyName.trim().isEmpty()) {
+                    return partyName;
+                }
+
+                String oppositeLedger = resolveOppositeLedgerName(
+                        currentLedger,
+                        voucher,
+                        otherEntriesCache
+                );
+
+                if (oppositeLedger != null && !oppositeLedger.trim().isEmpty()) {
+                    return oppositeLedger;
+                }
+
+                return narration;
+            }
+
+            /*
+             * If user opened TDS / GST ledger,
+             * particulars should show customer/company name.
+             */
+            if (isTaxOrTdsLedger(currentLedger)) {
+                String partyName = resolvePartyLedgerName(
+                        currentLedger,
+                        voucher,
+                        otherEntriesCache
+                );
+
+                if (partyName != null && !partyName.trim().isEmpty()) {
+                    return partyName;
+                }
+
+                String oppositeLedger = resolveOppositeLedgerName(
+                        currentLedger,
+                        voucher,
+                        otherEntriesCache
+                );
+
+                if (oppositeLedger != null && !oppositeLedger.trim().isEmpty()) {
+                    return oppositeLedger;
+                }
+
+                return narration;
+            }
+
+            /*
+             * If user opened Customer ledger,
+             * particulars should show bank name.
+             */
+            if (receiptBankName != null && !receiptBankName.trim().isEmpty()) {
+                return receiptBankName;
+            }
+        }
+
+        /*
+         * SALES INVOICE / TAX LEDGER LOGIC
+         *
+         * Output GST / Input GST / TDS ledgers should show company name.
          */
         if (isTaxOrTdsLedger(currentLedger)) {
             String partyName = resolvePartyLedgerName(
@@ -1162,44 +1245,17 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         /*
-         * Sales invoice non-tax rows should show service name.
+         * Sales invoice row should show service name.
          *
          * Example:
-         * Customer Dr
-         *      To Service Income
+         * Customer ledger invoice row -> 12a Registration
          */
         if (serviceName != null && !serviceName.trim().isEmpty()) {
             return serviceName;
         }
 
         /*
-         * Bank / Cash / Payment Gateway ledger row should show its own bank/payment name.
-         *
-         * Example:
-         * Corpseed HDFC Bank
-         */
-        if (currentLedger != null
-                && isBankOrCashLedger(currentLedger)
-                && receiptBankName != null
-                && !receiptBankName.trim().isEmpty()) {
-            return receiptBankName;
-        }
-
-        /*
-         * Customer ledger row in receipt should show bank name.
-         *
-         * Example:
-         * Customer ledger statement:
-         * Particulars = Corpseed HDFC Bank
-         */
-        if (isReceiptVoucher(voucher)
-                && receiptBankName != null
-                && !receiptBankName.trim().isEmpty()) {
-            return receiptBankName;
-        }
-
-        /*
-         * Normal accounting fallback:
+         * Normal fallback:
          * show opposite ledger name.
          */
         String oppositeLedger = resolveOppositeLedgerName(
@@ -1214,6 +1270,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         return narration;
     }
+
 
     private boolean isTaxOrTdsLedger(LedgerMaster ledger) {
         if (ledger == null || ledger.getLedgerType() == null) {
@@ -1484,6 +1541,90 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .map(this::mapToResponse)
                 .toList();
     }
+
+    private BigDecimal resolveBankReceivedAmount(
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        if (!isReceiptVoucher(voucher)) {
+            return null;
+        }
+
+        List<AccountingVoucherEntry> entries = getVoucherEntries(
+                voucher,
+                otherEntriesCache
+        );
+
+        return entries.stream()
+                .filter(entry -> entry.getLedger() != null)
+                .filter(entry -> isBankOrCashLedger(entry.getLedger()))
+                .map(AccountingVoucherEntry::getDebitAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal resolveTdsAmount(
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        if (!isReceiptVoucher(voucher)) {
+            return null;
+        }
+
+        List<AccountingVoucherEntry> entries = getVoucherEntries(
+                voucher,
+                otherEntriesCache
+        );
+
+        return entries.stream()
+                .filter(entry -> entry.getLedger() != null)
+                .filter(entry -> entry.getLedger().getLedgerType() == LedgerType.TDS_RECEIVABLE)
+                .map(AccountingVoucherEntry::getDebitAmount)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal resolveSettlementAmount(
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        BigDecimal bankReceived = resolveBankReceivedAmount(voucher, otherEntriesCache);
+        BigDecimal tdsAmount = resolveTdsAmount(voucher, otherEntriesCache);
+
+        if (bankReceived == null && tdsAmount == null) {
+            return null;
+        }
+
+        return safeMoney(bankReceived)
+                .add(safeMoney(tdsAmount))
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private List<AccountingVoucherEntry> getVoucherEntries(
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        if (voucher == null || voucher.getId() == null) {
+            return new ArrayList<>();
+        }
+
+        Long voucherId = voucher.getId();
+
+        if (otherEntriesCache.containsKey(voucherId)) {
+            return otherEntriesCache.get(voucherId);
+        }
+
+        List<AccountingVoucherEntry> entries =
+                accountingVoucherEntryRepository.findByVoucherId(voucherId);
+
+        otherEntriesCache.put(voucherId, entries);
+
+        return entries;
+    }
+
+
 
 
 

@@ -48,6 +48,11 @@ public class LedgerTransactionResponseDto {
 
     private String narration;
 
+    private BigDecimal actualBankReceivedAmount;
+    private BigDecimal tdsAmount;
+    private BigDecimal settlementAmount;
+
     // Only for sales invoice entry
     private LedgerTransactionGstDetailsDto gstDetails;
+
 }

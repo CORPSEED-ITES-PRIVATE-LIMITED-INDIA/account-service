@@ -76,6 +76,7 @@ public interface AccountingVoucherEntryRepository extends JpaRepository<Accounti
             @Param("ledgerId") Long ledgerId
     );
 
+    List<AccountingVoucherEntry> findByVoucherId(Long voucherId);
 
 
 }
