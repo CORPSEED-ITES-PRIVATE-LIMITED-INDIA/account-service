@@ -34,7 +34,6 @@ public class PaymentLegalVerificationServiceImpl implements PaymentLegalVerifica
     private final PaymentLegalVerificationRequestRepository legalRequestRepository;
     private final UserRepository userRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
-    private final PaymentReceiptRepository paymentReceiptRepository;
 
     @Override
     public void createIfPurchaseOrder(PaymentReceipt receipt, User requestedBy) {
