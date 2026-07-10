@@ -228,13 +228,6 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 7. TDS VALIDATION
         // =====================================================
-        // TDS is only allowed for FULL and PURCHASE_ORDER payment types.
-        // TDS percentage is restricted to 2% or 10%.
-        validateTdsRequest(request, paymentType);
-
-        // =====================================================
-        // 7. TDS VALIDATION
-        // =====================================================
         if (isPurchaseOrder
                 && reqAmount.compareTo(BigDecimal.ZERO) == 0
                 && Boolean.TRUE.equals(request.getTdsActive())) {
@@ -1242,11 +1235,6 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
-
-
-
-
-
     private BigDecimal safe2(BigDecimal val) {
         return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
     }
@@ -1306,8 +1294,12 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        log.info("Unbilled approval decision received | unbilledId={} | unbilledNumber={} | decision={}",
-                unbilled.getId(), unbilled.getUnbilledNumber(), approvalDecision);
+        log.info(
+                "Unbilled approval decision received | unbilledId={} | unbilledNumber={} | decision={}",
+                unbilled.getId(),
+                unbilled.getUnbilledNumber(),
+                approvalDecision
+        );
 
         Company company = unbilled.getCompany();
         CompanyUnit unit = unbilled.getUnit();
@@ -1373,8 +1365,11 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        log.info("Pending payments found for decision | unbilledId={} | paymentCount={}",
-                unbilled.getId(), paymentsToApprove.size());
+        log.info(
+                "Pending payments found for decision | unbilledId={} | paymentCount={}",
+                unbilled.getId(),
+                paymentsToApprove.size()
+        );
 
         boolean initialPurchaseOrderApproval = paymentsToApprove.stream()
                 .anyMatch(payment ->
@@ -1431,9 +1426,6 @@ public class PaymentServiceImpl implements PaymentService {
                     false,
                     request.getApprovalRemarks()
             );
-
-
-
 
             log.info("Unbilled {} rejected.", unbilled.getUnbilledNumber());
 
@@ -1513,9 +1505,8 @@ public class PaymentServiceImpl implements PaymentService {
         paymentsToApprove.forEach(payment -> payment.setStatus(PaymentStatus.APPROVED));
 
         /*
-         * Correct installment-wise TDS calculation:
-         * Do not use getPendingTdsAmountForLedger().
-         * Calculate TDS payment-wise.
+         * Correct payment-wise TDS calculation:
+         * Bank amount + TDS amount = settlement amount.
          */
         BigDecimal newlyApprovedBankAmount = paymentsToApprove.stream()
                 .map(PaymentReceipt::getAmount)
@@ -1552,6 +1543,28 @@ public class PaymentServiceImpl implements PaymentService {
                         .setScale(2, RoundingMode.HALF_UP)
         );
 
+        /*
+         * Post receipt voucher for actual received payments only.
+         *
+         * Initial PURCHASE_ORDER has amount = 0, so no voucher will be posted.
+         *
+         * Normal payments and later PO actual payments:
+         * Dr Bank / Cash Ledger
+         * Dr TDS Receivable, if applicable
+         * Cr Customer Ledger
+         */
+        for (PaymentReceipt payment : paymentsToApprove) {
+            if (safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal tdsForVoucher = getPendingTdsAmountForPayment(payment);
+
+                postReceiptVoucherForApprovedPayment(
+                        unbilled,
+                        payment,
+                        approver,
+                        tdsForVoucher
+                );
+            }
+        }
 
         /*
          * Generate invoice payment-wise.
@@ -1584,6 +1597,18 @@ public class PaymentServiceImpl implements PaymentService {
                     .orElse(null);
 
             if (invoice == null) {
+
+                /*
+                 * For later PURCHASE_ORDER actual payment:
+                 * Tax invoice can be generated only after Operation says
+                 * all non-Certification milestones are completed.
+                 *
+                 * Initial PO amount = 0 is already skipped above.
+                 */
+                if (isPurchaseOrderPayment(payment)) {
+                    validatePoBillingEligibility(unbilled);
+                }
+
                 BigDecimal tdsForInvoice = getTdsAmountForPayment(payment);
 
                 invoice = invoiceService.generateInvoiceForPayment(
@@ -1600,9 +1625,6 @@ public class PaymentServiceImpl implements PaymentService {
                     invoice
             );
         }
-
-
-
 
         governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(gf -> {
             if (gf.getStatus() == GovernmentFeeStatus.PENDING) {
@@ -1610,34 +1632,6 @@ public class PaymentServiceImpl implements PaymentService {
                 governmentFeeRepository.save(gf);
             }
         });
-
-        /*
-         * Generate invoice payment-wise first.
-         * Then approve TDS and set TDS date = invoice date.
-         */
-        for (PaymentReceipt payment : paymentsToApprove) {
-
-            Invoice invoice = invoiceRepository
-                    .findByTriggeringPaymentAndIsCancelledFalse(payment)
-                    .orElse(null);
-
-            if (invoice == null) {
-                BigDecimal tdsForInvoice = getTdsAmountForPayment(payment);
-
-                invoice = invoiceService.generateInvoiceForPayment(
-                        unbilled,
-                        payment,
-                        approver,
-                        tdsForInvoice
-                );
-            }
-
-            approveTdsForPaymentAfterInvoiceCreated(
-                    payment,
-                    approver,
-                    invoice
-            );
-        }
 
         boolean hasAnyActiveTds = !tdsRegistrationRepository
                 .findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
@@ -1651,7 +1645,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         estimateRepository.save(estimate);
         unbilledInvoiceRepository.save(unbilled);
-
 
         PaymentReceipt triggeringReceipt = paymentsToApprove.stream()
                 .filter(p -> p.getCreatedAt() != null)
@@ -1735,6 +1728,11 @@ public class PaymentServiceImpl implements PaymentService {
             response.setPrimaryPinCode(unit.getPinCode());
         }
 
+        /*
+         * Initial PURCHASE_ORDER approval:
+         * After Accounts approval, create Operation project.
+         * Invoice and receipt voucher are skipped because amount = 0.
+         */
         if (initialPurchaseOrderApproval) {
             createOperationProjectForPurchaseOrderIfNotExists(
                     unbilled,
@@ -1743,13 +1741,15 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        log.info("Unbilled approval completed | unbilledId={} | decision={} | receivedAmount={} | outstandingAmount={}",
-                unbilled.getId(), approvalDecision, unbilled.getReceivedAmount(), unbilled.getOutstandingAmount());
+        log.info(
+                "Unbilled approval completed | unbilledId={} | decision={} | receivedAmount={} | outstandingAmount={}",
+                unbilled.getId(),
+                approvalDecision,
+                unbilled.getReceivedAmount(),
+                unbilled.getOutstandingAmount()
+        );
 
         return response;
-
-
-
     }
 
 
@@ -3575,6 +3575,38 @@ public class PaymentServiceImpl implements PaymentService {
         );
     }
 
+
+    private void validatePoBillingEligibility(UnbilledInvoice unbilled) {
+        try {
+            ResponseEntity<OperationProjectResponseDto> res =
+                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
+                throw new ValidationException(
+                        "Project details not found from Operation Service",
+                        "ERR_OPERATION_PROJECT_NOT_FOUND",
+                        "unbilledNumber"
+                );
+            }
+
+            OperationProjectResponseDto project = res.getBody();
+
+            if (!Boolean.TRUE.equals(project.getPoBillingEligible())) {
+                throw new ValidationException(
+                        "Tax invoice cannot be raised yet. All non-Certification milestones must be completed first.",
+                        "ERR_PO_PROJECT_NOT_READY_FOR_TAX_INVOICE",
+                        "unbilledNumber"
+                );
+            }
+
+        } catch (FeignException.NotFound ex) {
+            throw new ValidationException(
+                    "Project not found in Operation Service for this PO unbilled",
+                    "ERR_OPERATION_PROJECT_NOT_FOUND",
+                    "unbilledNumber"
+            );
+        }
+    }
 
 
 }

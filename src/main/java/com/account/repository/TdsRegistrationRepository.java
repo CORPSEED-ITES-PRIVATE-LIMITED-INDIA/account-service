@@ -2,7 +2,6 @@ package com.account.repository;
 
 import com.account.domain.PaymentReceipt;
 import com.account.domain.TdsRegistration;
-import com.account.domain.status.TdsStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.domain.estimate.Estimate;
 import org.springframework.data.jpa.repository.JpaRepository;

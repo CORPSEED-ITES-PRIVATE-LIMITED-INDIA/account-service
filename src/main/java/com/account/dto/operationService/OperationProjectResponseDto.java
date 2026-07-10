@@ -47,4 +47,6 @@ public class OperationProjectResponseDto {
     private String unitName;
 
     private Integer milestoneCompletionPercentage;
+
+    private Boolean poBillingEligible;
 }
