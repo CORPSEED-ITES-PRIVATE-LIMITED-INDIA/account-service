@@ -261,7 +261,7 @@ ORDER BY u.createdAt DESC
             SELECT COALESCE(SUM(u.totalAmount), 0)
             FROM UnbilledInvoice u
             WHERE u.isCancelled = false
-              AND u.createdBy.id = :userId
+              AND u.approvedBy.id = :userId
               AND u.createdAt >= :fromDateTime
               AND u.createdAt < :toDateTime
             """)
@@ -271,11 +271,12 @@ ORDER BY u.createdAt DESC
             @Param("toDateTime") LocalDateTime toDateTime
     );
 
+
     @Query("""
             SELECT COALESCE(SUM(u.outstandingAmount), 0)
             FROM UnbilledInvoice u
             WHERE u.isCancelled = false
-              AND u.createdBy.id = :userId
+              AND u.approvedBy.id = :userId
               AND u.createdAt >= :fromDateTime
               AND u.createdAt < :toDateTime
             """)
@@ -289,7 +290,7 @@ ORDER BY u.createdAt DESC
             SELECT COUNT(u.id)
             FROM UnbilledInvoice u
             WHERE u.isCancelled = false
-              AND u.createdBy.id = :userId
+              AND u.approvedBy.id = :userId
               AND u.status = :status
               AND u.createdAt >= :fromDateTime
               AND u.createdAt < :toDateTime
@@ -305,7 +306,7 @@ ORDER BY u.createdAt DESC
             SELECT COUNT(u.id)
             FROM UnbilledInvoice u
             WHERE u.isCancelled = false
-              AND u.createdBy.id = :userId
+              AND u.approvedBy .id = :userId
               AND u.status = :status
               AND u.createdAt >= :todayStart
               AND u.createdAt < :tomorrowStart
@@ -324,7 +325,7 @@ ORDER BY u.createdAt DESC
         COALESCE(SUM(u.total_amount), 0) AS amount
     FROM unbilled_invoice u
     WHERE u.is_cancelled = false
-      AND u.created_by = :userId
+      AND u.approved_by = :userId
       AND u.created_at >= :fromDateTime
       AND u.created_at < :toDateTime
     GROUP BY DATE_FORMAT(u.created_at, '%Y-%m')
