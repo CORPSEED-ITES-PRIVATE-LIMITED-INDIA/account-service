@@ -514,59 +514,6 @@ public class UnbilledServiceImpl implements UnbilledService {
         return "PRJ-" + dateTimePart + "-" + sequence;
     }
 
-//    private void operationProjectCreationMethod(UnbilledInvoice unbilled,
-//                                                Estimate estimate,
-//                                                UnbilledInvoiceApprovalResponseDto response) {
-//
-//        try {
-//            log.info("Starting operation project creation | unbilled: {}", unbilled.getUnbilledNumber());
-//
-//
-//            OperationProjectRequestDto projectDto = new OperationProjectRequestDto();
-//
-//            projectDto.setName(response.getName());
-//            projectDto.setProjectNo(response.getProjectNo());
-//
-//            projectDto.setSalesPersonId(response.getSalesPersonId());
-//            projectDto.setSalesPersonName(response.getSalesPersonName());
-//
-//            projectDto.setProductId(response.getProductId());
-//            projectDto.setCompanyId(response.getCompanyId());
-//
-//            projectDto.setUnbilledNumber(response.getUnbilledNumber());
-//            projectDto.setEstimateNumber(response.getEstimateNumber());
-//
-//            projectDto.setContactId(response.getContactId());
-//            projectDto.setLeadId(response.getLeadId());
-//
-//            projectDto.setDate(response.getDate());
-//
-//            projectDto.setTotalAmount(response.getTotalAmount());
-//            projectDto.setPaidAmount(response.getPaidAmount());
-//
-//            projectDto.setPaymentTypeId(response.getPaymentTypeId());
-//
-//            projectDto.setApprovedById(response.getApprovedById());
-//            projectDto.setCreatedBy(response.getCreatedBy());
-//            projectDto.setUpdatedBy(response.getUpdatedBy());
-//
-//            projectDto.setUnitId(response.getCompanyUnitId());
-//
-//            operationFeignClient.createProject(projectDto);
-//
-//            log.info("Project successfully created in operation-service | projectNo={}", projectDto.getProjectNo());
-//
-//        } catch (Error error) {
-//            //  DO NOT break main transaction (invoice approval)
-//            log.error("Failed to create project in operation-service | unbilled={} | error={}",
-//                    unbilled.getUnbilledNumber(), error.getMessage(), error);
-//
-//            throw error;
-//
-//        }
-//    }
-
-
 
     private String getUserDisplayName(User user) {
         if (user == null) return null;
