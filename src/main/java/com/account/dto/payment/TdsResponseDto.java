@@ -4,6 +4,7 @@ import com.account.domain.status.TdsStatus;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -24,6 +25,7 @@ public class TdsResponseDto {
     private BigDecimal tdsPercentage;
     private BigDecimal taxableAmount;
     private BigDecimal tdsAmount;
+    private LocalDate tdsDate;
 
     private TdsStatus status;
 
@@ -32,4 +34,6 @@ public class TdsResponseDto {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+
 }

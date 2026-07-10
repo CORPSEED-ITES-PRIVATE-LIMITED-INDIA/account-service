@@ -488,43 +488,36 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private InvoiceSummaryDto toSummaryDto(Invoice inv) {
 
 		UnbilledInvoice unbilled = inv.getUnbilledInvoice();
-		Estimate estimate = (unbilled != null) ? unbilled.getEstimate() : null;
+		Estimate estimate = unbilled != null ? unbilled.getEstimate() : null;
+
+		PaymentReceipt receipt = inv.getTriggeringPayment();
 
 		Long paymentTypeId = null;
 		String paymentTypeCode = null;
 
-		/*
-		 * Set paymentTypeId/paymentTypeCode only when unbilled has approved received amount.
-		 * receivedAmount = approved payment amount
-		 * currentReceivedAmount = pending payment amount
-		 */
-		if (unbilled != null
-				&& unbilled.getReceivedAmount() != null
-				&& unbilled.getReceivedAmount().compareTo(BigDecimal.ZERO) > 0) {
-
-			if (unbilled.getPayments() != null && !unbilled.getPayments().isEmpty()) {
-				PaymentReceipt receipt = unbilled.getPayments().get(0);
-
-				if (receipt.getPaymentType() != null) {
-					paymentTypeId = receipt.getPaymentType().getId();
-					paymentTypeCode = receipt.getPaymentType().getCode();
-				}
-			}
+		if (receipt != null && receipt.getPaymentType() != null) {
+			paymentTypeId = receipt.getPaymentType().getId();
+			paymentTypeCode = receipt.getPaymentType().getCode();
 		}
 
 		return InvoiceSummaryDto.builder()
 				.id(inv.getId())
 				.publicUuid(inv.getPublicUuid())
 				.invoiceNumber(inv.getInvoiceNumber())
+
 				.unbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null)
+
 				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
 				.estimateId(estimate != null ? estimate.getId() : null)
 
 				.paymentTypeId(paymentTypeId)
 				.paymentTypeCode(paymentTypeCode)
 
-				.solutionId(estimate != null ? estimate.getSolutionId() : null)
-				.solutionName(estimate != null ? estimate.getSolutionName() : null)
+				.solutionId(inv.getSolutionId())
+				.solutionName(inv.getSolutionName())
+
+				// Not available in pasted entity classes
+				.solutionType(null)
 
 				.companyName(unbilled != null && unbilled.getCompany() != null
 						? unbilled.getCompany().getName()
@@ -540,13 +533,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.cgstAmount(inv.getCgstAmount())
 				.sgstAmount(inv.getSgstAmount())
 				.igstAmount(inv.getIgstAmount())
-				.status(inv.getStatus())
 
-				.createdByName(inv.getCreatedBy() != null
-						? (inv.getCreatedBy().getFullName() != null
-						? inv.getCreatedBy().getFullName()
-						: inv.getCreatedBy().getEmail())
-						: null)
+				.irn(inv.getEInvoiceIrn())
+				.status(inv.getStatus())
 
 				.organizationName(inv.getOrganizationName())
 				.organizationAddressLine1(inv.getOrganizationAddressLine1())
@@ -563,10 +552,17 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.organizationWebsite(inv.getOrganizationWebsite())
 				.organizationLogoUrl(inv.getOrganizationLogoUrl())
 
+				.createdByName(inv.getCreatedBy() != null
+						? inv.getCreatedBy().getFullName() != null
+						? inv.getCreatedBy().getFullName()
+						: inv.getCreatedBy().getEmail()
+						: null)
+
 				.createdAt(inv.getCreatedAt())
+				.sentAt(inv.getEInvoiceConfirmedAt())
+
 				.build();
 	}
-
 
 	@Override
 	public List<InvoiceSummaryDto> searchInvoices(

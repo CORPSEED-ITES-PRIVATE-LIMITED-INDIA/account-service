@@ -62,8 +62,6 @@ public class UnbilledServiceImpl implements UnbilledService {
     private final LeadFeignClient leadFeignClient;
 
 
-
-
     @Override
     @Transactional(readOnly = true)
     public List<UnbilledInvoiceSummaryDto> getUnbilledReport(
@@ -496,6 +494,7 @@ public class UnbilledServiceImpl implements UnbilledService {
                 .tdsPercentage(tds.getTdsPercentage())
                 .taxableAmount(tds.getTaxableAmount())
                 .tdsAmount(tds.getTdsAmount())
+                .tdsDate(tds.getTdsDate())
                 .status(tds.getStatus())
                 .createdById(tds.getCreatedBy() != null ? tds.getCreatedBy().getId() : null)
                 .createdByName(getUserDisplayName(tds.getCreatedBy()))

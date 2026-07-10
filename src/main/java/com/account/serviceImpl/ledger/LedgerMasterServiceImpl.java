@@ -672,6 +672,31 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         Contact contact = ledger.getContact();
         LedgerGroup ledgerGroup = ledger.getLedgerGroup();
 
+        /*
+         * Accounting balance:
+         * DEBIT  = positive
+         * CREDIT = negative
+         *
+         * For BANK / PAYMENT_GATEWAY display:
+         * Bank debit balance should be shown as CREDIT,
+         * because you want bank-statement style display.
+         */
+        BigDecimal displayOpeningSignedBalance = displaySignedBalanceForLedger(
+                ledger,
+                toSignedBalanceForStatement(
+                        ledger.getOpeningBalance(),
+                        ledger.getOpeningBalanceType()
+                )
+        );
+
+        BigDecimal displayCurrentSignedBalance = displaySignedBalanceForLedger(
+                ledger,
+                toSignedBalanceForStatement(
+                        ledger.getCurrentBalance(),
+                        ledger.getCurrentBalanceType()
+                )
+        );
+
         return LedgerMasterResponseDto.builder()
                 .id(ledger.getId())
                 .ledgerName(ledger.getLedgerName())
@@ -708,11 +733,17 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .ifscCode(ledger.getIfscCode())
                 .branchName(ledger.getBranchName())
 
-                .openingBalance(ledger.getOpeningBalance())
-                .openingBalanceType(ledger.getOpeningBalanceType())
+                /*
+                 * DISPLAY opening balance
+                 */
+                .openingBalance(absAmountForStatement(displayOpeningSignedBalance))
+                .openingBalanceType(balanceTypeForStatement(displayOpeningSignedBalance))
 
-                .currentBalance(ledger.getCurrentBalance())
-                .currentBalanceType(ledger.getCurrentBalanceType())
+                /*
+                 * DISPLAY current balance
+                 */
+                .currentBalance(absAmountForStatement(displayCurrentSignedBalance))
+                .currentBalanceType(balanceTypeForStatement(displayCurrentSignedBalance))
 
                 .systemCreated(ledger.isSystemCreated())
                 .active(ledger.isActive())
@@ -722,6 +753,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .updatedAt(ledger.getUpdatedAt())
                 .build();
     }
+
 
     private String buildFullAddress(CompanyUnit unit) {
 
@@ -967,12 +999,22 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
             AccountingVoucher voucher = entry.getVoucher();
 
-            BigDecimal debit = moneyForStatement(entry.getDebitAmount());
-            BigDecimal credit = moneyForStatement(entry.getCreditAmount());
+            BigDecimal accountingDebit = moneyForStatement(entry.getDebitAmount());
+            BigDecimal accountingCredit = moneyForStatement(entry.getCreditAmount());
 
+            /*
+             * Running balance must always use real accounting values.
+             *
+             * Example with TDS:
+             * Dr Bank              11,600
+             * Dr TDS Receivable       200
+             *     Cr Customer      11,800
+             *
+             * Customer balance should reduce by full 11,800.
+             */
             runningSignedBalance = runningSignedBalance
-                    .add(debit)
-                    .subtract(credit)
+                    .add(accountingDebit)
+                    .subtract(accountingCredit)
                     .setScale(2, RoundingMode.HALF_UP);
 
             String narration = entry.getNarration();
@@ -982,7 +1024,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             }
 
             Optional<Invoice> salesInvoiceOptional = getSalesInvoice(voucher, invoiceCache);
-
             Invoice salesInvoice = salesInvoiceOptional.orElse(null);
 
             String serviceName = salesInvoice != null
@@ -1006,6 +1047,57 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     ? buildGstDetails(salesInvoice)
                     : null;
 
+            /*
+             * Default display amount.
+             *
+             * For BANK / PAYMENT_GATEWAY:
+             * accounting debit is money received, but UI shows it as Credit.
+             */
+            BigDecimal displayDebit = displayDebitForLedger(
+                    ledger,
+                    accountingDebit,
+                    accountingCredit
+            );
+
+            BigDecimal displayCredit = displayCreditForLedger(
+                    ledger,
+                    accountingDebit,
+                    accountingCredit
+            );
+
+            /*
+             * Customer receipt with TDS special display:
+             *
+             * Actual customer credit = Bank amount + TDS amount.
+             * But UI row with HDFC Bank should show only actual bank received.
+             * Extra TDS row will be added by buildAdditionalReceiptRows().
+             *
+             * Example:
+             * Actual customer credit = 11,800
+             * Bank row display       = 11,600
+             * TDS row display        = 200
+             */
+            if (isCustomerReceiptCreditRow(
+                    ledger,
+                    voucher,
+                    accountingDebit,
+                    accountingCredit
+            )) {
+                BigDecimal bankAmount = getReceiptBankAmountForCustomerLedger(
+                        ledger,
+                        voucher,
+                        otherEntriesCache
+                );
+
+                if (bankAmount.compareTo(BigDecimal.ZERO) > 0) {
+                    displayDebit = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                    displayCredit = bankAmount;
+                }
+            }
+
+            BigDecimal displayRunningSignedBalance =
+                    displaySignedBalanceForLedger(ledger, runningSignedBalance);
+
             LedgerTransactionResponseDto mainRow = LedgerTransactionResponseDto.builder()
                     .entryId(entry.getId())
 
@@ -1022,11 +1114,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     .ledgerName(ledger.getLedgerName())
                     .ledgerCode(ledger.getLedgerCode())
 
-                    .debitAmount(debit)
-                    .creditAmount(credit)
+                    .debitAmount(displayDebit)
+                    .creditAmount(displayCredit)
 
-                    .runningBalanceAmount(absAmountForStatement(runningSignedBalance))
-                    .runningBalanceType(balanceTypeForStatement(runningSignedBalance))
+                    .runningBalanceAmount(absAmountForStatement(displayRunningSignedBalance))
+                    .runningBalanceType(balanceTypeForStatement(displayRunningSignedBalance))
 
                     .narration(narration)
                     .particulars(particulars)
@@ -1057,21 +1149,23 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 ))
                 .collect(Collectors.toList());
 
+        /*
+         * Important:
+         * Do not filter runningBalanceType != null.
+         * Extra TDS row has no running balance, but its amount must be counted
+         * in totalCredit.
+         */
         BigDecimal totalDebit = filteredRows.stream()
-                .filter(row -> row.getRunningBalanceType() != null)
                 .map(LedgerTransactionResponseDto::getDebitAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
 
         BigDecimal totalCredit = filteredRows.stream()
-                .filter(row -> row.getRunningBalanceType() != null)
                 .map(LedgerTransactionResponseDto::getCreditAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
                 .setScale(2, RoundingMode.HALF_UP);
-
-
 
         int totalElements = filteredRows.size();
 
@@ -1083,6 +1177,12 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         int end = Math.min(start + safeSize, totalElements);
 
         List<LedgerTransactionResponseDto> pagedRows = filteredRows.subList(start, end);
+
+        BigDecimal displayOpeningSignedBalance =
+                displaySignedBalanceForLedger(ledger, openingSignedBalance);
+
+        BigDecimal displayClosingSignedBalance =
+                displaySignedBalanceForLedger(ledger, runningSignedBalance);
 
         log.debug("Ledger transactions fetched. ledgerId={}, totalElements={}, totalPages={}, returnedRows={}",
                 ledgerId,
@@ -1099,11 +1199,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .fromDate(fromDate)
                 .toDate(toDate)
 
-                .openingBalanceAmount(absAmountForStatement(openingSignedBalance))
-                .openingBalanceType(balanceTypeForStatement(openingSignedBalance))
+                .openingBalanceAmount(absAmountForStatement(displayOpeningSignedBalance))
+                .openingBalanceType(balanceTypeForStatement(displayOpeningSignedBalance))
 
-                .closingBalanceAmount(absAmountForStatement(runningSignedBalance))
-                .closingBalanceType(balanceTypeForStatement(runningSignedBalance))
+                .closingBalanceAmount(absAmountForStatement(displayClosingSignedBalance))
+                .closingBalanceType(balanceTypeForStatement(displayClosingSignedBalance))
 
                 .totalDebit(totalDebit)
                 .totalCredit(totalCredit)
@@ -1781,6 +1881,103 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             .build();
                 })
                 .collect(Collectors.toList());
+    }
+
+
+    private boolean isBankStatementDisplayLedger(LedgerMaster ledger) {
+        return ledger != null
+                && ledger.getLedgerType() != null
+                && (
+                ledger.getLedgerType() == LedgerType.BANK
+                        || ledger.getLedgerType() == LedgerType.PAYMENT_GATEWAY
+        );
+    }
+
+    private BigDecimal displayDebitForLedger(
+            LedgerMaster ledger,
+            BigDecimal accountingDebit,
+            BigDecimal accountingCredit
+    ) {
+        /*
+         * Bank statement display:
+         * Accounting debit = money received = show in Credit column
+         * Accounting credit = money paid = show in Debit column
+         */
+        if (isBankStatementDisplayLedger(ledger)) {
+            return moneyForStatement(accountingCredit);
+        }
+
+        return moneyForStatement(accountingDebit);
+    }
+
+    private BigDecimal displayCreditForLedger(
+            LedgerMaster ledger,
+            BigDecimal accountingDebit,
+            BigDecimal accountingCredit
+    ) {
+        if (isBankStatementDisplayLedger(ledger)) {
+            return moneyForStatement(accountingDebit);
+        }
+
+        return moneyForStatement(accountingCredit);
+    }
+
+    private BigDecimal displaySignedBalanceForLedger(
+            LedgerMaster ledger,
+            BigDecimal accountingSignedBalance
+    ) {
+        /*
+         * Accounting bank balance is normally DR.
+         * For bank-statement UI, show positive bank balance as CR.
+         */
+        if (isBankStatementDisplayLedger(ledger)) {
+            return moneyForStatement(accountingSignedBalance).negate();
+        }
+
+        return moneyForStatement(accountingSignedBalance);
+    }
+
+
+    private boolean isCustomerLedgerForStatement(LedgerMaster ledger) {
+        return ledger != null
+                && ledger.getLedgerType() != null
+                && (
+                ledger.getLedgerType() == LedgerType.CUSTOMER
+                        || ledger.getLedgerType() == LedgerType.CUSTOMER_ADVANCE
+        );
+    }
+
+    private boolean isCustomerReceiptCreditRow(
+            LedgerMaster ledger,
+            AccountingVoucher voucher,
+            BigDecimal debit,
+            BigDecimal credit
+    ) {
+        return isCustomerLedgerForStatement(ledger)
+                && isReceiptVoucher(voucher)
+                && debit.compareTo(BigDecimal.ZERO) == 0
+                && credit.compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private BigDecimal getReceiptBankAmountForCustomerLedger(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger.getId(),
+                otherEntriesCache
+        );
+
+        return otherEntries.stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> isBankOrCashLedger(entry.getLedger()))
+                .map(AccountingVoucherEntry::getDebitAmount)
+                .filter(Objects::nonNull)
+                .map(this::moneyForStatement)
+                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
 

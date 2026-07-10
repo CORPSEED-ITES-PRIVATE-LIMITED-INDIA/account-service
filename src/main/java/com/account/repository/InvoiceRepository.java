@@ -450,4 +450,9 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("toDate") LocalDate toDate
     );
 
+
+    Optional<Invoice> findByTriggeringPaymentAndIsCancelledFalse(PaymentReceipt triggeringPayment);
+
+
+
 }
