@@ -157,7 +157,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // ===================================================================
-// 4. COMPANY & UNIT APPROVAL CHECK
+      // 4. COMPANY & UNIT APPROVAL CHECK
 // ===================================================================
 // Payment registration is allowed only when both Company and Company Unit
 // are approved by Accounts.

@@ -1164,7 +1164,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     buildAdditionalReceiptRows(
                             ledger,
                             voucher,
-                            otherEntriesCache
+                            otherEntriesCache,
+                            rowDisplaySignedBalance
                     )
             );
         }
@@ -1804,7 +1805,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     private List<LedgerTransactionResponseDto> buildAdditionalReceiptRows(
             LedgerMaster currentLedger,
             AccountingVoucher voucher,
-            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache,
+            BigDecimal baseRunningSignedBalanceAfterMainRow
     ) {
         if (currentLedger == null || currentLedger.getLedgerType() == null) {
             return new ArrayList<>();
@@ -1817,18 +1819,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         /*
          * Extra TDS row should be shown only when user opens
          * Customer / Customer Advance ledger.
-         *
-         * Example:
-         * Actual voucher saved in DB:
-         *
-         * HDFC Bank Dr             54,000
-         * TDS Receivable Dr         5,000
-         *      To Microsoft              59,000
-         *
-         * In Microsoft customer ledger response, show extra display row:
-         *
-         * Microsoft Cr              5,000
-         * Particulars = TDS Receivable
          */
         if (currentLedger.getLedgerType() != LedgerType.CUSTOMER
                 && currentLedger.getLedgerType() != LedgerType.CUSTOMER_ADVANCE) {
@@ -1845,21 +1835,55 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             return new ArrayList<>();
         }
 
-        return otherEntries.stream()
-                .filter(entry -> entry != null && entry.getLedger() != null)
-                .filter(entry -> entry.getLedger().getLedgerType() == LedgerType.TDS_RECEIVABLE)
-                .filter(entry -> moneyForStatement(entry.getDebitAmount()).compareTo(BigDecimal.ZERO) > 0)
-                .map(entry -> {
-                    LedgerMaster tdsLedger = entry.getLedger();
-                    BigDecimal tdsAmount = moneyForStatement(entry.getDebitAmount());
+        BigDecimal runningAfterMainRow = baseRunningSignedBalanceAfterMainRow == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : baseRunningSignedBalanceAfterMainRow.setScale(2, RoundingMode.HALF_UP);
 
-                    log.debug("Building additional TDS receipt row. voucherId={}, currentLedgerId={}, tdsLedgerId={}, tdsAmount={}",
-                            voucher.getId(),
-                            currentLedger.getId(),
-                            tdsLedger.getId(),
-                            tdsAmount);
+        List<LedgerTransactionResponseDto> rows = new ArrayList<>();
 
-                    return LedgerTransactionResponseDto.builder()
+        for (AccountingVoucherEntry entry : otherEntries) {
+
+            if (entry == null || entry.getLedger() == null) {
+                continue;
+            }
+
+            LedgerMaster tdsLedger = entry.getLedger();
+
+            if (tdsLedger.getLedgerType() != LedgerType.TDS_RECEIVABLE) {
+                continue;
+            }
+
+            BigDecimal tdsAmount = moneyForStatement(entry.getDebitAmount());
+
+            if (tdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            /*
+             * Customer ledger:
+             * Credit reduces signed balance.
+             *
+             * Example:
+             * After CASH row = -5000
+             * TDS credit     = 86.21
+             * After TDS row  = -5086.21
+             */
+            runningAfterMainRow = runningAfterMainRow
+                    .subtract(tdsAmount)
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal displayRunningSignedBalance =
+                    displaySignedBalanceForLedger(currentLedger, runningAfterMainRow);
+
+            log.debug("Building additional TDS receipt row. voucherId={}, currentLedgerId={}, tdsLedgerId={}, tdsAmount={}, runningBalance={}",
+                    voucher.getId(),
+                    currentLedger.getId(),
+                    tdsLedger.getId(),
+                    tdsAmount,
+                    displayRunningSignedBalance);
+
+            rows.add(
+                    LedgerTransactionResponseDto.builder()
                             .entryId(entry.getId())
 
                             .voucherId(voucher.getId())
@@ -1871,31 +1895,24 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             .sourceId(voucher.getSourceId())
                             .status(voucher.getStatus())
 
-                            /*
-                             * IMPORTANT:
-                             * Since user opened customer ledger,
-                             * keep ledger as current customer ledger.
-                             */
                             .ledgerId(currentLedger.getId())
                             .ledgerName(currentLedger.getLedgerName())
                             .ledgerCode(currentLedger.getLedgerCode())
 
                             /*
-                             * In customer ledger, TDS should be shown as credit.
+                             * TDS amount should remain 86.21.
+                             * Do not set this to 5086.21.
                              */
                             .debitAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP))
                             .creditAmount(tdsAmount)
 
                             /*
-                             * Do not calculate running balance for this display row,
-                             * otherwise customer balance will double-count TDS.
+                             * Running balance after adding TDS.
+                             * This will show 5086.21 CR.
                              */
-                            .runningBalanceAmount(null)
-                            .runningBalanceType(null)
+                            .runningBalanceAmount(absAmountForStatement(displayRunningSignedBalance))
+                            .runningBalanceType(balanceTypeForStatement(displayRunningSignedBalance))
 
-                            /*
-                             * Customer ledger particulars should show TDS Receivable.
-                             */
                             .particulars(tdsLedger.getLedgerName())
                             .serviceName(null)
                             .bankName(null)
@@ -1907,11 +1924,12 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             )
 
                             .gstDetails(null)
-                            .build();
-                })
-                .collect(Collectors.toList());
-    }
+                            .build()
+            );
+        }
 
+        return rows;
+    }
 
     private boolean isBankStatementDisplayLedger(LedgerMaster ledger) {
         return ledger != null
