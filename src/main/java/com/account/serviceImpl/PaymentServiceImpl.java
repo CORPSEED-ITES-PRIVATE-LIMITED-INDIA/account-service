@@ -157,32 +157,49 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // ===================================================================
-        // 4. COMPANY APPROVAL CHECK (Critical Business Rule)
-        // ===================================================================
-        // Payment registration is blocked if the company is not approved by Accounts.
-        // This is a compliance and risk control measure.
+// 4. COMPANY & UNIT APPROVAL CHECK
+// ===================================================================
+// Payment registration is allowed only when both Company and Company Unit
+// are approved by Accounts.
         Company company = estimate.getCompany();
+        CompanyUnit unit = estimate.getUnit();
 
-        boolean companyApproved =
-                company != null
-                        && !company.isDeleted()
-                        && (
-                        company.isAccountsApproved()
-                                || company.getOnboardingStatus() == OnboardingStatus.APPROVED
-                );
+        boolean companyApproved = isCompanyApprovedForPayment(company);
+        boolean unitApproved = isUnitApprovedForPayment(unit);
 
-        if (!companyApproved) {
-            String companyName = company != null && company.getName() != null ? company.getName() : "N/A";
+        if (!companyApproved || !unitApproved) {
+
+            String companyName = company != null && company.getName() != null
+                    ? company.getName()
+                    : "N/A";
+
             String companyStatus = company != null && company.getOnboardingStatus() != null
-                    ? company.getOnboardingStatus().name() : "N/A";
+                    ? company.getOnboardingStatus().name()
+                    : "N/A";
+
+            String unitName = unit != null && unit.getUnitName() != null
+                    ? unit.getUnitName()
+                    : "N/A";
+
+            String unitStatus = unit != null && unit.getOnboardingStatus() != null
+                    ? unit.getOnboardingStatus().name()
+                    : "N/A";
 
             throw new ValidationException(
-                    "Payment registration is not allowed because company is not approved by Accounts. " +
-                            "Company: " + companyName + ", Status: " + companyStatus,
-                    "ERR_COMPANY_NOT_APPROVED_FOR_PAYMENT",
-                    "companyId"
+                    "Payment registration is not allowed because Company and Company Unit must both be approved by Accounts. "
+                            + "Company: " + companyName
+                            + ", Company Status: " + companyStatus
+                            + ", Company Approved: " + companyApproved
+                            + ", Unit: " + unitName
+                            + ", Unit Status: " + unitStatus
+                            + ", Unit Approved: " + unitApproved,
+                    "ERR_COMPANY_OR_UNIT_NOT_APPROVED_FOR_PAYMENT",
+                    !companyApproved ? "companyId" : "unitId"
             );
         }
+
+
+
 
         // =====================================================
         // 5. FETCH SALESPERSON AND PAYMENT TYPE
@@ -3608,6 +3625,23 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
+    private boolean isCompanyApprovedForPayment(Company company) {
+        return company != null
+                && !company.isDeleted()
+                && (
+                company.isAccountsApproved()
+                        || company.getOnboardingStatus() == OnboardingStatus.APPROVED
+        );
+    }
+
+    private boolean isUnitApprovedForPayment(CompanyUnit unit) {
+        return unit != null
+                && !unit.isDeleted()
+                && (
+                unit.isAccountsApproved()
+                        || unit.getOnboardingStatus() == OnboardingStatus.APPROVED
+        );
+    }
 
 }
 
