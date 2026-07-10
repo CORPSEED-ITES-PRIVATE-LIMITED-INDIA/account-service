@@ -110,6 +110,9 @@ public class PaymentServiceImpl implements PaymentService {
         this.paymentLegalVerificationService = paymentLegalVerificationService;
     }
 
+
+
+
     @Override
     @Transactional
     public PaymentRegistrationResponseDto registerPayment(PaymentRegistrationRequestDto request, Long salespersonUserId) {
@@ -230,6 +233,21 @@ public class PaymentServiceImpl implements PaymentService {
         validateTdsRequest(request, paymentType);
 
         // =====================================================
+        // 7. TDS VALIDATION
+        // =====================================================
+        if (isPurchaseOrder
+                && reqAmount.compareTo(BigDecimal.ZERO) == 0
+                && Boolean.TRUE.equals(request.getTdsActive())) {
+            throw new ValidationException(
+                    "TDS cannot be registered during initial Purchase Order registration because no tax invoice/payment is generated yet",
+                    "ERR_TDS_NOT_ALLOWED_ON_INITIAL_PO",
+                    "tdsActive"
+            );
+        }
+
+        validateTdsRequest(request, paymentType);
+
+        // =====================================================
         // 8. EPR (Extended Producer Responsibility) HANDLING
         // =====================================================
         // EPR fields are mandatory only for PRODUCT type estimates.
@@ -251,6 +269,17 @@ public class PaymentServiceImpl implements PaymentService {
                 unbilledInvoiceRepository.findByEstimateAndIsCancelledFalse(estimate).orElse(null);
 
         boolean isFirstPayment = (unbilled == null);
+
+        if (isPurchaseOrder && isFirstPayment) {
+            validateInitialPurchaseOrderFields(request);
+
+            request.setPaymentMode("PURCHASE_ORDER");
+            request.setTransactionReference(request.getPoNumber());
+            request.setPaymentProof(request.getPoAttachmentUrl());
+        } else {
+            validateNormalPaymentFields(request);
+        }
+
 
         if (isFirstPayment) {
             unbilled = new UnbilledInvoice();
@@ -432,6 +461,8 @@ public class PaymentServiceImpl implements PaymentService {
         receipt.setReceivedBy(salesperson);
         receipt.setPaymentProof(request.getPaymentProof());
         receipt.setPaymentTermsDays(request.getPaymentTermsDays());
+        receipt.setPoNumber(request.getPoNumber());
+        receipt.setPoAttachmentUrl(request.getPoAttachmentUrl());
 
         if (request.getPaymentTermsDays() != null && request.getPaymentTermsDays() > 0) {
             receipt.setPaymentTerms("Net " + request.getPaymentTermsDays() + " Days");
@@ -1345,6 +1376,12 @@ public class PaymentServiceImpl implements PaymentService {
         log.info("Pending payments found for decision | unbilledId={} | paymentCount={}",
                 unbilled.getId(), paymentsToApprove.size());
 
+        boolean initialPurchaseOrderApproval = paymentsToApprove.stream()
+                .anyMatch(payment ->
+                        isPurchaseOrderPayment(payment)
+                                && safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) == 0
+                );
+
         // ==================== REJECTED FLOW ====================
         if ("REJECTED".equals(approvalDecision)) {
 
@@ -1516,18 +1553,56 @@ public class PaymentServiceImpl implements PaymentService {
         );
 
 
+        /*
+         * Generate invoice payment-wise.
+         *
+         * For initial PURCHASE_ORDER approval:
+         * - amount = 0
+         * - project should be created
+         * - tax invoice should NOT be generated
+         *
+         * For normal payments and later PO actual payments:
+         * - invoice generation remains same
+         */
         for (PaymentReceipt payment : paymentsToApprove) {
-            if (safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal tdsForVoucher = getPendingTdsAmountForPayment(payment);
 
-                postReceiptVoucherForApprovedPayment(
+            boolean skipInvoiceForInitialPurchaseOrder =
+                    isPurchaseOrderPayment(payment)
+                            && safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) == 0;
+
+            if (skipInvoiceForInitialPurchaseOrder) {
+                log.info(
+                        "Skipping tax invoice generation for initial PURCHASE_ORDER approval | unbilled={} | paymentReceiptId={}",
+                        unbilled.getUnbilledNumber(),
+                        payment.getId()
+                );
+                continue;
+            }
+
+            Invoice invoice = invoiceRepository
+                    .findByTriggeringPaymentAndIsCancelledFalse(payment)
+                    .orElse(null);
+
+            if (invoice == null) {
+                BigDecimal tdsForInvoice = getTdsAmountForPayment(payment);
+
+                invoice = invoiceService.generateInvoiceForPayment(
                         unbilled,
                         payment,
                         approver,
-                        tdsForVoucher
+                        tdsForInvoice
                 );
             }
+
+            approveTdsForPaymentAfterInvoiceCreated(
+                    payment,
+                    approver,
+                    invoice
+            );
         }
+
+
+
 
         governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(gf -> {
             if (gf.getStatus() == GovernmentFeeStatus.PENDING) {
@@ -1577,23 +1652,6 @@ public class PaymentServiceImpl implements PaymentService {
         estimateRepository.save(estimate);
         unbilledInvoiceRepository.save(unbilled);
 
-
-        /*
-         * Generate invoice payment-wise.
-         * Invoice amount = bank amount + TDS amount for that payment.
-         */
-        for (PaymentReceipt payment : paymentsToApprove) {
-            if (!invoiceRepository.existsByTriggeringPayment(payment)) {
-                BigDecimal tdsForInvoice = getTdsAmountForPayment(payment);
-
-                invoiceService.generateInvoiceForPayment(
-                        unbilled,
-                        payment,
-                        approver,
-                        tdsForInvoice
-                );
-            }
-        }
 
         PaymentReceipt triggeringReceipt = paymentsToApprove.stream()
                 .filter(p -> p.getCreatedAt() != null)
@@ -1677,10 +1735,21 @@ public class PaymentServiceImpl implements PaymentService {
             response.setPrimaryPinCode(unit.getPinCode());
         }
 
+        if (initialPurchaseOrderApproval) {
+            createOperationProjectForPurchaseOrderIfNotExists(
+                    unbilled,
+                    estimate,
+                    response
+            );
+        }
+
         log.info("Unbilled approval completed | unbilledId={} | decision={} | receivedAmount={} | outstandingAmount={}",
                 unbilled.getId(), approvalDecision, unbilled.getReceivedAmount(), unbilled.getOutstandingAmount());
 
         return response;
+
+
+
     }
 
 
@@ -3348,6 +3417,163 @@ public class PaymentServiceImpl implements PaymentService {
                 });
     }
 
+    private boolean isPurchaseOrderPayment(PaymentReceipt payment) {
+        if (payment == null || payment.getPaymentType() == null) {
+            return false;
+        }
+
+        String code = payment.getPaymentType().getCode() != null
+                ? payment.getPaymentType().getCode().trim().toUpperCase()
+                : "";
+
+        return "PURCHASE_ORDER".equals(code);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private void validateNormalPaymentFields(PaymentRegistrationRequestDto request) {
+        if (!hasText(request.getPaymentMode())) {
+            throw new ValidationException(
+                    "Payment mode is required",
+                    "ERR_PAYMENT_MODE_REQUIRED",
+                    "paymentMode"
+            );
+        }
+
+        if (!hasText(request.getTransactionReference())) {
+            throw new ValidationException(
+                    "Transaction reference is required",
+                    "ERR_TRANSACTION_REFERENCE_REQUIRED",
+                    "transactionReference"
+            );
+        }
+
+        if (!hasText(request.getPaymentProof())) {
+            throw new ValidationException(
+                    "Payment proof is required",
+                    "ERR_PAYMENT_PROOF_REQUIRED",
+                    "paymentProof"
+            );
+        }
+    }
+
+    private void validateInitialPurchaseOrderFields(PaymentRegistrationRequestDto request) {
+        if (safe2(request.getAmount()).compareTo(BigDecimal.ZERO) != 0) {
+            throw new ValidationException(
+                    "First Purchase Order registration amount must be 0 because no payment is received yet",
+                    "ERR_PO_INITIAL_AMOUNT_MUST_BE_ZERO",
+                    "amount"
+            );
+        }
+
+        if (request.getPaymentTermsDays() == null || request.getPaymentTermsDays() <= 0) {
+            throw new ValidationException(
+                    "PO tenure is required",
+                    "ERR_PO_TENURE_REQUIRED",
+                    "paymentTermsDays"
+            );
+        }
+
+        if (!hasText(request.getPoNumber())) {
+            throw new ValidationException(
+                    "PO number is required",
+                    "ERR_PO_NUMBER_REQUIRED",
+                    "poNumber"
+            );
+        }
+
+        if (!hasText(request.getPoAttachmentUrl())) {
+            throw new ValidationException(
+                    "PO attachment is required",
+                    "ERR_PO_ATTACHMENT_REQUIRED",
+                    "poAttachmentUrl"
+            );
+        }
+
+        if (Boolean.TRUE.equals(request.getTdsActive())) {
+            throw new ValidationException(
+                    "TDS cannot be registered during initial Purchase Order registration because no tax invoice/payment is generated yet",
+                    "ERR_TDS_NOT_ALLOWED_ON_INITIAL_PO",
+                    "tdsActive"
+            );
+        }
+    }
+
+    private void createOperationProjectForPurchaseOrderIfNotExists(
+            UnbilledInvoice unbilled,
+            Estimate estimate,
+            UnbilledInvoiceApprovalResponseDto response
+    ) {
+        try {
+            ResponseEntity<OperationProjectResponseDto> existingProjectResponse =
+                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
+
+            if (existingProjectResponse.getStatusCode().is2xxSuccessful()
+                    && existingProjectResponse.getBody() != null) {
+                log.info(
+                        "Operation project already exists for PO unbilled | unbilled={} | projectId={}",
+                        unbilled.getUnbilledNumber(),
+                        existingProjectResponse.getBody().getId()
+                );
+                return;
+            }
+
+        } catch (FeignException.NotFound ex) {
+            log.info(
+                    "Operation project not found for PO unbilled. Creating project | unbilled={}",
+                    unbilled.getUnbilledNumber()
+            );
+        } catch (FeignException ex) {
+            log.error(
+                    "Operation service error while checking PO project | unbilled={} | status={} | message={}",
+                    unbilled.getUnbilledNumber(),
+                    ex.status(),
+                    ex.getMessage()
+            );
+            throw ex;
+        }
+
+        OperationProjectRequestDto projectDto = new OperationProjectRequestDto();
+
+        projectDto.setName(response.getName());
+        projectDto.setProjectNo(response.getProjectNo());
+
+        projectDto.setSalesPersonId(response.getSalesPersonId());
+        projectDto.setSalesPersonName(response.getSalesPersonName());
+
+        projectDto.setProductId(response.getProductId());
+        projectDto.setCompanyId(response.getCompanyId());
+        projectDto.setUnitId(response.getCompanyUnitId());
+
+        projectDto.setUnbilledNumber(response.getUnbilledNumber());
+        projectDto.setEstimateNumber(response.getEstimateNumber());
+
+        projectDto.setContactId(response.getContactId());
+        projectDto.setLeadId(response.getLeadId());
+
+        projectDto.setDate(response.getDate());
+
+        projectDto.setTotalAmount(response.getTotalAmount());
+
+        // Important for PO: no payment received yet
+        projectDto.setPaidAmount(0.0);
+
+        projectDto.setPaymentTypeId(response.getPaymentTypeId());
+
+        projectDto.setApprovedById(response.getApprovedById());
+        projectDto.setCreatedBy(response.getCreatedBy());
+        projectDto.setUpdatedBy(response.getUpdatedBy());
+
+        operationFeignClient.createProject(projectDto);
+
+        log.info(
+                "Operation project created successfully for PURCHASE_ORDER | unbilled={} | projectNo={}",
+                unbilled.getUnbilledNumber(),
+                projectDto.getProjectNo()
+        );
+    }
 
 
 

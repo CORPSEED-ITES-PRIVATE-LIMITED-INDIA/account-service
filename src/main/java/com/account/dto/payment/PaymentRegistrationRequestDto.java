@@ -5,7 +5,6 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-
 @Data
 @Builder
 @NoArgsConstructor
@@ -22,33 +21,16 @@ public class PaymentRegistrationRequestDto {
     @NotNull(message = "Payment date is required")
     private LocalDate paymentDate;
 
-    @NotBlank(message = "Payment mode is required")
     private String paymentMode;
 
-    @NotBlank(message = "Transaction reference is required")
     private String transactionReference;
 
-    @NotBlank(message = "Payment proof is required")
     private String paymentProof;
 
-    /*
-     * Selected bank ledger where payment is expected/received.
-     *
-     * Example:
-     * Yes Bank - Corpseed Current Account
-     * HDFC Bank - Corpseed Current Account
-     * ICICI Bank - Corpseed Current Account
-     *
-     * This ID will come from LedgerMaster.
-     */
     private Long bankLedgerId;
 
-    // PO Payment Terms
-    // Required only when payment type = PURCHASE_ORDER
     private Integer paymentTermsDays;
 
-    // Optional from frontend.
-    // Backend should save final value as: "Net " + paymentTermsDays + " Days"
     private String paymentTerms;
 
     private String remarks;
@@ -61,10 +43,14 @@ public class PaymentRegistrationRequestDto {
     private String eprCertificateOrInvoiceNumber;
 
     private Boolean governmentFeeActive = false;
-
     private GovernmentFeeRequestDto governmentFee;
 
     private Boolean tdsActive = false;
-
     private TdsRequestDto tds;
+
+    // NEW: Purchase Order fields
+    private String poNumber;
+    private String poAttachmentUrl;
+
+
 }

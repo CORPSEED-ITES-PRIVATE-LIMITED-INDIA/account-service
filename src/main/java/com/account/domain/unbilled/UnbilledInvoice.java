@@ -137,6 +137,8 @@ public class UnbilledInvoice {
             throw new IllegalArgumentException("Payment amount cannot be null");
         }
 
+        // add codnition for PURCHASE_ORDER
+
         BigDecimal safeAmount = amount.setScale(2, RoundingMode.HALF_UP);
 
         // Allow zero (for PURCHASE_ORDER) but block negative amounts

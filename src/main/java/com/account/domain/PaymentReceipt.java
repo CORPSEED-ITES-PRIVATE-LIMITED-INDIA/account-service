@@ -120,5 +120,11 @@ public class PaymentReceipt {
     @JoinColumn(name = "bank_ledger_id")
     private LedgerMaster bankLedger;
 
+    @Column(name = "po_number", length = 100)
+    private String poNumber;
+
+    @Column(name = "po_attachment_url", length = 500)
+    private String poAttachmentUrl;
+
 
 }
