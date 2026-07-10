@@ -826,8 +826,7 @@ public class DashboardServiceImpl implements DashboardService {
         );
 
         Long pendingApprovalCount =
-                unbilledInvoiceRepository.countPendingApprovalsByUserAndDateRange(
-                        userId,
+                unbilledInvoiceRepository.countPendingApprovalsByDateRange(
                         UnbilledStatus.PENDING_APPROVAL,
                         currentFrom,
                         currentTo
@@ -1047,7 +1046,6 @@ public class DashboardServiceImpl implements DashboardService {
 
         Page<Object[]> page =
                 unbilledInvoiceRepository.findApprovalQueueForDashboard(
-                        userId,
                         fromDateTime,
                         toDateTime,
                         pageable

@@ -350,7 +350,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
         WHERE i.isCancelled = false
           AND i.status = :status
           AND u.isCancelled = false
-          AND u.createdBy.id = :userId
+          AND u.approvedBy.id = :userId
           AND i.invoiceDate >= :fromDate
           AND i.invoiceDate <= :toDate
         """)
@@ -397,7 +397,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
         WHERE i.is_cancelled = false
           AND u.is_cancelled = false
           AND i.status IN ('GENERATED', 'E_INVOICE_CONFIRMED')
-          AND u.created_by = :userId
+          AND u.updated_by = :userId
           AND i.invoice_date >= :fromDate
           AND i.invoice_date <= :toDate
     ) bucket
