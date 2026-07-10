@@ -33,9 +33,6 @@ public interface InvoiceService {
 
 	InvoiceDetailDto getInvoiceById(Long id, Long userId);
 
-//	Invoice generateInvoiceForPayment(UnbilledInvoice unbilled, PaymentReceipt triggeringReceipt, User approver);
-
-
 	Invoice generateInvoiceForPayment(
 			UnbilledInvoice unbilled,
 			PaymentReceipt receipt,

@@ -13,6 +13,7 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -55,6 +56,9 @@ public class TdsRegistration {
 
     @Column(name = "taxable_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal taxableAmount;
+
+    @Column(name = "tds_date")
+    private LocalDate tdsDate;
 
     @Column(name = "tds_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal tdsAmount;

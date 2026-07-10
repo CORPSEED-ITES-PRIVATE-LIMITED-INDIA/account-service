@@ -6,6 +6,7 @@ import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
+import com.account.domain.invoice.Invoice;
 import com.account.domain.ledger.*;
 import com.account.domain.status.*;
 import com.account.domain.unbilled.UnbilledInvoice;
@@ -1394,6 +1395,9 @@ public class PaymentServiceImpl implements PaymentService {
                     request.getApprovalRemarks()
             );
 
+
+
+
             log.info("Unbilled {} rejected.", unbilled.getUnbilledNumber());
 
             UnbilledInvoiceApprovalResponseDto response = new UnbilledInvoiceApprovalResponseDto();
@@ -1511,14 +1515,7 @@ public class PaymentServiceImpl implements PaymentService {
                         .setScale(2, RoundingMode.HALF_UP)
         );
 
-        /*
-         * Post receipt voucher payment-wise.
-         *
-         * Example:
-         * HDFC Bank Dr        54,000
-         * TDS Receivable Dr    5,000
-         * To Customer         59,000
-         */
+
         for (PaymentReceipt payment : paymentsToApprove) {
             if (safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) > 0) {
                 BigDecimal tdsForVoucher = getPendingTdsAmountForPayment(payment);
@@ -1540,19 +1537,31 @@ public class PaymentServiceImpl implements PaymentService {
         });
 
         /*
-         * Approve TDS records after voucher posting.
-         * Do not delete TDS in approved flow.
+         * Generate invoice payment-wise first.
+         * Then approve TDS and set TDS date = invoice date.
          */
         for (PaymentReceipt payment : paymentsToApprove) {
-            tdsRegistrationRepository.findByPaymentReceiptAndIsDeletedFalse(payment)
-                    .ifPresent(tds -> {
-                        if (tds.getStatus() == TdsStatus.PENDING) {
-                            tds.setStatus(TdsStatus.APPROVED);
-                            tds.setUpdatedBy(approver);
-                            tdsRegistrationRepository.save(tds);
-                            unbilled.setTdsActive(true);
-                        }
-                    });
+
+            Invoice invoice = invoiceRepository
+                    .findByTriggeringPaymentAndIsCancelledFalse(payment)
+                    .orElse(null);
+
+            if (invoice == null) {
+                BigDecimal tdsForInvoice = getTdsAmountForPayment(payment);
+
+                invoice = invoiceService.generateInvoiceForPayment(
+                        unbilled,
+                        payment,
+                        approver,
+                        tdsForInvoice
+                );
+            }
+
+            approveTdsForPaymentAfterInvoiceCreated(
+                    payment,
+                    approver,
+                    invoice
+            );
         }
 
         boolean hasAnyActiveTds = !tdsRegistrationRepository
@@ -1567,6 +1576,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         estimateRepository.save(estimate);
         unbilledInvoiceRepository.save(unbilled);
+
 
         /*
          * Generate invoice payment-wise.
@@ -1838,6 +1848,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .tdsPercentage(tds.getTdsPercentage())
                 .taxableAmount(tds.getTaxableAmount())
                 .tdsAmount(tds.getTdsAmount())
+                .tdsDate(tds.getTdsDate())
                 .status(tds.getStatus())
                 .createdById(tds.getCreatedBy() != null ? tds.getCreatedBy().getId() : null)
                 .createdByName(getUserDisplayName(tds.getCreatedBy()))
@@ -3301,6 +3312,43 @@ public class PaymentServiceImpl implements PaymentService {
                 .multiply(taxableRatio)
                 .setScale(2, RoundingMode.HALF_UP);
     }
+
+
+    private void approveTdsForPaymentAfterInvoiceCreated(
+            PaymentReceipt payment,
+            User approver,
+            Invoice invoice
+    ) {
+        if (payment == null) {
+            return;
+        }
+
+        LocalDate invoiceDate = invoice != null && invoice.getInvoiceDate() != null
+                ? invoice.getInvoiceDate()
+                : LocalDate.now();
+
+        tdsRegistrationRepository.findByPaymentReceiptAndIsDeletedFalse(payment)
+                .ifPresent(tds -> {
+                    if (tds.getStatus() == TdsStatus.PENDING) {
+                        tds.setStatus(TdsStatus.APPROVED);
+                    }
+
+                    tds.setTdsDate(invoiceDate);
+                    tds.setUpdatedBy(approver);
+
+                    tdsRegistrationRepository.save(tds);
+
+                    log.info(
+                            "TDS approved and TDS date updated | paymentReceiptId={} | tdsId={} | tdsDate={} | invoiceId={}",
+                            payment.getId(),
+                            tds.getId(),
+                            invoiceDate,
+                            invoice != null ? invoice.getId() : null
+                    );
+                });
+    }
+
+
 
 
 }
