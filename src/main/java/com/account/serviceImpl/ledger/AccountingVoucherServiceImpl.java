@@ -606,4 +606,26 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 .displayOrder(entry.getDisplayOrder())
                 .build();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public boolean existsPostedVoucher(
+            VoucherType voucherType,
+            VoucherSourceType sourceType,
+            Long sourceId
+    ) {
+        if (voucherType == null || sourceType == null || sourceId == null) {
+            return false;
+        }
+
+        return accountingVoucherRepository
+                .existsByVoucherTypeAndSourceTypeAndSourceIdAndStatusNot(
+                        voucherType,
+                        sourceType,
+                        sourceId,
+                        VoucherStatus.CANCELLED
+                );
+    }
+
+
 }

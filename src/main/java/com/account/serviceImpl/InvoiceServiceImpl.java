@@ -348,17 +348,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		invoice = invoiceRepository.save(invoice);
 
-		/*
-		 * Post sales invoice accounting voucher.
-		 *
-		 * Dr Customer Ledger        exactGrandTotal
-		 * Cr Service Income         subTotalExGst
-		 * Cr Output GST             totalGstAmount
-		 */
-		postSalesInvoiceVoucher(invoice, unbilled, approver);
-
 		log.info(
-				"Invoice generated and sales voucher posted: {} | bankAmount: ₹{} | tdsAmount: ₹{} | grandTotal: ₹{} | lines: {} | paymentReceiptId: {}",
+				"Invoice generated successfully. Sales voucher will be posted after GST e-invoice confirmation | invoice={} | bankAmount=₹{} | tdsAmount=₹{} | grandTotal=₹{} | lines={} | paymentReceiptId={}",
 				invoice.getInvoiceNumber(),
 				bankAmount,
 				safeTdsAmount,
@@ -1670,10 +1661,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
-		if (invoice.isOperationSynced()) {
+		if (invoice.getStatus() == InvoiceStatus.E_INVOICE_CONFIRMED) {
 			throw new ValidationException(
-					"Operation project is already created/synced for this invoice",
-					"ERR_OPERATION_ALREADY_SYNCED",
+					"GST e-invoice is already confirmed for this invoice",
+					"ERR_E_INVOICE_ALREADY_CONFIRMED",
 					"invoiceId"
 			);
 		}
@@ -1690,7 +1681,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		if (unbilled.getStatus() != UnbilledStatus.APPROVED) {
 			throw new ValidationException(
-					"Project can be created only after unbilled invoice is approved",
+					"GST e-invoice can be confirmed only after unbilled invoice is approved",
 					"ERR_UNBILLED_NOT_APPROVED",
 					"unbilledId"
 			);
@@ -1710,6 +1701,16 @@ public class InvoiceServiceImpl implements InvoiceService {
 		invoice.setUpdatedBy(confirmedBy);
 		invoice.setStatus(InvoiceStatus.E_INVOICE_CONFIRMED);
 
+		/*
+		 * IMPORTANT:
+		 * Sales invoice ledger voucher should be posted only after GST e-invoice confirmation.
+		 *
+		 * Dr Customer Ledger
+		 * Cr Service Income
+		 * Cr Output GST
+		 */
+		postSalesInvoiceVoucher(invoice, unbilled, confirmedBy);
+
 		// Create or sync Operation project only after GST e-invoice confirmation
 		createOrSyncOperationProjectFromConfirmedInvoice(invoice, confirmedBy);
 
@@ -1719,7 +1720,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		Invoice savedInvoice = invoiceRepository.save(invoice);
 
 		log.info(
-				"GST e-invoice confirmed and Operation project synced | invoice={} | unbilled={}",
+				"GST e-invoice confirmed, sales voucher posted and Operation project synced | invoice={} | unbilled={}",
 				savedInvoice.getInvoiceNumber(),
 				unbilled.getUnbilledNumber()
 		);
@@ -1963,6 +1964,17 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
+		if (accountingVoucherService.existsPostedVoucher(
+				VoucherType.SALES_INVOICE,
+				VoucherSourceType.INVOICE,
+				invoice.getId()
+		)) {
+			log.info(
+					"Sales invoice voucher already posted. Skipping duplicate voucher creation | invoice={}",
+					invoice.getInvoiceNumber()
+			);
+			return;
+		}
 		BigDecimal grandTotal = safeMoney(invoice.getGrandTotal());
 
 		if (grandTotal.compareTo(BigDecimal.ZERO) <= 0) {
@@ -2323,6 +2335,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return ledgerMasterRepository.save(ledger);
 	}
+
+
 
 
 }

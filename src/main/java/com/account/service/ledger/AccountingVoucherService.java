@@ -26,4 +26,9 @@ public interface AccountingVoucherService {
     );
 
     void cancelVoucher(Long id, String reason);
+    boolean existsPostedVoucher(
+            VoucherType voucherType,
+            VoucherSourceType sourceType,
+            Long sourceId
+    );
 }
