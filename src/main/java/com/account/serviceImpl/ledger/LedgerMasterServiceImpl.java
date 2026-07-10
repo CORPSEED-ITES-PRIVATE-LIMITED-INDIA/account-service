@@ -1003,14 +1003,20 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             BigDecimal accountingCredit = moneyForStatement(entry.getCreditAmount());
 
             /*
-             * Running balance must always use real accounting values.
+             * Previous balance is required for display-only adjustment.
              *
-             * Example with TDS:
-             * Dr Bank              11,600
-             * Dr TDS Receivable       200
-             *     Cr Customer      11,800
+             * Example:
+             * Actual accounting credit = 5,086.21
+             * Bank display credit      = 5,000.00
+             * TDS display credit       = 86.21
              *
-             * Customer balance should reduce by full 11,800.
+             * First row balance should show 5,000 CR, not 5,086.21 CR.
+             */
+            BigDecimal previousRunningSignedBalance = runningSignedBalance;
+
+            /*
+             * Actual running balance must always use real accounting values.
+             * Do not change actual balance calculation.
              */
             runningSignedBalance = runningSignedBalance
                     .add(accountingDebit)
@@ -1065,17 +1071,14 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     accountingCredit
             );
 
+            boolean customerReceiptCreditRowWithTdsSplit = false;
+
             /*
-             * Customer receipt with TDS special display:
+             * Customer receipt with TDS special display.
              *
              * Actual customer credit = Bank amount + TDS amount.
-             * But UI row with HDFC Bank should show only actual bank received.
-             * Extra TDS row will be added by buildAdditionalReceiptRows().
-             *
-             * Example:
-             * Actual customer credit = 11,800
-             * Bank row display       = 11,600
-             * TDS row display        = 200
+             * Customer ledger first row should show only Bank amount.
+             * Extra TDS row is added by buildAdditionalReceiptRows().
              */
             if (isCustomerReceiptCreditRow(
                     ledger,
@@ -1089,14 +1092,41 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                         otherEntriesCache
                 );
 
-                if (bankAmount.compareTo(BigDecimal.ZERO) > 0) {
+                if (bankAmount.compareTo(BigDecimal.ZERO) > 0
+                        && bankAmount.compareTo(accountingCredit) < 0) {
+
                     displayDebit = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
                     displayCredit = bankAmount;
+
+                    customerReceiptCreditRowWithTdsSplit = true;
                 }
             }
 
+            /*
+             * Default row balance uses actual accounting balance.
+             */
+            BigDecimal rowDisplaySignedBalance = runningSignedBalance;
+
+            /*
+             * Special display case:
+             * Customer receipt with TDS split.
+             *
+             * Example:
+             * Accounting credit = 5,086.21
+             * Bank display row  = 5,000.00
+             * TDS extra row     = 86.21
+             *
+             * First row running balance should show 5,000 CR.
+             */
+            if (customerReceiptCreditRowWithTdsSplit) {
+                rowDisplaySignedBalance = previousRunningSignedBalance
+                        .add(displayDebit)
+                        .subtract(displayCredit)
+                        .setScale(2, RoundingMode.HALF_UP);
+            }
+
             BigDecimal displayRunningSignedBalance =
-                    displaySignedBalanceForLedger(ledger, runningSignedBalance);
+                    displaySignedBalanceForLedger(ledger, rowDisplaySignedBalance);
 
             LedgerTransactionResponseDto mainRow = LedgerTransactionResponseDto.builder()
                     .entryId(entry.getId())
@@ -1150,10 +1180,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .collect(Collectors.toList());
 
         /*
-         * Important:
          * Do not filter runningBalanceType != null.
-         * Extra TDS row has no running balance, but its amount must be counted
-         * in totalCredit.
+         * Extra TDS display row has no running balance,
+         * but its amount must be counted in total credit.
          */
         BigDecimal totalDebit = filteredRows.stream()
                 .map(LedgerTransactionResponseDto::getDebitAmount)
