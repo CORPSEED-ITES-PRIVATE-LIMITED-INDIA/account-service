@@ -18,6 +18,7 @@ import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +33,7 @@ import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class LedgerMasterServiceImpl implements LedgerMasterService {
@@ -49,11 +51,17 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     @Transactional
     public LedgerMasterResponseDto createLedger(LedgerMasterRequestDto request) {
 
+        log.info("Creating ledger. ledgerType={}, companyId={}, unitId={}",
+                request != null ? request.getLedgerType() : null,
+                request != null ? request.getCompanyId() : null,
+                request != null ? request.getUnitId() : null);
+
         validateRequest(request);
 
         String ledgerName = normalizeName(request.getLedgerName());
 
         if (ledgerMasterRepository.existsByLedgerNameIgnoreCase(ledgerName)) {
+            log.warn("Ledger creation failed. Duplicate ledgerName={}", ledgerName);
             throw new ValidationException(
                     "Ledger already exists with name: " + ledgerName,
                     "ERR_LEDGER_DUPLICATE",
@@ -84,11 +92,19 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         LedgerMaster saved = ledgerMasterRepository.save(ledger);
 
+        log.info("Ledger created successfully. ledgerId={}, ledgerCode={}, ledgerName={}",
+                saved.getId(),
+                saved.getLedgerCode(),
+                saved.getLedgerName());
+
         return mapToResponse(saved);
     }
     private void validateAdminUserForLedgerEdit(Long userId) {
 
+        log.debug("Validating admin permission for ledger edit. userId={}", userId);
+
         if (userId == null) {
+            log.warn("Ledger edit permission validation failed. User ID is null");
             throw new ValidationException(
                     "User ID is required to edit ledger",
                     "ERR_USER_ID_REQUIRED",
@@ -103,6 +119,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 ));
 
         if (!user.isActive()) {
+            log.warn("Ledger edit permission validation failed. User is inactive. userId={}", userId);
             throw new ValidationException(
                     "Inactive user cannot edit ledger",
                     "ERR_INACTIVE_USER_LEDGER_EDIT_NOT_ALLOWED",
@@ -126,18 +143,23 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                         );
 
         if (!isAdminFromRoleList && !isAdminFromUserRole) {
+            log.warn("Ledger edit permission validation failed. ADMIN role missing. userId={}", userId);
             throw new ValidationException(
                     "Only ADMIN role can edit ledger",
                     "ERR_LEDGER_EDIT_ADMIN_ONLY",
                     "userId"
             );
         }
+
+        log.debug("Ledger edit permission validation passed. userId={}", userId);
     }
 
 
     @Override
     @Transactional
     public LedgerMasterResponseDto updateLedger(Long id, LedgerMasterRequestDto request, Long userId) {
+
+        log.info("Updating ledger. ledgerId={}, userId={}", id, userId);
 
         validateAdminUserForLedgerEdit(userId);
 
@@ -152,6 +174,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         String ledgerName = normalizeName(request.getLedgerName());
 
         if (ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(ledgerName, id)) {
+            log.warn("Ledger update failed. Duplicate ledgerName={}, ledgerId={}", ledgerName, id);
             throw new ValidationException(
                     "Ledger already exists with name: " + ledgerName,
                     "ERR_LEDGER_DUPLICATE",
@@ -196,12 +219,19 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         LedgerMaster saved = ledgerMasterRepository.save(ledger);
 
+        log.info("Ledger updated successfully. ledgerId={}, ledgerCode={}, ledgerName={}",
+                saved.getId(),
+                saved.getLedgerCode(),
+                saved.getLedgerName());
+
         return mapToResponse(saved);
     }
 
     @Override
     @Transactional(readOnly = true)
     public LedgerMasterResponseDto getLedgerById(Long id) {
+
+        log.debug("Fetching ledger by ID. ledgerId={}", id);
 
         LedgerMaster ledger = ledgerMasterRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -226,6 +256,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             int page,
             int size
     ) {
+
+        log.info("Fetching ledgers. search={}, ledgerType={}, ledgerGroupId={}, ledgerGroupType={}, companyId={}, unitId={}, active={}, page={}, size={}",
+                search, ledgerType, ledgerGroupId, ledgerGroupType, companyId, unitId, active, page, size);
 
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 || size > 200 ? 20 : size;
@@ -306,6 +339,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     @Transactional
     public void deleteLedger(Long id) {
 
+        log.info("Deleting ledger. ledgerId={}", id);
+
         LedgerMaster ledger = ledgerMasterRepository.findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Ledger not found with ID: " + id,
@@ -313,6 +348,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 ));
 
         if (ledger.isSystemCreated()) {
+            log.warn("Ledger delete failed. System-created ledger cannot be deleted. ledgerId={}", id);
             throw new ValidationException(
                     "System-created ledger cannot be deleted",
                     "ERR_SYSTEM_LEDGER_DELETE_NOT_ALLOWED",
@@ -324,6 +360,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         ledger.setActive(false);
 
         ledgerMasterRepository.save(ledger);
+
+        log.info("Ledger deleted successfully. ledgerId={}", id);
     }
 
     private Specification<LedgerMaster> buildSpecification(
@@ -368,7 +406,10 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
     private void validateRequest(LedgerMasterRequestDto request) {
 
+        log.debug("Validating ledger request");
+
         if (request == null) {
+            log.warn("Ledger request validation failed. Request body is null");
             throw new ValidationException(
                     "Request body is required",
                     "ERR_REQUEST_REQUIRED"
@@ -376,6 +417,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         if (request.getLedgerName() == null || request.getLedgerName().trim().isEmpty()) {
+            log.warn("Ledger request validation failed. Ledger name is missing");
             throw new ValidationException(
                     "Ledger name is required",
                     "ERR_LEDGER_NAME_REQUIRED",
@@ -384,6 +426,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         if (request.getLedgerType() == null) {
+            log.warn("Ledger request validation failed. Ledger type is missing");
             throw new ValidationException(
                     "Ledger type is required",
                     "ERR_LEDGER_TYPE_REQUIRED",
@@ -392,6 +435,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         if (request.getLedgerGroupId() == null || request.getLedgerGroupId() <= 0) {
+            log.warn("Ledger request validation failed. Ledger group ID is invalid");
             throw new ValidationException(
                     "Ledger group ID is required",
                     "ERR_LEDGER_GROUP_REQUIRED",
@@ -401,6 +445,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         if (request.getOpeningBalance() != null
                 && request.getOpeningBalance().compareTo(BigDecimal.ZERO) < 0) {
+            log.warn("Ledger request validation failed. Opening balance is negative. openingBalance={}",
+                    request.getOpeningBalance());
             throw new ValidationException(
                     "Opening balance cannot be negative",
                     "ERR_OPENING_BALANCE_NEGATIVE",
@@ -411,6 +457,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         if (request.getOpeningBalance() != null
                 && request.getOpeningBalance().compareTo(BigDecimal.ZERO) > 0
                 && request.getOpeningBalanceType() == null) {
+            log.warn("Ledger request validation failed. Opening balance type is missing. openingBalance={}",
+                    request.getOpeningBalance());
             throw new ValidationException(
                     "Opening balance type is required when opening balance is greater than zero",
                     "ERR_OPENING_BALANCE_TYPE_REQUIRED",
@@ -429,6 +477,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         if (ledgerType == LedgerType.BANK) {
             if (request.getBankName() == null || request.getBankName().trim().isEmpty()) {
+                log.warn("Ledger business validation failed. Bank name missing for bank ledger");
                 throw new ValidationException(
                         "Bank name is required for bank ledger",
                         "ERR_BANK_NAME_REQUIRED",
@@ -439,6 +488,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         if (ledgerType == LedgerType.CUSTOMER || ledgerType == LedgerType.CUSTOMER_ADVANCE) {
             if (company == null) {
+                log.warn("Ledger business validation failed. Company missing for customer ledger. ledgerType={}", ledgerType);
                 throw new ValidationException(
                         "Company is required for customer ledger",
                         "ERR_COMPANY_REQUIRED_FOR_CUSTOMER_LEDGER",
@@ -449,6 +499,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         if (unit != null && company != null && unit.getCompany() != null
                 && !unit.getCompany().getId().equals(company.getId())) {
+            log.warn("Ledger business validation failed. Unit company mismatch. companyId={}, unitId={}",
+                    company.getId(),
+                    unit.getId());
             throw new ValidationException(
                     "Selected unit does not belong to selected company",
                     "ERR_UNIT_COMPANY_MISMATCH",
@@ -521,6 +574,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             code = prefix + System.currentTimeMillis();
         } while (ledgerMasterRepository.existsByLedgerCodeIgnoreCase(code));
 
+        log.debug("Generated ledger code. ledgerType={}, ledgerCode={}", ledgerType, code);
+
         return code;
     }
 
@@ -539,36 +594,36 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             case CASH -> LedgerGroupType.CASH_IN_HAND;
 
             case BANK,
-                    PAYMENT_GATEWAY -> LedgerGroupType.BANK_ACCOUNTS;
+                 PAYMENT_GATEWAY -> LedgerGroupType.BANK_ACCOUNTS;
 
             case CUSTOMER -> LedgerGroupType.SUNDRY_DEBTORS;
 
             case SUPPLIER,
-                    VENDOR,
-                    VENDOR_PAYABLE -> LedgerGroupType.SUNDRY_CREDITORS;
+                 VENDOR,
+                 VENDOR_PAYABLE -> LedgerGroupType.SUNDRY_CREDITORS;
 
             case CUSTOMER_ADVANCE,
-                    LIABILITY,
-                    REFUND_PAYABLE -> LedgerGroupType.CURRENT_LIABILITIES;
+                 LIABILITY,
+                 REFUND_PAYABLE -> LedgerGroupType.CURRENT_LIABILITIES;
 
             case SALES,
-                    SERVICE_INCOME,
-                    SALES_RETURN -> LedgerGroupType.SALES_ACCOUNTS;
+                 SERVICE_INCOME,
+                 SALES_RETURN -> LedgerGroupType.SALES_ACCOUNTS;
 
             case PURCHASE -> LedgerGroupType.PURCHASE_ACCOUNTS;
 
             case TAX,
-                    OUTPUT_IGST,
-                    OUTPUT_CGST,
-                    OUTPUT_SGST,
-                    INPUT_IGST,
-                    INPUT_CGST,
-                    INPUT_SGST,
-                    TDS_RECEIVABLE,
-                    TDS_PAYABLE -> LedgerGroupType.DUTIES_AND_TAXES;
+                 OUTPUT_IGST,
+                 OUTPUT_CGST,
+                 OUTPUT_SGST,
+                 INPUT_IGST,
+                 INPUT_CGST,
+                 INPUT_SGST,
+                 TDS_RECEIVABLE,
+                 TDS_PAYABLE -> LedgerGroupType.DUTIES_AND_TAXES;
 
             case EXPENSE,
-                    ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;
+                 ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;
 
             case INCOME -> LedgerGroupType.INDIRECT_INCOMES;
 
@@ -782,6 +837,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         return ledgerGroupRepository.findByGroupTypeAndDeletedFalse(groupType)
                 .map(existingGroup -> {
                     if (!existingGroup.isActive()) {
+                        log.info("Activating inactive ledger group. groupId={}, groupType={}",
+                                existingGroup.getId(),
+                                existingGroup.getGroupType());
                         existingGroup.setActive(true);
                         return ledgerGroupRepository.save(existingGroup);
                     }
@@ -797,7 +855,13 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             .deleted(false)
                             .build();
 
-                    return ledgerGroupRepository.save(ledgerGroup);
+                    LedgerGroup savedGroup = ledgerGroupRepository.save(ledgerGroup);
+
+                    log.info("Created default ledger group. groupId={}, groupType={}",
+                            savedGroup.getId(),
+                            savedGroup.getGroupType());
+
+                    return savedGroup;
                 });
     }
 
@@ -826,7 +890,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             int page,
             int size
     ) {
+        log.info("Fetching ledger transactions. ledgerId={}, fromDate={}, toDate={}, search={}, voucherType={}, sourceType={}, entryType={}, page={}, size={}",
+                ledgerId, fromDate, toDate, search, voucherType, sourceType, entryType, page, size);
+
         if (ledgerId == null || ledgerId <= 0) {
+            log.warn("Ledger transaction fetch failed. Invalid ledgerId={}", ledgerId);
             throw new ValidationException(
                     "Ledger ID is required",
                     "ERR_LEDGER_ID_REQUIRED",
@@ -835,6 +903,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         if (fromDate != null && toDate != null && fromDate.isAfter(toDate)) {
+            log.warn("Ledger transaction fetch failed. Invalid date range. fromDate={}, toDate={}", fromDate, toDate);
             throw new ValidationException(
                     "From date cannot be after to date",
                     "ERR_INVALID_DATE_RANGE",
@@ -1015,6 +1084,12 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         List<LedgerTransactionResponseDto> pagedRows = filteredRows.subList(start, end);
 
+        log.debug("Ledger transactions fetched. ledgerId={}, totalElements={}, totalPages={}, returnedRows={}",
+                ledgerId,
+                totalElements,
+                totalPages,
+                pagedRows.size());
+
         return LedgerStatementResponseDto.builder()
                 .ledgerId(ledger.getId())
                 .ledgerName(ledger.getLedgerName())
@@ -1127,9 +1202,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         Long invoiceId = voucher.getSourceId();
 
         if (invoiceCache.containsKey(invoiceId)) {
+            log.debug("Sales invoice loaded from cache. invoiceId={}", invoiceId);
             return Optional.ofNullable(invoiceCache.get(invoiceId));
         }
 
+        log.debug("Fetching sales invoice for ledger statement. invoiceId={}", invoiceId);
         Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
         invoiceCache.put(invoiceId, invoice);
 
@@ -1473,6 +1550,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             return otherEntriesCache.get(voucherId);
         }
 
+        log.debug("Fetching other voucher entries. voucherId={}, currentLedgerId={}", voucherId, currentLedgerId);
+
         List<AccountingVoucherEntry> otherEntries =
                 accountingVoucherEntryRepository.findOtherEntriesByVoucherId(
                         voucherId,
@@ -1577,6 +1656,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     @Transactional(readOnly = true)
     public List<LedgerMasterResponseDto> getReceiptLedgers() {
 
+        log.debug("Fetching receipt ledgers");
+
         List<LedgerType> allowedTypes = List.of(
                 LedgerType.BANK,
                 LedgerType.CASH,
@@ -1642,6 +1723,12 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .map(entry -> {
                     LedgerMaster tdsLedger = entry.getLedger();
                     BigDecimal tdsAmount = moneyForStatement(entry.getDebitAmount());
+
+                    log.debug("Building additional TDS receipt row. voucherId={}, currentLedgerId={}, tdsLedgerId={}, tdsAmount={}",
+                            voucher.getId(),
+                            currentLedger.getId(),
+                            tdsLedger.getId(),
+                            tdsAmount);
 
                     return LedgerTransactionResponseDto.builder()
                             .entryId(entry.getId())

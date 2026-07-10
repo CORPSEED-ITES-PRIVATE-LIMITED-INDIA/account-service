@@ -11,6 +11,7 @@ import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -27,6 +28,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
     private final AccountingVoucherRepository accountingVoucherRepository;
@@ -36,13 +38,22 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
     @Transactional
     public AccountingVoucherResponseDto createVoucher(AccountingVoucherRequestDto request) {
 
+        log.info("Creating accounting voucher. voucherType={}, sourceType={}, sourceId={}, entryCount={}",
+                request != null ? request.getVoucherType() : null,
+                request != null ? request.getSourceType() : null,
+                request != null ? request.getSourceId() : null,
+                request != null && request.getEntries() != null ? request.getEntries().size() : 0
+        );
+
         validateVoucherRequest(request);
+        log.debug("Accounting voucher request validation completed. voucherType={}", request.getVoucherType());
 
         VoucherSourceType sourceType = request.getSourceType() == null
                 ? VoucherSourceType.MANUAL
                 : request.getSourceType();
 
         validateDuplicateSource(sourceType, request.getSourceId());
+        log.debug("Duplicate source validation completed. sourceType={}, sourceId={}", sourceType, request.getSourceId());
 
         AccountingVoucher voucher = AccountingVoucher.builder()
                 .voucherNumber(generateVoucherNumber(request.getVoucherType()))
@@ -59,12 +70,16 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         for (AccountingVoucherEntryRequestDto entryRequest : request.getEntries()) {
 
             LedgerMaster ledger = ledgerMasterRepository.findByIdAndDeletedFalse(entryRequest.getLedgerId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Ledger not found with ID: " + entryRequest.getLedgerId(),
-                            "LEDGER_NOT_FOUND"
-                    ));
+                    .orElseThrow(() -> {
+                        log.warn("Ledger not found while creating voucher. ledgerId={}", entryRequest.getLedgerId());
+                        return new ResourceNotFoundException(
+                                "Ledger not found with ID: " + entryRequest.getLedgerId(),
+                                "LEDGER_NOT_FOUND"
+                        );
+                    });
 
             if (!ledger.isActive()) {
+                log.warn("Inactive ledger used in voucher request. ledgerId={}, ledgerName={}", ledger.getId(), ledger.getLedgerName());
                 throw new ValidationException(
                         "Ledger is inactive: " + ledger.getLedgerName(),
                         "ERR_LEDGER_INACTIVE",
@@ -86,14 +101,27 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                     .build();
 
             voucher.addEntry(entry);
+            log.debug("Voucher entry added. ledgerId={}, debitAmount={}, creditAmount={}, displayOrder={}",
+                    ledger.getId(),
+                    debit,
+                    credit,
+                    entry.getDisplayOrder()
+            );
         }
 
         voucher.calculateTotals();
+        log.debug("Voucher totals calculated. totalDebit={}, totalCredit={}", voucher.getTotalDebit(), voucher.getTotalCredit());
 
         AccountingVoucher saved = accountingVoucherRepository.save(voucher);
+        log.info("Accounting voucher saved. voucherId={}, voucherNumber={}, voucherType={}",
+                saved.getId(),
+                saved.getVoucherNumber(),
+                saved.getVoucherType()
+        );
 
         // Update ledger balances only after voucher is posted
         updateLedgerBalancesForPostedVoucher(saved);
+        log.info("Ledger balances updated for posted voucher. voucherId={}, voucherNumber={}", saved.getId(), saved.getVoucherNumber());
 
         return mapToResponse(saved);
     }
@@ -102,11 +130,22 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
     @Transactional(readOnly = true)
     public AccountingVoucherResponseDto getVoucherById(Long id) {
 
+        log.debug("Fetching accounting voucher by id. voucherId={}", id);
+
         AccountingVoucher voucher = accountingVoucherRepository.findByIdAndStatusNot(id, VoucherStatus.CANCELLED)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Accounting voucher not found with ID: " + id,
-                        "ACCOUNTING_VOUCHER_NOT_FOUND"
-                ));
+                .orElseThrow(() -> {
+                    log.warn("Accounting voucher not found or already cancelled. voucherId={}", id);
+                    return new ResourceNotFoundException(
+                            "Accounting voucher not found with ID: " + id,
+                            "ACCOUNTING_VOUCHER_NOT_FOUND"
+                    );
+                });
+
+        log.debug("Accounting voucher fetched. voucherId={}, voucherNumber={}, status={}",
+                voucher.getId(),
+                voucher.getVoucherNumber(),
+                voucher.getStatus()
+        );
 
         return mapToResponse(voucher);
     }
@@ -122,6 +161,16 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             int page,
             int size
     ) {
+
+        log.debug("Fetching accounting vouchers. voucherType={}, sourceType={}, status={}, fromDate={}, toDate={}, page={}, size={}",
+                voucherType,
+                sourceType,
+                status,
+                fromDate,
+                toDate,
+                page,
+                size
+        );
 
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 || size > 200 ? 20 : size;
@@ -141,21 +190,36 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 toDate
         );
 
-        return accountingVoucherRepository.findAll(specification, pageable)
+        Page<AccountingVoucherResponseDto> vouchers = accountingVoucherRepository.findAll(specification, pageable)
                 .map(this::mapToResponse);
+
+        log.debug("Accounting vouchers fetched. totalElements={}, totalPages={}, page={}, size={}",
+                vouchers.getTotalElements(),
+                vouchers.getTotalPages(),
+                safePage,
+                safeSize
+        );
+
+        return vouchers;
     }
 
     @Override
     @Transactional
     public void cancelVoucher(Long id, String reason) {
 
+        log.info("Cancelling accounting voucher. voucherId={}", id);
+
         AccountingVoucher voucher = accountingVoucherRepository.findByIdAndStatusNot(id, VoucherStatus.CANCELLED)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Accounting voucher not found with ID: " + id,
-                        "ACCOUNTING_VOUCHER_NOT_FOUND"
-                ));
+                .orElseThrow(() -> {
+                    log.warn("Accounting voucher not found or already cancelled during cancel request. voucherId={}", id);
+                    return new ResourceNotFoundException(
+                            "Accounting voucher not found with ID: " + id,
+                            "ACCOUNTING_VOUCHER_NOT_FOUND"
+                    );
+                });
 
         if (voucher.getStatus() != VoucherStatus.POSTED) {
+            log.warn("Voucher cancellation rejected because voucher is not POSTED. voucherId={}, status={}", voucher.getId(), voucher.getStatus());
             throw new ValidationException(
                     "Only POSTED voucher can be cancelled",
                     "ERR_ONLY_POSTED_VOUCHER_CAN_BE_CANCELLED",
@@ -165,6 +229,10 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
         // Reverse ledger balances before cancellation
         reverseLedgerBalances(voucher);
+        log.debug("Ledger balances reversed for voucher cancellation. voucherId={}, voucherNumber={}",
+                voucher.getId(),
+                voucher.getVoucherNumber()
+        );
 
         voucher.setStatus(VoucherStatus.CANCELLED);
 
@@ -172,6 +240,10 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         voucher.setNarration(finalNarration + "\nCancelled Reason: " + clean(reason));
 
         accountingVoucherRepository.save(voucher);
+        log.info("Accounting voucher cancelled successfully. voucherId={}, voucherNumber={}",
+                voucher.getId(),
+                voucher.getVoucherNumber()
+        );
     }
 
     private Specification<AccountingVoucher> buildSpecification(
@@ -214,6 +286,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
     private void validateVoucherRequest(AccountingVoucherRequestDto request) {
 
         if (request == null) {
+            log.warn("Voucher validation failed. Request body is null");
             throw new ValidationException(
                     "Request body is required",
                     "ERR_REQUEST_REQUIRED"
@@ -221,6 +294,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         }
 
         if (request.getVoucherType() == null) {
+            log.warn("Voucher validation failed. Voucher type is null");
             throw new ValidationException(
                     "Voucher type is required",
                     "ERR_VOUCHER_TYPE_REQUIRED",
@@ -233,6 +307,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 : request.getSourceType();
 
         if (sourceType != VoucherSourceType.MANUAL && request.getSourceId() == null) {
+            log.warn("Voucher validation failed. Source ID missing for non-manual voucher. sourceType={}", sourceType);
             throw new ValidationException(
                     "Source ID is required for non-manual voucher",
                     "ERR_SOURCE_ID_REQUIRED",
@@ -241,6 +316,9 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         }
 
         if (request.getEntries() == null || request.getEntries().size() < 2) {
+            log.warn("Voucher validation failed. Minimum two entries required. entryCount={}",
+                    request.getEntries() == null ? 0 : request.getEntries().size()
+            );
             throw new ValidationException(
                     "At least two voucher entries are required",
                     "ERR_MIN_TWO_VOUCHER_ENTRIES_REQUIRED",
@@ -256,6 +334,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             AccountingVoucherEntryRequestDto entry = request.getEntries().get(i);
 
             if (entry.getLedgerId() == null || entry.getLedgerId() <= 0) {
+                log.warn("Voucher validation failed. Invalid ledger ID at entry index {}. ledgerId={}", i, entry.getLedgerId());
                 throw new ValidationException(
                         "Ledger ID is required at entry index " + i,
                         "ERR_LEDGER_ID_REQUIRED",
@@ -267,6 +346,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             BigDecimal credit = safeMoney(entry.getCreditAmount());
 
             if (debit.compareTo(BigDecimal.ZERO) < 0 || credit.compareTo(BigDecimal.ZERO) < 0) {
+                log.warn("Voucher validation failed. Negative amount at entry index {}. debitAmount={}, creditAmount={}", i, debit, credit);
                 throw new ValidationException(
                         "Debit/Credit cannot be negative at entry index " + i,
                         "ERR_NEGATIVE_AMOUNT_NOT_ALLOWED",
@@ -275,6 +355,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             }
 
             if (debit.compareTo(BigDecimal.ZERO) > 0 && credit.compareTo(BigDecimal.ZERO) > 0) {
+                log.warn("Voucher validation failed. Both debit and credit found at entry index {}. debitAmount={}, creditAmount={}", i, debit, credit);
                 throw new ValidationException(
                         "One entry cannot have both debit and credit amount at entry index " + i,
                         "ERR_DEBIT_CREDIT_BOTH_NOT_ALLOWED",
@@ -283,6 +364,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             }
 
             if (debit.compareTo(BigDecimal.ZERO) == 0 && credit.compareTo(BigDecimal.ZERO) == 0) {
+                log.warn("Voucher validation failed. Debit and credit both zero at entry index {}", i);
                 throw new ValidationException(
                         "Either debit or credit amount is required at entry index " + i,
                         "ERR_DEBIT_OR_CREDIT_REQUIRED",
@@ -295,6 +377,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         }
 
         if (totalDebit.compareTo(totalCredit) != 0) {
+            log.warn("Voucher validation failed. Debit and credit totals mismatch. totalDebit={}, totalCredit={}", totalDebit, totalCredit);
             throw new ValidationException(
                     "Total debit and total credit must be equal",
                     "ERR_DEBIT_CREDIT_NOT_EQUAL",
@@ -306,6 +389,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
     private void validateDuplicateSource(VoucherSourceType sourceType, Long sourceId) {
 
         if (sourceType == null || sourceType == VoucherSourceType.MANUAL || sourceId == null) {
+            log.debug("Skipping duplicate source validation. sourceType={}, sourceId={}", sourceType, sourceId);
             return;
         }
 
@@ -316,6 +400,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         );
 
         if (exists) {
+            log.warn("Duplicate posted voucher found for source. sourceType={}, sourceId={}", sourceType, sourceId);
             throw new ValidationException(
                     "Posted voucher already exists for source: " + sourceType + " ID: " + sourceId,
                     "ERR_VOUCHER_ALREADY_POSTED_FOR_SOURCE",
@@ -327,8 +412,15 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
     private void updateLedgerBalancesForPostedVoucher(AccountingVoucher voucher) {
 
         if (voucher == null || voucher.getEntries() == null) {
+            log.debug("Skipping ledger balance update because voucher or entries are null");
             return;
         }
+
+        log.debug("Updating ledger balances for posted voucher. voucherId={}, voucherNumber={}, entryCount={}",
+                voucher.getId(),
+                voucher.getVoucherNumber(),
+                voucher.getEntries().size()
+        );
 
         for (AccountingVoucherEntry entry : voucher.getEntries()) {
             LedgerMaster ledger = entry.getLedger();
@@ -340,14 +432,27 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             );
 
             ledgerMasterRepository.save(ledger);
+            log.debug("Ledger balance updated. ledgerId={}, ledgerName={}, currentBalance={}, currentBalanceType={}",
+                    ledger.getId(),
+                    ledger.getLedgerName(),
+                    ledger.getCurrentBalance(),
+                    ledger.getCurrentBalanceType()
+            );
         }
     }
 
     private void reverseLedgerBalances(AccountingVoucher voucher) {
 
         if (voucher == null || voucher.getEntries() == null) {
+            log.debug("Skipping ledger balance reverse because voucher or entries are null");
             return;
         }
+
+        log.debug("Reversing ledger balances for voucher. voucherId={}, voucherNumber={}, entryCount={}",
+                voucher.getId(),
+                voucher.getVoucherNumber(),
+                voucher.getEntries().size()
+        );
 
         for (AccountingVoucherEntry entry : voucher.getEntries()) {
             LedgerMaster ledger = entry.getLedger();
@@ -360,6 +465,12 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             );
 
             ledgerMasterRepository.save(ledger);
+            log.debug("Ledger balance reversed. ledgerId={}, ledgerName={}, currentBalance={}, currentBalanceType={}",
+                    ledger.getId(),
+                    ledger.getLedgerName(),
+                    ledger.getCurrentBalance(),
+                    ledger.getCurrentBalanceType()
+            );
         }
     }
 
@@ -371,6 +482,14 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         BigDecimal currentBalance = safeMoney(ledger.getCurrentBalance());
 
         DebitCredit currentType = ledger.getCurrentBalanceType();
+        log.debug("Calculating ledger balance. ledgerId={}, ledgerName={}, oldBalance={}, oldType={}, debitAmount={}, creditAmount={}",
+                ledger.getId(),
+                ledger.getLedgerName(),
+                currentBalance,
+                currentType,
+                debitAmount,
+                creditAmount
+        );
 
         BigDecimal signedBalance;
 
@@ -392,6 +511,12 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             ledger.setCurrentBalance(newSignedBalance.abs());
             ledger.setCurrentBalanceType(DebitCredit.CREDIT);
         }
+
+        log.debug("Ledger balance calculated. ledgerId={}, newBalance={}, newType={}",
+                ledger.getId(),
+                ledger.getCurrentBalance(),
+                ledger.getCurrentBalanceType()
+        );
     }
 
     private String generateVoucherNumber(VoucherType voucherType) {
@@ -416,6 +541,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                     + System.currentTimeMillis();
         } while (accountingVoucherRepository.existsByVoucherNumberIgnoreCase(voucherNumber));
 
+        log.debug("Generated accounting voucher number. voucherType={}, voucherNumber={}", voucherType, voucherNumber);
         return voucherNumber;
     }
 

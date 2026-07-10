@@ -521,6 +521,16 @@ public class PaymentServiceImpl implements PaymentService {
         // Notify Accounts team for approval
         pushPaymentRegisteredNotificationToAccountUsers(unbilled, receipt, estimate, salesperson);
 
+        log.info(
+                "Payment registration completed | estimateId={} | unbilledId={} | receiptId={} | firstPayment={} | settlementAmount={} | status={}",
+                estimate.getId(),
+                unbilled.getId(),
+                receipt.getId(),
+                isFirstPayment,
+                settlementAmountForThisRegistration,
+                unbilled.getStatus()
+        );
+
         return response;
     }
 
@@ -530,6 +540,10 @@ public class PaymentServiceImpl implements PaymentService {
             PaymentRegistrationRequestDto request,
             BigDecimal reqAmount
     ) {
+        log.debug("Validating bank ledger for payment registration | bankLedgerId={} | amount={}",
+                request != null ? request.getBankLedgerId() : null,
+                reqAmount);
+
         /*
          * If actual amount is coming from customer, bank ledger is required.
          *
@@ -574,6 +588,9 @@ public class PaymentServiceImpl implements PaymentService {
                     "bankLedgerId"
             );
         }
+
+        log.debug("Bank ledger validated | ledgerId={} | ledgerName={} | ledgerType={}",
+                bankLedger.getId(), bankLedger.getLedgerName(), bankLedger.getLedgerType());
 
         return bankLedger;
     }
@@ -628,6 +645,16 @@ public class PaymentServiceImpl implements PaymentService {
 
         String code = paymentType.getCode().trim().toUpperCase();
         boolean isPurchaseOrder = "PURCHASE_ORDER".equals(code);
+
+        log.debug(
+                "Validating payment rules | paymentType={} | bankAmount={} | tdsAmount={} | settlementAmount={} | outstanding={} | total={}",
+                code,
+                safeReqAmount,
+                safeTdsAmount,
+                settlementAmount,
+                outstanding,
+                total
+        );
 
         // =====================================================
         // 3. AMOUNT VALIDATION (Non Purchase Order)
@@ -851,6 +878,9 @@ public class PaymentServiceImpl implements PaymentService {
 
 
     private void validateGovernmentFeeRequest(PaymentRegistrationRequestDto request) {
+        log.debug("Validating government fee request | governmentFeeActive={}",
+                request != null ? request.getGovernmentFeeActive() : null);
+
         if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
             if (request.getGovernmentFee() == null) {
                 throw new ValidationException(
@@ -904,8 +934,16 @@ public class PaymentServiceImpl implements PaymentService {
             User salesperson
     ) {
         if (!Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
+            log.debug("Government fee creation skipped | estimateId={} | unbilledId={}",
+                    estimate != null ? estimate.getId() : null,
+                    unbilled != null ? unbilled.getId() : null);
             return;
         }
+
+        log.info("Creating government fee | estimateId={} | unbilledId={} | createdBy={}",
+                estimate != null ? estimate.getId() : null,
+                unbilled != null ? unbilled.getId() : null,
+                salesperson != null ? salesperson.getId() : null);
 
         Optional<GovernmentFee> existingByEstimate = governmentFeeRepository.findByEstimate(estimate);
         Optional<GovernmentFee> existingByUnbilled = governmentFeeRepository.findByUnbilledInvoice(unbilled);
@@ -960,14 +998,22 @@ public class PaymentServiceImpl implements PaymentService {
         governmentFee.setStatus(GovernmentFeeStatus.PENDING);
         governmentFee.setCreatedBy(salesperson);
 
-        governmentFeeRepository.save(governmentFee);
+        GovernmentFee savedGovernmentFee = governmentFeeRepository.save(governmentFee);
 
         unbilled.setGovernmentFeeActive(true);
+
+        log.info("Government fee created | governmentFeeId={} | unbilledId={} | amount={}",
+                savedGovernmentFee.getId(),
+                unbilled.getId(),
+                savedGovernmentFee.getTotalAmount());
     }
 
     private void validateTdsRequest(PaymentRegistrationRequestDto request, PaymentType paymentType) {
 
         boolean tdsActive = Boolean.TRUE.equals(request.getTdsActive());
+        log.debug("Validating TDS request | tdsActive={} | paymentType={}",
+                tdsActive,
+                paymentType != null ? paymentType.getCode() : null);
 
         if (!tdsActive) {
             if (request.getTds() != null) {
@@ -1023,6 +1069,8 @@ public class PaymentServiceImpl implements PaymentService {
                     "tds.tdsPercentage"
             );
         }
+
+        log.debug("TDS request validated | paymentType={} | tdsPercentage={}", paymentTypeCode, tdsPercentage);
     }
 
     private void createTdsIfRequired(
@@ -1105,6 +1153,10 @@ public class PaymentServiceImpl implements PaymentService {
 
 
     private BigDecimal calculateTdsTaxableAmount(Estimate estimate, UnbilledInvoice unbilled) {
+
+        log.debug("Calculating TDS taxable amount | estimateId={} | unbilledId={}",
+                estimate != null ? estimate.getId() : null,
+                unbilled != null ? unbilled.getId() : null);
 
         /*
          * TDS should be calculated on amount excluding GST.
@@ -1190,6 +1242,9 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        log.info("Unbilled approval decision received | unbilledId={} | unbilledNumber={} | decision={}",
+                unbilled.getId(), unbilled.getUnbilledNumber(), approvalDecision);
+
         Company company = unbilled.getCompany();
         CompanyUnit unit = unbilled.getUnit();
         Estimate estimate = unbilled.getEstimate();
@@ -1253,6 +1308,9 @@ public class PaymentServiceImpl implements PaymentService {
                     "payments"
             );
         }
+
+        log.info("Pending payments found for decision | unbilledId={} | paymentCount={}",
+                unbilled.getId(), paymentsToApprove.size());
 
         // ==================== REJECTED FLOW ====================
         if ("REJECTED".equals(approvalDecision)) {
@@ -1399,6 +1457,14 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal newlyApprovedAmount = newlyApprovedBankAmount
                 .add(newlyApprovedTdsAmount)
                 .setScale(2, RoundingMode.HALF_UP);
+
+        log.info(
+                "Approving payments | unbilledId={} | bankAmount={} | tdsAmount={} | settlementAmount={}",
+                unbilled.getId(),
+                newlyApprovedBankAmount,
+                newlyApprovedTdsAmount,
+                newlyApprovedAmount
+        );
 
         BigDecimal updatedReceived = safe2(unbilled.getReceivedAmount())
                 .add(newlyApprovedAmount)
@@ -1568,6 +1634,9 @@ public class PaymentServiceImpl implements PaymentService {
             response.setCountry(unit.getCountry() != null ? unit.getCountry() : "India");
             response.setPrimaryPinCode(unit.getPinCode());
         }
+
+        log.info("Unbilled approval completed | unbilledId={} | decision={} | receivedAmount={} | outstandingAmount={}",
+                unbilled.getId(), approvalDecision, unbilled.getReceivedAmount(), unbilled.getOutstandingAmount());
 
         return response;
     }
@@ -2090,6 +2159,8 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public UnbilledInvoiceDetailDto getUnbilledInvoice(Long unBilledId, Long requestingUserId) {
+        log.info("Fetching unbilled invoice by ID | unbilledId={} | requestingUserId={}", unBilledId, requestingUserId);
+
         if (unBilledId == null || requestingUserId == null) {
             throw new IllegalArgumentException("Invoice ID and requesting user ID are required");
         }
@@ -2109,6 +2180,9 @@ public class PaymentServiceImpl implements PaymentService {
                     "ACCESS_DENIED_INVOICE"
             );
         }
+
+        log.debug("Unbilled invoice fetched | unbilledId={} | unbilledNumber={}",
+                unbilledInvoice.getId(), unbilledInvoice.getUnbilledNumber());
         return mapToDetailDto(unbilledInvoice);
     }
 
@@ -2204,6 +2278,8 @@ public class PaymentServiceImpl implements PaymentService {
             dto.setSearchCount(totalCount);
         }
 
+        log.info("Unbilled invoice search completed | resultCount={} | totalCount={}", dtos.size(), totalCount);
+
         return dtos;
     }
     @Override
@@ -2266,6 +2342,8 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public Page<OperationProjectActivityResponseDto> getExpences(Long userId, Long unbilledId, Pageable pageable) {
+
+        log.info("Fetching expense activities | userId={} | unbilledId={}", userId, unbilledId);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -2333,6 +2411,7 @@ public class PaymentServiceImpl implements PaymentService {
                 throw new RuntimeException("Failed to fetch expenses from operation service");
             }
 
+            log.info("Expense activities fetched | projectId={} | unbilledId={}", project.getId(), unbilled.getId());
             return activityRes.getBody();
 
         } catch (FeignException ex) {
@@ -2384,6 +2463,9 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public void approveExpense(Long userId, Long unbilledId, Long expenseId, String status) {
+
+        log.info("Approving expense | userId={} | unbilledId={} | expenseId={} | status={}",
+                userId, unbilledId, expenseId, status);
 
         // ===============================
         // VALIDATE USER
@@ -2469,7 +2551,7 @@ public class PaymentServiceImpl implements PaymentService {
     public UnbilledInvoiceDetailDto convertIntoADI(Long unbilledId,Long requestingUserId){
 
 
-        log.info("Converting unbilled into advance invoice", unbilledId, requestingUserId);
+        log.info("Converting unbilled into advance invoice | unbilledId={} | requestingUserId={}", unbilledId, requestingUserId);
 
         if (requestingUserId == null || requestingUserId <= 0) {
             throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
@@ -2495,12 +2577,17 @@ public class PaymentServiceImpl implements PaymentService {
 
         unbilledInvoice.setAdvanceInvoiceFlag(true);
         unbilledInvoiceRepository.save(unbilledInvoice);
+
+        log.info("Unbilled converted into advance invoice | unbilledId={} | advanceInvoiceNumber={}",
+                unbilledInvoice.getId(), unbilledInvoice.getAdvanceInvoiceNumber());
         return mapToDetailDto(unbilledInvoice);
     }
 
     @Override
     @Transactional(readOnly = true)
     public GovernmentFeeResponseDto getGovernmentFee(Long unbilledId, Long estimateId) {
+
+        log.info("Fetching government fee | unbilledId={} | estimateId={}", unbilledId, estimateId);
 
         if (unbilledId == null && estimateId == null) {
             throw new ValidationException(
@@ -2530,6 +2617,7 @@ public class PaymentServiceImpl implements PaymentService {
                     ));
         }
 
+        log.debug("Government fee fetched | governmentFeeId={} | status={}", governmentFee.getId(), governmentFee.getStatus());
         return mapToGovernmentFeeResponseDto(governmentFee);
     }
     private GovernmentFeeResponseDto mapToGovernmentFeeResponseDto(GovernmentFee governmentFee) {
@@ -2582,6 +2670,8 @@ public class PaymentServiceImpl implements PaymentService {
     @Transactional(readOnly = true)
     public TdsResponseDto getTds(Long unbilledId, Long estimateId) {
 
+        log.info("Fetching TDS | unbilledId={} | estimateId={}", unbilledId, estimateId);
+
         if (unbilledId == null && estimateId == null) {
             throw new ValidationException(
                     "Either unbilledId or estimateId is required",
@@ -2628,6 +2718,8 @@ public class PaymentServiceImpl implements PaymentService {
                         unbilledId != null ? unbilledId : estimateId
                 ));
 
+        log.debug("TDS fetched | tdsId={} | status={} | amount={}",
+                latestTds.getId(), latestTds.getStatus(), latestTds.getTdsAmount());
         return mapToTdsResponseDto(latestTds);
     }
 
@@ -2692,6 +2784,9 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         LedgerMaster bankLedger = paymentReceipt.getBankLedger();
+
+        log.info("Posting receipt voucher for approved payment | unbilledId={} | paymentReceiptId={} | bankLedgerId={} | tdsAmount={}",
+                unbilled.getId(), paymentReceipt.getId(), bankLedger.getId(), safe2(tdsAmount));
 
         LedgerMaster customerLedger = getOrCreateCustomerLedger(
                 unbilled,
@@ -2891,7 +2986,10 @@ public class PaymentServiceImpl implements PaymentService {
                 ledger.setUpdatedBy(createdBy);
             }
 
-            return ledgerMasterRepository.save(ledger);
+            LedgerMaster savedLedger = ledgerMasterRepository.save(ledger);
+            log.debug("Customer ledger reused for company | companyId={} | ledgerId={} | ledgerName={}",
+                    companyId, savedLedger.getId(), savedLedger.getLedgerName());
+            return savedLedger;
         }
 
         /*
@@ -2933,7 +3031,10 @@ public class PaymentServiceImpl implements PaymentService {
             ledger.setUpdatedBy(createdBy);
         }
 
-        return ledgerMasterRepository.save(ledger);
+        LedgerMaster savedLedger = ledgerMasterRepository.save(ledger);
+        log.info("Customer ledger created for company | companyId={} | ledgerId={} | ledgerName={}",
+                companyId, savedLedger.getId(), savedLedger.getLedgerName());
+        return savedLedger;
     }
 
     private LedgerGroup getOrCreateLedgerGroupByType(LedgerGroupType groupType) {
@@ -2950,7 +3051,9 @@ public class PaymentServiceImpl implements PaymentService {
                 .map(existingGroup -> {
                     if (!existingGroup.isActive()) {
                         existingGroup.setActive(true);
-                        return ledgerGroupRepository.save(existingGroup);
+                        LedgerGroup savedGroup = ledgerGroupRepository.save(existingGroup);
+                        log.debug("Ledger group reactivated | groupType={} | groupId={}", groupType, savedGroup.getId());
+                        return savedGroup;
                     }
                     return existingGroup;
                 })
@@ -2964,7 +3067,9 @@ public class PaymentServiceImpl implements PaymentService {
                             .deleted(false)
                             .build();
 
-                    return ledgerGroupRepository.save(ledgerGroup);
+                    LedgerGroup savedGroup = ledgerGroupRepository.save(ledgerGroup);
+                    log.info("Ledger group created | groupType={} | groupId={}", groupType, savedGroup.getId());
+                    return savedGroup;
                 });
     }
 
@@ -3001,6 +3106,8 @@ public class PaymentServiceImpl implements PaymentService {
                 ledgerMasterRepository.findByLedgerTypeAndDeletedFalse(ledgerType);
 
         if (existingLedger.isPresent()) {
+            log.debug("System ledger reused | ledgerType={} | ledgerId={}",
+                    ledgerType, existingLedger.get().getId());
             return existingLedger.get();
         }
 
@@ -3029,7 +3136,10 @@ public class PaymentServiceImpl implements PaymentService {
         ledger.setCreatedBy(createdBy);
         ledger.setUpdatedBy(createdBy);
 
-        return ledgerMasterRepository.save(ledger);
+        LedgerMaster savedLedger = ledgerMasterRepository.save(ledger);
+        log.info("System ledger created | ledgerType={} | ledgerId={} | ledgerName={}",
+                ledgerType, savedLedger.getId(), savedLedger.getLedgerName());
+        return savedLedger;
     }
 
     private String generateSystemLedgerCode(LedgerType ledgerType) {
@@ -3116,7 +3226,18 @@ public class PaymentServiceImpl implements PaymentService {
             currentTds = remainingTdsLimit;
         }
 
-        return currentTds.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal calculatedTds = currentTds.setScale(2, RoundingMode.HALF_UP);
+        log.debug(
+                "Calculated TDS amount | estimateId={} | unbilledId={} | bankAmount={} | percentage={} | allowedTds={} | alreadyUsedTds={} | currentTds={}",
+                estimate != null ? estimate.getId() : null,
+                unbilled != null ? unbilled.getId() : null,
+                bankAmount,
+                tdsPercentage,
+                totalAllowedTds,
+                alreadyUsedTds,
+                calculatedTds
+        );
+        return calculatedTds;
     }
 
 
