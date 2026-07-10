@@ -62,8 +62,6 @@ public class UnbilledServiceImpl implements UnbilledService {
     private final LeadFeignClient leadFeignClient;
 
 
-
-
     @Override
     @Transactional(readOnly = true)
     public List<UnbilledInvoiceSummaryDto> getUnbilledReport(
