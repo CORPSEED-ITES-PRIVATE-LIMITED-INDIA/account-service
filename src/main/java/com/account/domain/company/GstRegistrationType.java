@@ -2,10 +2,10 @@ package com.account.domain.company;
 
 public enum GstRegistrationType {
 
-    REGISTERED("Registered GST Customer"),
-    UNREGISTERED("Unregistered Customer"),
-    SEZ("SEZ Unit - Zero Rated Supply"),
-    INTERNATIONAL("International / Export Customer - Zero Rated");
+    REGISTERED("Normal GST registered customer"),
+    UNREGISTERED("Unregistered domestic customer"),
+    SEZ("SEZ unit - zero-rated supply"),
+    INTERNATIONAL("International/export customer - zero-rated supply");
 
     private final String description;
 
@@ -17,16 +17,10 @@ public enum GstRegistrationType {
         return description;
     }
 
-    /**
-     * GST can be charged for registered and unregistered domestic customers.
-     */
     public boolean isGstApplicable() {
         return this == REGISTERED || this == UNREGISTERED;
     }
 
-    /**
-     * SEZ and international/export supplies are zero-rated.
-     */
     public boolean isZeroRated() {
         return this == SEZ || this == INTERNATIONAL;
     }

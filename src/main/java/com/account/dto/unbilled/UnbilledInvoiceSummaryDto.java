@@ -70,6 +70,10 @@ public class UnbilledInvoiceSummaryDto {
     private String cancelAttachment;
     private String rejectionReason;
 
+    private String gstRegistrationType;
+    private Boolean gstApplicable;
+    private Boolean zeroRatedSupply;
+
 
 
 }

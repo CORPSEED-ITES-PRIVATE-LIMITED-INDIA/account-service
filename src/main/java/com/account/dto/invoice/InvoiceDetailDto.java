@@ -54,6 +54,9 @@ public class InvoiceDetailDto {
     private String organizationPhone;
     private String organizationWebsite;
     private String organizationLogoUrl;
+    private String gstRegistrationType;
+    private Boolean gstApplicable;
+    private Boolean zeroRatedSupply;
 
 
 
@@ -87,5 +90,8 @@ public class InvoiceDetailDto {
         private Integer displayOrder;
         private String categoryCode;
         private String feeType;
+        private Boolean igstFlag;
+
+
     }
 }

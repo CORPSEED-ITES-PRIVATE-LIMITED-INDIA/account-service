@@ -63,4 +63,8 @@ public class InvoiceSummaryDto {
     private LocalDateTime sentAt;
 
     private Long searchCount;
+
+    private String gstRegistrationType;
+    private Boolean gstApplicable;
+    private Boolean zeroRatedSupply;
 }

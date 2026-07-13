@@ -4,6 +4,7 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.domain.invoice.Invoice;
@@ -274,56 +275,99 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 9. FIND OR CREATE UNBILLED INVOICE
         // =====================================================
+        // Find or create Unbilled Invoice
         UnbilledInvoice unbilled =
-                unbilledInvoiceRepository.findByEstimateAndIsCancelledFalse(estimate).orElse(null);
+                unbilledInvoiceRepository
+                        .findByEstimateAndIsCancelledFalse(estimate)
+                        .orElse(null);
 
-        boolean isFirstPayment = (unbilled == null);
-
-        if (isPurchaseOrder && isFirstPayment) {
-            validateInitialPurchaseOrderFields(request);
-
-            request.setPaymentMode("PURCHASE_ORDER");
-            request.setTransactionReference(request.getPoNumber());
-            request.setPaymentProof(request.getPoAttachmentUrl());
-        } else {
-            validateNormalPaymentFields(request);
-        }
-
+        boolean isFirstPayment = unbilled == null;
 
         if (isFirstPayment) {
+
             unbilled = new UnbilledInvoice();
+
             unbilled.setPublicUuid(UUID.randomUUID().toString());
             unbilled.setUnbilledNumber(generateUnbilledNumber());
             unbilled.setAdvanceInvoiceNumber(generateAdvanceInvoiceNumber());
+
             unbilled.setEstimate(estimate);
             unbilled.setCompany(estimate.getCompany());
-            unbilled.setUnit(estimate.getUnit());
+
+            // =====================================================
+            // UNIT + GST REGISTRATION TYPE SNAPSHOT
+            // =====================================================
+
+            GstRegistrationType gstRegistrationType =
+                    unit != null && unit.getGstRegistrationType() != null
+                            ? unit.getGstRegistrationType()
+                            : GstRegistrationType.REGISTERED;
+
+            unbilled.setUnit(unit);
+            unbilled.setGstRegistrationType(gstRegistrationType);
+
+            // =====================================================
+
             unbilled.setContact(estimate.getContact());
             unbilled.setCreatedAt(LocalDateTime.now());
             unbilled.setUpdatedAt(LocalDateTime.now());
 
             BigDecimal total = estimate.getGrandTotal() != null
-                    ? estimate.getGrandTotal().setScale(2, RoundingMode.HALF_UP)
-                    : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+                    ? estimate.getGrandTotal()
+                    .setScale(2, RoundingMode.HALF_UP)
+                    : BigDecimal.ZERO
+                    .setScale(2, RoundingMode.HALF_UP);
 
             unbilled.setTotalAmount(total);
-            unbilled.setReceivedAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+
+            unbilled.setReceivedAmount(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
+
+            unbilled.setCurrentReceivedAmount(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
+
             unbilled.setOutstandingAmount(total);
-            unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
+
+            unbilled.setStatus(
+                    UnbilledStatus.PENDING_APPROVAL
+            );
+
             unbilled.setCreatedBy(salesperson);
+
             unbilled.setApprovedBy(null);
             unbilled.setApprovedAt(null);
             unbilled.setApprovalRemarks(null);
             unbilled.setRejectionReason(null);
 
-            // Set flags from request
-            unbilled.setGovernmentFeeActive(Boolean.TRUE.equals(request.getGovernmentFeeActive()));
-            unbilled.setTdsActive(Boolean.TRUE.equals(request.getTdsActive()));
+            // GOVERNMENT FEE FLAG
+            unbilled.setGovernmentFeeActive(
+                    Boolean.TRUE.equals(
+                            request.getGovernmentFeeActive()
+                    )
+            );
+
+            unbilled.setTdsActive(
+                    Boolean.TRUE.equals(
+                            request.getTdsActive()
+                    )
+            );
 
             unbilled = unbilledInvoiceRepository.save(unbilled);
 
-            log.info("Created new UnbilledInvoice {} (PENDING_APPROVAL) for estimate {} with publicUuid {}",
-                    unbilled.getUnbilledNumber(), estimate.getEstimateNumber(), unbilled.getPublicUuid());
+            log.info(
+                    "Created new UnbilledInvoice {} for estimate {} | gstRegistrationType={}",
+                    unbilled.getUnbilledNumber(),
+                    estimate.getEstimateNumber(),
+                    unbilled.getGstRegistrationType()
+            );
         }
 
         // =====================================================

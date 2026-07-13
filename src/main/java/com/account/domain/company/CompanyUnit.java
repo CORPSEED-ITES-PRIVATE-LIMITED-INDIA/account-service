@@ -127,7 +127,45 @@ public class CompanyUnit {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "gst_registration_type", length = 30)
-    private GstRegistrationType gstRegistrationType;
+    private GstRegistrationType gstRegistrationType =
+            GstRegistrationType.REGISTERED;
+
+    public boolean isSez() {
+        return getEffectiveGstRegistrationType()
+                == GstRegistrationType.SEZ;
+    }
+
+    public boolean isInternational() {
+        return getEffectiveGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL;
+    }
+
+    public boolean isUnregistered() {
+        return getEffectiveGstRegistrationType()
+                == GstRegistrationType.UNREGISTERED;
+    }
+
+    public boolean isGstRegistered() {
+        return getEffectiveGstRegistrationType()
+                == GstRegistrationType.REGISTERED;
+    }
+
+    public boolean isZeroRatedSupply() {
+        return getEffectiveGstRegistrationType().isZeroRated();
+    }
+
+    public boolean isGstApplicable() {
+        return getEffectiveGstRegistrationType().isGstApplicable();
+    }
+
+    /**
+     * Handles old database records where gstRegistrationType is null.
+     */
+    public GstRegistrationType getEffectiveGstRegistrationType() {
+        return gstRegistrationType != null
+                ? gstRegistrationType
+                : GstRegistrationType.REGISTERED;
+    }
 
 
 }

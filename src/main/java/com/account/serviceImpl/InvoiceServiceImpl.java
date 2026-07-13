@@ -4,6 +4,7 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
 import com.account.domain.invoice.Invoice;
@@ -92,16 +93,24 @@ public class InvoiceServiceImpl implements InvoiceService {
 	) {
 
 		if (unbilled == null) {
-			throw new IllegalStateException("Unbilled invoice is required for invoice generation");
+			throw new IllegalStateException(
+					"Unbilled invoice is required for invoice generation"
+			);
 		}
 
 		if (receipt == null) {
-			throw new IllegalStateException("Payment receipt is required for invoice generation");
+			throw new IllegalStateException(
+					"Payment receipt is required for invoice generation"
+			);
 		}
 
 		Estimate estimate = unbilled.getEstimate();
+
 		if (estimate == null) {
-			throw new IllegalStateException("Estimate not found for Unbilled " + unbilled.getUnbilledNumber());
+			throw new IllegalStateException(
+					"Estimate not found for Unbilled "
+							+ unbilled.getUnbilledNumber()
+			);
 		}
 
 		BigDecimal bankAmount = receipt.getAmount() == null
@@ -113,26 +122,16 @@ public class InvoiceServiceImpl implements InvoiceService {
 				: tdsAmount.setScale(2, RoundingMode.HALF_UP);
 
 		/*
-		 * Important:
-		 * Invoice should be generated on settlement amount, not only bank amount.
+		 * Invoice amount includes:
 		 *
-		 * Example:
-		 * Estimate taxable value = 200
-		 * GST @18% = 36
-		 * Grand total = 236
-		 *
-		 * Customer pays bank = 216
-		 * Customer deducts TDS = 20
-		 *
-		 * Settlement amount = 216 + 20 = 236
-		 * Therefore invoice must be generated for 236, not 216.
+		 * Bank received + TDS deducted by customer.
 		 */
 		BigDecimal exactGrandTotal = bankAmount
 				.add(safeTdsAmount)
 				.setScale(2, RoundingMode.HALF_UP);
 
 		log.info(
-				"Generating invoice for PaymentReceipt {} | bankAmount: ₹{} | tdsAmount: ₹{} | invoiceGrandTotal: ₹{} | unbilled: {}",
+				"Generating invoice | receiptId={} | bankAmount={} | tdsAmount={} | grandTotal={} | unbilled={}",
 				receipt.getId(),
 				bankAmount,
 				safeTdsAmount,
@@ -140,15 +139,39 @@ public class InvoiceServiceImpl implements InvoiceService {
 				unbilled.getUnbilledNumber()
 		);
 
+		// =====================================================
+		// GST REGISTRATION TYPE
+		// =====================================================
+
+		GstRegistrationType gstRegistrationType =
+				unbilled.getGstRegistrationType() != null
+						? unbilled.getGstRegistrationType()
+						: unbilled.getUnit() != null
+						&& unbilled.getUnit().getGstRegistrationType() != null
+						? unbilled.getUnit().getGstRegistrationType()
+						: GstRegistrationType.REGISTERED;
+
+		boolean zeroRatedSupply =
+				gstRegistrationType.isZeroRated();
+
+		// =====================================================
+		// CREATE INVOICE
+		// =====================================================
+
 		Invoice invoice = new Invoice();
+
 		invoice.setPublicUuid(UUID.randomUUID().toString());
 		invoice.setInvoiceNumber(generateInvoiceNumber());
 
 		invoice.setUnbilledInvoice(unbilled);
 		invoice.setTriggeringPayment(receipt);
+
+		invoice.setGstRegistrationType(gstRegistrationType);
+
 		invoice.setInvoiceDate(LocalDate.now());
 		invoice.setCurrency("INR");
 		invoice.setStatus(InvoiceStatus.GENERATED);
+
 		invoice.setCreatedBy(approver);
 		invoice.setUpdatedBy(approver);
 		invoice.setCreatedAt(LocalDateTime.now());
@@ -156,209 +179,445 @@ public class InvoiceServiceImpl implements InvoiceService {
 		invoice.setSolutionId(estimate.getSolutionId());
 		invoice.setSolutionName(estimate.getSolutionName());
 
-		Organization organization = organizationRepository.findTopOrganization()
+		Organization organization = organizationRepository
+				.findTopOrganization()
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Organization details not found. Please configure organization profile before generating invoice.",
 						"ORGANIZATION_NOT_FOUND"
 				));
 
-		copyOrganizationDetailsToInvoice(invoice, organization);
+		copyOrganizationDetailsToInvoice(
+				invoice,
+				organization
+		);
+
+		/*
+		 * SEZ and INTERNATIONAL are treated as IGST-classified
+		 * zero-rated supplies.
+		 */
+		boolean igstApplicable =
+				zeroRatedSupply
+						|| isIgstApplicable(unbilled, organization);
+
+		log.info(
+				"Invoice GST treatment | unbilled={} | gstRegistrationType={} | zeroRated={} | igstApplicable={}",
+				unbilled.getUnbilledNumber(),
+				gstRegistrationType,
+				zeroRatedSupply,
+				igstApplicable
+		);
+
+		// =====================================================
+		// BUYER GSTIN
+		// =====================================================
 
 		String buyerGstin = null;
 
-		if (unbilled.getUnit() != null) {
-			buyerGstin = unbilled.getUnit().getGstNo();
-		} else if (unbilled.getCompany() != null) {
-			buyerGstin = null;
+		CompanyUnit unit = unbilled.getUnit();
 
-			log.warn(
-					"No GSTIN found for Unbilled {} – Unit: {}, Company: {}",
-					unbilled.getUnbilledNumber(),
-					unbilled.getUnit() != null ? unbilled.getUnit().getUnitName() : "None",
-					unbilled.getCompany().getName()
-			);
+		/*
+		 * GSTIN is retained for:
+		 * REGISTERED
+		 * SEZ
+		 *
+		 * GSTIN is null for:
+		 * UNREGISTERED
+		 * INTERNATIONAL
+		 */
+		if (unit != null
+				&& (
+				gstRegistrationType == GstRegistrationType.REGISTERED
+						|| gstRegistrationType == GstRegistrationType.SEZ
+		)) {
+
+			buyerGstin = unit.getGstNo();
 		}
 
 		invoice.setBuyerGstin(buyerGstin);
-		invoice.setPlaceOfSupplyStateCode(estimate.getPlaceOfSupplyStateCode());
-		invoice.setGrandTotal(exactGrandTotal);
+		invoice.setPlaceOfSupplyStateCode(
+				estimate.getPlaceOfSupplyStateCode()
+		);
+
+		// =====================================================
+		// CALCULATE PAYMENT RATIO
+		// =====================================================
 
 		BigDecimal totalUnbilled = unbilled.getTotalAmount() == null
 				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-				: unbilled.getTotalAmount().setScale(2, RoundingMode.HALF_UP);
+				: unbilled.getTotalAmount()
+				.setScale(2, RoundingMode.HALF_UP);
 
-		BigDecimal ratio = totalUnbilled.compareTo(BigDecimal.ZERO) > 0
-				? exactGrandTotal.divide(totalUnbilled, 10, RoundingMode.HALF_UP)
-				: BigDecimal.ZERO;
+		BigDecimal ratio =
+				totalUnbilled.compareTo(BigDecimal.ZERO) > 0
+						? exactGrandTotal.divide(
+						totalUnbilled,
+						10,
+						RoundingMode.HALF_UP
+				)
+						: BigDecimal.ZERO;
 
-		List<InvoiceLineItem> invoiceLines = new ArrayList<>();
-		BigDecimal accumulatedWithGst = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-
-		List<EstimateLineItem> estimateLines = estimate.getLineItems();
+		List<EstimateLineItem> estimateLines =
+				estimate.getLineItems();
 
 		if (estimateLines == null || estimateLines.isEmpty()) {
 			throw new IllegalStateException(
-					"Estimate line items not found for estimate " + estimate.getEstimateNumber()
+					"Estimate line items not found for estimate "
+							+ estimate.getEstimateNumber()
 			);
 		}
 
-		for (EstimateLineItem estLine : estimateLines) {
+		List<InvoiceLineItem> invoiceLines =
+				new ArrayList<>();
 
-			InvoiceLineItem invLine = new InvoiceLineItem();
-			invLine.setInvoice(invoice);
-			invLine.setSourceEstimateLineItemId(estLine.getId());
-			invLine.setItemName(estLine.getItemName());
-			invLine.setDescription(estLine.getDescription());
-			invLine.setHsnSacCode(estLine.getHsnSacCode());
-			invLine.setQuantity(estLine.getQuantity());
-			invLine.setUnit(estLine.getUnit());
+		BigDecimal accumulatedWithGst =
+				BigDecimal.ZERO.setScale(
+						2,
+						RoundingMode.HALF_UP
+				);
 
-			BigDecimal estUnitPrice = estLine.getUnitPriceExGst() == null
-					? BigDecimal.ZERO
-					: estLine.getUnitPriceExGst();
+		// =====================================================
+		// CREATE INVOICE LINE ITEMS
+		// =====================================================
 
-			BigDecimal proratedUnitPrice = estUnitPrice
-					.multiply(ratio)
-					.setScale(2, RoundingMode.HALF_UP);
+		for (EstimateLineItem estimateLine : estimateLines) {
 
-			invLine.setUnitPriceExGst(proratedUnitPrice);
-			invLine.setGstRate(estLine.getGstRate());
-			invLine.setDisplayOrder(estLine.getDisplayOrder());
-			invLine.setCategoryCode(estLine.getCategoryCode());
-			invLine.setFeeType(estLine.getFeeType());
+			InvoiceLineItem invoiceLine =
+					new InvoiceLineItem();
 
-			invLine.calculateLineTotals();
+			invoiceLine.setInvoice(invoice);
 
-			invoiceLines.add(invLine);
+			invoiceLine.setSourceEstimateLineItemId(
+					estimateLine.getId()
+			);
 
-			accumulatedWithGst = accumulatedWithGst
-					.add(invLine.getLineTotalWithGst())
-					.setScale(2, RoundingMode.HALF_UP);
+			invoiceLine.setItemName(
+					estimateLine.getItemName()
+			);
+
+			invoiceLine.setDescription(
+					estimateLine.getDescription()
+			);
+
+			invoiceLine.setHsnSacCode(
+					estimateLine.getHsnSacCode()
+			);
+
+			invoiceLine.setQuantity(
+					estimateLine.getQuantity()
+			);
+
+			invoiceLine.setUnit(
+					estimateLine.getUnit()
+			);
+
+			BigDecimal estimateUnitPrice =
+					estimateLine.getUnitPriceExGst() != null
+							? estimateLine.getUnitPriceExGst()
+							: BigDecimal.ZERO;
+
+			BigDecimal proratedUnitPrice =
+					estimateUnitPrice
+							.multiply(ratio)
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							);
+
+			invoiceLine.setUnitPriceExGst(
+					proratedUnitPrice
+			);
+
+			/*
+			 * Defensive enforcement:
+			 *
+			 * SEZ and INTERNATIONAL must always have zero GST,
+			 * even if old estimate data contains 18%.
+			 */
+			BigDecimal effectiveGstRate =
+					zeroRatedSupply
+							? BigDecimal.ZERO
+							: estimateLine.getGstRate() != null
+							? estimateLine.getGstRate()
+							: BigDecimal.ZERO;
+
+			invoiceLine.setGstRate(
+					effectiveGstRate.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
+			);
+
+			/*
+			 * Required for line-level GST breakup.
+			 */
+			invoiceLine.setIgstFlag(
+					igstApplicable
+			);
+
+			invoiceLine.setDisplayOrder(
+					estimateLine.getDisplayOrder()
+			);
+
+			invoiceLine.setCategoryCode(
+					estimateLine.getCategoryCode()
+			);
+
+			invoiceLine.setFeeType(
+					estimateLine.getFeeType()
+			);
+
+			invoiceLine.calculateLineTotals();
+
+			invoiceLines.add(invoiceLine);
+
+			accumulatedWithGst =
+					accumulatedWithGst
+							.add(invoiceLine.getLineTotalWithGst())
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							);
 		}
 
-		/*
-		 * Rounding adjustment:
-		 * If line-wise calculation has a small difference, adjust the last line
-		 * by recalculating its ex-GST unit price from the target line total.
-		 */
-		BigDecimal difference = exactGrandTotal
-				.subtract(accumulatedWithGst)
-				.setScale(2, RoundingMode.HALF_UP);
+		// =====================================================
+		// ROUNDING ADJUSTMENT
+		// =====================================================
 
-		if (difference.abs().compareTo(new BigDecimal("1.00")) > 0) {
+		BigDecimal difference =
+				exactGrandTotal
+						.subtract(accumulatedWithGst)
+						.setScale(
+								2,
+								RoundingMode.HALF_UP
+						);
+
+		if (difference.abs().compareTo(
+				new BigDecimal("1.00")
+		) > 0) {
+
 			log.warn(
-					"Large proration difference detected: ₹{} for Payment {} - check estimate/payment data",
+					"Large invoice proration difference | difference={} | receiptId={}",
 					difference,
 					receipt.getId()
 			);
 		}
 
-		if (difference.compareTo(BigDecimal.ZERO) != 0 && !invoiceLines.isEmpty()) {
+		if (difference.compareTo(BigDecimal.ZERO) != 0
+				&& !invoiceLines.isEmpty()) {
 
-			InvoiceLineItem lastLine = invoiceLines.get(invoiceLines.size() - 1);
+			InvoiceLineItem lastLine =
+					invoiceLines.get(
+							invoiceLines.size() - 1
+					);
 
-			BigDecimal currentLineTotalWithGst = lastLine.getLineTotalWithGst() == null
-					? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-					: lastLine.getLineTotalWithGst().setScale(2, RoundingMode.HALF_UP);
+			BigDecimal currentLineTotalWithGst =
+					lastLine.getLineTotalWithGst() != null
+							? lastLine.getLineTotalWithGst()
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							)
+							: BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					);
 
-			BigDecimal targetLineTotalWithGst = currentLineTotalWithGst
-					.add(difference)
-					.setScale(2, RoundingMode.HALF_UP);
+			BigDecimal targetLineTotalWithGst =
+					currentLineTotalWithGst
+							.add(difference)
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							);
 
-			BigDecimal gstRate = lastLine.getGstRate() == null
-					? BigDecimal.ZERO
-					: lastLine.getGstRate();
+			BigDecimal lastLineGstRate =
+					lastLine.getGstRate() != null
+							? lastLine.getGstRate()
+							: BigDecimal.ZERO;
 
-			BigDecimal divisor = BigDecimal.ONE.add(
-					gstRate.divide(BigDecimal.valueOf(100), 6, RoundingMode.HALF_UP)
+			BigDecimal divisor =
+					BigDecimal.ONE.add(
+							lastLineGstRate.divide(
+									BigDecimal.valueOf(100),
+									6,
+									RoundingMode.HALF_UP
+							)
+					);
+
+			BigDecimal targetLineTotalExGst =
+					targetLineTotalWithGst.divide(
+							divisor,
+							2,
+							RoundingMode.HALF_UP
+					);
+
+			Integer quantity =
+					lastLine.getQuantity() != null
+							&& lastLine.getQuantity() > 0
+							? lastLine.getQuantity()
+							: 1;
+
+			BigDecimal adjustedUnitPrice =
+					targetLineTotalExGst.divide(
+							BigDecimal.valueOf(quantity),
+							2,
+							RoundingMode.HALF_UP
+					);
+
+			lastLine.setUnitPriceExGst(
+					adjustedUnitPrice
 			);
 
-			BigDecimal targetLineTotalExGst = divisor.compareTo(BigDecimal.ZERO) > 0
-					? targetLineTotalWithGst.divide(divisor, 2, RoundingMode.HALF_UP)
-					: targetLineTotalWithGst;
-
-			Integer qty = lastLine.getQuantity() == null || lastLine.getQuantity() <= 0
-					? 1
-					: lastLine.getQuantity();
-
-			BigDecimal adjustedUnitPrice = targetLineTotalExGst
-					.divide(BigDecimal.valueOf(qty), 2, RoundingMode.HALF_UP);
-
-			lastLine.setUnitPriceExGst(adjustedUnitPrice);
 			lastLine.calculateLineTotals();
 		}
 
 		invoice.setLineItems(invoiceLines);
 
-		BigDecimal subTotalExGst = invoiceLines.stream()
-				.map(InvoiceLineItem::getLineTotalExGst)
-				.filter(Objects::nonNull)
-				.reduce(BigDecimal.ZERO, BigDecimal::add)
-				.setScale(2, RoundingMode.HALF_UP);
+		// =====================================================
+		// HEADER TOTALS
+		// =====================================================
 
-		BigDecimal totalGstAmount = invoiceLines.stream()
-				.map(InvoiceLineItem::getGstAmount)
-				.filter(Objects::nonNull)
-				.reduce(BigDecimal.ZERO, BigDecimal::add)
-				.setScale(2, RoundingMode.HALF_UP);
+		BigDecimal subTotalExGst =
+				invoiceLines.stream()
+						.map(InvoiceLineItem::getLineTotalExGst)
+						.filter(Objects::nonNull)
+						.reduce(
+								BigDecimal.ZERO,
+								BigDecimal::add
+						)
+						.setScale(
+								2,
+								RoundingMode.HALF_UP
+						);
 
-		invoice.setSubTotalExGst(subTotalExGst);
-		invoice.setTotalGstAmount(totalGstAmount);
+		BigDecimal totalGstAmount =
+				invoiceLines.stream()
+						.map(InvoiceLineItem::getGstAmount)
+						.filter(Objects::nonNull)
+						.reduce(
+								BigDecimal.ZERO,
+								BigDecimal::add
+						)
+						.setScale(
+								2,
+								RoundingMode.HALF_UP
+						);
 
-		/*
-		 * Header-level GST split.
-		 * Your existing voucher logic uses header CGST/SGST/IGST,
-		 * so these values must be correct.
-		 */
-		BigDecimal totalGst = safeMoney(invoice.getTotalGstAmount());
-		boolean igstApplicable = isIgstApplicable(unbilled, organization);
+		invoice.setSubTotalExGst(
+				subTotalExGst
+		);
 
-		if (igstApplicable) {
-			invoice.setIgstAmount(totalGst);
-			invoice.setCgstAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-			invoice.setSgstAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+		invoice.setTotalGstAmount(
+				totalGstAmount
+		);
 
-			log.info(
-					"IGST applied for invoice {} | totalGst={}",
-					invoice.getInvoiceNumber(),
-					totalGst
+		BigDecimal totalGst =
+				safeMoney(totalGstAmount);
+
+		// =====================================================
+		// HEADER GST BREAKUP
+		// =====================================================
+
+		if (zeroRatedSupply
+				|| totalGst.compareTo(BigDecimal.ZERO) == 0) {
+
+			invoice.setTotalGstAmount(
+					BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
 			);
+
+			invoice.setCgstAmount(
+					BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
+			);
+
+			invoice.setSgstAmount(
+					BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
+			);
+
+			invoice.setIgstAmount(
+					BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
+			);
+
+		} else if (igstApplicable) {
+
+			invoice.setIgstAmount(totalGst);
+
+			invoice.setCgstAmount(
+					BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
+			);
+
+			invoice.setSgstAmount(
+					BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
+			);
+
 		} else {
-			BigDecimal halfGst = totalGst
-					.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
 
-			invoice.setIgstAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-			invoice.setCgstAmount(halfGst);
-			invoice.setSgstAmount(halfGst);
+			BigDecimal cgstAmount =
+					totalGst.divide(
+							BigDecimal.valueOf(2),
+							2,
+							RoundingMode.HALF_UP
+					);
 
-			log.info(
-					"CGST/SGST applied for invoice {} | cgst={} sgst={}",
-					invoice.getInvoiceNumber(),
-					halfGst,
-					halfGst
+			BigDecimal sgstAmount =
+					totalGst
+							.subtract(cgstAmount)
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							);
+
+			invoice.setCgstAmount(cgstAmount);
+			invoice.setSgstAmount(sgstAmount);
+
+			invoice.setIgstAmount(
+					BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
 			);
 		}
 
 		/*
-		 * Keep grand total fixed to settlement amount.
-		 * This is required because payment receipt voucher credits customer by
-		 * bank amount + TDS amount.
+		 * Grand total must exactly match settlement:
+		 *
+		 * Bank amount + TDS amount.
 		 */
-		invoice.setGrandTotal(exactGrandTotal);
-
-		invoice = invoiceRepository.save(invoice);
-
-		log.info(
-				"Invoice generated successfully. Sales voucher will be posted after GST e-invoice confirmation | invoice={} | bankAmount=₹{} | tdsAmount=₹{} | grandTotal=₹{} | lines={} | paymentReceiptId={}",
-				invoice.getInvoiceNumber(),
-				bankAmount,
-				safeTdsAmount,
-				invoice.getGrandTotal(),
-				invoiceLines.size(),
-				receipt.getId()
+		invoice.setGrandTotal(
+				exactGrandTotal
 		);
 
-		return invoice;
+		Invoice savedInvoice =
+				invoiceRepository.save(invoice);
+
+		log.info(
+				"Invoice generated | invoice={} | gstRegistrationType={} | taxable={} | gst={} | grandTotal={} | lines={}",
+				savedInvoice.getInvoiceNumber(),
+				savedInvoice.getGstRegistrationType(),
+				savedInvoice.getSubTotalExGst(),
+				savedInvoice.getTotalGstAmount(),
+				savedInvoice.getGrandTotal(),
+				invoiceLines.size()
+		);
+
+		return savedInvoice;
 	}
 
 
@@ -384,30 +643,59 @@ public class InvoiceServiceImpl implements InvoiceService {
 	}
 
 
-	private boolean isIgstApplicable(UnbilledInvoice unbilled, Organization organization) {
+	private boolean isIgstApplicable(
+			UnbilledInvoice unbilled,
+			Organization organization
+	) {
+
+		GstRegistrationType gstRegistrationType =
+				unbilled != null
+						? unbilled.getEffectiveGstRegistrationType()
+						: GstRegistrationType.REGISTERED;
+
+		/*
+		 * SEZ supplies and international/export supplies are
+		 * classified as interstate/IGST supplies.
+		 *
+		 * Their GST amount remains zero because gstRate is forced to 0.
+		 */
+		if (gstRegistrationType == GstRegistrationType.SEZ
+				|| gstRegistrationType == GstRegistrationType.INTERNATIONAL) {
+			return true;
+		}
+
 		if (organization == null) {
-			log.warn("Organization not found. Defaulting invoice {} to IGST logic.",
-					unbilled.getUnbilledNumber());
 			return true;
 		}
 
-		String orgState = organization.getState();
-		String unitState = unbilled.getUnit() != null ? unbilled.getUnit().getState() : null;
+		String organizationState =
+				organization.getState();
 
-		if (orgState == null || orgState.trim().isEmpty()) {
-			log.warn("Organization state is blank. Defaulting invoice {} to IGST logic.",
-					unbilled.getUnbilledNumber());
+		String unitState =
+				unbilled != null
+						&& unbilled.getUnit() != null
+						? unbilled.getUnit().getState()
+						: null;
+
+		if (organizationState == null
+				|| organizationState.trim().isEmpty()) {
 			return true;
 		}
 
-		if (unitState == null || unitState.trim().isEmpty()) {
-			log.warn("Company unit/state missing for unbilled {}. Defaulting to IGST logic.",
-					unbilled.getUnbilledNumber());
+		if (unitState == null
+				|| unitState.trim().isEmpty()) {
 			return true;
 		}
 
-		return !orgState.trim().equalsIgnoreCase(unitState.trim());
+		return !organizationState
+				.trim()
+				.equalsIgnoreCase(
+						unitState.trim()
+				);
 	}
+
+
+
 
 	private BigDecimal safeMoney(BigDecimal value) {
 		return value == null
@@ -491,6 +779,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 			paymentTypeCode = receipt.getPaymentType().getCode();
 		}
 
+		GstRegistrationType gstRegistrationType =
+				inv.getGstRegistrationType() != null
+						? inv.getGstRegistrationType()
+						: GstRegistrationType.REGISTERED;
+
 		return InvoiceSummaryDto.builder()
 				.id(inv.getId())
 				.publicUuid(inv.getPublicUuid())
@@ -518,6 +811,15 @@ public class InvoiceServiceImpl implements InvoiceService {
 						? unbilled.getContact().getName()
 						: null)
 
+				.gstRegistrationType(
+						gstRegistrationType.name()
+				)
+				.gstApplicable(
+						gstRegistrationType.isGstApplicable()
+				)
+				.zeroRatedSupply(
+						gstRegistrationType.isZeroRated()
+				)
 				.invoiceDate(inv.getInvoiceDate())
 				.grandTotal(inv.getGrandTotal())
 				.totalGstAmount(inv.getTotalGstAmount())
@@ -542,6 +844,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.organizationPhone(inv.getOrganizationPhone())
 				.organizationWebsite(inv.getOrganizationWebsite())
 				.organizationLogoUrl(inv.getOrganizationLogoUrl())
+
 
 				.createdByName(inv.getCreatedBy() != null
 						? inv.getCreatedBy().getFullName() != null
@@ -894,6 +1197,23 @@ public class InvoiceServiceImpl implements InvoiceService {
 						: null
 		);
 
+		GstRegistrationType gstRegistrationType =
+				invoice.getGstRegistrationType() != null
+						? invoice.getGstRegistrationType()
+						: GstRegistrationType.REGISTERED;
+
+		dto.setGstRegistrationType(
+				gstRegistrationType.name()
+		);
+
+		dto.setGstApplicable(
+				gstRegistrationType.isGstApplicable()
+		);
+
+		dto.setZeroRatedSupply(
+				gstRegistrationType.isZeroRated()
+		);
+
 		dto.setInvoiceDate(invoice.getInvoiceDate());
 		dto.setCurrency(invoice.getCurrency());
 		dto.setStatus(invoice.getStatus());
@@ -953,7 +1273,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		lineDto.setDisplayOrder(li.getDisplayOrder());
 		lineDto.setCategoryCode(li.getCategoryCode());
 		lineDto.setFeeType(li.getFeeType());
-
+		lineDto.setIgstFlag(
+				li.isIgstFlag()
+		);
 		return lineDto;
 	}
 

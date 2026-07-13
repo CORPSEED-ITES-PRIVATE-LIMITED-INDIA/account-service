@@ -4,6 +4,7 @@ import com.account.config.LeadFeignClient;
 import com.account.domain.*;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.domain.invoice.Invoice;
@@ -44,7 +45,9 @@ import java.util.stream.Collectors;
 public class UnbilledServiceImpl implements UnbilledService {
 
     private final PaymentServiceImpl paymentServiceImpl;
-    private static final Logger log = LoggerFactory.getLogger(PaymentServiceImpl.class);
+    private static final Logger log =
+            LoggerFactory.getLogger(UnbilledServiceImpl.class);
+
 
     private final EstimateRepository estimateRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
@@ -370,18 +373,66 @@ public class UnbilledServiceImpl implements UnbilledService {
         dto.setContactNo(contact != null ? contact.getContactNo() : null);
 
         CompanyUnit unit = unbilled.getUnit();
+
+        /*
+         * First use the GST registration type snapshot stored
+         * in the unbilled invoice.
+         *
+         * For old records where the snapshot is null, use the
+         * currently linked company unit value.
+         *
+         * Final fallback is REGISTERED.
+         */
+        GstRegistrationType gstRegistrationType =
+                unbilled.getGstRegistrationType();
+
+        if (gstRegistrationType == null
+                && unit != null
+                && unit.getGstRegistrationType() != null) {
+
+            gstRegistrationType =
+                    unit.getGstRegistrationType();
+        }
+
+        if (gstRegistrationType == null) {
+            gstRegistrationType =
+                    GstRegistrationType.REGISTERED;
+        }
+
+        dto.setGstRegistrationType(
+                gstRegistrationType.name()
+        );
+
+        dto.setGstApplicable(
+                gstRegistrationType.isGstApplicable()
+        );
+
+        dto.setZeroRatedSupply(
+                gstRegistrationType.isZeroRated()
+        );
+
         if (unit != null) {
 
             dto.setUnitId(unit.getId());
             dto.setUnitName(unit.getUnitName());
-            dto.setUnitStatus(unit.getOnboardingStatus().name());
 
+            dto.setUnitStatus(
+                    unit.getOnboardingStatus() != null
+                            ? unit.getOnboardingStatus().name()
+                            : null
+            );
 
             dto.setAddressLine1(unit.getAddressLine1());
             dto.setAddressLine2(unit.getAddressLine2());
             dto.setCity(unit.getCity());
             dto.setState(unit.getState());
-            dto.setCountry(unit.getCountry() != null ? unit.getCountry() : "India");
+
+            dto.setCountry(
+                    unit.getCountry() != null
+                            ? unit.getCountry()
+                            : "India"
+            );
+
             dto.setPinCode(unit.getPinCode());
             dto.setGstNo(unit.getGstNo());
         }

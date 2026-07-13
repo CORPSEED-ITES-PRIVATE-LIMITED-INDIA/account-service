@@ -186,46 +186,102 @@ public class CompanyServiceImpl implements CompanyService {
     // =========================================================
     @Override
     @Transactional
-    public CompanyResponseDto updateFullCompanyDetails(Long companyId, CompanyRequestDto dto, Long updatedById) {
+    public CompanyResponseDto updateFullCompanyDetails(
+            Long companyId,
+            CompanyRequestDto dto,
+            Long updatedById
+    ) {
 
-        System.out.println("Rating " + dto.getRating());
+        // =========================================================
+        // 1. REQUEST VALIDATION
+        // =========================================================
 
-        Company company = companyRepository.findByIdAndIsDeletedFalse(companyId)
+        if (companyId == null || companyId <= 0) {
+            throw new ValidationException(
+                    "Invalid company ID",
+                    "ERR_INVALID_COMPANY_ID",
+                    "companyId"
+            );
+        }
+
+        if (dto == null) {
+            throw new ValidationException(
+                    "Request body is required",
+                    "ERR_REQUEST_REQUIRED"
+            );
+        }
+
+        if (updatedById == null || updatedById <= 0) {
+            throw new ValidationException(
+                    "Invalid updatedBy user ID",
+                    "ERR_INVALID_UPDATED_BY",
+                    "updatedById"
+            );
+        }
+
+        logger.info(
+                "Updating full company details | companyId={} | updatedById={} | unitCount={}",
+                companyId,
+                updatedById,
+                dto.getUnits() != null ? dto.getUnits().size() : 0
+        );
+
+        // =========================================================
+        // 2. FETCH COMPANY AND USER
+        // =========================================================
+
+        Company company = companyRepository
+                .findByIdAndIsDeletedFalse(companyId)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Company not found",
+                        "Company not found with ID: " + companyId,
                         "ERR_COMPANY_NOT_FOUND"
                 ));
 
-        User updatedBy = userRepository.findByIdAndNotDeleted(updatedById)
+        User updatedBy = userRepository
+                .findByIdAndNotDeleted(updatedById)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "User not found",
+                        "User not found with ID: " + updatedById,
                         "ERR_USER_NOT_FOUND"
                 ));
 
+        /*
+         * An already-approved company can be edited, but editing must not
+         * remove or reset the existing Accounts approval.
+         */
         boolean companyApproved =
                 company.isAccountsApproved()
                         || company.getOnboardingStatus() == OnboardingStatus.APPROVED;
 
-        /*
-         * RULE:
-         * Approved company can be updated by any user,
-         * but its approval status must NOT change.
-         */
+        // Preserve existing company approval details.
+        OnboardingStatus originalCompanyStatus =
+                company.getOnboardingStatus();
 
-        OnboardingStatus originalCompanyStatus = company.getOnboardingStatus();
-        boolean originalCompanyAccountsApproved = company.isAccountsApproved();
-        User originalCompanyAccountsReviewedBy = company.getAccountsReviewedBy();
-        LocalDateTime originalCompanyAccountsReviewedAt = company.getAccountsReviewedAt();
-        String originalCompanyAccountsRemark = company.getAccountsRemark();
+        boolean originalCompanyAccountsApproved =
+                company.isAccountsApproved();
 
-        // ==================== COMPANY FIELD UPDATE ====================
+        User originalCompanyAccountsReviewedBy =
+                company.getAccountsReviewedBy();
+
+        LocalDateTime originalCompanyAccountsReviewedAt =
+                company.getAccountsReviewedAt();
+
+        String originalCompanyAccountsRemark =
+                company.getAccountsRemark();
+
+        // =========================================================
+        // 3. UPDATE COMPANY FIELDS
+        // =========================================================
 
         if (StringUtils.hasText(dto.getName())) {
             company.setName(dto.getName().trim());
         }
 
         if (StringUtils.hasText(dto.getPanNo())) {
-            company.setPanNo(dto.getPanNo().trim().toUpperCase());
+            company.setPanNo(
+                    dto.getPanNo()
+                            .trim()
+                            .toUpperCase()
+            );
         }
 
         if (dto.getEstablishDate() != null) {
@@ -240,12 +296,24 @@ public class CompanyServiceImpl implements CompanyService {
             company.setSubIndustry(dto.getSubIndustry().trim());
         }
 
+        if (StringUtils.hasText(dto.getSubSubIndustry())) {
+            company.setSubsubIndustry(dto.getSubSubIndustry().trim());
+        }
+
+        if (dto.getIsConsultant() != null) {
+            company.setIsConsultant(
+                    Boolean.TRUE.equals(dto.getIsConsultant())
+            );
+        }
+
         if (dto.getPaymentTerm() != null) {
             company.setPaymentTerm(dto.getPaymentTerm());
         }
 
         if (dto.getAggrementPresent() != null) {
-            company.setAggrementPresent(Boolean.TRUE.equals(dto.getAggrementPresent()));
+            company.setAggrementPresent(
+                    Boolean.TRUE.equals(dto.getAggrementPresent())
+            );
         }
 
         if (dto.getAggrement() != null) {
@@ -253,7 +321,9 @@ public class CompanyServiceImpl implements CompanyService {
         }
 
         if (dto.getNdaPresent() != null) {
-            company.setNdaPresent(Boolean.TRUE.equals(dto.getNdaPresent()));
+            company.setNdaPresent(
+                    Boolean.TRUE.equals(dto.getNdaPresent())
+            );
         }
 
         if (dto.getNda() != null) {
@@ -264,119 +334,327 @@ public class CompanyServiceImpl implements CompanyService {
             company.setRevenue(dto.getRevenue());
         }
 
+        if (dto.getRating() != null) {
+            company.setRating(dto.getRating());
+        }
+
         company.setUpdatedBy(updatedBy);
         company.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
-        company.setRating(dto.getRating());
 
-        // ==================== UNIT UPDATE ====================
+        // =========================================================
+        // 4. UPDATE COMPANY UNITS
+        // =========================================================
 
         if (dto.getUnits() != null && !dto.getUnits().isEmpty()) {
 
-            for (CompanyUnitFullRequestDto u : dto.getUnits()) {
+            for (int index = 0; index < dto.getUnits().size(); index++) {
 
-                if (u.getId() == null) {
+                CompanyUnitFullRequestDto unitRequest =
+                        dto.getUnits().get(index);
+
+                String fieldPrefix = "units[" + index + "]";
+
+                if (unitRequest == null) {
+                    throw new ValidationException(
+                            "Unit request cannot be null",
+                            "ERR_UNIT_REQUEST_REQUIRED",
+                            fieldPrefix
+                    );
+                }
+
+                if (unitRequest.getId() == null
+                        || unitRequest.getId() <= 0) {
+
                     throw new ValidationException(
                             "Unit ID is required for update",
-                            "ERR_UNIT_ID_REQUIRED"
+                            "ERR_UNIT_ID_REQUIRED",
+                            fieldPrefix + ".id"
                     );
                 }
 
                 CompanyUnit unit = companyUnitRepository
-                        .findByIdAndCompanyIdAndIsDeletedFalse(u.getId(), companyId)
+                        .findByIdAndCompanyIdAndIsDeletedFalse(
+                                unitRequest.getId(),
+                                companyId
+                        )
                         .orElseThrow(() -> new ValidationException(
-                                "Unit not found",
-                                "ERR_UNIT_NOT_FOUND"
+                                "Unit not found with ID: "
+                                        + unitRequest.getId()
+                                        + " for company ID: "
+                                        + companyId,
+                                "ERR_UNIT_NOT_FOUND",
+                                fieldPrefix + ".id"
                         ));
 
+                /*
+                 * Capture approval state before modifying the unit.
+                 */
                 boolean unitApproved =
                         unit.isAccountsApproved()
-                                || unit.getOnboardingStatus() == OnboardingStatus.APPROVED;
+                                || unit.getOnboardingStatus()
+                                == OnboardingStatus.APPROVED;
+
+                OnboardingStatus originalUnitStatus =
+                        unit.getOnboardingStatus();
+
+                boolean originalUnitAccountsApproved =
+                        unit.isAccountsApproved();
+
+                User originalUnitAccountsReviewedBy =
+                        unit.getAccountsReviewedBy();
+
+                LocalDateTime originalUnitAccountsReviewedAt =
+                        unit.getAccountsReviewedAt();
+
+                String originalUnitAccountsRemark =
+                        unit.getAccountsRemark();
+
+                // =====================================================
+                // 4.1 BASIC UNIT FIELDS
+                // =====================================================
+
+                if (StringUtils.hasText(unitRequest.getUnitName())) {
+                    unit.setUnitName(
+                            unitRequest.getUnitName().trim()
+                    );
+                }
+
+                if (unitRequest.getAddressLine1() != null) {
+                    unit.setAddressLine1(
+                            unitRequest.getAddressLine1().trim()
+                    );
+                }
+
+                if (unitRequest.getAddressLine2() != null) {
+                    unit.setAddressLine2(
+                            StringUtils.hasText(unitRequest.getAddressLine2())
+                                    ? unitRequest.getAddressLine2().trim()
+                                    : null
+                    );
+                }
+
+                if (unitRequest.getCity() != null) {
+                    unit.setCity(
+                            StringUtils.hasText(unitRequest.getCity())
+                                    ? unitRequest.getCity().trim()
+                                    : null
+                    );
+                }
+
+                if (unitRequest.getState() != null) {
+                    unit.setState(
+                            StringUtils.hasText(unitRequest.getState())
+                                    ? unitRequest.getState().trim()
+                                    : null
+                    );
+                }
+
+                if (unitRequest.getCountry() != null) {
+                    unit.setCountry(
+                            StringUtils.hasText(unitRequest.getCountry())
+                                    ? unitRequest.getCountry().trim()
+                                    : "India"
+                    );
+                }
+
+                if (unitRequest.getPinCode() != null) {
+                    unit.setPinCode(
+                            StringUtils.hasText(unitRequest.getPinCode())
+                                    ? unitRequest.getPinCode().trim()
+                                    : null
+                    );
+                }
+
+                if (unitRequest.getUnitOpeningDate() != null) {
+                    unit.setUnitOpeningDate(
+                            unitRequest.getUnitOpeningDate()
+                    );
+                }
+
+                if (StringUtils.hasText(unitRequest.getStatus())) {
+                    unit.setStatus(
+                            unitRequest.getStatus().trim()
+                    );
+                }
+
+                if (unitRequest.getConsultantPresent() != null) {
+                    unit.setConsultantPresent(
+                            Boolean.TRUE.equals(
+                                    unitRequest.getConsultantPresent()
+                            )
+                    );
+                }
+
+                // =====================================================
+                // 4.2 GST REGISTRATION TYPE
+                // =====================================================
 
                 /*
-                 * RULE:
-                 * Approved unit can be updated,
-                 * but its approval status must NOT change.
+                 * Null or blank means the Lead Service did not provide a
+                 * new value. In that situation, preserve the existing type.
                  */
+                GstRegistrationType effectiveGstRegistrationType =
+                        unit.getGstRegistrationType() != null
+                                ? unit.getGstRegistrationType()
+                                : GstRegistrationType.REGISTERED;
 
-                OnboardingStatus originalUnitStatus = unit.getOnboardingStatus();
-                boolean originalUnitAccountsApproved = unit.isAccountsApproved();
-                User originalUnitAccountsReviewedBy = unit.getAccountsReviewedBy();
-                LocalDateTime originalUnitAccountsReviewedAt = unit.getAccountsReviewedAt();
-                String originalUnitAccountsRemark = unit.getAccountsRemark();
+                if (StringUtils.hasText(
+                        unitRequest.getGstRegistrationType()
+                )) {
 
-                if (StringUtils.hasText(u.getUnitName())) {
-                    unit.setUnitName(u.getUnitName().trim());
-                }
+                    effectiveGstRegistrationType =
+                            parseGstRegistrationType(
+                                    unitRequest.getGstRegistrationType()
+                            );
 
-                if (u.getAddressLine1() != null) {
-                    unit.setAddressLine1(u.getAddressLine1());
-                }
-
-                if (u.getAddressLine2() != null) {
-                    unit.setAddressLine2(u.getAddressLine2());
-                }
-
-                if (u.getCity() != null) {
-                    unit.setCity(u.getCity());
-                }
-
-                if (u.getState() != null) {
-                    unit.setState(u.getState());
-                }
-
-                if (u.getCountry() != null) {
-                    unit.setCountry(u.getCountry());
-                }
-
-                if (u.getPinCode() != null) {
-                    unit.setPinCode(u.getPinCode());
-                }
-
-                if (u.getGstNo() != null) {
-                    unit.setGstNo(u.getGstNo());
-                }
-
-                /*
-                 * GST registration type comes from Lead Service as String.
-                 * Null means the field was not included, so preserve the existing value.
-                 */
-                if (u.getGstRegistrationType() != null) {
-
-                    GstRegistrationType gstRegistrationType =
-                            parseGstRegistrationType(u.getGstRegistrationType());
-
-                    unit.setGstRegistrationType(gstRegistrationType);
+                    unit.setGstRegistrationType(
+                            effectiveGstRegistrationType
+                    );
+                } else if (unit.getGstRegistrationType() == null) {
 
                     /*
-                     * An unregistered/international customer should not retain an
-                     * old GST number.
+                     * Legacy database rows may contain null.
+                     * Default them to REGISTERED.
                      */
-                    if (gstRegistrationType == GstRegistrationType.UNREGISTERED
-                            || gstRegistrationType == GstRegistrationType.INTERNATIONAL) {
-                        unit.setGstNo(null);
-                    }
+                    unit.setGstRegistrationType(
+                            GstRegistrationType.REGISTERED
+                    );
                 }
 
-                if (u.getUnitOpeningDate() != null) {
-                    unit.setUnitOpeningDate(u.getUnitOpeningDate());
+                // =====================================================
+                // 4.3 GST NUMBER
+                // =====================================================
+
+                /*
+                 * REGISTERED:
+                 *     GST number can be stored.
+                 *
+                 * SEZ:
+                 *     GST number can be stored because an SEZ unit may
+                 *     have a valid GSTIN. GST rate will be forced to zero
+                 *     during estimate/invoice calculation.
+                 *
+                 * UNREGISTERED:
+                 *     GST number must not be retained.
+                 *
+                 * INTERNATIONAL:
+                 *     Indian GST number must not be retained.
+                 */
+                if (effectiveGstRegistrationType
+                        == GstRegistrationType.UNREGISTERED
+                        || effectiveGstRegistrationType
+                        == GstRegistrationType.INTERNATIONAL) {
+
+                    unit.setGstNo(null);
+
+                } else if (unitRequest.getGstNo() != null) {
+
+                    unit.setGstNo(
+                            StringUtils.hasText(unitRequest.getGstNo())
+                                    ? unitRequest.getGstNo()
+                                    .trim()
+                                    .toUpperCase()
+                                    : null
+                    );
+                }
+
+                // =====================================================
+                // 4.4 PRIMARY CONTACT
+                // =====================================================
+
+                if (unitRequest.getPrimaryContactId() != null) {
+
+                    if (unitRequest.getPrimaryContactId() <= 0) {
+                        throw new ValidationException(
+                                "Invalid primary contact ID",
+                                "ERR_INVALID_PRIMARY_CONTACT_ID",
+                                fieldPrefix + ".primaryContactId"
+                        );
+                    }
+
+                    Contact primaryContact = contactRepository
+                            .findById(
+                                    unitRequest.getPrimaryContactId()
+                            )
+                            .orElseThrow(() -> new ResourceNotFoundException(
+                                    "Primary contact not found with ID: "
+                                            + unitRequest.getPrimaryContactId(),
+                                    "ERR_PRIMARY_CONTACT_NOT_FOUND"
+                            ));
+
+                    unit.setPrimaryContact(primaryContact);
+                }
+
+                // =====================================================
+                // 4.5 SECONDARY CONTACT
+                // =====================================================
+
+                if (unitRequest.getSecondaryContactId() != null) {
+
+                    if (unitRequest.getSecondaryContactId() <= 0) {
+                        throw new ValidationException(
+                                "Invalid secondary contact ID",
+                                "ERR_INVALID_SECONDARY_CONTACT_ID",
+                                fieldPrefix + ".secondaryContactId"
+                        );
+                    }
+
+                    Contact secondaryContact = contactRepository
+                            .findById(
+                                    unitRequest.getSecondaryContactId()
+                            )
+                            .orElseThrow(() -> new ResourceNotFoundException(
+                                    "Secondary contact not found with ID: "
+                                            + unitRequest.getSecondaryContactId(),
+                                    "ERR_SECONDARY_CONTACT_NOT_FOUND"
+                            ));
+
+                    unit.setSecondaryContact(secondaryContact);
                 }
 
                 unit.setUpdatedBy(updatedBy);
-                unit.setUpdatedAt(dateTimeUtil.nowLocalDateTime());
+                unit.setUpdatedAt(
+                        dateTimeUtil.nowLocalDateTime()
+                );
 
-                /*
-                 * Status handling for unit:
-                 * Approved unit keeps original approval status.
-                 * Non-approved unit moves to INITIATED after edit.
-                 */
+                // =====================================================
+                // 4.6 PRESERVE OR RESET UNIT APPROVAL
+                // =====================================================
+
                 if (unitApproved) {
-                    unit.setOnboardingStatus(originalUnitStatus);
-                    unit.setAccountsApproved(originalUnitAccountsApproved);
-                    unit.setAccountsReviewedBy(originalUnitAccountsReviewedBy);
-                    unit.setAccountsReviewedAt(originalUnitAccountsReviewedAt);
-                    unit.setAccountsRemark(originalUnitAccountsRemark);
+
+                    /*
+                     * Approved units retain their existing approval state.
+                     */
+                    unit.setOnboardingStatus(
+                            originalUnitStatus
+                    );
+
+                    unit.setAccountsApproved(
+                            originalUnitAccountsApproved
+                    );
+
+                    unit.setAccountsReviewedBy(
+                            originalUnitAccountsReviewedBy
+                    );
+
+                    unit.setAccountsReviewedAt(
+                            originalUnitAccountsReviewedAt
+                    );
+
+                    unit.setAccountsRemark(
+                            originalUnitAccountsRemark
+                    );
+
                 } else {
-                    unit.setOnboardingStatus(OnboardingStatus.INITIATED);
+
+                    /*
+                     * An edited non-approved unit must be reviewed again.
+                     */
+                    unit.setOnboardingStatus(
+                            OnboardingStatus.INITIATED
+                    );
+
                     unit.setAccountsApproved(false);
                     unit.setAccountsReviewedBy(null);
                     unit.setAccountsReviewedAt(null);
@@ -384,59 +662,112 @@ public class CompanyServiceImpl implements CompanyService {
                 }
 
                 companyUnitRepository.save(unit);
+
+                logger.info(
+                        "Company unit updated | companyId={} | unitId={} | gstRegistrationType={} | gstNoPresent={} | approved={}",
+                        companyId,
+                        unit.getId(),
+                        unit.getGstRegistrationType(),
+                        StringUtils.hasText(unit.getGstNo()),
+                        unitApproved
+                );
             }
         }
 
-        /*
-         * Status handling for company:
-         * Approved company keeps original approval status.
-         * Non-approved company moves to INITIATED after edit.
-         */
+        // =========================================================
+        // 5. PRESERVE OR RESET COMPANY APPROVAL
+        // =========================================================
+
         if (companyApproved) {
-            company.setOnboardingStatus(originalCompanyStatus);
-            company.setAccountsApproved(originalCompanyAccountsApproved);
-            company.setAccountsReviewedBy(originalCompanyAccountsReviewedBy);
-            company.setAccountsReviewedAt(originalCompanyAccountsReviewedAt);
-            company.setAccountsRemark(originalCompanyAccountsRemark);
+
+            /*
+             * Approved company retains its original approval state.
+             */
+            company.setOnboardingStatus(
+                    originalCompanyStatus
+            );
+
+            company.setAccountsApproved(
+                    originalCompanyAccountsApproved
+            );
+
+            company.setAccountsReviewedBy(
+                    originalCompanyAccountsReviewedBy
+            );
+
+            company.setAccountsReviewedAt(
+                    originalCompanyAccountsReviewedAt
+            );
+
+            company.setAccountsRemark(
+                    originalCompanyAccountsRemark
+            );
+
         } else {
-            company.setOnboardingStatus(OnboardingStatus.INITIATED);
+
+            /*
+             * Edited non-approved company must be reviewed again.
+             */
+            company.setOnboardingStatus(
+                    OnboardingStatus.INITIATED
+            );
+
             company.setAccountsApproved(false);
             company.setAccountsReviewedBy(null);
             company.setAccountsReviewedAt(null);
             company.setAccountsRemark(null);
         }
 
+        // =========================================================
+        // 6. SAVE COMPANY
+        // =========================================================
 
-        /*
-         * Send approval notification only when company is NOT already approved.
-         * Approved company update should not go for approval again.
-         */
-        Company savedCompany = companyRepository.save(company);
+        Company savedCompany =
+                companyRepository.save(company);
+
+        // =========================================================
+        // 7. SEND APPROVAL NOTIFICATION
+        // =========================================================
 
         if (!companyApproved) {
             try {
-                pushCompanyApprovalRequiredNotification(savedCompany, updatedById);
-            } catch (Exception ex) {
+
+                pushCompanyApprovalRequiredNotification(
+                        savedCompany,
+                        updatedById
+                );
+
+            } catch (Exception exception) {
+
+                /*
+                 * Notification failure must not roll back the successfully
+                 * completed company update.
+                 */
                 logger.warn(
                         "Company approval notification failed but company update completed | companyId={} | updatedById={} | error={}",
                         savedCompany.getId(),
                         updatedById,
-                        ex.getMessage()
+                        exception.getMessage()
                 );
 
                 logger.error(
                         "Company approval notification exception details | companyId={} | updatedById={}",
                         savedCompany.getId(),
                         updatedById,
-                        ex
+                        exception
                 );
             }
         }
 
+        logger.info(
+                "Full company update completed | companyId={} | updatedById={} | approved={}",
+                savedCompany.getId(),
+                updatedById,
+                companyApproved
+        );
+
         return mapToResponseDto(savedCompany);
-
     }
-
 
     private void pushCompanyApprovalRequiredNotification(
             Company company,
@@ -1421,10 +1752,17 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
 
-    private GstRegistrationType parseGstRegistrationType(String value) {
+
+    private GstRegistrationType parseGstRegistrationType(
+            String value
+    ) {
 
         if (!StringUtils.hasText(value)) {
-            return null;
+            throw new ValidationException(
+                    "GST registration type is required",
+                    "ERR_GST_REGISTRATION_TYPE_REQUIRED",
+                    "gstRegistrationType"
+            );
         }
 
         String normalizedValue = value
@@ -1434,6 +1772,7 @@ public class CompanyServiceImpl implements CompanyService {
                 .replace(" ", "_");
 
         return switch (normalizedValue) {
+
             case "REGISTERED",
                     "REGISTER",
                     "REGISTERED_GST_CUSTOMER" ->
@@ -1446,21 +1785,28 @@ public class CompanyServiceImpl implements CompanyService {
 
             case "SEZ",
                     "SEZ_UNIT",
+                    "SEZ_CUSTOMER",
                     "SEZ_UNIT_ZERO_RATED_SUPPLY" ->
                     GstRegistrationType.SEZ;
 
             case "INTERNATIONAL",
+                    "INTERNATIONAL_CUSTOMER",
                     "EXPORT",
+                    "EXPORT_CUSTOMER",
                     "INTERNATIONAL_EXPORT_CUSTOMER" ->
                     GstRegistrationType.INTERNATIONAL;
 
             default -> throw new ValidationException(
-                    "Invalid GST registration type: " + value,
+                    "Invalid GST registration type: " + value
+                            + ". Allowed values are REGISTERED, "
+                            + "UNREGISTERED, SEZ and INTERNATIONAL",
                     "ERR_INVALID_GST_REGISTRATION_TYPE",
                     "gstRegistrationType"
             );
         };
     }
+
+
 
 
 }

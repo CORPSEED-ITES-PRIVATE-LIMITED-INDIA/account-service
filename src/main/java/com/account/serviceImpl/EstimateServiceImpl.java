@@ -1327,6 +1327,7 @@ public class EstimateServiceImpl implements EstimateService {
 
         dto.setCurrency(estimate.getCurrency());
 
+
         dto.setSubTotalExGst(estimate.getSubTotalExGst());
         dto.setTotalGstAmount(estimate.getTotalGstAmount());
         dto.setCgstAmount(estimate.getCgstAmount());

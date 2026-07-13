@@ -2,6 +2,7 @@ package com.account.domain.invoice;
 
 import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import jakarta.persistence.*;
@@ -20,20 +21,43 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name = "invoice",
+@Table(
+        name = "invoice",
         indexes = {
-                @Index(name = "idx_invoice_number_unique", columnList = "invoice_number", unique = true),
-                @Index(name = "idx_invoice_public_uuid_unique", columnList = "public_uuid", unique = true),
-                @Index(name = "idx_invoice_unbilled_id", columnList = "unbilled_invoice_id"),
-                @Index(name = "idx_invoice_status", columnList = "status"),
-                @Index(name = "idx_invoice_date", columnList = "invoice_date")
-        })
+                @Index(
+                        name = "idx_invoice_number_unique",
+                        columnList = "invoice_number",
+                        unique = true
+                ),
+                @Index(
+                        name = "idx_invoice_public_uuid_unique",
+                        columnList = "public_uuid",
+                        unique = true
+                ),
+                @Index(
+                        name = "idx_invoice_unbilled_id",
+                        columnList = "unbilled_invoice_id"
+                ),
+                @Index(
+                        name = "idx_invoice_status",
+                        columnList = "status"
+                ),
+                @Index(
+                        name = "idx_invoice_date",
+                        columnList = "invoice_date"
+                )
+        }
+)
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"unbilledInvoice", "lineItems", "triggeringPayment"})
+@ToString(exclude = {
+        "unbilledInvoice",
+        "lineItems",
+        "triggeringPayment"
+})
 public class Invoice {
 
     @Id
@@ -41,43 +65,102 @@ public class Invoice {
     private Long id;
 
     // Public safe identifier for sharing (UUID v4)
-    @Column(name = "public_uuid", nullable = false, unique = true, length = 36)
+    @Column(
+            name = "public_uuid",
+            nullable = false,
+            unique = true,
+            length = 36
+    )
     private String publicUuid;
 
-    @Column(name = "invoice_number", nullable = false, unique = true, length = 32)
-    private String invoiceNumber; // e.g. INV-2026-00009876
+    @Column(
+            name = "invoice_number",
+            nullable = false,
+            unique = true,
+            length = 32
+    )
+    private String invoiceNumber;
 
     @Column(name = "solution_id", length = 500)
     private Long solutionId;
 
-    @Column(name = "solution_name", nullable = false, length = 255)
+    @Column(
+            name = "solution_name",
+            nullable = false,
+            length = 255
+    )
     private String solutionName;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "unbilled_invoice_id", nullable = false)
+    @JoinColumn(
+            name = "unbilled_invoice_id",
+            nullable = false
+    )
     private UnbilledInvoice unbilledInvoice;
+
+    /*
+     * GST registration type snapshot.
+     *
+     * This value is copied from UnbilledInvoice when the invoice
+     * is generated. It protects historical invoices if the unit's
+     * GST registration type changes later.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "gst_registration_type",
+            nullable = false,
+            length = 30
+    )
+    private GstRegistrationType gstRegistrationType =
+            GstRegistrationType.REGISTERED;
 
     @Column(name = "invoice_date", nullable = false)
     private LocalDate invoiceDate = LocalDate.now();
 
-    // Financials
-    @Column(precision = 15, scale = 2, nullable = false)
+    // ==================== FINANCIALS ====================
+
+    @Column(
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal subTotalExGst;
 
-    @Column(precision = 15, scale = 2, nullable = false)
+    @Column(
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal totalGstAmount;
 
-    // GST breakup - critical for GSTR-1 & customer visibility
-    @Column(precision = 15, scale = 2, nullable = false)
+    // GST breakup - critical for GSTR-1 and customer visibility
+
+    @Column(
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal cgstAmount = BigDecimal.ZERO;
 
-    @Column(precision = 15, scale = 2, nullable = false)
+    @Column(
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal sgstAmount = BigDecimal.ZERO;
 
-    @Column(precision = 15, scale = 2, nullable = false)
+    @Column(
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal igstAmount = BigDecimal.ZERO;
 
-    @Column(precision = 15, scale = 2, nullable = false)
+    @Column(
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
     private BigDecimal grandTotal;
 
     @Enumerated(EnumType.STRING)
@@ -89,24 +172,34 @@ public class Invoice {
 
     private boolean isCancelled = false;
 
-    @OneToMany(mappedBy = "invoice", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+            mappedBy = "invoice",
+            cascade = CascadeType.ALL,
+            orphanRemoval = true
+    )
     private List<InvoiceLineItem> lineItems = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "payment_receipt_id")
     private PaymentReceipt triggeringPayment;
 
-    @Column(name = "signed_qr_code", columnDefinition = "TEXT")
-    private String signedQrCode; // QR code with digital signature
+    @Column(
+            name = "signed_qr_code",
+            columnDefinition = "TEXT"
+    )
+    private String signedQrCode;
 
-    // === Place of Supply (for GST split logic) ===
+    // ==================== PLACE OF SUPPLY ====================
+
     @Column(length = 2)
-    private String placeOfSupplyStateCode; // e.g. "06" for Haryana
+    private String placeOfSupplyStateCode;
 
-    // === Reference GSTINs ===
+    // ==================== BUYER GST DETAILS ====================
+
     @Column(name = "buyer_gstin", length = 15)
     private String buyerGstin;
 
+    // ==================== ORGANIZATION SNAPSHOT ====================
 
     @Column(name = "organization_name", length = 255)
     private String organizationName;
@@ -150,10 +243,14 @@ public class Invoice {
     @Column(name = "organization_logo_url", length = 255)
     private String organizationLogoUrl;
 
+    // ==================== AUDIT FIELDS ====================
 
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by", updatable = false)
+    @JoinColumn(
+            name = "created_by",
+            updatable = false
+    )
     @Comment("User who generated the invoice and registered the client payment")
     private User createdBy;
 
@@ -170,7 +267,12 @@ public class Invoice {
     @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    @Column(name = "e_invoice_attachment_url", columnDefinition = "TEXT")
+    // ==================== E-INVOICE DETAILS ====================
+
+    @Column(
+            name = "e_invoice_attachment_url",
+            columnDefinition = "TEXT"
+    )
     private String eInvoiceAttachmentUrl;
 
     @Column(name = "e_invoice_irn", length = 100)
@@ -189,6 +291,8 @@ public class Invoice {
     @JoinColumn(name = "e_invoice_confirmed_by")
     private User eInvoiceConfirmedBy;
 
+    // ==================== OPERATION SYNC ====================
+
     @Column(name = "operation_synced", nullable = false)
     private boolean operationSynced = false;
 
@@ -198,6 +302,21 @@ public class Invoice {
     @Column(name = "operation_project_no", length = 100)
     private String operationProjectNo;
 
+    // ==================== GST HELPERS ====================
 
+    public GstRegistrationType getEffectiveGstRegistrationType() {
+        return gstRegistrationType != null
+                ? gstRegistrationType
+                : GstRegistrationType.REGISTERED;
+    }
 
+    public boolean isGstApplicable() {
+        return getEffectiveGstRegistrationType()
+                .isGstApplicable();
+    }
+
+    public boolean isZeroRatedSupply() {
+        return getEffectiveGstRegistrationType()
+                .isZeroRated();
+    }
 }
