@@ -84,7 +84,18 @@ public class CompanyController {
             @RequestParam(value = "updatedBy", required = true) Long updatedById,
             @Valid @RequestBody CompanyRequestDto dto) {
 
-        System.out.println("Value check" + dto.getRating());
+
+        if (dto.getUnits() != null && !dto.getUnits().isEmpty()) {
+            dto.getUnits().forEach(unit ->
+                    System.out.println(
+                            "Unit ID: " + unit.getId()
+                                    + ", Unit Name: " + unit.getUnitName()
+                                    + ", GST Registration Type: "
+                                    + unit.getGstRegistrationType()
+                    )
+            );
+        }
+
         if (updatedById == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "updatedBy user is required");
         }
