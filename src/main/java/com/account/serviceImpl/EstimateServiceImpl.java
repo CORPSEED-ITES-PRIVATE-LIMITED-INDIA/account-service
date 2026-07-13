@@ -4,6 +4,7 @@ import com.account.config.EmailServiceImpl;
 import com.account.domain.*;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
 import com.account.domain.estimate.EstimateStatus;
@@ -169,6 +170,29 @@ public class EstimateServiceImpl implements EstimateService {
                         return new ResourceNotFoundException("Unit not found", "UNIT_NOT_FOUND");
                     });
         }
+
+// =====================================================
+// GST REGISTRATION TYPE
+// =====================================================
+
+        GstRegistrationType gstRegistrationType =
+                unit != null && unit.getGstRegistrationType() != null
+                        ? unit.getGstRegistrationType()
+                        : GstRegistrationType.REGISTERED;
+
+        boolean zeroRatedSupply =
+                gstRegistrationType.isZeroRated();
+
+        boolean gstApplicable =
+                gstRegistrationType.isGstApplicable();
+
+        log.info(
+                "Estimate GST treatment | unitId={} | gstRegistrationType={} | gstApplicable={} | zeroRatedSupply={}",
+                unit != null ? unit.getId() : null,
+                gstRegistrationType,
+                gstApplicable,
+                zeroRatedSupply
+        );
 
         Contact contact = null;
         if (requestDto.getContactId() != null && requestDto.getContactId() > 0) {
@@ -540,7 +564,8 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLineItems(itemDtos);
 
 
-        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(estimate);
+        Optional<UnbilledInvoice> unbilledOpt = unbilledInvoiceRepository.
+                findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(estimate);
 
         if (unbilledOpt.isPresent()) {
 

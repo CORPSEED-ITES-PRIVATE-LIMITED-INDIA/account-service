@@ -49,6 +49,7 @@ public class EstimateLineItem {
     @Column(length = 20)
     private String unit;
 
+
     @Column(precision = 15, scale = 2, nullable = false)
     private BigDecimal unitPriceExGst = BigDecimal.ZERO;
 

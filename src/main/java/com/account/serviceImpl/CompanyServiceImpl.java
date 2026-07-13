@@ -196,6 +196,8 @@ public class CompanyServiceImpl implements CompanyService {
         // 1. REQUEST VALIDATION
         // =========================================================
 
+
+
         if (companyId == null || companyId <= 0) {
             throw new ValidationException(
                     "Invalid company ID",

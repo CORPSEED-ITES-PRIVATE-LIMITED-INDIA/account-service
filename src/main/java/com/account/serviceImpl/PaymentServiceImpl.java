@@ -606,6 +606,7 @@ public class PaymentServiceImpl implements PaymentService {
         // Notify Accounts team for approval
         pushPaymentRegisteredNotificationToAccountUsers(unbilled, receipt, estimate, salesperson);
 
+        // n
         log.info(
                 "Payment registration completed | estimateId={} | unbilledId={} | receiptId={} | firstPayment={} | settlementAmount={} | status={}",
                 estimate.getId(),

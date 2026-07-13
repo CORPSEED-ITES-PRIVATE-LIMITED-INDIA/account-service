@@ -130,6 +130,16 @@ public class CompanyUnit {
     private GstRegistrationType gstRegistrationType =
             GstRegistrationType.REGISTERED;
 
+
+    /**
+     * Handles old database records where gstRegistrationType is null.
+     */
+    public GstRegistrationType getEffectiveGstRegistrationType() {
+        return gstRegistrationType != null
+                ? gstRegistrationType
+                : GstRegistrationType.REGISTERED;
+    }
+
     public boolean isSez() {
         return getEffectiveGstRegistrationType()
                 == GstRegistrationType.SEZ;
@@ -158,14 +168,6 @@ public class CompanyUnit {
         return getEffectiveGstRegistrationType().isGstApplicable();
     }
 
-    /**
-     * Handles old database records where gstRegistrationType is null.
-     */
-    public GstRegistrationType getEffectiveGstRegistrationType() {
-        return gstRegistrationType != null
-                ? gstRegistrationType
-                : GstRegistrationType.REGISTERED;
-    }
 
 
 }
