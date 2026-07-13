@@ -87,53 +87,112 @@ public class EstimateServiceImpl implements EstimateService {
 
 
     @Override
-    public EstimateResponseDto createEstimate(EstimateCreationRequestDto requestDto) {
+    public EstimateResponseDto createEstimate(
+            EstimateCreationRequestDto requestDto
+    ) {
+
+        // =====================================================
+        // 1. REQUEST VALIDATION
+        // =====================================================
 
         if (requestDto == null) {
-            throw new ValidationException("Request body is required", "ERR_REQUEST_REQUIRED");
+            throw new ValidationException(
+                    "Request body is required",
+                    "ERR_REQUEST_REQUIRED"
+            );
         }
 
-        log.info("Starting estimate creation | companyId: {} | userId: {} | solution: {} | lineItems: {}",
+        log.info(
+                "Starting estimate creation | companyId={} | unitId={} | userId={} | solution={} | lineItems={}",
                 requestDto.getCompanyId(),
+                requestDto.getUnitId(),
                 requestDto.getCreatedByUserId(),
                 requestDto.getSolutionName(),
-                requestDto.getLineItems() != null ? requestDto.getLineItems().size() : 0);
+                requestDto.getLineItems() != null
+                        ? requestDto.getLineItems().size()
+                        : 0
+        );
 
-        // ---- Required field validations (prevents 500 due to nulls) ----
-        if (requestDto.getCompanyId() == null || requestDto.getCompanyId() <= 0) {
-            throw new ValidationException("Invalid companyId", "ERR_INVALID_COMPANY_ID", "companyId");
+        if (requestDto.getCompanyId() == null
+                || requestDto.getCompanyId() <= 0) {
+
+            throw new ValidationException(
+                    "Invalid companyId",
+                    "ERR_INVALID_COMPANY_ID",
+                    "companyId"
+            );
         }
 
-        if (requestDto.getCreatedByUserId() == null || requestDto.getCreatedByUserId() <= 0) {
-            throw new ValidationException("Invalid createdByUserId", "ERR_INVALID_CREATED_BY", "createdByUserId");
+        if (requestDto.getCreatedByUserId() == null
+                || requestDto.getCreatedByUserId() <= 0) {
+
+            throw new ValidationException(
+                    "Invalid createdByUserId",
+                    "ERR_INVALID_CREATED_BY",
+                    "createdByUserId"
+            );
         }
 
-        if (requestDto.getSolutionType() == null || requestDto.getSolutionType().trim().isEmpty()) {
-            throw new ValidationException("solutionType is required", "ERR_SOLUTION_TYPE_REQUIRED", "solutionType");
+        if (requestDto.getLeadId() == null
+                || requestDto.getLeadId() <= 0) {
+
+            throw new ValidationException(
+                    "Invalid leadId",
+                    "ERR_INVALID_LEAD_ID",
+                    "leadId"
+            );
         }
 
-        if (requestDto.getLeadId() == null || requestDto.getLeadId() <= 0) {
-            throw new ValidationException("Invalid leadId", "ERR_INVALID_LEAD_ID", "leadId");
+        if (requestDto.getSolutionId() == null
+                || requestDto.getSolutionId() <= 0) {
+
+            throw new ValidationException(
+                    "Invalid solutionId",
+                    "ERR_INVALID_SOLUTION_ID",
+                    "solutionId"
+            );
         }
 
+        if (requestDto.getSolutionName() == null
+                || requestDto.getSolutionName().trim().isEmpty()) {
 
-        if (requestDto.getSolutionName() == null || requestDto.getSolutionName().trim().isEmpty()) {
-            throw new ValidationException("solutionName is required", "ERR_SOLUTION_NAME_REQUIRED", "solutionName");
+            throw new ValidationException(
+                    "solutionName is required",
+                    "ERR_SOLUTION_NAME_REQUIRED",
+                    "solutionName"
+            );
         }
 
-        // 1. Basic validation
-        if (requestDto.getLineItems() == null || requestDto.getLineItems().isEmpty()) {
-            log.warn("Validation failed: No line items provided for estimate creation");
-            throw new ValidationException("At least one line item is required", "ERR_NO_LINE_ITEMS", "lineItems");
+        if (requestDto.getSolutionType() == null
+                || requestDto.getSolutionType().trim().isEmpty()) {
+
+            throw new ValidationException(
+                    "solutionType is required",
+                    "ERR_SOLUTION_TYPE_REQUIRED",
+                    "solutionType"
+            );
         }
 
+        if (requestDto.getLineItems() == null
+                || requestDto.getLineItems().isEmpty()) {
 
-        // ---- Lead estimate rule ----
-        boolean existsNonRejectedEstimate = estimateRepository
-                .existsByLeadIdAndIsDeletedFalseAndIsCancelledFalseAndStatusNot(
-                        requestDto.getLeadId(),
-                        EstimateStatus.REJECTED
-                );
+            throw new ValidationException(
+                    "At least one line item is required",
+                    "ERR_NO_LINE_ITEMS",
+                    "lineItems"
+            );
+        }
+
+        // =====================================================
+        // 2. PREVENT DUPLICATE ESTIMATE FOR LEAD
+        // =====================================================
+
+        boolean existsNonRejectedEstimate =
+                estimateRepository
+                        .existsByLeadIdAndIsDeletedFalseAndIsCancelledFalseAndStatusNot(
+                                requestDto.getLeadId(),
+                                EstimateStatus.REJECTED
+                        );
 
         if (existsNonRejectedEstimate) {
             throw new ValidationException(
@@ -143,229 +202,567 @@ public class EstimateServiceImpl implements EstimateService {
             );
         }
 
-        // 2. Validate creator exists
-        log.debug("Fetching creator user with id: {}", requestDto.getCreatedByUserId());
-        User creator = userRepository.findByIdAndNotDeleted(requestDto.getCreatedByUserId())
-                .orElseThrow(() -> {
-                    log.error("User not found for id: {}", requestDto.getCreatedByUserId());
-                    return new ResourceNotFoundException(
-                            "User not found with ID: " + requestDto.getCreatedByUserId(),
-                            "USER_NOT_FOUND"
-                    );
-                });
-        // 3. Fetch referenced entities
-        log.debug("Fetching company with id: {}", requestDto.getCompanyId());
-        Company company = companyRepository.findById(requestDto.getCompanyId())
-                .orElseThrow(() -> {
-                    log.error("Company not found for id: {}", requestDto.getCompanyId());
-                    return new ResourceNotFoundException("Company not found", "COMPANY_NOT_FOUND");
-                });
+        // =====================================================
+        // 3. FETCH CREATOR
+        // =====================================================
+
+        User creator = userRepository
+                .findByIdAndNotDeleted(
+                        requestDto.getCreatedByUserId()
+                )
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: "
+                                + requestDto.getCreatedByUserId(),
+                        "USER_NOT_FOUND"
+                ));
+
+        // =====================================================
+        // 4. FETCH COMPANY
+        // =====================================================
+
+        Company company = companyRepository
+                .findById(requestDto.getCompanyId())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Company not found with ID: "
+                                + requestDto.getCompanyId(),
+                        "COMPANY_NOT_FOUND"
+                ));
+
+        // =====================================================
+        // 5. FETCH COMPANY UNIT
+        // =====================================================
 
         CompanyUnit unit = null;
-        if (requestDto.getUnitId() != null && requestDto.getUnitId() > 0) {
-            log.debug("Fetching unit with id: {}", requestDto.getUnitId());
-            unit = companyUnitRepository.findById(requestDto.getUnitId())
-                    .orElseThrow(() -> {
-                        log.error("Unit not found for id: {}", requestDto.getUnitId());
-                        return new ResourceNotFoundException("Unit not found", "UNIT_NOT_FOUND");
-                    });
+
+        if (requestDto.getUnitId() != null
+                && requestDto.getUnitId() > 0) {
+
+            unit = companyUnitRepository
+                    .findById(requestDto.getUnitId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Unit not found with ID: "
+                                    + requestDto.getUnitId(),
+                            "UNIT_NOT_FOUND"
+                    ));
         }
 
-// =====================================================
-// GST REGISTRATION TYPE
-// =====================================================
+        // =====================================================
+        // 6. RESOLVE GST REGISTRATION TYPE
+        // =====================================================
 
         GstRegistrationType gstRegistrationType =
-                unit != null && unit.getGstRegistrationType() != null
+                unit != null
+                        && unit.getGstRegistrationType() != null
                         ? unit.getGstRegistrationType()
                         : GstRegistrationType.REGISTERED;
 
+        /*
+         * Exact GST-type checks.
+         */
+        boolean isSez =
+                gstRegistrationType
+                        == GstRegistrationType.SEZ;
+
+        boolean isInternational =
+                gstRegistrationType
+                        == GstRegistrationType.INTERNATIONAL;
+
         boolean zeroRatedSupply =
-                gstRegistrationType.isZeroRated();
+                isSez || isInternational;
 
         boolean gstApplicable =
                 gstRegistrationType.isGstApplicable();
 
         log.info(
-                "Estimate GST treatment | unitId={} | gstRegistrationType={} | gstApplicable={} | zeroRatedSupply={}",
+                "Estimate GST type resolved | unitId={} | type={} | isSez={} | isInternational={} | zeroRated={} | gstApplicable={}",
                 unit != null ? unit.getId() : null,
                 gstRegistrationType,
-                gstApplicable,
-                zeroRatedSupply
+                isSez,
+                isInternational,
+                zeroRatedSupply,
+                gstApplicable
         );
 
+        // =====================================================
+        // 7. FETCH CONTACT
+        // =====================================================
+
         Contact contact = null;
-        if (requestDto.getContactId() != null && requestDto.getContactId() > 0) {
-            log.debug("Fetching contact with id: {}", requestDto.getContactId());
-            contact = contactRepository.findById(requestDto.getContactId())
-                    .orElseThrow(() -> {
-                        log.error("Contact not found for id: {}", requestDto.getContactId());
-                        return new ResourceNotFoundException("Contact not found", "CONTACT_NOT_FOUND");
-                    });
+
+        if (requestDto.getContactId() != null
+                && requestDto.getContactId() > 0) {
+
+            contact = contactRepository
+                    .findById(requestDto.getContactId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Contact not found with ID: "
+                                    + requestDto.getContactId(),
+                            "CONTACT_NOT_FOUND"
+                    ));
         }
 
-        // 4. Create Estimate entity
-        log.debug("Creating new Estimate entity");
+        // =====================================================
+        // 8. CREATE ESTIMATE
+        // =====================================================
+
+        LocalDateTime now =
+                LocalDateTime.now(
+                        ZoneId.of("Asia/Kolkata")
+                );
+
         Estimate estimate = new Estimate();
 
-        // Generate secure public UUID for sharing
-        String publicUuid = UUID.randomUUID().toString();
+        String publicUuid =
+                UUID.randomUUID().toString();
+
+        String estimateNumber =
+                generateEstimateNumber();
+
         estimate.setPublicUuid(publicUuid);
-        log.debug("Generated public UUID for estimate: {}", publicUuid);
-
-        String estimateNumber = generateEstimateNumber();
         estimate.setEstimateNumber(estimateNumber);
-        estimate.setPerformanceInvoiceNumber(generatePINumber());
+        estimate.setPerformanceInvoiceNumber(
+                generatePINumber()
+        );
         estimate.setPerformanceInvoiceFlag(false);
-        estimate.setLeadId(requestDto.getLeadId());
 
-        estimate.setEstimateDate(requestDto.getEstimateDate() != null
-                ? requestDto.getEstimateDate()
-                : LocalDate.now());
+        estimate.setLeadId(
+                requestDto.getLeadId()
+        );
 
-        estimate.setValidUntil(requestDto.getValidUntil() != null
-                ? requestDto.getValidUntil()
-                : LocalDate.now().plusDays(30));
+        estimate.setProposalId(
+                requestDto.getProposalId()
+        );
 
-        // Additional date sanity check
-        if (estimate.getValidUntil() != null && estimate.getEstimateDate() != null
-                && estimate.getValidUntil().isBefore(estimate.getEstimateDate())) {
-            throw new ValidationException("validUntil cannot be before estimateDate", "ERR_INVALID_DATES", "validUntil");
+        estimate.setEstimateDate(
+                requestDto.getEstimateDate() != null
+                        ? requestDto.getEstimateDate()
+                        : LocalDate.now()
+        );
+
+        estimate.setValidUntil(
+                requestDto.getValidUntil() != null
+                        ? requestDto.getValidUntil()
+                        : estimate.getEstimateDate().plusDays(30)
+        );
+
+        if (estimate.getValidUntil()
+                .isBefore(estimate.getEstimateDate())) {
+
+            throw new ValidationException(
+                    "validUntil cannot be before estimateDate",
+                    "ERR_INVALID_DATES",
+                    "validUntil"
+            );
         }
 
         estimate.setCompany(company);
         estimate.setUnit(unit);
         estimate.setContact(contact);
-        estimate.setProposalId(requestDto.getProposalId());
-        estimate.setSolutionName(requestDto.getSolutionName());
-        estimate.setSolutionId(requestDto.getSolutionId());
-        estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
 
-        estimate.setSolutionType(requestDto.getSolutionType());
+        /*
+         * GST type snapshot used when this estimate is created.
+         */
+        estimate.setGstRegistrationType(
+                gstRegistrationType
+        );
 
-        estimate.setCustomerNotes(requestDto.getCustomerNotes());
-        estimate.setInternalRemarks(requestDto.getInternalRemarks());
+        estimate.setSolutionId(
+                requestDto.getSolutionId()
+        );
+
+        estimate.setSolutionName(
+                requestDto.getSolutionName().trim()
+        );
+
+        estimate.setSolutionType(
+                requestDto.getSolutionType().trim()
+        );
+
+        estimate.setCustomerNotes(
+                requestDto.getCustomerNotes()
+        );
+
+        estimate.setInternalRemarks(
+                requestDto.getInternalRemarks()
+        );
+
         estimate.setCurrency("INR");
         estimate.setStatus(EstimateStatus.DRAFT);
         estimate.setVersion(1);
         estimate.setRevisionReason("Initial creation");
         estimate.setCreatedBy(creator);
+        estimate.setUpdatedBy(creator);
+        estimate.setCreatedAt(now);
+        estimate.setUpdatedAt(now);
 
-        // 5. Process line items
-        log.debug("Processing {} line items", requestDto.getLineItems().size());
-        List<EstimateLineItem> lineItems = new ArrayList<>();
+        // =====================================================
+        // 9. DETERMINE IGST OR CGST/SGST
+        // =====================================================
 
+        /*
+         * Default to IGST.
+         *
+         * For SEZ and INTERNATIONAL, igstFlag remains true,
+         * but GST rate is forced to zero.
+         */
         boolean igstFlag = true;
 
-        if (unit != null) {
+        if (gstApplicable && unit != null) {
 
-            Optional<Organization> orgOpt = organizationRepository
-                    .findTopOrganization();
+            Optional<Organization> organizationOptional =
+                    organizationRepository.findTopOrganization();
 
-            String unitState = unit.getState();
+            if (organizationOptional.isPresent()) {
 
-            if (orgOpt.isPresent()) {
-                Organization org = orgOpt.get();
+                String organizationState =
+                        organizationOptional.get().getState();
 
-                String orgState = org.getState();
+                String unitState =
+                        unit.getState();
 
-                if (orgState != null && unitState != null
-                        && orgState.equalsIgnoreCase(unitState)) {
+                boolean sameState =
+                        organizationState != null
+                                && !organizationState.trim().isEmpty()
+                                && unitState != null
+                                && !unitState.trim().isEmpty()
+                                && organizationState
+                                .trim()
+                                .equalsIgnoreCase(
+                                        unitState.trim()
+                                );
 
-                    igstFlag = false; // CGST + SGST
-                } else {
-                    igstFlag = true;  // IGST
-                }
-
-            } else {
-                // Org not found → IGST
-                igstFlag = true;
+                /*
+                 * Same state  -> CGST + SGST
+                 * Other state -> IGST
+                 */
+                igstFlag = !sameState;
             }
         }
 
-        for (int i = 0; i < requestDto.getLineItems().size(); i++) {
-            EstimateCreationRequestDto.EstimateLineItemDto itemDto = requestDto.getLineItems().get(i);
+        // =====================================================
+        // 10. CREATE ESTIMATE LINE ITEMS
+        // =====================================================
+
+        List<EstimateLineItem> lineItems =
+                new ArrayList<>();
+
+        for (int i = 0;
+             i < requestDto.getLineItems().size();
+             i++) {
+
+            EstimateCreationRequestDto.EstimateLineItemDto itemDto =
+                    requestDto.getLineItems().get(i);
+
+            String fieldPrefix =
+                    "lineItems[" + i + "]";
 
             if (itemDto == null) {
-                throw new ValidationException("Line item is null at index: " + i, "ERR_INVALID_LINE_ITEM", "lineItems[" + i + "]");
+                throw new ValidationException(
+                        "Line item cannot be null",
+                        "ERR_INVALID_LINE_ITEM",
+                        fieldPrefix
+                );
             }
-            if (itemDto.getQuantity() == null || itemDto.getQuantity() <= 0) {
-                throw new ValidationException("Quantity must be greater than 0", "ERR_INVALID_QUANTITY", "lineItems[" + i + "].quantity");
+
+            if (itemDto.getItemName() == null
+                    || itemDto.getItemName().trim().isEmpty()) {
+
+                throw new ValidationException(
+                        "Item name is required",
+                        "ERR_ITEM_NAME_REQUIRED",
+                        fieldPrefix + ".itemName"
+                );
             }
+
+            if (itemDto.getQuantity() == null
+                    || itemDto.getQuantity() <= 0) {
+
+                throw new ValidationException(
+                        "Quantity must be greater than 0",
+                        "ERR_INVALID_QUANTITY",
+                        fieldPrefix + ".quantity"
+                );
+            }
+
             if (itemDto.getUnitPriceExGst() == null) {
-                throw new ValidationException("unitPriceExGst is required", "ERR_UNIT_PRICE_REQUIRED", "lineItems[" + i + "].unitPriceExGst");
-            }
-            if (itemDto.getGstRate() == null) {
-                throw new ValidationException("gstRate is required", "ERR_GST_RATE_REQUIRED", "lineItems[" + i + "].gstRate");
+                throw new ValidationException(
+                        "unitPriceExGst is required",
+                        "ERR_UNIT_PRICE_REQUIRED",
+                        fieldPrefix + ".unitPriceExGst"
+                );
             }
 
-            EstimateLineItem lineItem = new EstimateLineItem();
+            if (itemDto.getUnitPriceExGst()
+                    .compareTo(BigDecimal.ZERO) < 0) {
+
+                throw new ValidationException(
+                        "unitPriceExGst cannot be negative",
+                        "ERR_INVALID_UNIT_PRICE",
+                        fieldPrefix + ".unitPriceExGst"
+                );
+            }
+
+            /*
+             * GST rate is required only for domestic GST-applicable
+             * customers.
+             */
+            if (gstApplicable
+                    && itemDto.getGstRate() == null) {
+
+                throw new ValidationException(
+                        "gstRate is required for registered and unregistered customers",
+                        "ERR_GST_RATE_REQUIRED",
+                        fieldPrefix + ".gstRate"
+                );
+            }
+
+            if (itemDto.getGstRate() != null
+                    && itemDto.getGstRate()
+                    .compareTo(BigDecimal.ZERO) < 0) {
+
+                throw new ValidationException(
+                        "gstRate cannot be negative",
+                        "ERR_INVALID_GST_RATE",
+                        fieldPrefix + ".gstRate"
+                );
+            }
+
+            EstimateLineItem lineItem =
+                    new EstimateLineItem();
+
             lineItem.setEstimate(estimate);
-            lineItem.setSourceItemId(itemDto.getSourceItemId());
-            lineItem.setItemName(itemDto.getItemName());
-            lineItem.setDescription(itemDto.getDescription());
-            lineItem.setHsnSacCode(itemDto.getHsnSacCode());
-            lineItem.setQuantity(itemDto.getQuantity());
-            lineItem.setUnit(itemDto.getUnit());
-            estimate.setCreatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
-            estimate.setUpdatedAt(LocalDateTime.now(ZoneId.of("Asia/Kolkata")));
 
+            lineItem.setSourceItemId(
+                    itemDto.getSourceItemId()
+            );
 
-            lineItem.setUnitPriceExGst(itemDto.getUnitPriceExGst());
-            lineItem.setGstRate(itemDto.getGstRate());
-            lineItem.setIgstFlag(igstFlag);
-            lineItem.setCategoryCode(itemDto.getCategoryCode());
-            lineItem.setFeeType(itemDto.getFeeType());
+            lineItem.setItemName(
+                    itemDto.getItemName().trim()
+            );
+
+            lineItem.setDescription(
+                    itemDto.getDescription()
+            );
+
+            lineItem.setHsnSacCode(
+                    itemDto.getHsnSacCode()
+            );
+
+            lineItem.setQuantity(
+                    itemDto.getQuantity()
+            );
+
+            lineItem.setUnit(
+                    itemDto.getUnit()
+            );
+
+            lineItem.setUnitPriceExGst(
+                    itemDto.getUnitPriceExGst()
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            )
+            );
+
+            /*
+             * CRITICAL:
+             *
+             * SEZ and INTERNATIONAL always use zero GST.
+             * Even if the frontend sends gstRate = 18,
+             * effective GST rate will be zero.
+             */
+            BigDecimal effectiveGstRate;
+
+            if (isSez || isInternational) {
+                effectiveGstRate =
+                        BigDecimal.ZERO;
+            } else {
+                effectiveGstRate =
+                        itemDto.getGstRate() != null
+                                ? itemDto.getGstRate()
+                                : BigDecimal.ZERO;
+            }
+
+            lineItem.setGstRate(
+                    effectiveGstRate.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
+
+            lineItem.setIgstFlag(
+                    igstFlag
+            );
+
+            lineItem.setCategoryCode(
+                    itemDto.getCategoryCode()
+            );
+
+            lineItem.setFeeType(
+                    itemDto.getFeeType()
+            );
+
             lineItem.setDisplayOrder(i + 1);
 
+            /*
+             * For SEZ or INTERNATIONAL:
+             *
+             * gstRate   = 0
+             * gstAmount = 0
+             * igstRate  = 0
+             * cgstRate  = 0
+             * sgstRate  = 0
+             */
             lineItem.calculateLineTotals();
+
             lineItems.add(lineItem);
 
-            log.trace("Added line item #{}: {} | qty: {} | unitPrice: {} | totalExGst: {}",
-                    i + 1,
-                    itemDto.getItemName(),
-                    itemDto.getQuantity(),
-                    itemDto.getUnitPriceExGst(),
-                    lineItem.getLineTotalExGst());
+            log.info(
+                    "Estimate line created | index={} | item={} | gstRegistrationType={} | requestGstRate={} | effectiveGstRate={} | gstAmount={} | igstFlag={}",
+                    i,
+                    lineItem.getItemName(),
+                    gstRegistrationType,
+                    itemDto.getGstRate(),
+                    lineItem.getGstRate(),
+                    lineItem.getGstAmount(),
+                    lineItem.getIgstFlag()
+            );
         }
 
         estimate.setLineItems(lineItems);
 
-        // 6. Calculate totals
-        log.debug("Calculating estimate totals");
+        // =====================================================
+        // 11. CALCULATE TOTALS
+        // =====================================================
+
         estimate.calculateTotals();
 
-        // ---- Custom rounding rule for grandTotal ----
-        if (estimate.getGrandTotal() != null) {
-            BigDecimal grandTotal = estimate.getGrandTotal();
+        /*
+         * Defensive zero-rated enforcement at estimate header.
+         */
+        if (zeroRatedSupply) {
 
-            System.out.println("estimate.getGrandTotal() before:  "+estimate.getGrandTotal());
+            estimate.setTotalGstAmount(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
 
-            BigDecimal fractionalPart = grandTotal.remainder(BigDecimal.ONE);
+            estimate.setCgstAmount(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
 
-            BigDecimal roundedGrandTotal;
-            if (fractionalPart.compareTo(new BigDecimal("0.50")) >= 0) {
-                roundedGrandTotal = grandTotal.setScale(0, RoundingMode.CEILING);
-            } else {
-                roundedGrandTotal = grandTotal.setScale(0, RoundingMode.FLOOR);
-            }
+            estimate.setSgstAmount(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
 
-            estimate.setGrandTotal(roundedGrandTotal);
+            estimate.setIgstAmount(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
+
+            estimate.setGrandTotal(
+                    estimate.getSubTotalExGst()
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            )
+            );
         }
 
-        System.out.println("estimate.getGrandTotal() after:  "+estimate.getGrandTotal());
-        // 7. Persist
-        log.info("Saving estimate: number={} | publicUuid={} | company={} | total={}",
-                estimateNumber, publicUuid, company.getId(), estimate.getGrandTotal());
-        estimate = estimateRepository.save(estimate);
+        // =====================================================
+        // 12. CUSTOM GRAND-TOTAL ROUNDING
+        // =====================================================
 
-        log.info("Estimate created successfully | id={} | number={} | publicUuid={} | createdBy={} | total={}",
-                estimate.getId(), estimate.getEstimateNumber(), estimate.getPublicUuid(),
-                creator.getId(), estimate.getGrandTotal());
+        if (estimate.getGrandTotal() != null) {
 
-        // 8. Return response
-        return mapToResponseDto(estimate);
+            BigDecimal grandTotal =
+                    estimate.getGrandTotal();
+
+            log.debug(
+                    "Estimate grand total before rounding: {}",
+                    grandTotal
+            );
+
+            BigDecimal fractionalPart =
+                    grandTotal.remainder(
+                            BigDecimal.ONE
+                    );
+
+            BigDecimal roundedGrandTotal;
+
+            if (fractionalPart.compareTo(
+                    new BigDecimal("0.50")
+            ) >= 0) {
+
+                roundedGrandTotal =
+                        grandTotal.setScale(
+                                0,
+                                RoundingMode.CEILING
+                        );
+
+            } else {
+
+                roundedGrandTotal =
+                        grandTotal.setScale(
+                                0,
+                                RoundingMode.FLOOR
+                        );
+            }
+
+            estimate.setGrandTotal(
+                    roundedGrandTotal
+            );
+        }
+
+        // =====================================================
+        // 13. SAVE ESTIMATE
+        // =====================================================
+
+        log.info(
+                "Saving estimate | number={} | companyId={} | unitId={} | gstRegistrationType={} | subtotal={} | gst={} | grandTotal={}",
+                estimateNumber,
+                company.getId(),
+                unit != null ? unit.getId() : null,
+                gstRegistrationType,
+                estimate.getSubTotalExGst(),
+                estimate.getTotalGstAmount(),
+                estimate.getGrandTotal()
+        );
+
+        Estimate savedEstimate =
+                estimateRepository.save(estimate);
+
+        log.info(
+                "Estimate created successfully | id={} | number={} | gstRegistrationType={} | totalGst={} | grandTotal={}",
+                savedEstimate.getId(),
+                savedEstimate.getEstimateNumber(),
+                savedEstimate.getGstRegistrationType(),
+                savedEstimate.getTotalGstAmount(),
+                savedEstimate.getGrandTotal()
+        );
+
+        // =====================================================
+        // 14. RESPONSE
+        // =====================================================
+
+        return mapToResponseDto(savedEstimate);
     }
+
+
+
+
+
+
     private String generateEstimateNumber() {
         long count = estimateRepository.count() + 1;
         String number = String.format("EST-%d-%06d", LocalDate.now().getYear(), count);

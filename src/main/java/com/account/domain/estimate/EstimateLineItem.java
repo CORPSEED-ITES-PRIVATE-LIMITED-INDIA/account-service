@@ -7,14 +7,23 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "estimate_line_item",
+@Table(
+        name = "estimate_line_item",
         indexes = {
-                @Index(name = "idx_line_item_estimate_id", columnList = "estimate_id"),
-                @Index(name = "idx_line_item_display_order", columnList = "display_order")
-        })
+                @Index(
+                        name = "idx_line_item_estimate_id",
+                        columnList = "estimate_id"
+                ),
+                @Index(
+                        name = "idx_line_item_display_order",
+                        columnList = "display_order"
+                )
+        }
+)
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
@@ -40,7 +49,7 @@ public class EstimateLineItem {
     @Column(length = 255)
     private String description;
 
-    @Column(length = 50)
+    @Column(name = "hsn_sac_code", length = 50)
     private String hsnSacCode;
 
     @Column(nullable = false)
@@ -49,27 +58,83 @@ public class EstimateLineItem {
     @Column(length = 20)
     private String unit;
 
+    // =====================================================
+    // PRICE AND GST RATES
+    // =====================================================
 
-    @Column(precision = 15, scale = 2, nullable = false)
-    private BigDecimal unitPriceExGst = BigDecimal.ZERO;
+    @Column(
+            name = "unit_price_ex_gst",
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal unitPriceExGst =
+            BigDecimal.ZERO;
 
-    @Column(precision = 5, scale = 2)
-    private BigDecimal gstRate = BigDecimal.ZERO;
+    @Column(
+            name = "gst_rate",
+            precision = 5,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal gstRate =
+            BigDecimal.ZERO;
 
-    @Column(precision = 5, scale = 2)
-    private BigDecimal igstRate = BigDecimal.ZERO;
-    @Column(precision = 5, scale = 2)
-    private BigDecimal cgstRate = BigDecimal.ZERO;
-    @Column(precision = 5, scale = 2)
-    private BigDecimal sgstRate = BigDecimal.ZERO;
+    @Column(
+            name = "igst_rate",
+            precision = 5,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal igstRate =
+            BigDecimal.ZERO;
 
+    @Column(
+            name = "cgst_rate",
+            precision = 5,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal cgstRate =
+            BigDecimal.ZERO;
+
+    @Column(
+            name = "sgst_rate",
+            precision = 5,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal sgstRate =
+            BigDecimal.ZERO;
+
+    /*
+     * true  = IGST
+     * false = CGST + SGST
+     */
+    @Column(name = "igst_flag", nullable = false)
     private Boolean igstFlag = true;
 
-    @Column(precision = 15, scale = 2, nullable = false)
-    private BigDecimal lineTotalExGst = BigDecimal.ZERO;
+    // =====================================================
+    // CALCULATED AMOUNTS
+    // =====================================================
 
-    @Column(precision = 15, scale = 2, nullable = false)
-    private BigDecimal gstAmount = BigDecimal.ZERO;
+    @Column(
+            name = "line_total_ex_gst",
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal lineTotalExGst =
+            BigDecimal.ZERO;
+
+    @Column(
+            name = "gst_amount",
+            precision = 15,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal gstAmount =
+            BigDecimal.ZERO;
 
     @Column(name = "display_order")
     private Integer displayOrder;
@@ -80,63 +145,217 @@ public class EstimateLineItem {
     @Column(length = 50)
     private String feeType;
 
+    // =====================================================
+    // AUDIT FIELDS
+    // =====================================================
+
     @CreatedDate
-    @Column(updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @LastModifiedDate
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // =====================================================
+    // CALCULATION
+    // =====================================================
 
     @PrePersist
     @PreUpdate
     public void calculateLineTotals() {
 
-        // ===============================
-        // 1. CALCULATE BASE AMOUNT
-        // ===============================
-        this.lineTotalExGst = unitPriceExGst
-                .multiply(BigDecimal.valueOf(quantity))
-                .setScale(2, java.math.RoundingMode.HALF_UP);
+        Integer safeQuantity =
+                quantity != null && quantity > 0
+                        ? quantity
+                        : 1;
 
-        // ===============================
-        // 2. GST SPLIT LOGIC
-        // ===============================
-        if (gstRate != null && gstRate.compareTo(BigDecimal.ZERO) > 0) {
+        BigDecimal safeUnitPrice =
+                unitPriceExGst != null
+                        ? unitPriceExGst
+                        : BigDecimal.ZERO;
 
-            boolean isIgst = igstFlag == null || igstFlag;
+        BigDecimal safeGstRate =
+                gstRate != null
+                        ? gstRate
+                        : BigDecimal.ZERO;
 
-            if (isIgst) {
-                // IGST case
-                this.igstRate = gstRate;
+        if (safeUnitPrice.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalStateException(
+                    "Estimate line-item unit price cannot be negative"
+            );
+        }
 
-                this.cgstRate = BigDecimal.ZERO;
-                this.sgstRate = BigDecimal.ZERO;
+        if (safeGstRate.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalStateException(
+                    "Estimate line-item GST rate cannot be negative"
+            );
+        }
 
-            } else {
-                // CGST + SGST case
-                BigDecimal halfGst = gstRate.divide(
-                        BigDecimal.valueOf(2),
+        this.quantity =
+                safeQuantity;
+
+        this.unitPriceExGst =
+                safeUnitPrice.setScale(
                         2,
-                        java.math.RoundingMode.HALF_UP
+                        RoundingMode.HALF_UP
                 );
 
-                this.cgstRate = halfGst;
-                this.sgstRate = halfGst;
+        this.gstRate =
+                safeGstRate.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
 
-                this.igstRate = BigDecimal.ZERO;
-            }
+        // =====================================================
+        // BASE AMOUNT
+        // =====================================================
 
-            this.gstAmount = lineTotalExGst.multiply(
-                    gstRate.divide(BigDecimal.valueOf(100), 4, java.math.RoundingMode.HALF_UP)
-            ).setScale(2, java.math.RoundingMode.HALF_UP);
+        this.lineTotalExGst =
+                this.unitPriceExGst
+                        .multiply(
+                                BigDecimal.valueOf(
+                                        this.quantity
+                                )
+                        )
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+        /*
+         * Defensive zero-rated enforcement from parent estimate.
+         */
+        boolean zeroRatedSupply =
+                estimate != null
+                        && estimate.isZeroRatedSupply();
+
+        if (zeroRatedSupply) {
+            this.gstRate =
+                    zeroRate();
+        }
+
+        // =====================================================
+        // NO GST / ZERO-RATED SUPPLY
+        // =====================================================
+
+        if (this.gstRate.compareTo(BigDecimal.ZERO) <= 0) {
+
+            this.gstAmount =
+                    zeroMoney();
+
+            this.igstRate =
+                    zeroRate();
+
+            this.cgstRate =
+                    zeroRate();
+
+            this.sgstRate =
+                    zeroRate();
+
+            return;
+        }
+
+        // =====================================================
+        // GST RATE SPLIT
+        // =====================================================
+
+        boolean isIgst =
+                this.igstFlag == null
+                        || Boolean.TRUE.equals(
+                        this.igstFlag
+                );
+
+        if (isIgst) {
+
+            this.igstFlag = true;
+
+            this.igstRate =
+                    this.gstRate;
+
+            this.cgstRate =
+                    zeroRate();
+
+            this.sgstRate =
+                    zeroRate();
 
         } else {
-            // No GST
-            this.gstAmount = BigDecimal.ZERO;
 
-            this.igstRate = BigDecimal.ZERO;
-            this.cgstRate = BigDecimal.ZERO;
-            this.sgstRate = BigDecimal.ZERO;
+            this.igstFlag = false;
+
+            BigDecimal calculatedCgstRate =
+                    this.gstRate.divide(
+                            BigDecimal.valueOf(2),
+                            2,
+                            RoundingMode.HALF_UP
+                    );
+
+            /*
+             * Remaining rate goes to SGST so that:
+             *
+             * CGST rate + SGST rate = GST rate.
+             */
+            BigDecimal calculatedSgstRate =
+                    this.gstRate
+                            .subtract(calculatedCgstRate)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            this.cgstRate =
+                    calculatedCgstRate;
+
+            this.sgstRate =
+                    calculatedSgstRate;
+
+            this.igstRate =
+                    zeroRate();
         }
+
+        // =====================================================
+        // GST AMOUNT
+        // =====================================================
+
+        this.gstAmount =
+                this.lineTotalExGst
+                        .multiply(this.gstRate)
+                        .divide(
+                                BigDecimal.valueOf(100),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+    }
+
+    public BigDecimal getLineTotalWithGst() {
+        return safeMoney(lineTotalExGst)
+                .add(safeMoney(gstAmount))
+                .setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
+    }
+
+    private BigDecimal safeMoney(BigDecimal value) {
+        return value != null
+                ? value.setScale(
+                2,
+                RoundingMode.HALF_UP
+        )
+                : zeroMoney();
+    }
+
+    private BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    private BigDecimal zeroRate() {
+        return BigDecimal.ZERO.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
     }
 }
