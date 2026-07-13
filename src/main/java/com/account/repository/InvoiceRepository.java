@@ -454,5 +454,4 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
     Optional<Invoice> findByTriggeringPaymentAndIsCancelledFalse(PaymentReceipt triggeringPayment);
 
 
-
 }

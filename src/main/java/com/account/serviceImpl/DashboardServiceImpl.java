@@ -1373,34 +1373,57 @@ public class DashboardServiceImpl implements DashboardService {
                 .build();
     }
 
-    private Long getCount(Object[] row) {
-        if (row == null || row.length == 0 || row[0] == null) {
+    private Object[] unwrapRow(Object[] row) {
+        if (row == null) {
+            return new Object[0];
+        }
+
+        Object[] currentRow = row;
+
+        while (currentRow.length == 1
+                && currentRow[0] instanceof Object[] nestedRow) {
+            currentRow = nestedRow;
+        }
+
+        return currentRow;
+    }
+
+    private Long getCount(Object[] rawRow) {
+        Object[] row = unwrapRow(rawRow);
+
+        if (row.length == 0 || row[0] == null) {
             return 0L;
         }
 
-        if (row[0] instanceof Number number) {
+        Object value = row[0];
+
+        if (value instanceof Number number) {
             return number.longValue();
         }
 
-        return Long.valueOf(row[0].toString());
+        return Long.parseLong(value.toString().trim());
     }
 
-    private BigDecimal getAmount(Object[] row) {
-        if (row == null || row.length < 2 || row[1] == null) {
+    private BigDecimal getAmount(Object[] rawRow) {
+        Object[] row = unwrapRow(rawRow);
+
+        if (row.length < 2 || row[1] == null) {
             return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
         }
 
-        if (row[1] instanceof BigDecimal bigDecimal) {
-            return bigDecimal.setScale(2, RoundingMode.HALF_UP);
+        Object value = row[1];
+
+        BigDecimal amount;
+
+        if (value instanceof BigDecimal bigDecimal) {
+            amount = bigDecimal;
+        } else if (value instanceof Number number) {
+            amount = new BigDecimal(number.toString());
+        } else {
+            amount = new BigDecimal(value.toString().trim());
         }
 
-        if (row[1] instanceof Number number) {
-            return BigDecimal.valueOf(number.doubleValue())
-                    .setScale(2, RoundingMode.HALF_UP);
-        }
-
-        return new BigDecimal(row[1].toString())
-                .setScale(2, RoundingMode.HALF_UP);
+        return amount.setScale(2, RoundingMode.HALF_UP);
     }
 
 
