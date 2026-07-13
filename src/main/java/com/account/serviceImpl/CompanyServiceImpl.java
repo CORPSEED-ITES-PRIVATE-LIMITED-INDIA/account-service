@@ -3,6 +3,7 @@ package com.account.serviceImpl;
 import com.account.domain.*;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.status.OnboardingStatus;
 import com.account.dto.BasicCompanyRequestDto;
 import com.account.dto.CompanyMigrationRequestDto;
@@ -42,10 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -336,6 +334,27 @@ public class CompanyServiceImpl implements CompanyService {
 
                 if (u.getGstNo() != null) {
                     unit.setGstNo(u.getGstNo());
+                }
+
+                /*
+                 * GST registration type comes from Lead Service as String.
+                 * Null means the field was not included, so preserve the existing value.
+                 */
+                if (u.getGstRegistrationType() != null) {
+
+                    GstRegistrationType gstRegistrationType =
+                            parseGstRegistrationType(u.getGstRegistrationType());
+
+                    unit.setGstRegistrationType(gstRegistrationType);
+
+                    /*
+                     * An unregistered/international customer should not retain an
+                     * old GST number.
+                     */
+                    if (gstRegistrationType == GstRegistrationType.UNREGISTERED
+                            || gstRegistrationType == GstRegistrationType.INTERNATIONAL) {
+                        unit.setGstNo(null);
+                    }
                 }
 
                 if (u.getUnitOpeningDate() != null) {
@@ -1053,6 +1072,12 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setGstNo(unit.getGstNo());
         dto.setStatus(unit.getStatus());
 
+        dto.setGstRegistrationType(
+                unit.getGstRegistrationType() != null
+                        ? unit.getGstRegistrationType().name()
+                        : null
+        );
+
         // These were probably missing too
         dto.setOnboardingStatus(unit.getOnboardingStatus() != null
                 ? unit.getOnboardingStatus().name()
@@ -1393,6 +1418,48 @@ public class CompanyServiceImpl implements CompanyService {
         }
 
         return dto;
+    }
+
+
+    private GstRegistrationType parseGstRegistrationType(String value) {
+
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+
+        String normalizedValue = value
+                .trim()
+                .toUpperCase(Locale.ROOT)
+                .replace("-", "_")
+                .replace(" ", "_");
+
+        return switch (normalizedValue) {
+            case "REGISTERED",
+                    "REGISTER",
+                    "REGISTERED_GST_CUSTOMER" ->
+                    GstRegistrationType.REGISTERED;
+
+            case "UNREGISTERED",
+                    "UNREGISTER",
+                    "UNREGISTERED_CUSTOMER" ->
+                    GstRegistrationType.UNREGISTERED;
+
+            case "SEZ",
+                    "SEZ_UNIT",
+                    "SEZ_UNIT_ZERO_RATED_SUPPLY" ->
+                    GstRegistrationType.SEZ;
+
+            case "INTERNATIONAL",
+                    "EXPORT",
+                    "INTERNATIONAL_EXPORT_CUSTOMER" ->
+                    GstRegistrationType.INTERNATIONAL;
+
+            default -> throw new ValidationException(
+                    "Invalid GST registration type: " + value,
+                    "ERR_INVALID_GST_REGISTRATION_TYPE",
+                    "gstRegistrationType"
+            );
+        };
     }
 
 

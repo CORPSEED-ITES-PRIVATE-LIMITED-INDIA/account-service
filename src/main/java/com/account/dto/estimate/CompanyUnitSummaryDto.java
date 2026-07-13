@@ -1,15 +1,14 @@
 package com.account.dto.estimate;
 
 import lombok.AllArgsConstructor;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Getter
-@Setter
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class CompanyUnitSummaryDto {
+
     private Long id;
     private String unitName;
     private String addressLine1;
@@ -18,7 +17,9 @@ public class CompanyUnitSummaryDto {
     private String state;
     private String pinCode;
     private String gstNo;
+
+    private String gstRegistrationType;
+
     private String status;
     private String onboardingStatus;
-
 }

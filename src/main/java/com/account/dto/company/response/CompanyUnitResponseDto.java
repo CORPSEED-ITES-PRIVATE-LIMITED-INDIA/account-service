@@ -19,6 +19,7 @@ public class CompanyUnitResponseDto {
     private String country;
     private String pinCode;
     private String gstNo;
+    private String gstRegistrationType;
     private String status;
     private String onboardingStatus;
     private boolean accountsApproved;

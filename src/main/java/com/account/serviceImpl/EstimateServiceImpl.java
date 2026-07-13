@@ -495,6 +495,12 @@ public class EstimateServiceImpl implements EstimateService {
             unitDto.setState(unit.getState());
             unitDto.setPinCode(unit.getPinCode());
             unitDto.setGstNo(unit.getGstNo());
+            unitDto.setGstRegistrationType(
+                    unit.getGstRegistrationType() != null
+                            ? unit.getGstRegistrationType().name()
+                            : null
+            );
+
             unitDto.setStatus(unit.getStatus());
             unitDto.setOnboardingStatus(
                     unit.getOnboardingStatus() != null ?
@@ -1366,7 +1372,13 @@ public class EstimateServiceImpl implements EstimateService {
                     estimate.getUnit().getState(),
                     estimate.getUnit().getPinCode(),
                     estimate.getUnit().getGstNo(),
+
+                    estimate.getUnit().getGstRegistrationType() != null
+                            ? estimate.getUnit().getGstRegistrationType().name()
+                            : null,
+
                     estimate.getUnit().getStatus(),
+
                     estimate.getUnit().getOnboardingStatus() != null
                             ? estimate.getUnit().getOnboardingStatus().name()
                             : null
