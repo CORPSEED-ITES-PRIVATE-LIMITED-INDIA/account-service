@@ -25,11 +25,7 @@ public class CompanyUnitFullRequestDto {
     private String pinCode;
 
     private String gstNo;
-
-    // You can keep these as strings or use IDs – here strings for simplicity
-    private String gstTypeEntity;
-    private String gstBusinessType;
-    private String gstTypePrice;
+    private String gstRegistrationType;
 
     private Long primaryContactId;    // optional
     private Long secondaryContactId;  // optional

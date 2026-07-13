@@ -125,4 +125,9 @@ public class CompanyUnit {
     @Column(name = "accounts_remark", columnDefinition = "TEXT")
     private String accountsRemark;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gst_registration_type", length = 30)
+    private GstRegistrationType gstRegistrationType;
+
+
 }
