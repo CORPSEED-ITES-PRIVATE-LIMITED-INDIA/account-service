@@ -566,17 +566,14 @@ ORDER BY u.createdAt DESC
         COUNT(u.id) AS totalCount,
         COALESCE(SUM(u.total_amount), 0) AS totalAmount
     FROM unbilled_invoice u
-    WHERE u.is_cancelled = 0
-      AND u.created_by = :userId
+    WHERE COALESCE(u.is_cancelled, 0) = 0
       AND u.created_at >= :fromDateTime
       AND u.created_at < :toDateTime
     """, nativeQuery = true)
     Object[] getUnbilledInvoiceSummaryForDashboard(
-            @Param("userId") Long userId,
             @Param("fromDateTime") LocalDateTime fromDateTime,
             @Param("toDateTime") LocalDateTime toDateTime
     );
-
 
 
 }

@@ -1315,14 +1315,12 @@ public class DashboardServiceImpl implements DashboardService {
 
         Object[] unbilledRow =
                 unbilledInvoiceRepository.getUnbilledInvoiceSummaryForDashboard(
-                        userId,
                         fromDateTime,
                         toDateTime
                 );
 
         Object[] taxInvoiceRow =
                 invoiceRepository.getTaxInvoiceSummaryForDashboard(
-                        userId,
                         dateRange.fromDate(),
                         dateRange.toDate()
                 );
@@ -1336,7 +1334,6 @@ public class DashboardServiceImpl implements DashboardService {
 
         Object[] cancelledInvoiceRow =
                 invoiceRepository.getCancelledInvoiceSummaryForDashboard(
-                        userId,
                         dateRange.fromDate(),
                         dateRange.toDate()
                 );
