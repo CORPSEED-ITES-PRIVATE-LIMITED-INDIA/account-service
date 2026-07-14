@@ -160,9 +160,6 @@ public class PaymentServiceImpl implements PaymentService {
         );
 
 
-        log.info("Registering payment | estimateId: {}, amount: {}, mode: {}, ref: {}, salespersonId: {}",
-                request.getEstimateId(), request.getAmount(), request.getPaymentMode(),
-                request.getTransactionReference(), salespersonUserId);
 
         // =====================================================
         // 1. BASIC VALIDATIONS
@@ -2126,9 +2123,32 @@ public class PaymentServiceImpl implements PaymentService {
                 .map(this::safe2)
                 .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add);
 
-        BigDecimal newlyApprovedTdsAmount = paymentsToApprove.stream()
-                .map(this::getPendingTdsAmountForPayment)
-                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add);
+        boolean internationalTransaction =
+                isInternationalTransaction(
+                        estimate,
+                        unbilled
+                );
+
+        BigDecimal newlyApprovedTdsAmount =
+                internationalTransaction
+                        ? BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+                        : paymentsToApprove.stream()
+                        .map(this::getPendingTdsAmountForPayment)
+                        .reduce(
+                                BigDecimal.ZERO.setScale(
+                                        2,
+                                        RoundingMode.HALF_UP
+                                ),
+                                BigDecimal::add
+                        );
+
+        if (internationalTransaction) {
+            unbilled.setTdsActive(false);
+        }
+
 
         BigDecimal newlyApprovedAmount = newlyApprovedBankAmount
                 .add(newlyApprovedTdsAmount)
@@ -2166,18 +2186,26 @@ public class PaymentServiceImpl implements PaymentService {
          * Cr Customer Ledger
          */
         for (PaymentReceipt payment : paymentsToApprove) {
-            if (safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) > 0) {
-                BigDecimal tdsForVoucher = getPendingTdsAmountForPayment(payment);
 
-                postReceiptVoucherForApprovedPayment(
-                        unbilled,
-                        payment,
-                        approver,
-                        tdsForVoucher
-                );
+            if (safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
             }
-        }
 
+            BigDecimal tdsForVoucher =
+                    internationalTransaction
+                            ? BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+                            : getPendingTdsAmountForPayment(payment);
+
+            postReceiptVoucherForApprovedPayment(
+                    unbilled,
+                    payment,
+                    approver,
+                    tdsForVoucher
+            );
+        }
         /*
          * Generate invoice payment-wise.
          *
@@ -3639,7 +3667,9 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        if (paymentReceipt.getBankLedger() == null || paymentReceipt.getBankLedger().getId() == null) {
+        if (paymentReceipt.getBankLedger() == null
+                || paymentReceipt.getBankLedger().getId() == null) {
+
             throw new ValidationException(
                     "Bank ledger is missing in payment receipt",
                     "ERR_PAYMENT_BANK_LEDGER_MISSING",
@@ -3647,79 +3677,153 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        LedgerMaster bankLedger = paymentReceipt.getBankLedger();
+        /*
+         * Prevent duplicate receipt voucher posting.
+         */
+        if (accountingVoucherService.existsPostedVoucher(
+                VoucherType.RECEIPT,
+                VoucherSourceType.PAYMENT_RECEIPT,
+                paymentReceipt.getId()
+        )) {
+            log.info(
+                    "Receipt voucher already posted. Skipping duplicate posting | paymentReceiptId={}",
+                    paymentReceipt.getId()
+            );
+            return;
+        }
 
-        log.info("Posting receipt voucher for approved payment | unbilledId={} | paymentReceiptId={} | bankLedgerId={} | tdsAmount={}",
-                unbilled.getId(), paymentReceipt.getId(), bankLedger.getId(), safe2(tdsAmount));
+        Estimate estimate = unbilled.getEstimate();
 
-        LedgerMaster customerLedger = getOrCreateCustomerLedger(
-                unbilled,
-                approver
-        );
+        boolean internationalTransaction =
+                isInternationalTransaction(
+                        estimate,
+                        unbilled
+                );
 
-        BigDecimal bankAmount = safe2(paymentReceipt.getAmount());
-        BigDecimal safeTdsAmount = safe2(tdsAmount);
+        LedgerMaster bankLedger =
+                paymentReceipt.getBankLedger();
+
+        LedgerMaster customerLedger =
+                getOrCreateCustomerLedger(
+                        unbilled,
+                        approver
+                );
+
+        BigDecimal bankAmount =
+                safe2(paymentReceipt.getAmount());
 
         /*
-         * Customer credit should be Bank amount + TDS amount.
+         * Critical rule:
          *
-         * Example:
-         * Invoice/customer settlement = 98,000 received in bank + 2,000 TDS
-         *
-         * Dr Bank              98,000
-         * Dr TDS Receivable     2,000
-         * Cr Customer          100,000
+         * INTERNATIONAL:
+         * - TDS amount must always be zero
+         * - TDS_RECEIVABLE ledger must not be created
+         * - Customer credit must equal only the bank amount
          */
+        BigDecimal safeTdsAmount =
+                internationalTransaction
+                        ? BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+                        : safe2(tdsAmount);
+
+        if (internationalTransaction) {
+            unbilled.setTdsActive(false);
+
+            log.info(
+                    "TDS ledger posting disabled for INTERNATIONAL payment | "
+                            + "unbilledId={} | paymentReceiptId={} | incomingTdsAmount={}",
+                    unbilled.getId(),
+                    paymentReceipt.getId(),
+                    safe2(tdsAmount)
+            );
+        }
+
         BigDecimal customerCreditAmount = bankAmount
                 .add(safeTdsAmount)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
 
-        List<AccountingVoucherEntryRequestDto> entries = new ArrayList<>();
+        List<AccountingVoucherEntryRequestDto> entries =
+                new ArrayList<>();
 
-        /*
-         * Dr Bank / Cash Ledger
-         */
+        // =====================================================
+        // DR BANK / CASH / PAYMENT GATEWAY
+        // =====================================================
+
         entries.add(
                 AccountingVoucherEntryRequestDto.builder()
                         .ledgerId(bankLedger.getId())
                         .debitAmount(bankAmount)
-                        .creditAmount(BigDecimal.ZERO)
-                        .narration("Payment received in " + bankLedger.getLedgerName())
+                        .creditAmount(
+                                BigDecimal.ZERO.setScale(
+                                        2,
+                                        RoundingMode.HALF_UP
+                                )
+                        )
+                        .narration(
+                                "Payment received in "
+                                        + bankLedger.getLedgerName()
+                        )
                         .build()
         );
 
-        /*
-         * Dr TDS Receivable Ledger
-         */
-        if (safeTdsAmount.compareTo(BigDecimal.ZERO) > 0) {
+        // =====================================================
+        // DR TDS RECEIVABLE — DOMESTIC ONLY
+        // =====================================================
 
-            LedgerMaster tdsReceivableLedger = getOrCreateSystemLedger(
-                    LedgerType.TDS_RECEIVABLE,
-                    LedgerGroupType.DUTIES_AND_TAXES,
-                    "TDS Receivable",
-                    DebitCredit.DEBIT,
-                    approver
-            );
+        if (!internationalTransaction
+                && safeTdsAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            LedgerMaster tdsReceivableLedger =
+                    getOrCreateSystemLedger(
+                            LedgerType.TDS_RECEIVABLE,
+                            LedgerGroupType.DUTIES_AND_TAXES,
+                            "TDS Receivable",
+                            DebitCredit.DEBIT,
+                            approver
+                    );
 
             entries.add(
                     AccountingVoucherEntryRequestDto.builder()
                             .ledgerId(tdsReceivableLedger.getId())
                             .debitAmount(safeTdsAmount)
-                            .creditAmount(BigDecimal.ZERO)
-                            .narration("TDS receivable booked for unbilled " + unbilled.getUnbilledNumber())
+                            .creditAmount(
+                                    BigDecimal.ZERO.setScale(
+                                            2,
+                                            RoundingMode.HALF_UP
+                                    )
+                            )
+                            .narration(
+                                    "TDS receivable booked for unbilled "
+                                            + unbilled.getUnbilledNumber()
+                            )
                             .build()
             );
         }
 
-        /*
-         * Cr Customer Ledger / Sundry Debtors
-         */
+        // =====================================================
+        // CR CUSTOMER LEDGER
+        // =====================================================
+
         entries.add(
                 AccountingVoucherEntryRequestDto.builder()
                         .ledgerId(customerLedger.getId())
-                        .debitAmount(BigDecimal.ZERO)
+                        .debitAmount(
+                                BigDecimal.ZERO.setScale(
+                                        2,
+                                        RoundingMode.HALF_UP
+                                )
+                        )
                         .creditAmount(customerCreditAmount)
-                        .narration("Payment received from customer")
+                        .narration(
+                                internationalTransaction
+                                        ? "International customer payment received"
+                                        : "Payment received from customer"
+                        )
                         .build()
         );
 
@@ -3731,7 +3835,9 @@ public class PaymentServiceImpl implements PaymentService {
                                         ? paymentReceipt.getPaymentDate()
                                         : LocalDate.now()
                         )
-                        .sourceType(VoucherSourceType.PAYMENT_RECEIPT)
+                        .sourceType(
+                                VoucherSourceType.PAYMENT_RECEIPT
+                        )
                         .sourceId(paymentReceipt.getId())
                         .narration(
                                 "Payment approved for unbilled: "
@@ -3745,8 +3851,10 @@ public class PaymentServiceImpl implements PaymentService {
         accountingVoucherService.createVoucher(voucherRequest);
 
         log.info(
-                "Receipt voucher posted | paymentReceiptId={} | bankAmount={} | tdsAmount={} | customerCreditAmount={}",
+                "Receipt voucher posted | paymentReceiptId={} | international={} "
+                        + "| bankAmount={} | tdsAmount={} | customerCreditAmount={}",
                 paymentReceipt.getId(),
+                internationalTransaction,
                 bankAmount,
                 safeTdsAmount,
                 customerCreditAmount
@@ -4130,94 +4238,178 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
-
-
-
-
-    private BigDecimal calculateCurrentPaymentTaxableAmount(
-            PaymentRegistrationRequestDto request,
-            Estimate estimate,
-            UnbilledInvoice unbilled,
-            BigDecimal tdsAmount
-    ) {
-        BigDecimal bankAmount = safe2(request.getAmount());
-
-        BigDecimal settlementAmount = bankAmount
-                .add(safe2(tdsAmount))
-                .setScale(2, RoundingMode.HALF_UP);
-
-        BigDecimal totalInvoiceAmount = safe2(unbilled.getTotalAmount());
-        BigDecimal totalTaxableAmount = calculateTdsTaxableAmount(estimate, unbilled);
-
-        if (totalInvoiceAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
-        }
-
-        BigDecimal taxableRatio = totalTaxableAmount.divide(
-                totalInvoiceAmount,
-                10,
-                RoundingMode.HALF_UP
-        );
-
-        return settlementAmount
-                .multiply(taxableRatio)
-                .setScale(2, RoundingMode.HALF_UP);
-    }
-
-
     private void approveTdsForPaymentAfterInvoiceCreated(
             PaymentReceipt payment,
             User approver,
             Invoice invoice
     ) {
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
         if (payment == null) {
+            log.warn("TDS approval skipped because payment receipt is null");
             return;
         }
 
         UnbilledInvoice unbilled = payment.getUnbilledInvoice();
+
         Estimate estimate = unbilled != null
                 ? unbilled.getEstimate()
                 : null;
 
-        if (isInternationalTransaction(estimate, unbilled)) {
+        boolean internationalTransaction =
+                isInternationalTransaction(
+                        estimate,
+                        unbilled
+                );
+
+        // =====================================================
+        // 2. FIND ACTIVE TDS REGISTRATION
+        // =====================================================
+        Optional<TdsRegistration> tdsOptional =
+                tdsRegistrationRepository
+                        .findByPaymentReceiptAndIsDeletedFalse(payment);
+
+        // =====================================================
+        // 3. INTERNATIONAL TRANSACTION
+        // =====================================================
+        if (internationalTransaction) {
+
+            /*
+             * INTERNATIONAL transactions must never have:
+             * - Active TDS registration
+             * - Approved TDS registration
+             * - TDS date
+             * - TDS active flag
+             */
             if (unbilled != null) {
                 unbilled.setTdsActive(false);
+                unbilled.setUpdatedAt(LocalDateTime.now());
+            }
+
+            /*
+             * Soft-delete any stale TDS registration that may have
+             * been created before the company/unit was changed to
+             * INTERNATIONAL.
+             */
+            tdsOptional.ifPresent(tds -> {
+
+                tds.setDeleted(true);
+                tds.setTdsDate(null);
+                tds.setUpdatedBy(approver);
+
+                tdsRegistrationRepository.save(tds);
+
+                log.warn(
+                        "Stale TDS registration disabled for INTERNATIONAL payment "
+                                + "| paymentReceiptId={} | tdsId={} | previousStatus={}",
+                        payment.getId(),
+                        tds.getId(),
+                        tds.getStatus()
+                );
+            });
+
+            /*
+             * Explicit save is safe here. The caller also saves the
+             * unbilled invoice later, but this keeps this method
+             * independently consistent.
+             */
+            if (unbilled != null && unbilled.getId() != null) {
+                unbilledInvoiceRepository.save(unbilled);
             }
 
             log.info(
-                    "Skipping TDS approval for INTERNATIONAL payment | paymentReceiptId={}",
-                    payment.getId()
+                    "TDS approval skipped for INTERNATIONAL payment "
+                            + "| paymentReceiptId={} | estimateId={} | unbilledId={}",
+                    payment.getId(),
+                    estimate != null ? estimate.getId() : null,
+                    unbilled != null ? unbilled.getId() : null
             );
 
             return;
         }
 
+        // =====================================================
+        // 4. NO TDS REGISTRATION FOUND
+        // =====================================================
+        if (tdsOptional.isEmpty()) {
+            log.debug(
+                    "No active TDS registration found for payment | paymentReceiptId={}",
+                    payment.getId()
+            );
+            return;
+        }
+
+        TdsRegistration tds = tdsOptional.get();
+
+        // =====================================================
+        // 5. VALIDATE TDS STATUS
+        // =====================================================
+        /*
+         * Only PENDING TDS should move to APPROVED.
+         *
+         * APPROVED is permitted for idempotency, so repeating the
+         * approval API does not corrupt the record.
+         *
+         * Any other status must not be modified.
+         */
+        if (tds.getStatus() != TdsStatus.PENDING
+                && tds.getStatus() != TdsStatus.APPROVED) {
+
+            log.warn(
+                    "TDS approval skipped because current status is not approvable "
+                            + "| paymentReceiptId={} | tdsId={} | status={}",
+                    payment.getId(),
+                    tds.getId(),
+                    tds.getStatus()
+            );
+
+            return;
+        }
+
+        // =====================================================
+        // 6. RESOLVE TDS DATE
+        // =====================================================
         LocalDate invoiceDate =
                 invoice != null && invoice.getInvoiceDate() != null
                         ? invoice.getInvoiceDate()
                         : LocalDate.now();
 
-        tdsRegistrationRepository
-                .findByPaymentReceiptAndIsDeletedFalse(payment)
-                .ifPresent(tds -> {
-                    if (tds.getStatus() == TdsStatus.PENDING) {
-                        tds.setStatus(TdsStatus.APPROVED);
-                    }
+        // =====================================================
+        // 7. APPROVE TDS
+        // =====================================================
+        if (tds.getStatus() == TdsStatus.PENDING) {
+            tds.setStatus(TdsStatus.APPROVED);
+        }
 
-                    tds.setTdsDate(invoiceDate);
-                    tds.setUpdatedBy(approver);
+        tds.setTdsDate(invoiceDate);
+        tds.setUpdatedBy(approver);
 
-                    tdsRegistrationRepository.save(tds);
+        TdsRegistration savedTds =
+                tdsRegistrationRepository.save(tds);
 
-                    log.info(
-                            "TDS approved and date updated | paymentReceiptId={} | tdsId={} | tdsDate={} | invoiceId={}",
-                            payment.getId(),
-                            tds.getId(),
-                            invoiceDate,
-                            invoice != null ? invoice.getId() : null
-                    );
-                });
+        // =====================================================
+        // 8. UPDATE UNBILLED FLAG
+        // =====================================================
+        if (unbilled != null) {
+            unbilled.setTdsActive(true);
+            unbilled.setUpdatedAt(LocalDateTime.now());
+        }
+
+        log.info(
+                "TDS approved successfully "
+                        + "| paymentReceiptId={} | tdsId={} | tdsDate={} "
+                        + "| invoiceId={} | tdsAmount={} | status={}",
+                payment.getId(),
+                savedTds.getId(),
+                invoiceDate,
+                invoice != null ? invoice.getId() : null,
+                savedTds.getTdsAmount(),
+                savedTds.getStatus()
+        );
     }
+
+
 
     private boolean isPurchaseOrderPayment(PaymentReceipt payment) {
         if (payment == null || payment.getPaymentType() == null) {
@@ -4235,73 +4427,6 @@ public class PaymentServiceImpl implements PaymentService {
         return value != null && !value.trim().isEmpty();
     }
 
-    private void validateNormalPaymentFields(PaymentRegistrationRequestDto request) {
-        if (!hasText(request.getPaymentMode())) {
-            throw new ValidationException(
-                    "Payment mode is required",
-                    "ERR_PAYMENT_MODE_REQUIRED",
-                    "paymentMode"
-            );
-        }
-
-        if (!hasText(request.getTransactionReference())) {
-            throw new ValidationException(
-                    "Transaction reference is required",
-                    "ERR_TRANSACTION_REFERENCE_REQUIRED",
-                    "transactionReference"
-            );
-        }
-
-        if (!hasText(request.getPaymentProof())) {
-            throw new ValidationException(
-                    "Payment proof is required",
-                    "ERR_PAYMENT_PROOF_REQUIRED",
-                    "paymentProof"
-            );
-        }
-    }
-
-    private void validateInitialPurchaseOrderFields(PaymentRegistrationRequestDto request) {
-        if (safe2(request.getAmount()).compareTo(BigDecimal.ZERO) != 0) {
-            throw new ValidationException(
-                    "First Purchase Order registration amount must be 0 because no payment is received yet",
-                    "ERR_PO_INITIAL_AMOUNT_MUST_BE_ZERO",
-                    "amount"
-            );
-        }
-
-        if (request.getPaymentTermsDays() == null || request.getPaymentTermsDays() <= 0) {
-            throw new ValidationException(
-                    "PO tenure is required",
-                    "ERR_PO_TENURE_REQUIRED",
-                    "paymentTermsDays"
-            );
-        }
-
-        if (!hasText(request.getPoNumber())) {
-            throw new ValidationException(
-                    "PO number is required",
-                    "ERR_PO_NUMBER_REQUIRED",
-                    "poNumber"
-            );
-        }
-
-        if (!hasText(request.getPoAttachmentUrl())) {
-            throw new ValidationException(
-                    "PO attachment is required",
-                    "ERR_PO_ATTACHMENT_REQUIRED",
-                    "poAttachmentUrl"
-            );
-        }
-
-        if (Boolean.TRUE.equals(request.getTdsActive())) {
-            throw new ValidationException(
-                    "TDS cannot be registered during initial Purchase Order registration because no tax invoice/payment is generated yet",
-                    "ERR_TDS_NOT_ALLOWED_ON_INITIAL_PO",
-                    "tdsActive"
-            );
-        }
-    }
 
     private void createOperationProjectForPurchaseOrderIfNotExists(
             UnbilledInvoice unbilled,
