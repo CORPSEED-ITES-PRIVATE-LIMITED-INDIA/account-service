@@ -1432,54 +1432,118 @@ public class CompanyServiceImpl implements CompanyService {
 
     @Override
     @Transactional
-    public CompanyResponseDto createCompanyWithUnitsAndContacts(CompanyCreationRequestDto request) {
+    public CompanyResponseDto createCompanyWithUnitsAndContacts(
+            CompanyCreationRequestDto request
+    ) {
 
-        logger.info("Starting createCompanyWithUnitsAndContacts - companyId from request: {}",
-                request.getCompanyId());
+        logger.info(
+                "Starting createCompanyWithUnitsAndContacts - companyId from request: {}",
+                request.getCompanyId()
+        );
 
         // 1. Validate request basics
         if (request.getCompanyId() == null) {
             logger.error("companyId is null in request - cannot proceed");
-            throw new ValidationException("companyId is required", "ERR_COMPANY_ID_REQUIRED");
+            throw new ValidationException(
+                    "companyId is required",
+                    "ERR_COMPANY_ID_REQUIRED"
+            );
         }
 
         Long companyId = request.getCompanyId();
-        logger.info("Processing company with ID: {}", companyId);
+
+        logger.info(
+                "Processing company with ID: {}",
+                companyId
+        );
 
         // Try to find existing company
-        Company company = companyRepository.findById(companyId).orElse(null);
+        Company company =
+                companyRepository.findById(companyId).orElse(null);
 
-        User creator = userRepository.findByIdAndNotDeleted(request.getCreatedById())
+        User creator = userRepository
+                .findByIdAndNotDeleted(request.getCreatedById())
                 .orElseThrow(() -> {
-                    logger.error("Creator user not found for createdById: {}", request.getCreatedById());
-                    return new ResourceNotFoundException("Creator user not found", "ERR_USER_NOT_FOUND");
+
+                    logger.error(
+                            "Creator user not found for createdById: {}",
+                            request.getCreatedById()
+                    );
+
+                    return new ResourceNotFoundException(
+                            "Creator user not found",
+                            "ERR_USER_NOT_FOUND"
+                    );
                 });
-        logger.info("Found creator user: id={}, name={}",
-                creator.getId(), creator.getFullName() != null ? creator.getFullName() : "N/A");
+
+        logger.info(
+                "Found creator user: id={}, name={}",
+                creator.getId(),
+                creator.getFullName() != null
+                        ? creator.getFullName()
+                        : "N/A"
+        );
 
         if (company == null) {
-            logger.info("Company with ID {} does not exist → creating new", companyId);
+
+            logger.info(
+                    "Company with ID {} does not exist → creating new",
+                    companyId
+            );
 
             // Validate name uniqueness only for new company
             String name = request.getName().trim();
-            logger.info("Checking name uniqueness for: {}", name);
-            if (companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(name)) {
-                logger.error("Duplicate company name found: {}", name);
-                throw new ValidationException("Company name already exists", "ERR_DUPLICATE_COMPANY_NAME");
+
+            logger.info(
+                    "Checking name uniqueness for: {}",
+                    name
+            );
+
+            if (companyRepository
+                    .existsByNameIgnoreCaseAndIsDeletedFalse(name)) {
+
+                logger.error(
+                        "Duplicate company name found: {}",
+                        name
+                );
+
+                throw new ValidationException(
+                        "Company name already exists",
+                        "ERR_DUPLICATE_COMPANY_NAME"
+                );
             }
 
             // Validate PAN only for new company
             String panNo = null;
+
             if (StringUtils.hasText(request.getPanNo())) {
-                panNo = request.getPanNo().trim().toUpperCase();
-                logger.info("Checking PAN uniqueness: {}", panNo);
-                if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo)) {
-                    logger.error("Duplicate PAN found: {}", panNo);
-                    throw new ValidationException("PAN already exists", "ERR_DUPLICATE_PAN");
+
+                panNo = request.getPanNo()
+                        .trim()
+                        .toUpperCase();
+
+                logger.info(
+                        "Checking PAN uniqueness: {}",
+                        panNo
+                );
+
+                if (companyRepository
+                        .existsByPanNoAndIsDeletedFalse(panNo)) {
+
+                    logger.error(
+                            "Duplicate PAN found: {}",
+                            panNo
+                    );
+
+                    throw new ValidationException(
+                            "PAN already exists",
+                            "ERR_DUPLICATE_PAN"
+                    );
                 }
             }
 
             company = new Company();
+
             company.setId(companyId);
             company.setUuid(UUID.randomUUID().toString());
             company.setName(name);
@@ -1489,13 +1553,17 @@ public class CompanyServiceImpl implements CompanyService {
             company.setSubIndustry(request.getSubIndustry());
             company.setSubsubIndustry(request.getSubsubIndustry());
             company.setPaymentTerm(request.getPaymentTerm());
-            company.setAggrementPresent(request.isAggrementPresent());
+            company.setAggrementPresent(
+                    request.isAggrementPresent()
+            );
             company.setAggrement(request.getAggrement());
             company.setNdaPresent(request.isNdaPresent());
             company.setNda(request.getNda());
             company.setRevenue(request.getRevenue());
             company.setIsConsultant(request.isConsultant());
-            company.setOnboardingStatus(OnboardingStatus.MINIMAL);
+            company.setOnboardingStatus(
+                    OnboardingStatus.MINIMAL
+            );
             company.setCreatedBy(creator);
             company.setDeleted(false);
             company.setRating(request.getRating());
@@ -1509,68 +1577,189 @@ public class CompanyServiceImpl implements CompanyService {
             company.setUpdatedAt(LocalDateTime.now());
 
             company = companyRepository.save(company);
-            logger.info("New company created successfully - ID: {}, UUID: {}",
-                    company.getId(), company.getUuid());
-        }  else {
-        logger.info("Found existing company - ID: {}, Name: {}, PAN: {}",
-                company.getId(), company.getName(), company.getPanNo());
 
-        if (StringUtils.hasText(request.getRating())) {
-            company.setRating(request.getRating().trim());
+            logger.info(
+                    "New company created successfully - ID: {}, UUID: {}",
+                    company.getId(),
+                    company.getUuid()
+            );
+
+        } else {
+
+            logger.info(
+                    "Found existing company - ID: {}, Name: {}, PAN: {}",
+                    company.getId(),
+                    company.getName(),
+                    company.getPanNo()
+            );
+
+            if (StringUtils.hasText(request.getRating())) {
+                company.setRating(
+                        request.getRating().trim()
+                );
+            }
+
+            company.setUpdatedBy(creator);
+            company.setUpdatedAt(LocalDateTime.now());
+
+            company = companyRepository.save(company);
         }
 
-        company.setUpdatedBy(creator);
-        company.setUpdatedAt(LocalDateTime.now());
-
-        company = companyRepository.save(company);
-    }
-
         // 2. Process units
-        if (request.getUnits() != null && !request.getUnits().isEmpty()) {
-            logger.info("Processing {} units from request", request.getUnits().size());
+        if (request.getUnits() != null
+                && !request.getUnits().isEmpty()) {
+
+            logger.info(
+                    "Processing {} units from request",
+                    request.getUnits().size()
+            );
 
             for (FullUnitCreationDto u : request.getUnits()) {
 
                 // Safe handling: skip if ID is null instead of crashing
                 if (u.getId() == null) {
-                    logger.warn("Skipping unit creation - unitId is null for unit: {}", u.getUnitName());
+
+                    logger.warn(
+                            "Skipping unit creation - unitId is null for unit: {}",
+                            u.getUnitName()
+                    );
+
                     continue;
                 }
 
                 Long unitId = u.getId();
-                logger.info("Processing unit with ID: {}", unitId);
 
-                CompanyUnit unit = companyUnitRepository.findById(unitId).orElse(null);
+                logger.info(
+                        "Processing unit with ID: {}",
+                        unitId
+                );
+
+                /*
+                 * Parse GST registration type received from the request.
+                 *
+                 * For an existing unit:
+                 * blank value preserves the existing database value.
+                 *
+                 * For a new unit:
+                 * blank value defaults to REGISTERED.
+                 */
+                GstRegistrationType requestGstRegistrationType = null;
+
+                if (StringUtils.hasText(
+                        u.getGstRegistrationTypeName()
+                )) {
+
+                    requestGstRegistrationType =
+                            parseGstRegistrationType(
+                                    u.getGstRegistrationTypeName()
+                            );
+                }
+
+                System.out.println(
+                        "Unit ID: " + unitId
+                                + ", Received GST Registration Type: "
+                                + u.getGstRegistrationTypeName()
+                                + ", Parsed GST Registration Type: "
+                                + requestGstRegistrationType
+                );
+
+                CompanyUnit unit =
+                        companyUnitRepository
+                                .findById(unitId)
+                                .orElse(null);
 
                 if (unit == null) {
-                    logger.info("Unit {} does not exist → creating new", unitId);
+
+                    logger.info(
+                            "Unit {} does not exist → creating new",
+                            unitId
+                    );
 
                     unit = new CompanyUnit();
+
                     unit.setId(unitId);
                     unit.setCompany(company);
 
                     // GST-PAN validation only on new unit
-                    String gstNo = StringUtils.hasText(u.getGstNo()) ? u.getGstNo().trim().toUpperCase() : null;
+                    String gstNo =
+                            StringUtils.hasText(u.getGstNo())
+                                    ? u.getGstNo()
+                                    .trim()
+                                    .toUpperCase()
+                                    : null;
+
                     String panNo = company.getPanNo();
-                    if (gstNo != null && panNo != null && !gstNo.substring(2, 12).equals(panNo)) {
-                        logger.error("GST-PAN mismatch for new unit {} - GST: {}, PAN: {}",
-                                unitId, gstNo, panNo);
-                        throw new ValidationException("GST PAN mismatch for unit " + u.getUnitName(),
-                                "ERR_PAN_GST_MISMATCH");
+
+                    if (gstNo != null
+                            && panNo != null
+                            && !gstNo.substring(2, 12)
+                            .equals(panNo)) {
+
+                        logger.error(
+                                "GST-PAN mismatch for new unit {} - GST: {}, PAN: {}",
+                                unitId,
+                                gstNo,
+                                panNo
+                        );
+
+                        throw new ValidationException(
+                                "GST PAN mismatch for unit "
+                                        + u.getUnitName(),
+                                "ERR_PAN_GST_MISMATCH"
+                        );
                     }
 
-                    unit.setUnitName(u.getUnitName().trim());
-                    unit.setAddressLine1(u.getAddressLine1());
-                    unit.setAddressLine2(u.getAddressLine2());
+                    unit.setUnitName(
+                            u.getUnitName().trim()
+                    );
+
+                    unit.setAddressLine1(
+                            u.getAddressLine1()
+                    );
+
+                    unit.setAddressLine2(
+                            u.getAddressLine2()
+                    );
+
                     unit.setCity(u.getCity());
                     unit.setState(u.getState());
-                    unit.setCountry(StringUtils.hasText(u.getCountry()) ? u.getCountry() : "India");
+
+                    unit.setCountry(
+                            StringUtils.hasText(u.getCountry())
+                                    ? u.getCountry()
+                                    : "India"
+                    );
+
                     unit.setPinCode(u.getPinCode());
                     unit.setGstNo(gstNo);
-                    unit.setGstDocuments(u.getGstDocuments());
-                    unit.setUnitOpeningDate(u.getUnitOpeningDate());
-                    unit.setStatus(StringUtils.hasText(u.getStatus()) ? u.getStatus() : "Active");
-                    unit.setConsultantPresent(u.isConsultantPresent());
+                    unit.setGstDocuments(
+                            u.getGstDocuments()
+                    );
+
+                    /*
+                     * Added:
+                     * Save GST registration type for a new unit.
+                     */
+                    unit.setGstRegistrationType(
+                            requestGstRegistrationType != null
+                                    ? requestGstRegistrationType
+                                    : GstRegistrationType.REGISTERED
+                    );
+
+                    unit.setUnitOpeningDate(
+                            u.getUnitOpeningDate()
+                    );
+
+                    unit.setStatus(
+                            StringUtils.hasText(u.getStatus())
+                                    ? u.getStatus()
+                                    : "Active"
+                    );
+
+                    unit.setConsultantPresent(
+                            u.isConsultantPresent()
+                    );
+
                     unit.setDeleted(false);
 
                     if (creator != null) {
@@ -1578,90 +1767,225 @@ public class CompanyServiceImpl implements CompanyService {
                         unit.setUpdatedBy(creator);
                     }
 
-                    unit.setCreatedAt(LocalDateTime.now());
-                    unit.setUpdatedAt(LocalDateTime.now());
+                    unit.setCreatedAt(
+                            LocalDateTime.now()
+                    );
+
+                    unit.setUpdatedAt(
+                            LocalDateTime.now()
+                    );
 
                     unit = companyUnitRepository.save(unit);
+
                     company.getUnits().add(unit);
-                    logger.info("New unit created - ID: {}, Name: {}", unit.getId(), unit.getUnitName());
+
+                    logger.info(
+                            "New unit created - ID: {}, Name: {}, GST Registration Type: {}",
+                            unit.getId(),
+                            unit.getUnitName(),
+                            unit.getGstRegistrationType()
+                    );
+
                 } else {
-                    logger.info("Unit already exists - ID: {}, Name: {}, Skipping creation",
-                            unit.getId(), unit.getUnitName());
+
+                    logger.info(
+                            "Unit already exists - ID: {}, Name: {}",
+                            unit.getId(),
+                            unit.getUnitName()
+                    );
+
+                    /*
+                     * Added:
+                     * The unit may already exist because it was created through
+                     * the minimal-company API. Do not skip the GST type update.
+                     */
+                    if (requestGstRegistrationType != null) {
+
+                        logger.info(
+                                "Updating GST registration type for existing unit | unitId={} | oldValue={} | newValue={}",
+                                unit.getId(),
+                                unit.getGstRegistrationType(),
+                                requestGstRegistrationType
+                        );
+
+                        unit.setGstRegistrationType(
+                                requestGstRegistrationType
+                        );
+
+                        unit.setUpdatedBy(creator);
+                        unit.setUpdatedAt(
+                                LocalDateTime.now()
+                        );
+
+                        unit = companyUnitRepository.save(unit);
+
+                        logger.info(
+                                "GST registration type updated successfully | unitId={} | savedValue={}",
+                                unit.getId(),
+                                unit.getGstRegistrationType()
+                        );
+
+                    } else {
+
+                        logger.info(
+                                "GST registration type not provided for existing unit. Preserving existing value | unitId={} | existingValue={}",
+                                unit.getId(),
+                                unit.getGstRegistrationType()
+                        );
+                    }
                 }
 
-                // 3. Process unit contacts
-                if (u.getUnitContacts() != null && !u.getUnitContacts().isEmpty()) {
-                    logger.info("Processing {} contacts for unit {}",
-                            u.getUnitContacts().size(), unitId);
+                System.out.println(
+                        "Unit saved in database | Unit ID: "
+                                + unit.getId()
+                                + ", GST Registration Type: "
+                                + unit.getGstRegistrationType()
+                );
 
-                    for (FullContactCreationDto c : u.getUnitContacts()) {
+                // 3. Process unit contacts
+                if (u.getUnitContacts() != null
+                        && !u.getUnitContacts().isEmpty()) {
+
+                    logger.info(
+                            "Processing {} contacts for unit {}",
+                            u.getUnitContacts().size(),
+                            unitId
+                    );
+
+                    for (FullContactCreationDto c :
+                            u.getUnitContacts()) {
 
                         // Safe handling: skip if ID is null instead of crashing
                         if (c.getId() == null) {
-                            logger.warn("Skipping contact creation - contactId is null for contact: {}", c.getName());
+
+                            logger.warn(
+                                    "Skipping contact creation - contactId is null for contact: {}",
+                                    c.getName()
+                            );
+
                             continue;
                         }
 
                         Long contactId = c.getId();
-                        logger.info("Processing contact with ID: {}", contactId);
 
-                        Contact contact = contactRepository.findById(contactId).orElse(null);
+                        logger.info(
+                                "Processing contact with ID: {}",
+                                contactId
+                        );
+
+                        Contact contact =
+                                contactRepository
+                                        .findById(contactId)
+                                        .orElse(null);
 
                         if (contact == null) {
-                            logger.info("Contact {} does not exist → creating new", contactId);
 
+                            logger.info(
+                                    "Contact {} does not exist → creating new",
+                                    contactId
+                            );
 
                             contact = new Contact();
+
                             contact.setId(contactId);
                             contact.setTitle(c.getTitle());
-                            contact.setName(c.getName().trim());
+                            contact.setName(
+                                    c.getName().trim()
+                            );
                             contact.setEmails(c.getEmails());
-                            contact.setContactNo(c.getContactNo());
-                            contact.setWhatsappNo(c.getWhatsappNo());
-                            contact.setClientDesignation(c.getClientDesignation());
-                            contact.setDesignation(c.getDesignation());
-
+                            contact.setContactNo(
+                                    c.getContactNo()
+                            );
+                            contact.setWhatsappNo(
+                                    c.getWhatsappNo()
+                            );
+                            contact.setClientDesignation(
+                                    c.getClientDesignation()
+                            );
+                            contact.setDesignation(
+                                    c.getDesignation()
+                            );
 
                             contact.setCompany(company);
                             contact.setCompanyUnit(unit);
 
-                            contact.setPrimaryForCompany(c.isPrimaryForCompany());
-                            contact.setSecondaryForCompany(c.isSecondaryForCompany());
-                            contact.setPrimaryForUnit(c.isPrimaryForUnit());
-                            contact.setSecondaryForUnit(c.isSecondaryForUnit());
+                            contact.setPrimaryForCompany(
+                                    c.isPrimaryForCompany()
+                            );
+
+                            contact.setSecondaryForCompany(
+                                    c.isSecondaryForCompany()
+                            );
+
+                            contact.setPrimaryForUnit(
+                                    c.isPrimaryForUnit()
+                            );
+
+                            contact.setSecondaryForUnit(
+                                    c.isSecondaryForUnit()
+                            );
 
                             contact.setDeleted(false);
-                            contact.setCreatedAt(LocalDateTime.now());
-                            contact.setUpdatedAt(LocalDateTime.now());
+
+                            contact.setCreatedAt(
+                                    LocalDateTime.now()
+                            );
+
+                            contact.setUpdatedAt(
+                                    LocalDateTime.now()
+                            );
 
                             contactRepository.save(contact);
-                            logger.info("New contact created - ID: {}, Name: {}",
-                                    contact.getId(), contact.getName());
+
+                            logger.info(
+                                    "New contact created - ID: {}, Name: {}",
+                                    contact.getId(),
+                                    contact.getName()
+                            );
+
                         } else {
-                            logger.info("Contact already exists - ID: {}, Name: {}, Skipping",
-                                    contact.getId(), contact.getName());
+
+                            logger.info(
+                                    "Contact already exists - ID: {}, Name: {}, Skipping",
+                                    contact.getId(),
+                                    contact.getName()
+                            );
                         }
                     }
+
                 } else {
-                    logger.info("No contacts provided for unit {}", unitId);
+
+                    logger.info(
+                            "No contacts provided for unit {}",
+                            unitId
+                    );
                 }
             }
+
         } else {
-            logger.info("No units provided in request");
+
+            logger.info(
+                    "No units provided in request"
+            );
         }
 
         // Final save to ensure all relationships are persisted
         company = companyRepository.save(company);
-        logger.info("Final save completed - Company ID: {}, Units count: {}",
-                company.getId(), company.getUnits() != null ? company.getUnits().size() : 0);
+
+        logger.info(
+                "Final save completed - Company ID: {}, Units count: {}",
+                company.getId(),
+                company.getUnits() != null
+                        ? company.getUnits().size()
+                        : 0
+        );
 
         return mapToResponseDto(company);
     }
 
-    private void operationCompanyCreationMethod(Company company) {
-        OperationCompanyRequestDto operationCompanyRequestDto = this.mapOperationCompanyRequestDto(company);
-        operationFeignClient.createCompany(operationCompanyRequestDto, company.getId());
-    }
+
+
+
 
     private OperationCompanyRequestDto mapOperationCompanyRequestDto(Company company) {
 
@@ -1812,3 +2136,8 @@ public class CompanyServiceImpl implements CompanyService {
 
 
 }
+ 
+ 
+ 
+ 
+ 

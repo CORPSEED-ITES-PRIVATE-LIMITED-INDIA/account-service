@@ -1,3 +1,4 @@
+
 package com.account.dto.company;
 
 import jakarta.validation.Valid;
@@ -41,10 +42,8 @@ public class FullUnitCreationDto {
             message = "Invalid GSTIN format")
     private String gstNo;
 
-    private String gstType;
+    private String gstRegistrationTypeName;
     private String gstDocuments;
-    private String gstTypeEntity;
-    private String gstBusinessType;
     private String gstTypePrice;
 
     private Date unitOpeningDate;
@@ -57,3 +56,6 @@ public class FullUnitCreationDto {
     @Valid
     private List<FullContactCreationDto> unitContacts;
 }
+
+
+
