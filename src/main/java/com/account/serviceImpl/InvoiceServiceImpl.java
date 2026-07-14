@@ -113,46 +113,95 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
+		// =====================================================
+		// GST REGISTRATION TYPE
+		// =====================================================
+
+		GstRegistrationType unbilledGstType =
+				unbilled.getGstRegistrationType();
+
+		GstRegistrationType unitGstType =
+				unbilled.getUnit() != null
+						? unbilled.getUnit().getGstRegistrationType()
+						: null;
+
+		/*
+		 * INTERNATIONAL takes priority over an old/stale snapshot.
+		 *
+		 * Example:
+		 * unbilled snapshot = REGISTERED
+		 * current unit type = INTERNATIONAL
+		 *
+		 * The invoice must still be treated as INTERNATIONAL.
+		 */
+		boolean internationalTransaction =
+				unbilledGstType == GstRegistrationType.INTERNATIONAL
+						|| unitGstType == GstRegistrationType.INTERNATIONAL;
+
+		GstRegistrationType gstRegistrationType =
+				internationalTransaction
+						? GstRegistrationType.INTERNATIONAL
+						: unbilledGstType != null
+						? unbilledGstType
+						: unitGstType != null
+						? unitGstType
+						: GstRegistrationType.REGISTERED;
+
+		boolean zeroRatedSupply =
+				gstRegistrationType.isZeroRated();
+
+		// =====================================================
+		// BANK + TDS SETTLEMENT
+		// =====================================================
+
 		BigDecimal bankAmount = receipt.getAmount() == null
 				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
 				: receipt.getAmount().setScale(2, RoundingMode.HALF_UP);
 
-		BigDecimal safeTdsAmount = tdsAmount == null
+		BigDecimal requestedTdsAmount = tdsAmount == null
 				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
 				: tdsAmount.setScale(2, RoundingMode.HALF_UP);
 
 		/*
-		 * Invoice amount includes:
+		 * INTERNATIONAL transactions must never include domestic TDS,
+		 * even if a stale TDS value is passed by another internal caller.
+		 */
+		BigDecimal safeTdsAmount =
+				internationalTransaction
+						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						: requestedTdsAmount;
+
+		/*
+		 * Invoice settlement:
 		 *
-		 * Bank received + TDS deducted by customer.
+		 * Domestic/SEZ = Bank received + applicable TDS
+		 * International = Bank received only
 		 */
 		BigDecimal exactGrandTotal = bankAmount
 				.add(safeTdsAmount)
 				.setScale(2, RoundingMode.HALF_UP);
 
+		if (internationalTransaction
+				&& requestedTdsAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+			log.warn(
+					"Ignoring TDS for INTERNATIONAL invoice | receiptId={} | requestedTdsAmount={} | unbilled={}",
+					receipt.getId(),
+					requestedTdsAmount,
+					unbilled.getUnbilledNumber()
+			);
+		}
+
 		log.info(
-				"Generating invoice | receiptId={} | bankAmount={} | tdsAmount={} | grandTotal={} | unbilled={}",
+				"Generating invoice | receiptId={} | gstRegistrationType={} | international={} | bankAmount={} | tdsAmount={} | grandTotal={} | unbilled={}",
 				receipt.getId(),
+				gstRegistrationType,
+				internationalTransaction,
 				bankAmount,
 				safeTdsAmount,
 				exactGrandTotal,
 				unbilled.getUnbilledNumber()
 		);
-
-		// =====================================================
-		// GST REGISTRATION TYPE
-		// =====================================================
-
-		GstRegistrationType gstRegistrationType =
-				unbilled.getGstRegistrationType() != null
-						? unbilled.getGstRegistrationType()
-						: unbilled.getUnit() != null
-						&& unbilled.getUnit().getGstRegistrationType() != null
-						? unbilled.getUnit().getGstRegistrationType()
-						: GstRegistrationType.REGISTERED;
-
-		boolean zeroRatedSupply =
-				gstRegistrationType.isZeroRated();
 
 		// =====================================================
 		// CREATE INVOICE

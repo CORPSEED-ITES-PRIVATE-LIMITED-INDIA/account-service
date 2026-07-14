@@ -1,4 +1,3 @@
-// Final: Separate PaymentController (clean & MNC-style)
 package com.account.controller.payement;
 
 import com.account.dto.payment.PaymentRegistrationRequestDto;
@@ -31,7 +30,6 @@ public class PaymentController {
         PaymentRegistrationResponseDto response = paymentService.registerPayment(request, salespersonUserId);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
-
 
 
 }

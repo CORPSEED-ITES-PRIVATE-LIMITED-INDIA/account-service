@@ -113,11 +113,52 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
-    //
 
     @Override
     @Transactional
     public PaymentRegistrationResponseDto registerPayment(PaymentRegistrationRequestDto request, Long salespersonUserId) {
+
+        if (request == null) {
+            throw new ValidationException(
+                    "Payment registration request is required",
+                    "ERR_PAYMENT_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (request.getEstimateId() == null) {
+            throw new ValidationException(
+                    "Estimate ID is required",
+                    "ERR_ESTIMATE_ID_REQUIRED",
+                    "estimateId"
+            );
+        }
+
+        if (request.getPaymentTypeId() == null) {
+            throw new ValidationException(
+                    "Payment type ID is required",
+                    "ERR_PAYMENT_TYPE_REQUIRED",
+                    "paymentTypeId"
+            );
+        }
+
+        if (salespersonUserId == null) {
+            throw new ValidationException(
+                    "Salesperson user ID is required",
+                    "ERR_SALESPERSON_REQUIRED",
+                    "salespersonUserId"
+            );
+        }
+
+        log.info(
+                "Registering payment | estimateId: {}, amount: {}, mode: {}, ref: {}, salespersonId: {}",
+                request.getEstimateId(),
+                request.getAmount(),
+                request.getPaymentMode(),
+                request.getTransactionReference(),
+                salespersonUserId
+        );
+
 
         log.info("Registering payment | estimateId: {}, amount: {}, mode: {}, ref: {}, salespersonId: {}",
                 request.getEstimateId(), request.getAmount(), request.getPaymentMode(),
@@ -165,6 +206,43 @@ public class PaymentServiceImpl implements PaymentService {
 // are approved by Accounts.
         Company company = estimate.getCompany();
         CompanyUnit unit = estimate.getUnit();
+
+
+// =====================================================
+// INTERNATIONAL TRANSACTION CHECK
+// =====================================================
+
+        GstRegistrationType paymentGstRegistrationType =
+                resolveGstRegistrationType(estimate, null);
+
+        boolean internationalTransaction =
+                paymentGstRegistrationType
+                        == GstRegistrationType.INTERNATIONAL;
+
+        /*
+         * INTERNATIONAL transactions cannot use the domestic TDS workflow.
+         *
+         * This validation happens before:
+         * - TDS calculation
+         * - PaymentReceipt creation
+         * - TdsRegistration creation
+         * - Unbilled amount update
+         */
+        validateInternationalTdsRestriction(
+                request,
+                estimate,
+                null
+        );
+
+        log.info(
+                "Payment GST type resolved | estimateId={} | unitId={} | gstRegistrationType={} | international={}",
+                estimate.getId(),
+                unit != null ? unit.getId() : null,
+                paymentGstRegistrationType,
+                internationalTransaction
+        );
+
+
 
         boolean companyApproved = isCompanyApprovedForPayment(company);
         boolean unitApproved = isUnitApprovedForPayment(unit);
@@ -235,14 +313,24 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Allow zero amount only for PURCHASE_ORDER (no actual money received yet)
         if (reqAmount.compareTo(BigDecimal.ZERO) < 0) {
-            if (!isPurchaseOrder) {
-                throw new ValidationException(
-                        "Payment amount must be positive",
-                        "ERR_AMOUNT_NOT_POSITIVE",
-                        "amount"
-                );
-            }
+            throw new ValidationException(
+                    "Payment amount cannot be negative",
+                    "ERR_AMOUNT_NEGATIVE",
+                    "amount"
+            );
         }
+
+        if (!isPurchaseOrder
+                && reqAmount.compareTo(BigDecimal.ZERO) == 0) {
+
+            throw new ValidationException(
+                    "Payment amount must be greater than zero",
+                    "ERR_AMOUNT_NOT_POSITIVE",
+                    "amount"
+            );
+        }
+
+
 
         // =====================================================
         // 7. TDS VALIDATION
@@ -285,6 +373,37 @@ public class PaymentServiceImpl implements PaymentService {
 
         boolean isFirstPayment = unbilled == null;
 
+        /*
+         * Defensive recheck using the existing UnbilledInvoice snapshot.
+         *
+         * This handles old records where the estimate or unit may have
+         * changed after the unbilled invoice was created.
+         */
+        if (!isFirstPayment) {
+
+            validateInternationalTdsRestriction(
+                    request,
+                    estimate,
+                    unbilled
+            );
+
+            internationalTransaction =
+                    isInternationalTransaction(
+                            estimate,
+                            unbilled
+                    );
+
+            paymentGstRegistrationType =
+                    resolveGstRegistrationType(
+                            estimate,
+                            unbilled
+                    );
+
+            if (internationalTransaction) {
+                unbilled.setTdsActive(false);
+            }
+        }
+
         if (isFirstPayment) {
 
             unbilled = new UnbilledInvoice();
@@ -300,13 +419,11 @@ public class PaymentServiceImpl implements PaymentService {
             // UNIT + GST REGISTRATION TYPE SNAPSHOT
             // =====================================================
 
-            GstRegistrationType gstRegistrationType =
-                    unit != null && unit.getGstRegistrationType() != null
-                            ? unit.getGstRegistrationType()
-                            : GstRegistrationType.REGISTERED;
-
             unbilled.setUnit(unit);
-            unbilled.setGstRegistrationType(gstRegistrationType);
+
+            unbilled.setGstRegistrationType(
+                    paymentGstRegistrationType
+            );
 
             // =====================================================
 
@@ -357,9 +474,8 @@ public class PaymentServiceImpl implements PaymentService {
             );
 
             unbilled.setTdsActive(
-                    Boolean.TRUE.equals(
-                            request.getTdsActive()
-                    )
+                    !internationalTransaction
+                            && Boolean.TRUE.equals(request.getTdsActive())
             );
 
             unbilled = unbilledInvoiceRepository.save(unbilled);
@@ -984,6 +1100,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     private void validateTdsRequest(PaymentRegistrationRequestDto request, PaymentType paymentType) {
 
+
         boolean tdsActive = Boolean.TRUE.equals(request.getTdsActive());
         log.debug("Validating TDS request | tdsActive={} | paymentType={}",
                 tdsActive,
@@ -1031,6 +1148,14 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        if (request.getTds().getTdsPercentage() == null) {
+            throw new ValidationException(
+                    "TDS percentage is required",
+                    "ERR_TDS_PERCENTAGE_REQUIRED",
+                    "tds.tdsPercentage"
+            );
+        }
+
         BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
 
         if (
@@ -1055,17 +1180,104 @@ public class PaymentServiceImpl implements PaymentService {
             User salesperson,
             BigDecimal tdsAmount
     ) {
-        if (!Boolean.TRUE.equals(request.getTdsActive())) {
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+
+        if (request == null) {
+            throw new ValidationException(
+                    "Payment registration request is required for TDS registration",
+                    "ERR_PAYMENT_REQUEST_REQUIRED_FOR_TDS",
+                    "request"
+            );
+        }
+
+        // =====================================================
+        // 2. INTERNATIONAL TRANSACTION RESTRICTION
+        // =====================================================
+
+
+        // =====================================================
+// 2. INTERNATIONAL TRANSACTION RESTRICTION
+// =====================================================
+
+        if (isInternationalTransaction(estimate, unbilled)) {
+
+            /*
+             * INTERNATIONAL transactions must never create
+             * a domestic TDS registration.
+             */
+            if (unbilled != null) {
+                unbilled.setTdsActive(false);
+            }
+
+            if (Boolean.TRUE.equals(request.getTdsActive())
+                    || request.getTds() != null) {
+
+                throw new ValidationException(
+                        "TDS is not applicable for INTERNATIONAL transactions",
+                        "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                        "tdsActive"
+                );
+            }
+
+            log.info(
+                    "TDS creation skipped for INTERNATIONAL transaction | estimateId={} | unbilledId={} | paymentReceiptId={}",
+                    estimate != null ? estimate.getId() : null,
+                    unbilled != null ? unbilled.getId() : null,
+                    receipt != null ? receipt.getId() : null
+            );
+
             return;
         }
 
-        BigDecimal safeTdsAmount = safe2(tdsAmount);
+        // =====================================================
+        // 3. TDS NOT ACTIVE
+        // =====================================================
 
-        if (safeTdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (!Boolean.TRUE.equals(request.getTdsActive())) {
+
+            /*
+             * When TDS is inactive, TDS details must not be supplied.
+             */
+            if (request.getTds() != null) {
+                throw new ValidationException(
+                        "TDS details should not be sent when tdsActive is false",
+                        "ERR_TDS_NOT_ALLOWED",
+                        "tds"
+                );
+            }
+
+            return;
+        }
+
+        // =====================================================
+        // 4. VALIDATE REQUIRED ENTITIES
+        // =====================================================
+
+        if (estimate == null || estimate.getId() == null) {
             throw new ValidationException(
-                    "TDS amount must be greater than zero when TDS is active",
-                    "ERR_TDS_AMOUNT_INVALID",
-                    "tds"
+                    "Estimate is required for TDS registration",
+                    "ERR_ESTIMATE_REQUIRED_FOR_TDS",
+                    "estimateId"
+            );
+        }
+
+        if (estimate.getCompany() == null
+                || estimate.getCompany().getId() == null) {
+
+            throw new ValidationException(
+                    "Company is required for TDS registration",
+                    "ERR_COMPANY_REQUIRED_FOR_TDS",
+                    "companyId"
+            );
+        }
+
+        if (unbilled == null || unbilled.getId() == null) {
+            throw new ValidationException(
+                    "Unbilled invoice is required for TDS registration",
+                    "ERR_UNBILLED_REQUIRED_FOR_TDS",
+                    "unbilledId"
             );
         }
 
@@ -1077,45 +1289,190 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        tdsRegistrationRepository.findByPaymentReceiptAndIsDeletedFalse(receipt)
+        if (salesperson == null || salesperson.getId() == null) {
+            throw new ValidationException(
+                    "Salesperson is required for TDS registration",
+                    "ERR_SALESPERSON_REQUIRED_FOR_TDS",
+                    "salespersonUserId"
+            );
+        }
+
+        // =====================================================
+        // 5. VALIDATE TDS REQUEST
+        // =====================================================
+
+        if (request.getTds() == null) {
+            throw new ValidationException(
+                    "TDS details are required when TDS is active",
+                    "ERR_TDS_DETAILS_REQUIRED",
+                    "tds"
+            );
+        }
+
+        if (request.getTds().getTdsPercentage() == null) {
+            throw new ValidationException(
+                    "TDS percentage is required",
+                    "ERR_TDS_PERCENTAGE_REQUIRED",
+                    "tds.tdsPercentage"
+            );
+        }
+
+        BigDecimal tdsPercentage =
+                safe2(request.getTds().getTdsPercentage());
+
+        if (tdsPercentage.compareTo(new BigDecimal("2.00")) != 0
+                && tdsPercentage.compareTo(new BigDecimal("10.00")) != 0) {
+
+            throw new ValidationException(
+                    "TDS percentage must be either 2 or 10",
+                    "ERR_INVALID_TDS_PERCENTAGE",
+                    "tds.tdsPercentage"
+            );
+        }
+
+        BigDecimal safeTdsAmount =
+                safe2(tdsAmount);
+
+        if (safeTdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "TDS amount must be greater than zero when TDS is active",
+                    "ERR_TDS_AMOUNT_INVALID",
+                    "tds"
+            );
+        }
+
+        // =====================================================
+        // 6. PREVENT DUPLICATE TDS
+        // =====================================================
+
+        tdsRegistrationRepository
+                .findByPaymentReceiptAndIsDeletedFalse(receipt)
                 .ifPresent(existing -> {
                     throw new ValidationException(
-                            "TDS is already registered for this payment receipt",
+                            "TDS is already registered for payment receipt ID: "
+                                    + receipt.getId(),
                             "ERR_TDS_ALREADY_EXISTS_FOR_PAYMENT",
                             "tds"
                     );
                 });
 
-        BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
+        // =====================================================
+        // 7. CALCULATE CURRENT PAYMENT TAXABLE AMOUNT
+        // =====================================================
 
+        /*
+         * Derive the taxable value represented by the TDS amount.
+         *
+         * Example:
+         *
+         * TDS amount = ₹500
+         * TDS rate   = 2%
+         *
+         * Taxable amount = 500 × 100 / 2
+         *                = ₹25,000
+         */
         BigDecimal taxableAmount = safeTdsAmount
                 .multiply(BigDecimal.valueOf(100))
-                .divide(tdsPercentage, 2, RoundingMode.HALF_UP);
+                .divide(
+                        tdsPercentage,
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        if (taxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Calculated taxable amount must be greater than zero",
+                    "ERR_TDS_TAXABLE_AMOUNT_INVALID",
+                    "tds"
+            );
+        }
+
+        /*
+         * Defensive validation against the complete estimate
+         * taxable amount.
+         */
+        BigDecimal totalEstimateTaxableAmount =
+                calculateTdsTaxableAmount(
+                        estimate,
+                        unbilled
+                );
+
+        if (totalEstimateTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Estimate taxable amount is not available for TDS registration",
+                    "ERR_TDS_TAXABLE_AMOUNT_NOT_FOUND",
+                    "tds"
+            );
+        }
+
+        if (taxableAmount.compareTo(totalEstimateTaxableAmount) > 0) {
+            throw new ValidationException(
+                    "Current payment taxable amount cannot exceed the estimate taxable amount",
+                    "ERR_TDS_TAXABLE_AMOUNT_EXCEEDS_ESTIMATE",
+                    "tds"
+            );
+        }
+
+        // =====================================================
+        // 8. CREATE TDS REGISTRATION
+        // =====================================================
 
         TdsRegistration tds = new TdsRegistration();
-        tds.setPublicUuid(UUID.randomUUID().toString());
+
+        tds.setPublicUuid(
+                UUID.randomUUID().toString()
+        );
+
         tds.setEstimate(estimate);
         tds.setCompany(estimate.getCompany());
         tds.setUnbilledInvoice(unbilled);
         tds.setPaymentReceipt(receipt);
+
         tds.setTdsPercentage(tdsPercentage);
         tds.setTaxableAmount(taxableAmount);
         tds.setTdsAmount(safeTdsAmount);
+
+        /*
+         * TDS date is set during Accounts approval when the
+         * corresponding invoice is generated.
+         */
+        tds.setTdsDate(null);
+
         tds.setStatus(TdsStatus.PENDING);
         tds.setDeleted(false);
-        tds.setCreatedBy(salesperson);
 
-        tdsRegistrationRepository.save(tds);
+        tds.setCreatedBy(salesperson);
+        tds.setUpdatedBy(salesperson);
+
+        TdsRegistration savedTds =
+                tdsRegistrationRepository.save(tds);
+
+        // =====================================================
+        // 9. UPDATE UNBILLED TDS FLAG
+        // =====================================================
 
         unbilled.setTdsActive(true);
+        unbilled.setUpdatedAt(LocalDateTime.now());
+
+        /*
+         * Saving is optional if the caller saves unbilled later,
+         * but explicitly saving here makes the method self-contained.
+         */
+        unbilledInvoiceRepository.save(unbilled);
 
         log.info(
-                "TDS registered | unbilled={} | paymentReceiptId={} | taxableAmount={} | percentage={} | tdsAmount={}",
-                unbilled.getUnbilledNumber(),
+                "TDS registered successfully | tdsId={} | estimateId={} | unbilledId={} "
+                        + "| paymentReceiptId={} | gstRegistrationType={} | taxableAmount={} "
+                        + "| percentage={} | tdsAmount={} | status={}",
+                savedTds.getId(),
+                estimate.getId(),
+                unbilled.getId(),
                 receipt.getId(),
+                resolveGstRegistrationType(estimate, unbilled),
                 taxableAmount,
                 tdsPercentage,
-                safeTdsAmount
+                safeTdsAmount,
+                savedTds.getStatus()
         );
     }
 
@@ -1124,11 +1481,74 @@ public class PaymentServiceImpl implements PaymentService {
             Estimate estimate,
             UnbilledInvoice unbilled
     ) {
-        if (!Boolean.TRUE.equals(request.getTdsActive())) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        // =====================================================
+        // 1. BASIC REQUEST VALIDATION
+        // =====================================================
+
+        if (request == null) {
+            throw new ValidationException(
+                    "Payment registration request is required",
+                    "ERR_PAYMENT_REQUEST_REQUIRED",
+                    "request"
+            );
         }
 
-        if (request.getTds() == null || request.getTds().getTdsPercentage() == null) {
+        // =====================================================
+        // 2. INTERNATIONAL TRANSACTION RESTRICTION
+        // =====================================================
+
+        if (isInternationalTransaction(estimate, unbilled)) {
+
+            /*
+             * For INTERNATIONAL customers:
+             *
+             * GST = 0
+             * TDS = not allowed
+             *
+             * Reject the request when the frontend sends:
+             * tdsActive = true
+             * OR a TDS object.
+             */
+            if (Boolean.TRUE.equals(request.getTdsActive())
+                    || request.getTds() != null) {
+
+                throw new ValidationException(
+                        "TDS is not applicable for INTERNATIONAL transactions",
+                        "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                        "tdsActive"
+                );
+            }
+
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        // =====================================================
+        // 3. TDS NOT ACTIVE
+        // =====================================================
+
+        if (!Boolean.TRUE.equals(request.getTdsActive())) {
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        // =====================================================
+        // 4. VALIDATE TDS DETAILS
+        // =====================================================
+
+        if (request.getTds() == null) {
+            throw new ValidationException(
+                    "TDS details are required when TDS is active",
+                    "ERR_TDS_DETAILS_REQUIRED",
+                    "tds"
+            );
+        }
+
+        if (request.getTds().getTdsPercentage() == null) {
             throw new ValidationException(
                     "TDS percentage is required when TDS is active",
                     "ERR_TDS_PERCENTAGE_REQUIRED",
@@ -1136,8 +1556,11 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal bankAmount = safe2(request.getAmount());
-        BigDecimal tdsPercentage = safe2(request.getTds().getTdsPercentage());
+        BigDecimal bankAmount =
+                safe2(request.getAmount());
+
+        BigDecimal tdsPercentage =
+                safe2(request.getTds().getTdsPercentage());
 
         if (bankAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -1148,19 +1571,41 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         /*
-         * TDS taxable amount must be excluding GST.
+         * Defensive percentage validation.
+         *
+         * This may already be validated in validateTdsRequest(),
+         * but it is also validated here because this method performs
+         * the actual financial calculation.
+         */
+        if (tdsPercentage.compareTo(new BigDecimal("2.00")) != 0
+                && tdsPercentage.compareTo(new BigDecimal("10.00")) != 0) {
+
+            throw new ValidationException(
+                    "TDS percentage must be either 2 or 10",
+                    "ERR_INVALID_TDS_PERCENTAGE",
+                    "tds.tdsPercentage"
+            );
+        }
+
+        // =====================================================
+        // 5. CALCULATE COMPLETE TAXABLE AMOUNT
+        // =====================================================
+
+        /*
+         * TDS is calculated on the taxable value excluding GST.
          *
          * Example:
-         * Taxable value = 25,000
-         * GST           = 4,500
-         * Grand total   = 29,500
          *
-         * TDS @2% should be on 25,000 only:
-         * TDS = 25,000 * 2% = 500
-         *
-         * Customer pays bank = 29,500 - 500 = 29,000
+         * Taxable value = ₹25,000
+         * GST           = ₹4,500
+         * Invoice total = ₹29,500
+         * TDS @2%       = ₹500
          */
-        BigDecimal totalTaxableAmount = calculateTdsTaxableAmount(estimate, unbilled);
+        BigDecimal totalTaxableAmount =
+                calculateTdsTaxableAmount(
+                        estimate,
+                        unbilled
+                );
 
         if (totalTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -1170,9 +1615,32 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal totalInvoiceAmount = estimate != null && estimate.getGrandTotal() != null
-                ? safe2(estimate.getGrandTotal())
-                : safe2(unbilled.getTotalAmount());
+        // =====================================================
+        // 6. RESOLVE TOTAL INVOICE AMOUNT
+        // =====================================================
+
+        BigDecimal totalInvoiceAmount;
+
+        if (estimate != null
+                && estimate.getGrandTotal() != null) {
+
+            totalInvoiceAmount =
+                    safe2(estimate.getGrandTotal());
+
+        } else if (unbilled != null
+                && unbilled.getTotalAmount() != null) {
+
+            totalInvoiceAmount =
+                    safe2(unbilled.getTotalAmount());
+
+        } else {
+
+            totalInvoiceAmount =
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    );
+        }
 
         if (totalInvoiceAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -1190,68 +1658,72 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        /*
-         * Total allowed TDS for complete estimate.
-         *
-         * Example:
-         * Taxable value = 25,000
-         * TDS @2%       = 500
-         */
+        // =====================================================
+        // 7. CALCULATE MAXIMUM TDS ALLOWED
+        // =====================================================
+
         BigDecimal totalAllowedTds = totalTaxableAmount
                 .multiply(tdsPercentage)
-                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                .divide(
+                        BigDecimal.valueOf(100),
+                        2,
+                        RoundingMode.HALF_UP
+                );
 
-        BigDecimal alreadyUsedTds = getTotalActiveTdsAmount(unbilled);
+        BigDecimal alreadyUsedTds =
+                getTotalActiveTdsAmount(unbilled);
 
         BigDecimal remainingTdsLimit = totalAllowedTds
                 .subtract(alreadyUsedTds)
                 .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
 
         if (remainingTdsLimit.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
-                    "TDS limit is already exhausted for this estimate. Total allowed TDS is ₹"
-                            + totalAllowedTds + " and already used TDS is ₹" + alreadyUsedTds,
+                    "TDS limit is already exhausted for this estimate. "
+                            + "Total allowed TDS is ₹" + totalAllowedTds
+                            + " and already used TDS is ₹" + alreadyUsedTds,
                     "ERR_TDS_LIMIT_EXHAUSTED",
                     "tds"
             );
         }
 
-        /*
-         * Correct formula:
-         *
-         * Bank amount is net amount received after TDS deduction.
-         * Settlement amount = Bank amount + TDS amount.
-         *
-         * TDS applies only on taxable portion of settlement, not GST portion.
-         *
-         * taxableRatio = taxableAmount / invoiceTotal
-         * tdsRate      = tdsPercentage / 100
-         *
-         * TDS = (BankAmount * taxableRatio * tdsRate)
-         *       / (1 - taxableRatio * tdsRate)
-         *
-         * Example:
-         * taxableAmount = 25,000
-         * invoiceTotal  = 29,500
-         * bankAmount    = 29,000
-         * tdsRate       = 2%
-         *
-         * taxableRatio = 25,000 / 29,500
-         * TDS = 500
-         */
-        BigDecimal taxableRatio = totalTaxableAmount
-                .divide(totalInvoiceAmount, 10, RoundingMode.HALF_UP);
+        // =====================================================
+        // 8. CALCULATE TAXABLE RATIO
+        // =====================================================
 
-        BigDecimal tdsRate = tdsPercentage
-                .divide(BigDecimal.valueOf(100), 10, RoundingMode.HALF_UP);
+        /*
+         * taxableRatio:
+         *
+         * Taxable amount excluding GST
+         * ----------------------------
+         * Complete invoice amount
+         */
+        BigDecimal taxableRatio = totalTaxableAmount.divide(
+                totalInvoiceAmount,
+                10,
+                RoundingMode.HALF_UP
+        );
+
+        BigDecimal tdsRate = tdsPercentage.divide(
+                BigDecimal.valueOf(100),
+                10,
+                RoundingMode.HALF_UP
+        );
 
         BigDecimal effectiveTdsRateOnSettlement = taxableRatio
                 .multiply(tdsRate)
-                .setScale(10, RoundingMode.HALF_UP);
+                .setScale(
+                        10,
+                        RoundingMode.HALF_UP
+                );
 
         if (effectiveTdsRateOnSettlement.compareTo(BigDecimal.ZERO) <= 0
                 || effectiveTdsRateOnSettlement.compareTo(BigDecimal.ONE) >= 0) {
+
             throw new ValidationException(
                     "Invalid effective TDS rate calculated",
                     "ERR_INVALID_EFFECTIVE_TDS_RATE",
@@ -1259,19 +1731,53 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        // =====================================================
+        // 9. CALCULATE CURRENT PAYMENT TDS
+        // =====================================================
+
+        /*
+         * Bank amount is the net amount received after TDS.
+         *
+         * Settlement amount = Bank amount + TDS amount
+         *
+         * Formula:
+         *
+         * TDS =
+         * BankAmount × EffectiveTdsRate
+         * --------------------------------
+         * 1 - EffectiveTdsRate
+         */
+        BigDecimal denominator = BigDecimal.ONE
+                .subtract(effectiveTdsRateOnSettlement);
+
+        if (denominator.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Invalid denominator calculated during TDS calculation",
+                    "ERR_INVALID_TDS_DENOMINATOR",
+                    "tds"
+            );
+        }
+
         BigDecimal currentTds = bankAmount
                 .multiply(effectiveTdsRateOnSettlement)
                 .divide(
-                        BigDecimal.ONE.subtract(effectiveTdsRateOnSettlement),
+                        denominator,
                         2,
                         RoundingMode.HALF_UP
                 );
 
+        /*
+         * The current payment cannot consume more TDS than
+         * the remaining allowed TDS for the estimate.
+         */
         if (currentTds.compareTo(remainingTdsLimit) > 0) {
             currentTds = remainingTdsLimit;
         }
 
-        BigDecimal calculatedTds = currentTds.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal calculatedTds = currentTds.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
 
         if (calculatedTds.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -1281,20 +1787,57 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        // =====================================================
+        // 10. FINAL SETTLEMENT SAFETY CHECK
+        // =====================================================
+
+        BigDecimal settlementAmount = bankAmount
+                .add(calculatedTds)
+                .setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        BigDecimal outstandingAmount =
+                unbilled != null
+                        ? safe2(unbilled.getOutstandingAmount())
+                        : totalInvoiceAmount;
+
+        if (settlementAmount.compareTo(outstandingAmount) > 0) {
+            throw new ValidationException(
+                    "Bank amount plus TDS amount exceeds the outstanding amount. "
+                            + "Bank amount: ₹" + bankAmount
+                            + ", TDS amount: ₹" + calculatedTds
+                            + ", settlement amount: ₹" + settlementAmount
+                            + ", outstanding amount: ₹" + outstandingAmount,
+                    "ERR_TDS_SETTLEMENT_EXCEEDS_OUTSTANDING",
+                    "amount"
+            );
+        }
+
         log.info(
-                "TDS calculated excluding GST | estimateId={} | taxableAmount={} | invoiceTotal={} | bankAmount={} | tdsPercentage={} | totalAllowedTds={} | alreadyUsedTds={} | currentTds={}",
+                "TDS calculated | estimateId={} | unbilledId={} | gstRegistrationType={} "
+                        + "| taxableAmount={} | invoiceTotal={} | bankAmount={} "
+                        + "| tdsPercentage={} | totalAllowedTds={} | alreadyUsedTds={} "
+                        + "| remainingTdsLimit={} | calculatedTds={} | settlementAmount={}",
                 estimate != null ? estimate.getId() : null,
+                unbilled != null ? unbilled.getId() : null,
+                resolveGstRegistrationType(estimate, unbilled),
                 totalTaxableAmount,
                 totalInvoiceAmount,
                 bankAmount,
                 tdsPercentage,
                 totalAllowedTds,
                 alreadyUsedTds,
-                calculatedTds
+                remainingTdsLimit,
+                calculatedTds,
+                settlementAmount
         );
 
         return calculatedTds;
     }
+
+
 
 
 
@@ -1469,9 +2012,15 @@ public class PaymentServiceImpl implements PaymentService {
                         });
             }
 
-            boolean hasAnyActiveTds = !tdsRegistrationRepository
-                    .findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
-                    .isEmpty();
+            boolean hasAnyActiveTds =
+                    !isInternationalTransaction(estimate, unbilled)
+                            && tdsRegistrationRepository
+                            .findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                            .stream()
+                            .anyMatch(tds ->
+                                    tds.getStatus() == TdsStatus.PENDING
+                                            || tds.getStatus() == TdsStatus.APPROVED
+                            );
 
             unbilled.setTdsActive(hasAnyActiveTds);
 
@@ -1696,11 +2245,18 @@ public class PaymentServiceImpl implements PaymentService {
             }
         });
 
-        boolean hasAnyActiveTds = !tdsRegistrationRepository
-                .findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
-                .isEmpty();
+        boolean hasAnyActiveTds =
+                !isInternationalTransaction(estimate, unbilled)
+                        && tdsRegistrationRepository
+                        .findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+                        .stream()
+                        .anyMatch(tds ->
+                                tds.getStatus() == TdsStatus.PENDING
+                                        || tds.getStatus() == TdsStatus.APPROVED
+                        );
 
         unbilled.setTdsActive(hasAnyActiveTds);
+
 
         unbilled.setApprovedBy(approver);
         unbilled.setApprovedAt(dateTimeUtil.nowLocalDateTime());
@@ -1818,28 +2374,92 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
-    private BigDecimal getPendingTdsAmountForPayment(PaymentReceipt paymentReceipt) {
+    private BigDecimal getPendingTdsAmountForPayment(
+            PaymentReceipt paymentReceipt
+    ) {
         if (paymentReceipt == null) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
         }
 
-        return tdsRegistrationRepository.findByPaymentReceiptAndIsDeletedFalse(paymentReceipt)
-                .filter(tds -> tds.getStatus() == TdsStatus.PENDING)
+        UnbilledInvoice unbilled =
+                paymentReceipt.getUnbilledInvoice();
+
+        Estimate estimate =
+                unbilled != null
+                        ? unbilled.getEstimate()
+                        : null;
+
+        /*
+         * Ignore old/invalid TDS rows linked with an
+         * INTERNATIONAL payment.
+         */
+        if (isInternationalTransaction(estimate, unbilled)) {
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        return tdsRegistrationRepository
+                .findByPaymentReceiptAndIsDeletedFalse(paymentReceipt)
+                .filter(tds ->
+                        tds.getStatus() == TdsStatus.PENDING
+                )
                 .map(TdsRegistration::getTdsAmount)
                 .map(this::safe2)
-                .orElse(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+                .orElse(
+                        BigDecimal.ZERO.setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        )
+                );
     }
 
 
-    private BigDecimal getTdsAmountForPayment(PaymentReceipt paymentReceipt) {
+
+
+    private BigDecimal getTdsAmountForPayment(
+            PaymentReceipt paymentReceipt
+    ) {
         if (paymentReceipt == null) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
         }
 
-        return tdsRegistrationRepository.findByPaymentReceiptAndIsDeletedFalse(paymentReceipt)
+        UnbilledInvoice unbilled =
+                paymentReceipt.getUnbilledInvoice();
+
+        Estimate estimate =
+                unbilled != null
+                        ? unbilled.getEstimate()
+                        : null;
+
+        if (isInternationalTransaction(estimate, unbilled)) {
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        return tdsRegistrationRepository
+                .findByPaymentReceiptAndIsDeletedFalse(paymentReceipt)
+                .filter(tds ->
+                        tds.getStatus() == TdsStatus.PENDING
+                                || tds.getStatus() == TdsStatus.APPROVED
+                )
                 .map(TdsRegistration::getTdsAmount)
                 .map(this::safe2)
-                .orElse(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+                .orElse(
+                        BigDecimal.ZERO.setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        )
+                );
     }
 
     private String getUserDisplayName(User user) {
@@ -1927,7 +2547,17 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
         dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
-        dto.setTdsActiveFlag(unbilled.isTdsActive());
+        boolean tdsAllowed =
+                !isInternationalTransaction(
+                        estimate,
+                        unbilled
+                );
+
+        boolean tdsActiveForResponse =
+                tdsAllowed
+                        && unbilled.isTdsActive();
+
+        dto.setTdsActiveFlag(tdsActiveForResponse);
 
         dto.setStatus(unbilled.getStatus());
         dto.setCreatedAt(unbilled.getCreatedAt());
@@ -2074,7 +2704,10 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setReceivedAmount(unbilled.getReceivedAmount());
         dto.setCurrentReceivedAmount(unbilled.getCurrentReceivedAmount());
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
-        dto.setTdsActiveFlag(unbilled.isTdsActive());
+        dto.setTdsActiveFlag(
+                !isInternationalTransaction(estimate, unbilled)
+                        && unbilled.isTdsActive()
+        );
         dto.setCreatedByName(getUserDisplayName(unbilled.getCreatedBy()));
         dto.setCreatedAt(unbilled.getCreatedAt());
         dto.setUpdatedAt(unbilled.getUpdatedAt());
@@ -2843,9 +3476,15 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional(readOnly = true)
-    public TdsResponseDto getTds(Long unbilledId, Long estimateId) {
-
-        log.info("Fetching TDS | unbilledId={} | estimateId={}", unbilledId, estimateId);
+    public TdsResponseDto getTds(
+            Long unbilledId,
+            Long estimateId
+    ) {
+        log.info(
+                "Fetching TDS | unbilledId={} | estimateId={}",
+                unbilledId,
+                estimateId
+        );
 
         if (unbilledId == null && estimateId == null) {
             throw new ValidationException(
@@ -2858,45 +3497,95 @@ public class PaymentServiceImpl implements PaymentService {
         List<TdsRegistration> tdsList;
 
         if (unbilledId != null) {
-            UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Unbilled invoice not found with ID: " + unbilledId,
-                            "UNBILLED_NOT_FOUND",
-                            "UnbilledInvoice",
-                            unbilledId
-                    ));
 
-            tdsList = tdsRegistrationRepository.findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled);
+            UnbilledInvoice unbilled =
+                    unbilledInvoiceRepository
+                            .findById(unbilledId)
+                            .orElseThrow(() ->
+                                    new ResourceNotFoundException(
+                                            "Unbilled invoice not found with ID: "
+                                                    + unbilledId,
+                                            "UNBILLED_NOT_FOUND",
+                                            "UnbilledInvoice",
+                                            unbilledId
+                                    )
+                            );
+
+            if (isInternationalTransaction(
+                    unbilled.getEstimate(),
+                    unbilled
+            )) {
+                throw new ValidationException(
+                        "TDS is not applicable for INTERNATIONAL transactions",
+                        "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                        "unbilledId"
+                );
+            }
+
+            tdsList =
+                    tdsRegistrationRepository
+                            .findAllByUnbilledInvoiceAndIsDeletedFalse(
+                                    unbilled
+                            );
 
         } else {
-            Estimate estimate = estimateRepository.findById(estimateId)
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Estimate not found with ID: " + estimateId,
-                            "ESTIMATE_NOT_FOUND",
-                            "Estimate",
-                            estimateId
-                    ));
 
-            tdsList = tdsRegistrationRepository.findAllByEstimateAndIsDeletedFalse(estimate);
+            Estimate estimate =
+                    estimateRepository
+                            .findById(estimateId)
+                            .orElseThrow(() ->
+                                    new ResourceNotFoundException(
+                                            "Estimate not found with ID: "
+                                                    + estimateId,
+                                            "ESTIMATE_NOT_FOUND",
+                                            "Estimate",
+                                            estimateId
+                                    )
+                            );
+
+            if (isInternationalTransaction(estimate, null)) {
+                throw new ValidationException(
+                        "TDS is not applicable for INTERNATIONAL transactions",
+                        "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                        "estimateId"
+                );
+            }
+
+            tdsList =
+                    tdsRegistrationRepository
+                            .findAllByEstimateAndIsDeletedFalse(
+                                    estimate
+                            );
         }
 
         TdsRegistration latestTds = tdsList.stream()
-                .filter(tds -> tds.getStatus() == TdsStatus.PENDING || tds.getStatus() == TdsStatus.APPROVED)
-                .max(Comparator.comparing(
-                        TdsRegistration::getCreatedAt,
-                        Comparator.nullsLast(Comparator.naturalOrder())
-                ))
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "TDS not found",
-                        "TDS_NOT_FOUND",
-                        "TdsRegistration",
-                        unbilledId != null ? unbilledId : estimateId
-                ));
+                .filter(tds ->
+                        tds.getStatus() == TdsStatus.PENDING
+                                || tds.getStatus() == TdsStatus.APPROVED
+                )
+                .max(
+                        Comparator.comparing(
+                                TdsRegistration::getCreatedAt,
+                                Comparator.nullsLast(
+                                        Comparator.naturalOrder()
+                                )
+                        )
+                )
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "TDS not found",
+                                "TDS_NOT_FOUND",
+                                "TdsRegistration",
+                                unbilledId != null
+                                        ? unbilledId
+                                        : estimateId
+                        )
+                );
 
-        log.debug("TDS fetched | tdsId={} | status={} | amount={}",
-                latestTds.getId(), latestTds.getStatus(), latestTds.getTdsAmount());
         return mapToTdsResponseDto(latestTds);
     }
+
+
 
     private TdsResponseDto mapToTdsResponseDto(TdsRegistration tds) {
         return TdsResponseDto.builder()
@@ -3396,20 +4085,50 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
-    private BigDecimal getTotalActiveTdsAmount(UnbilledInvoice unbilled) {
+    private BigDecimal getTotalActiveTdsAmount(
+            UnbilledInvoice unbilled
+    ) {
         if (unbilled == null) {
-            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
         }
 
-        return tdsRegistrationRepository.findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
+        if (isInternationalTransaction(
+                unbilled.getEstimate(),
+                unbilled
+        )) {
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        return tdsRegistrationRepository
+                .findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
                 .stream()
-                .filter(tds -> tds.getStatus() == TdsStatus.PENDING || tds.getStatus() == TdsStatus.APPROVED)
+                .filter(tds ->
+                        tds.getStatus() == TdsStatus.PENDING
+                                || tds.getStatus() == TdsStatus.APPROVED
+                )
                 .map(TdsRegistration::getTdsAmount)
                 .filter(Objects::nonNull)
                 .map(this::safe2)
-                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
+                .reduce(
+                        BigDecimal.ZERO.setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        ),
+                        BigDecimal::add
+                )
+                .setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
     }
+
+
 
 
 
@@ -3455,11 +4174,31 @@ public class PaymentServiceImpl implements PaymentService {
             return;
         }
 
-        LocalDate invoiceDate = invoice != null && invoice.getInvoiceDate() != null
-                ? invoice.getInvoiceDate()
-                : LocalDate.now();
+        UnbilledInvoice unbilled = payment.getUnbilledInvoice();
+        Estimate estimate = unbilled != null
+                ? unbilled.getEstimate()
+                : null;
 
-        tdsRegistrationRepository.findByPaymentReceiptAndIsDeletedFalse(payment)
+        if (isInternationalTransaction(estimate, unbilled)) {
+            if (unbilled != null) {
+                unbilled.setTdsActive(false);
+            }
+
+            log.info(
+                    "Skipping TDS approval for INTERNATIONAL payment | paymentReceiptId={}",
+                    payment.getId()
+            );
+
+            return;
+        }
+
+        LocalDate invoiceDate =
+                invoice != null && invoice.getInvoiceDate() != null
+                        ? invoice.getInvoiceDate()
+                        : LocalDate.now();
+
+        tdsRegistrationRepository
+                .findByPaymentReceiptAndIsDeletedFalse(payment)
                 .ifPresent(tds -> {
                     if (tds.getStatus() == TdsStatus.PENDING) {
                         tds.setStatus(TdsStatus.APPROVED);
@@ -3471,7 +4210,7 @@ public class PaymentServiceImpl implements PaymentService {
                     tdsRegistrationRepository.save(tds);
 
                     log.info(
-                            "TDS approved and TDS date updated | paymentReceiptId={} | tdsId={} | tdsDate={} | invoiceId={}",
+                            "TDS approved and date updated | paymentReceiptId={} | tdsId={} | tdsDate={} | invoiceId={}",
                             payment.getId(),
                             tds.getId(),
                             invoiceDate,
@@ -3687,6 +4426,123 @@ public class PaymentServiceImpl implements PaymentService {
                 unit.isAccountsApproved()
                         || unit.getOnboardingStatus() == OnboardingStatus.APPROVED
         );
+    }
+
+
+
+    private boolean isInternationalTransaction(
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        /*
+         * Check the Unbilled snapshot.
+         */
+        if (unbilled != null
+                && unbilled.getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+            return true;
+        }
+
+        /*
+         * Check the Estimate snapshot.
+         */
+        if (estimate != null
+                && estimate.getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+            return true;
+        }
+
+        /*
+         * Check the Unit linked with Unbilled.
+         */
+        if (unbilled != null
+                && unbilled.getUnit() != null
+                && unbilled.getUnit().getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+            return true;
+        }
+
+        /*
+         * Check the Unit linked with Estimate.
+         */
+        return estimate != null
+                && estimate.getUnit() != null
+                && estimate.getUnit().getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL;
+    }
+
+
+    private GstRegistrationType resolveGstRegistrationType(
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        /*
+         * INTERNATIONAL must take priority if any available
+         * snapshot or linked unit identifies the transaction
+         * as INTERNATIONAL.
+         */
+        if (isInternationalTransaction(estimate, unbilled)) {
+            return GstRegistrationType.INTERNATIONAL;
+        }
+
+        if (unbilled != null
+                && unbilled.getGstRegistrationType() != null) {
+            return unbilled.getGstRegistrationType();
+        }
+
+        if (estimate != null
+                && estimate.getGstRegistrationType() != null) {
+            return estimate.getGstRegistrationType();
+        }
+
+        if (unbilled != null
+                && unbilled.getUnit() != null
+                && unbilled.getUnit().getGstRegistrationType() != null) {
+            return unbilled.getUnit().getGstRegistrationType();
+        }
+
+        if (estimate != null
+                && estimate.getUnit() != null
+                && estimate.getUnit().getGstRegistrationType() != null) {
+            return estimate.getUnit().getGstRegistrationType();
+        }
+
+        return GstRegistrationType.REGISTERED;
+    }
+
+
+
+    private void validateInternationalTdsRestriction(
+            PaymentRegistrationRequestDto request,
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        if (!isInternationalTransaction(estimate, unbilled)) {
+            return;
+        }
+
+        /*
+         * Reject the request when the frontend sends either:
+         *
+         * tdsActive = true
+         * OR
+         * tds object is present
+         */
+        if (Boolean.TRUE.equals(request.getTdsActive())
+                || request.getTds() != null) {
+
+            throw new ValidationException(
+                    "TDS is not applicable for INTERNATIONAL transactions",
+                    "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                    "tdsActive"
+            );
+        }
+
+        /*
+         * Defensive normalization.
+         */
+        request.setTdsActive(false);
+        request.setTds(null);
     }
 
 }

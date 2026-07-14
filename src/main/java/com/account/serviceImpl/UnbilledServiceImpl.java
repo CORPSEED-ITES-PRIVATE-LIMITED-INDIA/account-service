@@ -9,6 +9,7 @@ import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.domain.invoice.Invoice;
 import com.account.domain.status.InvoiceStatus;
+import com.account.domain.status.TdsStatus;
 import com.account.domain.status.UnbilledStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.dto.operationService.*;
@@ -44,19 +45,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class UnbilledServiceImpl implements UnbilledService {
 
-    private final PaymentServiceImpl paymentServiceImpl;
     private static final Logger log =
             LoggerFactory.getLogger(UnbilledServiceImpl.class);
-
 
     private final EstimateRepository estimateRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
     private final PaymentReceiptRepository paymentReceiptRepository;
-    private final PaymentTypeRepository paymentTypeRepository;
     private final UserRepository userRepository;
-    private final InvoiceService invoiceService;
-    private final DateTimeUtil dateTimeUtil;
-    private final ContactRepository contactRepository;
     private final OperationFeignClient operationFeignClient;
     private final InvoiceRepository invoiceRepository;
 
@@ -375,29 +370,17 @@ public class UnbilledServiceImpl implements UnbilledService {
         CompanyUnit unit = unbilled.getUnit();
 
         /*
-         * First use the GST registration type snapshot stored
-         * in the unbilled invoice.
+         * Resolve GST type defensively.
          *
-         * For old records where the snapshot is null, use the
-         * currently linked company unit value.
-         *
-         * Final fallback is REGISTERED.
+         * INTERNATIONAL takes priority over an old/stale snapshot.
+         * Otherwise use the Unbilled snapshot, Estimate snapshot,
+         * Company Unit value, and finally REGISTERED.
          */
         GstRegistrationType gstRegistrationType =
-                unbilled.getGstRegistrationType();
-
-        if (gstRegistrationType == null
-                && unit != null
-                && unit.getGstRegistrationType() != null) {
-
-            gstRegistrationType =
-                    unit.getGstRegistrationType();
-        }
-
-        if (gstRegistrationType == null) {
-            gstRegistrationType =
-                    GstRegistrationType.REGISTERED;
-        }
+                resolveGstRegistrationType(
+                        estimate,
+                        unbilled
+                );
 
         dto.setGstRegistrationType(
                 gstRegistrationType.name()
@@ -477,10 +460,7 @@ public class UnbilledServiceImpl implements UnbilledService {
         dto.setOutstandingAmount(unbilled.getOutstandingAmount());
         dto.setCancelAttachment(unbilled.getCancelAttachment());
         dto.setRejectionReason(unbilled.getRejectionReason());
-
         dto.setGovernmentFeeActiveFlag(unbilled.isGovernmentFeeActive());
-        dto.setTdsActiveFlag(unbilled.isTdsActive());
-
         dto.setStatus(unbilled.getStatus());
         dto.setCreatedAt(unbilled.getCreatedAt());
         dto.setApprovedAt(unbilled.getApprovedAt());
@@ -497,19 +477,133 @@ public class UnbilledServiceImpl implements UnbilledService {
                         : (company != null ? company.getName() + " - Project" : "Unnamed Project")
         );
 
-        // ==================== TDS RESPONSE DTO ====================
-        if (Boolean.TRUE.equals(unbilled.isTdsActive())) {
-            tdsRegistrationRepository.findByUnbilledInvoiceAndIsDeletedFalse(unbilled)
-                    .ifPresent(tds -> {
-                        dto.setTdsResponseDto(mapToTdsResponseDtoForSummary(tds));
-                    });
+        boolean tdsAllowed =
+                !isInternationalTransaction(
+                        estimate,
+                        unbilled
+                );
+
+        boolean tdsActiveForResponse =
+                tdsAllowed
+                        && unbilled.isTdsActive();
+
+        dto.setTdsActiveFlag(tdsActiveForResponse);
+
+// ==================== TDS RESPONSE DTO ====================
+
+        if (tdsActiveForResponse) {
+
+            List<TdsRegistration> tdsList =
+                    tdsRegistrationRepository
+                            .findAllByUnbilledInvoiceAndIsDeletedFalse(
+                                    unbilled
+                            );
+
+            tdsList.stream()
+                    .filter(tds ->
+                            tds.getStatus() == TdsStatus.PENDING
+                                    || tds.getStatus() == TdsStatus.APPROVED
+                    )
+                    .max(
+                            Comparator.comparing(
+                                    TdsRegistration::getCreatedAt,
+                                    Comparator.nullsFirst(
+                                            Comparator.naturalOrder()
+                                    )
+                            )
+                    )
+                    .ifPresentOrElse(
+                            tds -> dto.setTdsResponseDto(
+                                    mapToTdsResponseDtoForSummary(tds)
+                            ),
+                            () -> dto.setTdsResponseDto(null)
+                    );
+
         } else {
             dto.setTdsResponseDto(null);
         }
+
+// =========================================================
         // =========================================================
 
         return dto;
     }
+
+    /**
+     * Returns true when any reliable source identifies the transaction
+     * as INTERNATIONAL.
+     *
+     * This deliberately does not call resolveGstRegistrationType()
+     * so the two helper methods cannot recurse into each other.
+     */
+    private boolean isInternationalTransaction(
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        if (unbilled != null
+                && unbilled.getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+            return true;
+        }
+
+        if (estimate != null
+                && estimate.getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+            return true;
+        }
+
+        if (unbilled != null
+                && unbilled.getUnit() != null
+                && unbilled.getUnit().getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+            return true;
+        }
+
+        return estimate != null
+                && estimate.getUnit() != null
+                && estimate.getUnit().getGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL;
+    }
+
+
+    /**
+     * Resolves the effective GST registration type used by API responses.
+     * INTERNATIONAL has priority so stale domestic snapshots cannot expose
+     * TDS or domestic GST treatment.
+     */
+    private GstRegistrationType resolveGstRegistrationType(
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        if (isInternationalTransaction(estimate, unbilled)) {
+            return GstRegistrationType.INTERNATIONAL;
+        }
+
+        if (unbilled != null
+                && unbilled.getGstRegistrationType() != null) {
+            return unbilled.getGstRegistrationType();
+        }
+
+        if (estimate != null
+                && estimate.getGstRegistrationType() != null) {
+            return estimate.getGstRegistrationType();
+        }
+
+        if (unbilled != null
+                && unbilled.getUnit() != null
+                && unbilled.getUnit().getGstRegistrationType() != null) {
+            return unbilled.getUnit().getGstRegistrationType();
+        }
+
+        if (estimate != null
+                && estimate.getUnit() != null
+                && estimate.getUnit().getGstRegistrationType() != null) {
+            return estimate.getUnit().getGstRegistrationType();
+        }
+
+        return GstRegistrationType.REGISTERED;
+    }
+
 
     private PaymentReceipt getLatestActivePaymentReceipt(UnbilledInvoice unbilled) {
         if (unbilled == null || unbilled.getPayments() == null || unbilled.getPayments().isEmpty()) {
