@@ -116,7 +116,10 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     @Transactional
-    public PaymentRegistrationResponseDto registerPayment(PaymentRegistrationRequestDto request, Long salespersonUserId) {
+    public PaymentRegistrationResponseDto registerPayment(
+            PaymentRegistrationRequestDto request,
+            Long salespersonUserId
+    ) {
 
         if (request == null) {
             throw new ValidationException(
@@ -159,19 +162,22 @@ public class PaymentServiceImpl implements PaymentService {
                 salespersonUserId
         );
 
-
-
         // =====================================================
         // 1. BASIC VALIDATIONS
         // =====================================================
         if (request.getAmount() == null) {
-            throw new ValidationException("Payment amount is required", "ERR_AMOUNT_REQUIRED", "amount");
+            throw new ValidationException(
+                    "Payment amount is required",
+                    "ERR_AMOUNT_REQUIRED",
+                    "amount"
+            );
         }
 
-        BigDecimal reqAmount = request.getAmount().setScale(2, RoundingMode.HALF_UP);
+        BigDecimal reqAmount = request.getAmount()
+                .setScale(2, RoundingMode.HALF_UP);
 
         // =====================================================
-        // 2. GOVERNMENT FEE VALIDATION (if applicable)
+        // 2. GOVERNMENT FEE VALIDATION
         // =====================================================
         validateGovernmentFeeRequest(request);
 
@@ -186,29 +192,26 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getEstimateId()
                 ));
 
-        // Prevent payment registration on REJECTED estimate
         if (estimate.getStatus() == EstimateStatus.REJECTED) {
             throw new ValidationException(
-                    "Cannot register payment against a REJECTED estimate. " +
-                            "Estimate " + estimate.getEstimateNumber() + " has been rejected.",
+                    "Cannot register payment against a REJECTED estimate. "
+                            + "Estimate "
+                            + estimate.getEstimateNumber()
+                            + " has been rejected.",
                     "ERR_PAYMENT_ON_REJECTED_ESTIMATE",
                     "estimateId"
             );
         }
 
-        // ===================================================================
-      // 4. COMPANY & UNIT APPROVAL CHECK
-// ===================================================================
-// Payment registration is allowed only when both Company and Company Unit
-// are approved by Accounts.
+        // =====================================================
+        // 4. COMPANY & UNIT APPROVAL CHECK
+        // =====================================================
         Company company = estimate.getCompany();
         CompanyUnit unit = estimate.getUnit();
 
-
-// =====================================================
-// INTERNATIONAL TRANSACTION CHECK
-// =====================================================
-
+        // =====================================================
+        // INTERNATIONAL TRANSACTION CHECK
+        // =====================================================
         GstRegistrationType paymentGstRegistrationType =
                 resolveGstRegistrationType(estimate, null);
 
@@ -239,31 +242,39 @@ public class PaymentServiceImpl implements PaymentService {
                 internationalTransaction
         );
 
+        boolean companyApproved =
+                isCompanyApprovedForPayment(company);
 
-
-        boolean companyApproved = isCompanyApprovedForPayment(company);
-        boolean unitApproved = isUnitApprovedForPayment(unit);
+        boolean unitApproved =
+                isUnitApprovedForPayment(unit);
 
         if (!companyApproved || !unitApproved) {
 
-            String companyName = company != null && company.getName() != null
-                    ? company.getName()
-                    : "N/A";
+            String companyName =
+                    company != null && company.getName() != null
+                            ? company.getName()
+                            : "N/A";
 
-            String companyStatus = company != null && company.getOnboardingStatus() != null
-                    ? company.getOnboardingStatus().name()
-                    : "N/A";
+            String companyStatus =
+                    company != null
+                            && company.getOnboardingStatus() != null
+                            ? company.getOnboardingStatus().name()
+                            : "N/A";
 
-            String unitName = unit != null && unit.getUnitName() != null
-                    ? unit.getUnitName()
-                    : "N/A";
+            String unitName =
+                    unit != null && unit.getUnitName() != null
+                            ? unit.getUnitName()
+                            : "N/A";
 
-            String unitStatus = unit != null && unit.getOnboardingStatus() != null
-                    ? unit.getOnboardingStatus().name()
-                    : "N/A";
+            String unitStatus =
+                    unit != null
+                            && unit.getOnboardingStatus() != null
+                            ? unit.getOnboardingStatus().name()
+                            : "N/A";
 
             throw new ValidationException(
-                    "Payment registration is not allowed because Company and Company Unit must both be approved by Accounts. "
+                    "Payment registration is not allowed because Company and Company Unit "
+                            + "must both be approved by Accounts. "
                             + "Company: " + companyName
                             + ", Company Status: " + companyStatus
                             + ", Company Approved: " + companyApproved
@@ -274,9 +285,6 @@ public class PaymentServiceImpl implements PaymentService {
                     !companyApproved ? "companyId" : "unitId"
             );
         }
-
-
-
 
         // =====================================================
         // 5. FETCH SALESPERSON AND PAYMENT TYPE
@@ -289,26 +297,38 @@ public class PaymentServiceImpl implements PaymentService {
                         salespersonUserId
                 ));
 
-        PaymentType paymentType = paymentTypeRepository.findById(request.getPaymentTypeId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Payment type not found with ID: " + request.getPaymentTypeId(),
-                        "PAYMENT_TYPE_NOT_FOUND",
-                        "PaymentType",
-                        request.getPaymentTypeId()
-                ));
+        PaymentType paymentType =
+                paymentTypeRepository
+                        .findById(request.getPaymentTypeId())
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Payment type not found with ID: "
+                                        + request.getPaymentTypeId(),
+                                "PAYMENT_TYPE_NOT_FOUND",
+                                "PaymentType",
+                                request.getPaymentTypeId()
+                        ));
 
-        String paymentTypeCode = paymentType.getCode() != null
-                ? paymentType.getCode().trim().toUpperCase()
-                : "";
+        String paymentTypeCode =
+                paymentType.getCode() != null
+                        ? paymentType.getCode()
+                        .trim()
+                        .toUpperCase()
+                        : "";
 
-        boolean isPurchaseOrder = "PURCHASE_ORDER".equals(paymentTypeCode);
+        boolean isPurchaseOrder =
+                "PURCHASE_ORDER".equals(paymentTypeCode);
+
+        boolean isZeroAmountPurchaseOrder =
+                isPurchaseOrder
+                        && reqAmount.compareTo(BigDecimal.ZERO) == 0;
 
         // =====================================================
         // 6. VALIDATE BANK LEDGER
         // =====================================================
-        LedgerMaster bankLedger = validateAndGetBankLedger(request, reqAmount);
+        LedgerMaster bankLedger =
+                validateAndGetBankLedger(request, reqAmount);
 
-        // Allow zero amount only for PURCHASE_ORDER (no actual money received yet)
+        // Negative amount is never allowed.
         if (reqAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException(
                     "Payment amount cannot be negative",
@@ -317,6 +337,7 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        // Zero amount is allowed only for PURCHASE_ORDER.
         if (!isPurchaseOrder
                 && reqAmount.compareTo(BigDecimal.ZERO) == 0) {
 
@@ -327,16 +348,32 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        /*
+         * For initial zero-value Purchase Order registration, no actual
+         * payment has been received, so paymentDate may be absent.
+         *
+         * Every actual payment must contain a payment date.
+         */
+        if (!isZeroAmountPurchaseOrder
+                && request.getPaymentDate() == null) {
 
+            throw new ValidationException(
+                    "Payment date is required",
+                    "ERR_PAYMENT_DATE_REQUIRED",
+                    "paymentDate"
+            );
+        }
 
         // =====================================================
         // 7. TDS VALIDATION
         // =====================================================
-        if (isPurchaseOrder
-                && reqAmount.compareTo(BigDecimal.ZERO) == 0
+        if (isZeroAmountPurchaseOrder
                 && Boolean.TRUE.equals(request.getTdsActive())) {
+
             throw new ValidationException(
-                    "TDS cannot be registered during initial Purchase Order registration because no tax invoice/payment is generated yet",
+                    "TDS cannot be registered during initial Purchase Order "
+                            + "registration because no tax invoice/payment "
+                            + "is generated yet",
                     "ERR_TDS_NOT_ALLOWED_ON_INITIAL_PO",
                     "tdsActive"
             );
@@ -345,11 +382,10 @@ public class PaymentServiceImpl implements PaymentService {
         validateTdsRequest(request, paymentType);
 
         // =====================================================
-        // 8. EPR (Extended Producer Responsibility) HANDLING
+        // 8. EPR HANDLING
         // =====================================================
-        // EPR fields are mandatory only for PRODUCT type estimates.
-        // For services, EPR fields are forcefully set to null.
-        boolean isProductRelated = isProductRelatedEstimate(estimate);
+        boolean isProductRelated =
+                isProductRelatedEstimate(estimate);
 
         if (isProductRelated) {
             validateEprFields(request);
@@ -362,7 +398,6 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 9. FIND OR CREATE UNBILLED INVOICE
         // =====================================================
-        // Find or create Unbilled Invoice
         UnbilledInvoice unbilled =
                 unbilledInvoiceRepository
                         .findByEstimateAndIsCancelledFalse(estimate)
@@ -405,9 +440,17 @@ public class PaymentServiceImpl implements PaymentService {
 
             unbilled = new UnbilledInvoice();
 
-            unbilled.setPublicUuid(UUID.randomUUID().toString());
-            unbilled.setUnbilledNumber(generateUnbilledNumber());
-            unbilled.setAdvanceInvoiceNumber(generateAdvanceInvoiceNumber());
+            unbilled.setPublicUuid(
+                    UUID.randomUUID().toString()
+            );
+
+            unbilled.setUnbilledNumber(
+                    generateUnbilledNumber()
+            );
+
+            unbilled.setAdvanceInvoiceNumber(
+                    generateAdvanceInvoiceNumber()
+            );
 
             unbilled.setEstimate(estimate);
             unbilled.setCompany(estimate.getCompany());
@@ -415,24 +458,27 @@ public class PaymentServiceImpl implements PaymentService {
             // =====================================================
             // UNIT + GST REGISTRATION TYPE SNAPSHOT
             // =====================================================
-
             unbilled.setUnit(unit);
 
             unbilled.setGstRegistrationType(
                     paymentGstRegistrationType
             );
 
-            // =====================================================
-
             unbilled.setContact(estimate.getContact());
             unbilled.setCreatedAt(LocalDateTime.now());
             unbilled.setUpdatedAt(LocalDateTime.now());
 
-            BigDecimal total = estimate.getGrandTotal() != null
-                    ? estimate.getGrandTotal()
-                    .setScale(2, RoundingMode.HALF_UP)
-                    : BigDecimal.ZERO
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal total =
+                    estimate.getGrandTotal() != null
+                            ? estimate.getGrandTotal()
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            )
+                            : BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    );
 
             unbilled.setTotalAmount(total);
 
@@ -463,7 +509,6 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setApprovalRemarks(null);
             unbilled.setRejectionReason(null);
 
-            // GOVERNMENT FEE FLAG
             unbilled.setGovernmentFeeActive(
                     Boolean.TRUE.equals(
                             request.getGovernmentFeeActive()
@@ -472,10 +517,13 @@ public class PaymentServiceImpl implements PaymentService {
 
             unbilled.setTdsActive(
                     !internationalTransaction
-                            && Boolean.TRUE.equals(request.getTdsActive())
+                            && Boolean.TRUE.equals(
+                            request.getTdsActive()
+                    )
             );
 
-            unbilled = unbilledInvoiceRepository.save(unbilled);
+            unbilled =
+                    unbilledInvoiceRepository.save(unbilled);
 
             log.info(
                     "Created new UnbilledInvoice {} for estimate {} | gstRegistrationType={}",
@@ -488,28 +536,57 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 10. GOVERNMENT FEE DUPLICATE CHECK
         // =====================================================
-        if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
-            if (!isFirstPayment) {
-                Optional<GovernmentFee> existingByEstimate = governmentFeeRepository.findByEstimate(estimate);
-                Optional<GovernmentFee> existingByUnbilled = governmentFeeRepository.findByUnbilledInvoice(unbilled);
+        if (Boolean.TRUE.equals(
+                request.getGovernmentFeeActive()
+        )) {
 
-                GovernmentFee existingGovernmentFee = existingByUnbilled.orElse(existingByEstimate.orElse(null));
+            if (!isFirstPayment) {
+
+                Optional<GovernmentFee> existingByEstimate =
+                        governmentFeeRepository
+                                .findByEstimate(estimate);
+
+                Optional<GovernmentFee> existingByUnbilled =
+                        governmentFeeRepository
+                                .findByUnbilledInvoice(unbilled);
+
+                GovernmentFee existingGovernmentFee =
+                        existingByUnbilled.orElse(
+                                existingByEstimate.orElse(null)
+                        );
 
                 if (existingGovernmentFee != null) {
-                    if (existingGovernmentFee.getStatus() == GovernmentFeeStatus.PENDING) {
+
+                    if (existingGovernmentFee.getStatus()
+                            == GovernmentFeeStatus.PENDING) {
+
                         throw new ValidationException(
-                                "Government fee is already registered and pending approval for this estimate/unbilled invoice",
-                                "ERR_GOV_FEE_ALREADY_PENDING", "governmentFee");
+                                "Government fee is already registered and pending approval "
+                                        + "for this estimate/unbilled invoice",
+                                "ERR_GOV_FEE_ALREADY_PENDING",
+                                "governmentFee"
+                        );
                     }
-                    if (existingGovernmentFee.getStatus() == GovernmentFeeStatus.APPROVED) {
+
+                    if (existingGovernmentFee.getStatus()
+                            == GovernmentFeeStatus.APPROVED) {
+
                         throw new ValidationException(
-                                "Government fee is already approved for this estimate/unbilled invoice and cannot be added again",
-                                "ERR_GOV_FEE_ALREADY_APPROVED", "governmentFee");
+                                "Government fee is already approved for this "
+                                        + "estimate/unbilled invoice and cannot be added again",
+                                "ERR_GOV_FEE_ALREADY_APPROVED",
+                                "governmentFee"
+                        );
                     }
+
                     throw new ValidationException(
-                            "Government fee already exists for this estimate/unbilled invoice",
-                            "ERR_GOV_FEE_ALREADY_EXISTS", "governmentFee");
+                            "Government fee already exists for this "
+                                    + "estimate/unbilled invoice",
+                            "ERR_GOV_FEE_ALREADY_EXISTS",
+                            "governmentFee"
+                    );
                 }
+
                 unbilled.setGovernmentFeeActive(true);
             }
         }
@@ -517,59 +594,84 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 11. PREVENT PAYMENT TYPE CHANGE AFTER FIRST PAYMENT
         // =====================================================
-        paymentReceiptRepository.findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(unbilled)
+        paymentReceiptRepository
+                .findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(
+                        unbilled
+                )
                 .ifPresent(firstReceipt -> {
-                    String firstCode = firstReceipt.getPaymentType().getCode().trim().toUpperCase();
-                    String newCode = paymentType.getCode().trim().toUpperCase();
+
+                    String firstCode =
+                            firstReceipt.getPaymentType()
+                                    .getCode()
+                                    .trim()
+                                    .toUpperCase();
+
+                    String newCode =
+                            paymentType.getCode()
+                                    .trim()
+                                    .toUpperCase();
 
                     if (!firstCode.equals(newCode)) {
                         throw new ValidationException(
-                                "Payment type cannot be changed after first payment. First type: " + firstCode,
+                                "Payment type cannot be changed after first payment. "
+                                        + "First type: " + firstCode,
                                 "ERR_PAYMENT_TYPE_CHANGE_NOT_ALLOWED",
                                 "paymentTypeId"
                         );
                     }
                 });
 
+        // =====================================================
+        // 12. TDS CALCULATION
+        // =====================================================
+        /*
+         * TDS is calculated on taxable value excluding GST.
+         *
+         * Settlement amount:
+         * Bank amount + TDS amount
+         */
+        BigDecimal tdsAmountForThisRegistration =
+                calculateTdsAmountIfRequired(
+                        request,
+                        estimate,
+                        unbilled
+                );
 
         // =====================================================
-// 12. TDS CALCULATION
-// =====================================================
-// Important: TDS is calculated on taxable value excluding GST.
-// Settlement Amount = Bank Amount + TDS Amount
-        BigDecimal tdsAmountForThisRegistration = calculateTdsAmountIfRequired(
-                request,
-                estimate,
-                unbilled
-        );
+        // 12.1 SETTLEMENT VALIDATION BEFORE PAYMENT RULES
+        // =====================================================
+        BigDecimal outstandingBeforeThisPayment =
+                safe2(unbilled.getOutstandingAmount());
 
+        BigDecimal settlementAmountForThisRegistration =
+                reqAmount
+                        .add(tdsAmountForThisRegistration)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
+        if (settlementAmountForThisRegistration
+                .compareTo(outstandingBeforeThisPayment) > 0) {
 
-// =====================================================
-// 12.1 SETTLEMENT VALIDATION BEFORE PAYMENT RULES
-// =====================================================
-        BigDecimal outstandingBeforeThisPayment = safe2(unbilled.getOutstandingAmount());
-
-        BigDecimal settlementAmountForThisRegistration = reqAmount
-                .add(tdsAmountForThisRegistration)
-                .setScale(2, RoundingMode.HALF_UP);
-
-        if (settlementAmountForThisRegistration.compareTo(outstandingBeforeThisPayment) > 0) {
             throw new ValidationException(
-                    "Payment settlement exceeds outstanding amount. Bank amount: ₹"
-                            + reqAmount
-                            + ", TDS amount: ₹" + tdsAmountForThisRegistration
-                            + ", settlement amount: ₹" + settlementAmountForThisRegistration
-                            + ", outstanding amount: ₹" + outstandingBeforeThisPayment
+                    "Payment settlement exceeds outstanding amount. "
+                            + "Bank amount: ₹" + reqAmount
+                            + ", TDS amount: ₹"
+                            + tdsAmountForThisRegistration
+                            + ", settlement amount: ₹"
+                            + settlementAmountForThisRegistration
+                            + ", outstanding amount: ₹"
+                            + outstandingBeforeThisPayment
                             + ". Please reduce bank amount or do not apply TDS.",
                     "ERR_SETTLEMENT_EXCEEDS_OUTSTANDING",
                     "amount"
             );
         }
 
-// =====================================================
-// 13. VALIDATE PAYMENT RULES
-// =====================================================
+        // =====================================================
+        // 13. VALIDATE PAYMENT RULES
+        // =====================================================
         validatePaymentRules(
                 paymentType,
                 reqAmount,
@@ -578,32 +680,58 @@ public class PaymentServiceImpl implements PaymentService {
                 tdsAmountForThisRegistration
         );
 
+        // =====================================================
+        // 15. PREVENT PAYMENT FROM EXCEEDING TOTAL AMOUNT
+        // =====================================================
+        BigDecimal approvedAmount =
+                safe2(unbilled.getReceivedAmount());
 
-// =====================================================
-// 15. PREVENT PAYMENT FROM EXCEEDING TOTAL AMOUNT
-// =====================================================
-        BigDecimal approvedAmount = safe2(unbilled.getReceivedAmount());
-        BigDecimal pendingAmount = safe2(unbilled.getCurrentReceivedAmount());
-        BigDecimal totalAmount = safe2(unbilled.getTotalAmount());
+        BigDecimal pendingAmount =
+                safe2(unbilled.getCurrentReceivedAmount());
 
-        BigDecimal totalAfterThisRegistration = approvedAmount
-                .add(pendingAmount)
-                .add(settlementAmountForThisRegistration)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalAmount =
+                safe2(unbilled.getTotalAmount());
 
-        if (totalAfterThisRegistration.compareTo(totalAmount) > 0) {
-            BigDecimal remainingAllowed = totalAmount.subtract(approvedAmount.add(pendingAmount))
-                    .max(BigDecimal.ZERO)
-                    .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalAfterThisRegistration =
+                approvedAmount
+                        .add(pendingAmount)
+                        .add(settlementAmountForThisRegistration)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
-            BigDecimal excessAmount = totalAfterThisRegistration
-                    .subtract(totalAmount)
-                    .max(BigDecimal.ZERO)
-                    .setScale(2, RoundingMode.HALF_UP);
+        if (totalAfterThisRegistration
+                .compareTo(totalAmount) > 0) {
+
+            BigDecimal remainingAllowed =
+                    totalAmount
+                            .subtract(
+                                    approvedAmount.add(pendingAmount)
+                            )
+                            .max(BigDecimal.ZERO)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            BigDecimal excessAmount =
+                    totalAfterThisRegistration
+                            .subtract(totalAmount)
+                            .max(BigDecimal.ZERO)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
 
             throw new ValidationException(
                     String.format(
-                            "Payment exceeds allowed amount. Approved amount is ₹%s, pending approval amount is ₹%s, remaining payable amount is ₹%s, current settlement amount is ₹%s, and it exceeds by ₹%s.",
+                            "Payment exceeds allowed amount. "
+                                    + "Approved amount is ₹%s, "
+                                    + "pending approval amount is ₹%s, "
+                                    + "remaining payable amount is ₹%s, "
+                                    + "current settlement amount is ₹%s, "
+                                    + "and it exceeds by ₹%s.",
                             approvedAmount,
                             pendingAmount,
                             remainingAllowed,
@@ -618,33 +746,74 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 16. CREATE PAYMENT RECEIPT
         // =====================================================
+
+        /*
+         * FIX:
+         *
+         * payment_receipt.payment_date is nullable=false.
+         *
+         * For a zero-value initial PURCHASE_ORDER there is no actual
+         * payment date. In that case, the current date is stored as the
+         * PO registration date.
+         *
+         * For every actual payment, the request payment date is used.
+         */
+        LocalDate effectivePaymentDate =
+                request.getPaymentDate() != null
+                        ? request.getPaymentDate()
+                        : LocalDate.now();
+
         PaymentReceipt receipt = new PaymentReceipt();
+
         receipt.setUnbilledInvoice(unbilled);
         receipt.setPaymentType(paymentType);
         receipt.setAmount(reqAmount);
-        receipt.setPaymentDate(request.getPaymentDate());
+        receipt.setPaymentDate(effectivePaymentDate);
         receipt.setPaymentMode(request.getPaymentMode());
-        receipt.setTransactionReference(request.getTransactionReference());
+        receipt.setTransactionReference(
+                request.getTransactionReference()
+        );
         receipt.setRemarks(request.getRemarks());
         receipt.setReceivedBy(salesperson);
         receipt.setPaymentProof(request.getPaymentProof());
-        receipt.setPaymentTermsDays(request.getPaymentTermsDays());
+        receipt.setPaymentTermsDays(
+                request.getPaymentTermsDays()
+        );
         receipt.setPoNumber(request.getPoNumber());
-        receipt.setPoAttachmentUrl(request.getPoAttachmentUrl());
+        receipt.setPoAttachmentUrl(
+                request.getPoAttachmentUrl()
+        );
 
-        if (request.getPaymentTermsDays() != null && request.getPaymentTermsDays() > 0) {
-            receipt.setPaymentTerms("Net " + request.getPaymentTermsDays() + " Days");
+        if (request.getPaymentTermsDays() != null
+                && request.getPaymentTermsDays() > 0) {
+
+            receipt.setPaymentTerms(
+                    "Net "
+                            + request.getPaymentTermsDays()
+                            + " Days"
+            );
+
         } else {
-            receipt.setPaymentTerms(request.getPaymentTerms());
+            receipt.setPaymentTerms(
+                    request.getPaymentTerms()
+            );
         }
 
-        // Bank ledger is saved for future voucher posting (after approval)
+        // Bank ledger is saved for future voucher posting.
         receipt.setBankLedger(bankLedger);
 
-        // EPR fields (only for product-related estimates)
-        receipt.setEprFinancialYear(request.getEprFinancialYear());
-        receipt.setEprPortalRegistrationNumber(request.getEprPortalRegistrationNumber());
-        receipt.setEprCertificateOrInvoiceNumber(request.getEprCertificateOrInvoiceNumber());
+        // EPR fields only for product-related estimates.
+        receipt.setEprFinancialYear(
+                request.getEprFinancialYear()
+        );
+
+        receipt.setEprPortalRegistrationNumber(
+                request.getEprPortalRegistrationNumber()
+        );
+
+        receipt.setEprCertificateOrInvoiceNumber(
+                request.getEprCertificateOrInvoiceNumber()
+        );
 
         receipt.setStatus(PaymentStatus.PENDING);
 
@@ -659,32 +828,52 @@ public class PaymentServiceImpl implements PaymentService {
                 tdsAmountForThisRegistration
         );
 
-
-        log.info("Created PaymentReceipt {} | amount: {}", receipt.getId(), request.getAmount());
+        log.info(
+                "Created PaymentReceipt {} | amount: {} | paymentDate: {}",
+                receipt.getId(),
+                request.getAmount(),
+                receipt.getPaymentDate()
+        );
 
         // =====================================================
         // 17. CREATE LEGAL VERIFICATION FOR PURCHASE ORDER
         // =====================================================
-        paymentLegalVerificationService.createIfPurchaseOrder(receipt, salesperson);
+        paymentLegalVerificationService
+                .createIfPurchaseOrder(
+                        receipt,
+                        salesperson
+                );
 
         // =====================================================
-        // 18. CREATE GOVERNMENT FEE (if applicable)
+        // 18. CREATE GOVERNMENT FEE
         // =====================================================
-        createGovernmentFeeIfRequired(request, estimate, unbilled, salesperson);
+        createGovernmentFeeIfRequired(
+                request,
+                estimate,
+                unbilled,
+                salesperson
+        );
 
         // =====================================================
         // 19. UPDATE UNBILLED INVOICE TOTALS
         // =====================================================
-        // settlementAmountForThisRegistration = Bank Amount + TDS Amount
-        unbilled.applyPayment(settlementAmountForThisRegistration);
-        unbilled.setStatus(UnbilledStatus.PENDING_APPROVAL);
+        unbilled.applyPayment(
+                settlementAmountForThisRegistration
+        );
+
+        unbilled.setStatus(
+                UnbilledStatus.PENDING_APPROVAL
+        );
+
         unbilledInvoiceRepository.save(unbilled);
 
-        log.info("Updated unbilled {} | received: {}, outstanding: {}, status: {}",
+        log.info(
+                "Updated unbilled {} | received: {}, outstanding: {}, status: {}",
                 unbilled.getUnbilledNumber(),
                 unbilled.getReceivedAmount(),
                 unbilled.getOutstandingAmount(),
-                unbilled.getStatus());
+                unbilled.getStatus()
+        );
 
         // =====================================================
         // 20. UPDATE ESTIMATE STATUS
@@ -695,35 +884,57 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 21. PREPARE RESPONSE MESSAGE
         // =====================================================
-        String message = isFirstPayment
-                ? "First payment registered. Unbilled created – awaiting Accounts approval"
-                : String.format(
-                "Additional payment of ₹%s registered. Total received: ₹%s / ₹%s. Awaiting approval.",
-                reqAmount, unbilled.getReceivedAmount(), unbilled.getTotalAmount());
+        String message =
+                isFirstPayment
+                        ? "First payment registered. Unbilled created – "
+                        + "awaiting Accounts approval"
+                        : String.format(
+                        "Additional payment of ₹%s registered. "
+                                + "Total received: ₹%s / ₹%s. "
+                                + "Awaiting approval.",
+                        reqAmount,
+                        unbilled.getReceivedAmount(),
+                        unbilled.getTotalAmount()
+                );
 
-        if (Boolean.TRUE.equals(request.getGovernmentFeeActive())) {
-            message += " Government fee registered in full and awaiting Accounts approval.";
+        if (Boolean.TRUE.equals(
+                request.getGovernmentFeeActive()
+        )) {
+            message +=
+                    " Government fee registered in full "
+                            + "and awaiting Accounts approval.";
         }
 
         if (isPurchaseOrder) {
-            message += " PO document sent to Legal department for verification.";
+            message +=
+                    " PO document sent to Legal department "
+                            + "for verification.";
         }
 
         // =====================================================
         // 22. BUILD AND RETURN RESPONSE
         // =====================================================
-        PaymentRegistrationResponseDto response = new PaymentRegistrationResponseDto();
+        PaymentRegistrationResponseDto response =
+                new PaymentRegistrationResponseDto();
+
         response.setPaymentReceiptId(receipt.getId());
-        response.setUnbilledNumber(unbilled.getUnbilledNumber());
+        response.setUnbilledNumber(
+                unbilled.getUnbilledNumber()
+        );
         response.setUnbilledStatus(unbilled.getStatus());
         response.setMessage(message);
 
-        // Notify Accounts team for approval
-        pushPaymentRegisteredNotificationToAccountUsers(unbilled, receipt, estimate, salesperson);
+        pushPaymentRegisteredNotificationToAccountUsers(
+                unbilled,
+                receipt,
+                estimate,
+                salesperson
+        );
 
-        // n
         log.info(
-                "Payment registration completed | estimateId={} | unbilledId={} | receiptId={} | firstPayment={} | settlementAmount={} | status={}",
+                "Payment registration completed | estimateId={} | "
+                        + "unbilledId={} | receiptId={} | firstPayment={} | "
+                        + "settlementAmount={} | status={}",
                 estimate.getId(),
                 unbilled.getId(),
                 receipt.getId(),
@@ -734,7 +945,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         return response;
     }
-
 
 
     private LedgerMaster validateAndGetBankLedger(
