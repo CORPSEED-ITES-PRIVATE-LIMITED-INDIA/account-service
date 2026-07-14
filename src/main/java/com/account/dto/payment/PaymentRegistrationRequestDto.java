@@ -52,5 +52,7 @@ public class PaymentRegistrationRequestDto {
     private String poNumber;
     private String poAttachmentUrl;
 
+    // while regsitertin
+
 
 }

@@ -1691,7 +1691,6 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 1. BASIC REQUEST VALIDATION
         // =====================================================
-
         if (request == null) {
             throw new ValidationException(
                     "Payment registration request is required",
@@ -1703,18 +1702,10 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 2. INTERNATIONAL TRANSACTION RESTRICTION
         // =====================================================
-
         if (isInternationalTransaction(estimate, unbilled)) {
 
             /*
-             * For INTERNATIONAL customers:
-             *
-             * GST = 0
-             * TDS = not allowed
-             *
-             * Reject the request when the frontend sends:
-             * tdsActive = true
-             * OR a TDS object.
+             * TDS is not applicable for INTERNATIONAL transactions.
              */
             if (Boolean.TRUE.equals(request.getTdsActive())
                     || request.getTds() != null) {
@@ -1735,7 +1726,6 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 3. TDS NOT ACTIVE
         // =====================================================
-
         if (!Boolean.TRUE.equals(request.getTdsActive())) {
             return BigDecimal.ZERO.setScale(
                     2,
@@ -1746,7 +1736,6 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 4. VALIDATE TDS DETAILS
         // =====================================================
-
         if (request.getTds() == null) {
             throw new ValidationException(
                     "TDS details are required when TDS is active",
@@ -1763,27 +1752,23 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal bankAmount =
+        BigDecimal paymentAmount =
                 safe2(request.getAmount());
 
         BigDecimal tdsPercentage =
                 safe2(request.getTds().getTdsPercentage());
 
-        if (bankAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (paymentAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
-                    "Bank amount must be greater than zero when TDS is active",
-                    "ERR_TDS_BANK_AMOUNT_REQUIRED",
+                    "Payment amount must be greater than zero when TDS is active",
+                    "ERR_TDS_PAYMENT_AMOUNT_REQUIRED",
                     "amount"
             );
         }
 
-        /*
-         * Defensive percentage validation.
-         *
-         * This may already be validated in validateTdsRequest(),
-         * but it is also validated here because this method performs
-         * the actual financial calculation.
-         */
+        // =====================================================
+        // 5. VALIDATE TDS PERCENTAGE
+        // =====================================================
         if (tdsPercentage.compareTo(new BigDecimal("2.00")) != 0
                 && tdsPercentage.compareTo(new BigDecimal("10.00")) != 0) {
 
@@ -1795,19 +1780,8 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 5. CALCULATE COMPLETE TAXABLE AMOUNT
+        // 6. CALCULATE COMPLETE ESTIMATE TAXABLE AMOUNT
         // =====================================================
-
-        /*
-         * TDS is calculated on the taxable value excluding GST.
-         *
-         * Example:
-         *
-         * Taxable value = ₹25,000
-         * GST           = ₹4,500
-         * Invoice total = ₹29,500
-         * TDS @2%       = ₹500
-         */
         BigDecimal totalTaxableAmount =
                 calculateTdsTaxableAmount(
                         estimate,
@@ -1823,9 +1797,8 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 6. RESOLVE TOTAL INVOICE AMOUNT
+        // 7. RESOLVE TOTAL INVOICE AMOUNT
         // =====================================================
-
         BigDecimal totalInvoiceAmount;
 
         if (estimate != null
@@ -1841,7 +1814,6 @@ public class PaymentServiceImpl implements PaymentService {
                     safe2(unbilled.getTotalAmount());
 
         } else {
-
             totalInvoiceAmount =
                     BigDecimal.ZERO.setScale(
                             2,
@@ -1866,27 +1838,28 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 7. CALCULATE MAXIMUM TDS ALLOWED
+        // 8. CALCULATE MAXIMUM TDS ALLOWED FOR ESTIMATE
         // =====================================================
-
-        BigDecimal totalAllowedTds = totalTaxableAmount
-                .multiply(tdsPercentage)
-                .divide(
-                        BigDecimal.valueOf(100),
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        BigDecimal totalAllowedTds =
+                totalTaxableAmount
+                        .multiply(tdsPercentage)
+                        .divide(
+                                BigDecimal.valueOf(100),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         BigDecimal alreadyUsedTds =
                 getTotalActiveTdsAmount(unbilled);
 
-        BigDecimal remainingTdsLimit = totalAllowedTds
-                .subtract(alreadyUsedTds)
-                .max(BigDecimal.ZERO)
-                .setScale(
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        BigDecimal remainingTdsLimit =
+                totalAllowedTds
+                        .subtract(alreadyUsedTds)
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         if (remainingTdsLimit.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -1899,92 +1872,46 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 8. CALCULATE TAXABLE RATIO
-        // =====================================================
-
-        /*
-         * taxableRatio:
-         *
-         * Taxable amount excluding GST
-         * ----------------------------
-         * Complete invoice amount
-         */
-        BigDecimal taxableRatio = totalTaxableAmount.divide(
-                totalInvoiceAmount,
-                10,
-                RoundingMode.HALF_UP
-        );
-
-        BigDecimal tdsRate = tdsPercentage.divide(
-                BigDecimal.valueOf(100),
-                10,
-                RoundingMode.HALF_UP
-        );
-
-        BigDecimal effectiveTdsRateOnSettlement = taxableRatio
-                .multiply(tdsRate)
-                .setScale(
-                        10,
-                        RoundingMode.HALF_UP
-                );
-
-        if (effectiveTdsRateOnSettlement.compareTo(BigDecimal.ZERO) <= 0
-                || effectiveTdsRateOnSettlement.compareTo(BigDecimal.ONE) >= 0) {
-
-            throw new ValidationException(
-                    "Invalid effective TDS rate calculated",
-                    "ERR_INVALID_EFFECTIVE_TDS_RATE",
-                    "tds"
-            );
-        }
-
-        // =====================================================
         // 9. CALCULATE CURRENT PAYMENT TDS
         // =====================================================
 
         /*
-         * Bank amount is the net amount received after TDS.
+         * Required business formula:
          *
-         * Settlement amount = Bank amount + TDS amount
+         * TDS = Payment Amount × TDS Percentage / 100
          *
-         * Formula:
+         * Example:
          *
-         * TDS =
-         * BankAmount × EffectiveTdsRate
-         * --------------------------------
-         * 1 - EffectiveTdsRate
+         * Payment amount = ₹50,000
+         * TDS percentage = 10%
+         *
+         * TDS = 50,000 × 10 / 100
+         *     = ₹5,000
+         *
+         * No gross-up calculation is applied.
          */
-        BigDecimal denominator = BigDecimal.ONE
-                .subtract(effectiveTdsRateOnSettlement);
-
-        if (denominator.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException(
-                    "Invalid denominator calculated during TDS calculation",
-                    "ERR_INVALID_TDS_DENOMINATOR",
-                    "tds"
-            );
-        }
-
-        BigDecimal currentTds = bankAmount
-                .multiply(effectiveTdsRateOnSettlement)
-                .divide(
-                        denominator,
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        BigDecimal currentTds =
+                paymentAmount
+                        .multiply(tdsPercentage)
+                        .divide(
+                                BigDecimal.valueOf(100),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         /*
-         * The current payment cannot consume more TDS than
-         * the remaining allowed TDS for the estimate.
+         * Current payment cannot consume more than the remaining
+         * TDS allowed against the complete estimate.
          */
         if (currentTds.compareTo(remainingTdsLimit) > 0) {
             currentTds = remainingTdsLimit;
         }
 
-        BigDecimal calculatedTds = currentTds.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
+        BigDecimal calculatedTds =
+                currentTds.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
 
         if (calculatedTds.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -1997,13 +1924,13 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 10. FINAL SETTLEMENT SAFETY CHECK
         // =====================================================
-
-        BigDecimal settlementAmount = bankAmount
-                .add(calculatedTds)
-                .setScale(
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        BigDecimal settlementAmount =
+                paymentAmount
+                        .add(calculatedTds)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         BigDecimal outstandingAmount =
                 unbilled != null
@@ -2012,8 +1939,8 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (settlementAmount.compareTo(outstandingAmount) > 0) {
             throw new ValidationException(
-                    "Bank amount plus TDS amount exceeds the outstanding amount. "
-                            + "Bank amount: ₹" + bankAmount
+                    "Payment amount plus TDS amount exceeds the outstanding amount. "
+                            + "Payment amount: ₹" + paymentAmount
                             + ", TDS amount: ₹" + calculatedTds
                             + ", settlement amount: ₹" + settlementAmount
                             + ", outstanding amount: ₹" + outstandingAmount,
@@ -2023,16 +1950,18 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         log.info(
-                "TDS calculated | estimateId={} | unbilledId={} | gstRegistrationType={} "
-                        + "| taxableAmount={} | invoiceTotal={} | bankAmount={} "
-                        + "| tdsPercentage={} | totalAllowedTds={} | alreadyUsedTds={} "
-                        + "| remainingTdsLimit={} | calculatedTds={} | settlementAmount={}",
+                "TDS calculated | estimateId={} | unbilledId={} "
+                        + "| gstRegistrationType={} | taxableAmount={} "
+                        + "| invoiceTotal={} | paymentAmount={} "
+                        + "| tdsPercentage={} | totalAllowedTds={} "
+                        + "| alreadyUsedTds={} | remainingTdsLimit={} "
+                        + "| calculatedTds={} | settlementAmount={}",
                 estimate != null ? estimate.getId() : null,
                 unbilled != null ? unbilled.getId() : null,
                 resolveGstRegistrationType(estimate, unbilled),
                 totalTaxableAmount,
                 totalInvoiceAmount,
-                bankAmount,
+                paymentAmount,
                 tdsPercentage,
                 totalAllowedTds,
                 alreadyUsedTds,
@@ -2043,7 +1972,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         return calculatedTds;
     }
-
 
 
 
