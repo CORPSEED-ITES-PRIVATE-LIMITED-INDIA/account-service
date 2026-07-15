@@ -56,7 +56,7 @@ public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, 
             p.paymentDate,
             p.paymentMode,
             p.status,
-            null
+           cast(null as string)
         )
         FROM PaymentReceipt p
         JOIN p.unbilledInvoice u
