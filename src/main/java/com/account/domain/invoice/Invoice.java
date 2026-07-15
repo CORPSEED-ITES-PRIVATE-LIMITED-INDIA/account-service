@@ -54,10 +54,10 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @ToString(exclude = {
+        "estimate",
         "unbilledInvoice",
         "lineItems",
-        "triggeringPayment"
-})
+        "triggeringPayment"})
 public class Invoice {
 
     @Id
@@ -91,11 +91,17 @@ public class Invoice {
     )
     private String solutionName;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(
-            name = "unbilled_invoice_id",
-            nullable = false
-    )
+    /*
+     * Present only for the existing payment-first workflow.
+     *
+     * Normal flow:
+     * unbilledInvoice != null
+     *
+     * Advance Tax Invoice flow:
+     * unbilledInvoice == null
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unbilled_invoice_id")
     private UnbilledInvoice unbilledInvoice;
 
     /*
@@ -294,6 +300,7 @@ public class Invoice {
     // ==================== OPERATION SYNC ====================
 
     @Column(name = "operation_synced", nullable = false)
+
     private boolean operationSynced = false;
 
     @Column(name = "operation_synced_at")
@@ -319,4 +326,7 @@ public class Invoice {
         return getEffectiveGstRegistrationType()
                 .isZeroRated();
     }
+
+
+
 }

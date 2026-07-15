@@ -90,6 +90,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 contact
         );
 
+        // i want new feature articture that tax invoice
+        // where suppose i create estimate of 50 rs
+
         LedgerMaster saved = ledgerMasterRepository.save(ledger);
 
         log.info("Ledger created successfully. ledgerId={}, ledgerCode={}, ledgerName={}",

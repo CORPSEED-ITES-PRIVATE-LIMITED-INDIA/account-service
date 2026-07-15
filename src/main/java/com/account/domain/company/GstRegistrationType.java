@@ -24,4 +24,6 @@ public enum GstRegistrationType {
     public boolean isZeroRated() {
         return this == SEZ || this == INTERNATIONAL;
     }
+
+
 }
