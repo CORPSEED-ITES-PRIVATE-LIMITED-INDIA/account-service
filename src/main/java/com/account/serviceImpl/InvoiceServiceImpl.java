@@ -656,10 +656,94 @@ public class InvoiceServiceImpl implements InvoiceService {
 		Invoice savedInvoice =
 				invoiceRepository.save(invoice);
 
+// =====================================================
+// PROJECT CREATION FLOW BASED ON GST TYPE
+// =====================================================
+
+		if (gstRegistrationType
+				.requiresEInvoiceConfirmation()) {
+
+			/*
+			 * REGISTERED and SEZ:
+			 *
+			 * Do not post the Sales Invoice voucher here.
+			 * Do not create the Operation project here.
+			 *
+			 * Both actions will happen only after:
+			 *
+			 * POST /{invoiceId}/confirm-e-invoice
+			 */
+			savedInvoice.setStatus(
+					InvoiceStatus.GENERATED
+			);
+
+			savedInvoice.setOperationSynced(false);
+			savedInvoice.setOperationSyncedAt(null);
+
+			savedInvoice =
+					invoiceRepository.save(savedInvoice);
+
+			log.info(
+					"Invoice generated and waiting for e-invoice confirmation "
+							+ "| invoice={} | gstRegistrationType={} "
+							+ "| unbilled={}",
+					savedInvoice.getInvoiceNumber(),
+					gstRegistrationType,
+					unbilled.getUnbilledNumber()
+			);
+
+		} else {
+
+			/*
+			 * UNREGISTERED and INTERNATIONAL:
+			 *
+			 * E-invoice confirmation is not applicable.
+			 * Post Sales Invoice voucher and create/sync
+			 * the Operation project immediately.
+			 */
+			postSalesInvoiceVoucher(
+					savedInvoice,
+					unbilled,
+					approver
+			);
+
+			createOrSyncOperationProject(
+					savedInvoice,
+					approver
+			);
+
+			savedInvoice.setOperationSynced(true);
+			savedInvoice.setOperationSyncedAt(
+					LocalDateTime.now()
+			);
+
+			savedInvoice.setStatus(
+					InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE
+			);
+
+			savedInvoice =
+					invoiceRepository.save(savedInvoice);
+
+			log.info(
+					"Invoice finalized without e-invoice and "
+							+ "Operation project synced "
+							+ "| invoice={} | gstRegistrationType={} "
+							+ "| unbilled={}",
+					savedInvoice.getInvoiceNumber(),
+					gstRegistrationType,
+					unbilled.getUnbilledNumber()
+			);
+		}
+
 		log.info(
-				"Invoice generated | invoice={} | gstRegistrationType={} | taxable={} | gst={} | grandTotal={} | lines={}",
+				"Invoice processing completed | invoice={} "
+						+ "| gstRegistrationType={} | status={} "
+						+ "| operationSynced={} | taxable={} "
+						+ "| gst={} | grandTotal={} | lines={}",
 				savedInvoice.getInvoiceNumber(),
 				savedInvoice.getGstRegistrationType(),
+				savedInvoice.getStatus(),
+				savedInvoice.isOperationSynced(),
 				savedInvoice.getSubTotalExGst(),
 				savedInvoice.getTotalGstAmount(),
 				savedInvoice.getGrandTotal(),
@@ -1983,6 +2067,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 			Long invoiceId,
 			ConfirmInvoiceEInvoiceRequestDto request
 	) {
+
+		// =====================================================
+		// 1. BASIC VALIDATION
+		// =====================================================
 		if (invoiceId == null) {
 			throw new ValidationException(
 					"Invoice ID is required",
@@ -1991,7 +2079,15 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
-		if (request == null || request.getUserId() == null) {
+		if (request == null) {
+			throw new ValidationException(
+					"E-invoice confirmation request is required",
+					"ERR_E_INVOICE_REQUEST_REQUIRED",
+					"request"
+			);
+		}
+
+		if (request.getUserId() == null) {
 			throw new ValidationException(
 					"User ID is required",
 					"ERR_USER_ID_REQUIRED",
@@ -1999,32 +2095,39 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
-		if (request.getEInvoiceAttachmentUrl() == null
-				|| request.getEInvoiceAttachmentUrl().trim().isEmpty()) {
-			throw new ValidationException(
-					"GST e-invoice attachment is required",
-					"ERR_E_INVOICE_ATTACHMENT_REQUIRED",
-					"eInvoiceAttachmentUrl"
-			);
-		}
+		// =====================================================
+		// 2. FETCH USER
+		// =====================================================
+		User confirmedBy =
+				userRepository.findById(request.getUserId())
+						.orElseThrow(() ->
+								new ResourceNotFoundException(
+										"User not found with ID: "
+												+ request.getUserId(),
+										"USER_NOT_FOUND",
+										"User",
+										request.getUserId()
+								)
+						);
 
-		User confirmedBy = userRepository.findById(request.getUserId())
-				.orElseThrow(() -> new ResourceNotFoundException(
-						"User not found with ID: " + request.getUserId(),
-						"USER_NOT_FOUND",
-						"User",
-						request.getUserId()
-				));
+		// =====================================================
+		// 3. FETCH INVOICE
+		// =====================================================
+		Invoice invoice =
+				invoiceRepository.findById(invoiceId)
+						.orElseThrow(() ->
+								new ResourceNotFoundException(
+										"Invoice not found with ID: "
+												+ invoiceId,
+										"INVOICE_NOT_FOUND",
+										"Invoice",
+										invoiceId
+								)
+						);
 
-		Invoice invoice = invoiceRepository.findById(invoiceId)
-				.orElseThrow(() -> new ResourceNotFoundException(
-						"Invoice not found with ID: " + invoiceId,
-						"INVOICE_NOT_FOUND",
-						"Invoice",
-						invoiceId
-				));
+		if (invoice.isCancelled()
+				|| invoice.getStatus() == InvoiceStatus.CANCELLED) {
 
-		if (invoice.isCancelled()) {
 			throw new ValidationException(
 					"Cancelled invoice cannot be confirmed",
 					"ERR_CANCELLED_INVOICE_CONFIRM_NOT_ALLOWED",
@@ -2032,7 +2135,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
-		if (invoice.getStatus() == InvoiceStatus.E_INVOICE_CONFIRMED) {
+		if (invoice.getStatus()
+				== InvoiceStatus.E_INVOICE_CONFIRMED) {
+
 			throw new ValidationException(
 					"GST e-invoice is already confirmed for this invoice",
 					"ERR_E_INVOICE_ALREADY_CONFIRMED",
@@ -2040,66 +2145,203 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
-		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
+		if (invoice.getStatus()
+				== InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE) {
+
+			throw new ValidationException(
+					"This invoice has already been finalized without e-invoice confirmation",
+					"ERR_INVOICE_ALREADY_FINALIZED",
+					"invoiceId"
+			);
+		}
+
+		// =====================================================
+		// 4. VALIDATE UNBILLED
+		// =====================================================
+		UnbilledInvoice unbilled =
+				invoice.getUnbilledInvoice();
 
 		if (unbilled == null) {
 			throw new ValidationException(
-					"Invoice is not linked with any unbilled invoice",
+					"Invoice is not linked with an unbilled invoice",
 					"ERR_UNBILLED_NOT_LINKED",
 					"invoiceId"
 			);
 		}
 
-		if (unbilled.getStatus() != UnbilledStatus.APPROVED) {
+		if (unbilled.getStatus()
+				!= UnbilledStatus.APPROVED) {
+
 			throw new ValidationException(
-					"GST e-invoice can be confirmed only after unbilled invoice is approved",
+					"GST e-invoice can be confirmed only after unbilled invoice approval",
 					"ERR_UNBILLED_NOT_APPROVED",
 					"unbilledId"
 			);
 		}
 
-		// Save GST e-invoice confirmation details
-		invoice.setEInvoiceAttachmentUrl(request.getEInvoiceAttachmentUrl().trim());
-		invoice.setEInvoiceIrn(
-				request.getEInvoiceIrn() != null ? request.getEInvoiceIrn().trim() : null
-		);
-		invoice.setEInvoiceAckNo(
-				request.getEInvoiceAckNo() != null ? request.getEInvoiceAckNo().trim() : null
-		);
-		invoice.setEInvoiceAckDate(request.getEInvoiceAckDate());
-		invoice.setEInvoiceConfirmedAt(LocalDateTime.now());
-		invoice.setEInvoiceConfirmedBy(confirmedBy);
-		invoice.setUpdatedBy(confirmedBy);
-		invoice.setStatus(InvoiceStatus.E_INVOICE_CONFIRMED);
+		// =====================================================
+		// 5. GST REGISTRATION TYPE VALIDATION
+		// =====================================================
+		GstRegistrationType gstRegistrationType =
+				resolveInvoiceGstRegistrationType(invoice);
 
 		/*
-		 * IMPORTANT:
-		 * Sales invoice ledger voucher should be posted only after GST e-invoice confirmation.
-		 *
-		 * Dr Customer Ledger
-		 * Cr Service Income
-		 * Cr Output GST
+		 * Only REGISTERED and SEZ invoices are allowed
+		 * through the e-invoice confirmation endpoint.
 		 */
-		postSalesInvoiceVoucher(invoice, unbilled, confirmedBy);
+		if (!gstRegistrationType
+				.allowsEInvoiceConfirmation()) {
 
-		// Create or sync Operation project only after GST e-invoice confirmation
-		createOrSyncOperationProjectFromConfirmedInvoice(invoice, confirmedBy);
+			throw new ValidationException(
+					"GST e-invoice confirmation is not applicable for "
+							+ gstRegistrationType
+							+ " invoices. The Operation project must be "
+							+ "created directly after invoice generation.",
+					"ERR_E_INVOICE_NOT_ALLOWED_FOR_GST_TYPE",
+					"invoiceId"
+			);
+		}
+
+		// =====================================================
+		// 6. REQUIRED E-INVOICE FIELDS
+		// =====================================================
+		if (!hasText(request.getEInvoiceAttachmentUrl())) {
+			throw new ValidationException(
+					"GST e-invoice attachment is required for "
+							+ gstRegistrationType + " invoices",
+					"ERR_E_INVOICE_ATTACHMENT_REQUIRED",
+					"eInvoiceAttachmentUrl"
+			);
+		}
+
+		if (!hasText(request.getEInvoiceIrn())) {
+			throw new ValidationException(
+					"GST e-invoice IRN is required for "
+							+ gstRegistrationType + " invoices",
+					"ERR_E_INVOICE_IRN_REQUIRED",
+					"eInvoiceIrn"
+			);
+		}
+
+		// =====================================================
+		// 7. SAVE E-INVOICE DETAILS
+		// =====================================================
+		invoice.setEInvoiceAttachmentUrl(
+				request.getEInvoiceAttachmentUrl().trim()
+		);
+
+		invoice.setEInvoiceIrn(
+				request.getEInvoiceIrn().trim()
+		);
+
+		invoice.setEInvoiceAckNo(
+				hasText(request.getEInvoiceAckNo())
+						? request.getEInvoiceAckNo().trim()
+						: null
+		);
+
+		invoice.setEInvoiceAckDate(
+				request.getEInvoiceAckDate()
+		);
+
+		invoice.setEInvoiceConfirmedAt(
+				LocalDateTime.now()
+		);
+
+		invoice.setEInvoiceConfirmedBy(
+				confirmedBy
+		);
+
+		invoice.setUpdatedBy(
+				confirmedBy
+		);
+
+		invoice.setStatus(
+				InvoiceStatus.E_INVOICE_CONFIRMED
+		);
+
+		// Save confirmation before downstream processing.
+		invoice = invoiceRepository.save(invoice);
+
+		// =====================================================
+		// 8. POST SALES INVOICE VOUCHER
+		// =====================================================
+		postSalesInvoiceVoucher(
+				invoice,
+				unbilled,
+				confirmedBy
+		);
+
+		// =====================================================
+		// 9. CREATE OR SYNC OPERATION PROJECT
+		// =====================================================
+		createOrSyncOperationProject(
+				invoice,
+				confirmedBy
+		);
 
 		invoice.setOperationSynced(true);
-		invoice.setOperationSyncedAt(LocalDateTime.now());
+		invoice.setOperationSyncedAt(
+				LocalDateTime.now()
+		);
 
-		Invoice savedInvoice = invoiceRepository.save(invoice);
+		Invoice savedInvoice =
+				invoiceRepository.save(invoice);
 
 		log.info(
-				"GST e-invoice confirmed, sales voucher posted and Operation project synced | invoice={} | unbilled={}",
+				"GST e-invoice confirmed and Operation project synced "
+						+ "| invoice={} | gstRegistrationType={} "
+						+ "| unbilled={}",
 				savedInvoice.getInvoiceNumber(),
+				gstRegistrationType,
 				unbilled.getUnbilledNumber()
 		);
 
 		return toDetailDto(savedInvoice);
 	}
 
-	private void createOrSyncOperationProjectFromConfirmedInvoice(
+	private boolean hasText(String value) {
+		return value != null
+				&& !value.trim().isEmpty();
+	}
+
+
+	private GstRegistrationType resolveInvoiceGstRegistrationType(
+			Invoice invoice
+	) {
+		if (invoice == null) {
+			return GstRegistrationType.REGISTERED;
+		}
+
+		/*
+		 * Invoice snapshot has first priority.
+		 */
+		if (invoice.getGstRegistrationType() != null) {
+			return invoice.getGstRegistrationType();
+		}
+
+		UnbilledInvoice unbilled =
+				invoice.getUnbilledInvoice();
+
+		if (unbilled != null
+				&& unbilled.getGstRegistrationType() != null) {
+
+			return unbilled.getGstRegistrationType();
+		}
+
+		if (unbilled != null
+				&& unbilled.getUnit() != null
+				&& unbilled.getUnit().getGstRegistrationType() != null) {
+
+			return unbilled
+					.getUnit()
+					.getGstRegistrationType();
+		}
+
+		return GstRegistrationType.REGISTERED;
+	}
+
+	private void createOrSyncOperationProject(
 			Invoice invoice,
 			User confirmedBy
 	) {
