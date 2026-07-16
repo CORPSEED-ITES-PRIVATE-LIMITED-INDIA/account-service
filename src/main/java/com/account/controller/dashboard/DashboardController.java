@@ -449,11 +449,11 @@ public class DashboardController {
             @RequestParam("userId")
             Long userId,
 
-            @RequestParam("fromDate")
+            @RequestParam(value = "fromDate", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate fromDate,
 
-            @RequestParam("toDate")
+            @RequestParam(value = "toDate", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
             LocalDate toDate
     ) {
