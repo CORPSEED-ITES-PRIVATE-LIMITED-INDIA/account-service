@@ -15,7 +15,14 @@ public class AdvanceTaxInvoiceCreateRequestDto {
     @NotNull(message = "estimateId is required")
     private Long estimateId;
 
-    @NotNull(message = "requestedAmount is required")
+    /*
+     * Normal Advance Tax Invoice request:
+     * requestedAmount is mandatory.
+     *
+     * Completed zero-value PURCHASE_ORDER conversion:
+     * requestedAmount must be null. The backend automatically uses
+     * the complete remaining invoiceable amount.
+     */
     @DecimalMin(
             value = "0.01",
             inclusive = true,

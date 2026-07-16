@@ -15,7 +15,13 @@ public class AdvanceTaxInvoiceApprovalRequestDto {
     @NotNull(message = "approverUserId is required")
     private Long approverUserId;
 
-    @NotNull(message = "approvedAmount is required")
+    /*
+     * Normal request: mandatory and may be lower than requestedAmount.
+     *
+     * Completed zero-value PURCHASE_ORDER conversion: optional.
+     * When omitted, the backend approves the complete system-calculated
+     * request amount. If supplied, it must exactly match that amount.
+     */
     @DecimalMin(
             value = "0.01",
             inclusive = true,

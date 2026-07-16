@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
@@ -8,11 +9,15 @@ import com.account.domain.estimate.EstimateStatus;
 import com.account.domain.invoice.AdvanceTaxInvoiceRequest;
 import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
 import com.account.domain.invoice.Invoice;
+import com.account.domain.status.PaymentStatus;
+import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.dto.invoice.AdvanceTaxInvoiceApprovalRequestDto;
 import com.account.dto.invoice.AdvanceTaxInvoiceCreateRequestDto;
 import com.account.dto.invoice.AdvanceTaxInvoiceResponseDto;
+import com.account.dto.operationService.OperationProjectResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
+import com.account.feignClient.OperationFeignClient;
 import com.account.repository.AdvanceTaxInvoiceRequestRepository;
 import com.account.repository.UnbilledInvoiceRepository;
 import com.account.repository.UserRepository;
@@ -21,15 +26,20 @@ import com.account.service.InvoiceService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
+import feign.FeignException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -48,6 +58,8 @@ public class AdvanceTaxInvoiceServiceImpl
             unbilledInvoiceRepository;
 
     private final InvoiceService invoiceService;
+
+    private final OperationFeignClient operationFeignClient;
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -82,22 +94,43 @@ public class AdvanceTaxInvoiceServiceImpl
                 );
 
         /*
-         * Do not start Advance Invoice flow after the normal
-         * Unbilled/payment-first workflow has already started.
+         * Normal rule:
+         * An active UnbilledInvoice means the payment-first flow has started.
+         *
+         * Special exception:
+         * - the first active receipt is an APPROVED zero-value PURCHASE_ORDER
+         * - no actual positive payment exists
+         * - no Invoice exists
+         * - Operation Project is eligible for PO billing
+         * - the Unbilled record has not already been converted
+         *
+         * In that exception, the request amount is system-calculated and
+         * manual amount entry is not allowed.
          */
-        boolean activeUnbilledExists =
+        UnbilledInvoice existingUnbilled =
                 unbilledInvoiceRepository
                         .findByEstimateAndIsCancelledFalse(
                                 estimate
                         )
-                        .isPresent();
+                        .orElse(null);
 
-        if (activeUnbilledExists) {
+        boolean purchaseOrderConversion =
+                isPurchaseOrderCompletedConversionEligible(
+                        estimate,
+                        existingUnbilled
+                );
+
+        if (existingUnbilled != null
+                && !purchaseOrderConversion) {
+
             throw new ValidationException(
                     "Advance Tax Invoice request cannot be created because "
                             + "the normal payment-first workflow has already "
                             + "started for Estimate "
-                            + estimate.getEstimateNumber(),
+                            + estimate.getEstimateNumber()
+                            + ". Only an approved zero-value PURCHASE_ORDER "
+                            + "with PO billing eligibility and no actual payment "
+                            + "can be converted.",
                     "ERR_NORMAL_PAYMENT_FLOW_ALREADY_STARTED",
                     "estimateId"
             );
@@ -147,15 +180,53 @@ public class AdvanceTaxInvoiceServiceImpl
                                 RoundingMode.HALF_UP
                         );
 
-        BigDecimal requestedAmount =
-                money(requestDto.getRequestedAmount());
+        BigDecimal requestedAmount;
 
-        validateRequestedAmount(
-                requestedAmount,
-                estimateTotal,
-                remainingInvoiceableAmount,
-                "requestedAmount"
-        );
+        if (purchaseOrderConversion) {
+
+            if (requestDto.getRequestedAmount() != null) {
+                throw new ValidationException(
+                        "requestedAmount must not be entered manually for "
+                                + "a completed zero-value PURCHASE_ORDER. "
+                                + "The system will use the complete remaining "
+                                + "invoiceable amount.",
+                        "ERR_MANUAL_AMOUNT_NOT_ALLOWED_FOR_PO_CONVERSION",
+                        "requestedAmount"
+                );
+            }
+
+            requestedAmount = remainingInvoiceableAmount;
+
+            if (requestedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "No remaining invoiceable amount is available for "
+                                + "the PURCHASE_ORDER conversion.",
+                        "ERR_NO_REMAINING_INVOICEABLE_AMOUNT",
+                        "estimateId"
+                );
+            }
+
+        } else {
+
+            if (requestDto.getRequestedAmount() == null) {
+                throw new ValidationException(
+                        "requestedAmount is required for a normal "
+                                + "Advance Tax Invoice request.",
+                        "ERR_REQUESTED_AMOUNT_REQUIRED",
+                        "requestedAmount"
+                );
+            }
+
+            requestedAmount =
+                    money(requestDto.getRequestedAmount());
+
+            validateRequestedAmount(
+                    requestedAmount,
+                    estimateTotal,
+                    remainingInvoiceableAmount,
+                    "requestedAmount"
+            );
+        }
 
         AdvanceTaxInvoiceRequest request =
                 new AdvanceTaxInvoiceRequest();
@@ -220,14 +291,6 @@ public class AdvanceTaxInvoiceServiceImpl
             );
         }
 
-        if (requestDto.getApprovedAmount() == null) {
-            throw new ValidationException(
-                    "approvedAmount is required",
-                    "ERR_APPROVED_AMOUNT_REQUIRED",
-                    "approvedAmount"
-            );
-        }
-
         AdvanceTaxInvoiceRequest request =
                 advanceTaxInvoiceRequestRepository
                         .findByIdForUpdate(requestId)
@@ -270,21 +333,30 @@ public class AdvanceTaxInvoiceServiceImpl
         validateEstimateForAdvanceInvoice(estimate);
 
         /*
-         * A normal Unbilled flow may have started after the
-         * Advance request was raised but before Accounts approval.
+         * Re-evaluate the PO conversion conditions during approval because
+         * project/payment state may have changed after request creation.
          */
-        boolean activeUnbilledExists =
+        UnbilledInvoice existingUnbilled =
                 unbilledInvoiceRepository
                         .findByEstimateAndIsCancelledFalse(
                                 estimate
                         )
-                        .isPresent();
+                        .orElse(null);
 
-        if (activeUnbilledExists) {
+        boolean purchaseOrderConversion =
+                isPurchaseOrderCompletedConversionEligible(
+                        estimate,
+                        existingUnbilled
+                );
+
+        if (existingUnbilled != null
+                && !purchaseOrderConversion) {
+
             throw new ValidationException(
                     "Advance Tax Invoice request cannot be approved because "
-                            + "the normal payment-first workflow has already "
-                            + "started for this Estimate.",
+                            + "the normal payment-first workflow is active "
+                            + "and the PURCHASE_ORDER conversion conditions "
+                            + "are no longer satisfied.",
                     "ERR_NORMAL_PAYMENT_FLOW_ALREADY_STARTED",
                     "estimateId"
             );
@@ -293,19 +365,49 @@ public class AdvanceTaxInvoiceServiceImpl
         BigDecimal requestedAmount =
                 money(request.getRequestedAmount());
 
-        BigDecimal approvedAmount =
-                money(requestDto.getApprovedAmount());
+        BigDecimal approvedAmount;
 
-        if (approvedAmount.compareTo(requestedAmount) > 0) {
-            throw new ValidationException(
-                    "Approved amount cannot exceed requested amount. "
-                            + "Requested amount: ₹"
-                            + requestedAmount
-                            + ", approved amount: ₹"
-                            + approvedAmount,
-                    "ERR_APPROVED_AMOUNT_EXCEEDS_REQUESTED",
-                    "approvedAmount"
-            );
+        if (purchaseOrderConversion) {
+
+            if (requestDto.getApprovedAmount() != null
+                    && money(requestDto.getApprovedAmount())
+                    .compareTo(requestedAmount) != 0) {
+
+                throw new ValidationException(
+                        "A completed zero-value PURCHASE_ORDER conversion "
+                                + "must be approved for the complete requested "
+                                + "amount of ₹" + requestedAmount + ".",
+                        "ERR_PO_CONVERSION_PARTIAL_APPROVAL_NOT_ALLOWED",
+                        "approvedAmount"
+                );
+            }
+
+            approvedAmount = requestedAmount;
+
+        } else {
+
+            if (requestDto.getApprovedAmount() == null) {
+                throw new ValidationException(
+                        "approvedAmount is required",
+                        "ERR_APPROVED_AMOUNT_REQUIRED",
+                        "approvedAmount"
+                );
+            }
+
+            approvedAmount =
+                    money(requestDto.getApprovedAmount());
+
+            if (approvedAmount.compareTo(requestedAmount) > 0) {
+                throw new ValidationException(
+                        "Approved amount cannot exceed requested amount. "
+                                + "Requested amount: ₹"
+                                + requestedAmount
+                                + ", approved amount: ₹"
+                                + approvedAmount,
+                        "ERR_APPROVED_AMOUNT_EXCEEDS_REQUESTED",
+                        "approvedAmount"
+                );
+            }
         }
 
         BigDecimal estimateTotal =
@@ -361,6 +463,16 @@ public class AdvanceTaxInvoiceServiceImpl
          * The owning foreign key is Invoice.advanceTaxInvoiceRequest.
          */
         request.setInvoice(generatedInvoice);
+
+        if (purchaseOrderConversion
+                && existingUnbilled != null) {
+
+            existingUnbilled.setConvertedToAdvanceTaxInvoice(true);
+            existingUnbilled.setUpdatedBy(approver);
+            existingUnbilled.setUpdatedAt(LocalDateTime.now());
+
+            unbilledInvoiceRepository.save(existingUnbilled);
+        }
 
         AdvanceTaxInvoiceRequest savedRequest =
                 advanceTaxInvoiceRequestRepository.save(
@@ -552,14 +664,6 @@ public class AdvanceTaxInvoiceServiceImpl
                     "Valid requestedByUserId is required",
                     "ERR_INVALID_REQUESTED_BY",
                     "requestedByUserId"
-            );
-        }
-
-        if (requestDto.getRequestedAmount() == null) {
-            throw new ValidationException(
-                    "requestedAmount is required",
-                    "ERR_REQUESTED_AMOUNT_REQUIRED",
-                    "requestedAmount"
             );
         }
     }
@@ -829,6 +933,206 @@ public class AdvanceTaxInvoiceServiceImpl
                             + "is allowed only for the final balance.",
                     "ERR_ADVANCE_INVOICE_AMOUNT_BELOW_MINIMUM",
                     field
+            );
+        }
+    }
+
+    // =====================================================
+    // PURCHASE ORDER CONVERSION
+    // =====================================================
+
+    private boolean isPurchaseOrderCompletedConversionEligible(
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+
+        if (estimate == null
+                || unbilled == null
+                || unbilled.isCancelled()
+                || unbilled.isConvertedToAdvanceTaxInvoice()) {
+
+            return false;
+        }
+
+        if (!isApprovedInitialZeroValuePurchaseOrder(unbilled)) {
+            return false;
+        }
+
+        if (hasActualPositivePayment(unbilled)) {
+            return false;
+        }
+
+        if (money(unbilled.getReceivedAmount())
+                .compareTo(BigDecimal.ZERO) != 0) {
+
+            return false;
+        }
+
+        if (money(unbilled.getCurrentReceivedAmount())
+                .compareTo(BigDecimal.ZERO) != 0) {
+
+            return false;
+        }
+
+        if (hasAnyNonCancelledInvoice(estimate)) {
+            return false;
+        }
+
+        return isPoBillingEligibleInOperationService(unbilled);
+    }
+
+    private boolean isApprovedInitialZeroValuePurchaseOrder(
+            UnbilledInvoice unbilled
+    ) {
+
+        if (unbilled == null
+                || unbilled.getPayments() == null
+                || unbilled.getPayments().isEmpty()) {
+
+            return false;
+        }
+
+        PaymentReceipt firstActiveReceipt =
+                unbilled.getPayments()
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .filter(payment -> !payment.isCancelled())
+                        .min(
+                                Comparator.comparing(
+                                        PaymentReceipt::getId,
+                                        Comparator.nullsLast(
+                                                Comparator.naturalOrder()
+                                        )
+                                )
+                        )
+                        .orElse(null);
+
+        if (firstActiveReceipt == null
+                || firstActiveReceipt.getPaymentType() == null
+                || firstActiveReceipt.getPaymentType().getCode() == null) {
+
+            return false;
+        }
+
+        boolean purchaseOrder =
+                "PURCHASE_ORDER".equalsIgnoreCase(
+                        firstActiveReceipt
+                                .getPaymentType()
+                                .getCode()
+                                .trim()
+                );
+
+        boolean zeroValue =
+                money(firstActiveReceipt.getAmount())
+                        .compareTo(BigDecimal.ZERO) == 0;
+
+        boolean approved =
+                firstActiveReceipt.getStatus()
+                        == PaymentStatus.APPROVED;
+
+        return purchaseOrder
+                && zeroValue
+                && approved;
+    }
+
+    private boolean hasActualPositivePayment(
+            UnbilledInvoice unbilled
+    ) {
+
+        if (unbilled == null
+                || unbilled.getPayments() == null) {
+
+            return false;
+        }
+
+        return unbilled.getPayments()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(payment -> !payment.isCancelled())
+                .filter(payment ->
+                        payment.getStatus() == PaymentStatus.PENDING
+                                || payment.getStatus()
+                                == PaymentStatus.APPROVED
+                )
+                .anyMatch(payment ->
+                        money(payment.getAmount())
+                                .compareTo(BigDecimal.ZERO) > 0
+                );
+    }
+
+    private boolean hasAnyNonCancelledInvoice(
+            Estimate estimate
+    ) {
+
+        if (estimate == null || estimate.getId() == null) {
+            return false;
+        }
+
+        Long invoiceCount =
+                entityManager.createQuery(
+                                """
+                                select count(invoice)
+                                from Invoice invoice
+                                where invoice.estimate.id = :estimateId
+                                  and invoice.isCancelled = false
+                                """,
+                                Long.class
+                        )
+                        .setParameter(
+                                "estimateId",
+                                estimate.getId()
+                        )
+                        .getSingleResult();
+
+        return invoiceCount != null
+                && invoiceCount > 0;
+    }
+
+    private boolean isPoBillingEligibleInOperationService(
+            UnbilledInvoice unbilled
+    ) {
+
+        if (unbilled == null
+                || unbilled.getUnbilledNumber() == null
+                || unbilled.getUnbilledNumber().isBlank()) {
+
+            return false;
+        }
+
+        try {
+            ResponseEntity<OperationProjectResponseDto> response =
+                    operationFeignClient
+                            .getProjectByUnbilledNumber(
+                                    unbilled.getUnbilledNumber()
+                            );
+
+            if (response == null
+                    || !response.getStatusCode()
+                    .is2xxSuccessful()
+                    || response.getBody() == null) {
+
+                return false;
+            }
+
+            OperationProjectResponseDto project =
+                    response.getBody();
+
+            return Boolean.TRUE.equals(
+                    project.getPoBillingEligible()
+            );
+
+        } catch (FeignException.NotFound ex) {
+
+            return false;
+
+        } catch (FeignException ex) {
+
+            throw new ValidationException(
+                    "Unable to verify PURCHASE_ORDER project billing "
+                            + "eligibility from Operation Service. "
+                            + "Status: " + ex.status(),
+                    "ERR_OPERATION_SERVICE_PO_ELIGIBILITY_CHECK_FAILED",
+                    "estimateId"
             );
         }
     }

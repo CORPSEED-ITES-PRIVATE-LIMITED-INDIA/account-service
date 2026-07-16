@@ -202,13 +202,11 @@ public class UnbilledInvoice {
                 : GstRegistrationType.REGISTERED;
     }
 
-    public boolean isGstApplicable() {
-        return getEffectiveGstRegistrationType().isGstApplicable();
-    }
-
-    public boolean isZeroRatedSupply() {
-        return getEffectiveGstRegistrationType().isZeroRated();
-    }
+    @Column(
+            name = "converted_to_advance_tax_invoice",
+            nullable = false
+    )
+    private boolean convertedToAdvanceTaxInvoice = false;
 
     /**
      * Reserves a pending settlement amount.
