@@ -62,9 +62,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	private final InvoiceRepository invoiceRepository;
 	private final UserRepository userRepository;
-	private final DateTimeUtil dateTimeUtil;
 	private final OperationFeignClient operationFeignClient;
-
 
 	@PersistenceContext
 	private EntityManager entityManager;
