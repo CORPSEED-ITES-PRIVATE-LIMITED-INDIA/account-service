@@ -22,38 +22,18 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(
         name = "unbilled_invoice",
         indexes = {
-                @Index(
-                        name = "idx_unbilled_number_unique",
-                        columnList = "unbilled_number",
-                        unique = true
-                ),
-                @Index(
-                        name = "idx_unbilled_public_uuid_unique",
-                        columnList = "public_uuid",
-                        unique = true
-                ),
-                @Index(
-                        name = "idx_unbilled_status",
-                        columnList = "status"
-                ),
-                @Index(
-                        name = "idx_unbilled_estimate_id_unique",
-                        columnList = "estimate_id",
-                        unique = true
-                ),
-                @Index(
-                        name = "idx_unbilled_company_id",
-                        columnList = "company_id"
-                ),
-                @Index(
-                        name = "idx_unbilled_approved_by",
-                        columnList = "approved_by"
-                )
+                @Index(name = "idx_unbilled_number_unique", columnList = "unbilled_number", unique = true),
+                @Index(name = "idx_unbilled_public_uuid_unique", columnList = "public_uuid", unique = true),
+                @Index(name = "idx_unbilled_status", columnList = "status"),
+                @Index(name = "idx_unbilled_estimate_id_unique", columnList = "estimate_id", unique = true),
+                @Index(name = "idx_unbilled_company_id", columnList = "company_id"),
+                @Index(name = "idx_unbilled_approved_by", columnList = "approved_by")
         }
 )
 @EntityListeners(AuditingEntityListener.class)
@@ -61,148 +41,117 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"estimate", "payments", "taxInvoices"})
+@ToString(exclude = {
+        "estimate",
+        "company",
+        "unit",
+        "contact",
+        "payments",
+        "taxInvoices",
+        "createdBy",
+        "updatedBy",
+        "approvedBy"
+})
 public class UnbilledInvoice {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(
-            name = "public_uuid",
-            nullable = false,
-            unique = true,
-            length = 36
-    )
+    @Column(name = "public_uuid", nullable = false, unique = true, length = 36)
     private String publicUuid;
 
-    @Column(
-            name = "unbilled_number",
-            nullable = false,
-            unique = true,
-            length = 32
-    )
+    @Column(name = "unbilled_number", nullable = false, unique = true, length = 32)
     private String unbilledNumber;
 
-    @Column(
-            name = "advance_invoice_number",
-            nullable = false,
-            unique = true,
-            length = 32
-    )
+    @Column(name = "advance_invoice_number", nullable = false, unique = true, length = 32)
     private String advanceInvoiceNumber;
 
+    @Column(name = "advance_invoice_flag", nullable = false)
     private boolean advanceInvoiceFlag = false;
 
+    @Column(name = "government_fee_active", nullable = false)
     private boolean governmentFeeActive = false;
 
+    @Column(name = "tds_active", nullable = false)
     private boolean tdsActive = false;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "estimate_id",
-            nullable = false,
-            unique = true
-    )
+    @JoinColumn(name = "estimate_id", nullable = false, unique = true)
     private Estimate estimate;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(
-            name = "company_id",
-            nullable = false
-    )
+    @JoinColumn(name = "company_id", nullable = false)
     private Company company;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "unit_id")
     private CompanyUnit unit;
 
-    /*
-     * Snapshot of the GST registration type when the unbilled invoice
-     * is created.
-     *
-     * This ensures that historical unbilled records do not change if
-     * the company unit GST registration type is modified later.
-     */
     @Enumerated(EnumType.STRING)
-    @Column(
-            name = "gst_registration_type",
-            nullable = false,
-            length = 30
-    )
-    private GstRegistrationType gstRegistrationType =
-            GstRegistrationType.REGISTERED;
+    @Column(name = "gst_registration_type", nullable = false, length = 30)
+    private GstRegistrationType gstRegistrationType = GstRegistrationType.REGISTERED;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal totalAmount;
+    @Column(name = "total_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal totalAmount = zeroMoney();
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal receivedAmount = BigDecimal.ZERO;
+    /** Accounts-approved settlement amount. */
+    @Column(name = "received_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal receivedAmount = zeroMoney();
 
-    private BigDecimal currentReceivedAmount = BigDecimal.ZERO;
+    /** Pending settlement awaiting Accounts approval. */
+    @Column(name = "current_received_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal currentReceivedAmount = zeroMoney();
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal outstandingAmount = BigDecimal.ZERO;
+    @Column(name = "outstanding_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal outstandingAmount = zeroMoney();
 
     @Enumerated(EnumType.STRING)
-    @Column(
-            length = 30,
-            nullable = false
-    )
-    private UnbilledStatus status =
-            UnbilledStatus.PENDING_APPROVAL;
+    @Column(name = "status", length = 30, nullable = false)
+    private UnbilledStatus status = UnbilledStatus.PENDING_APPROVAL;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "approved_by")
     private User approvedBy;
 
-    @Column
+    @Column(name = "approved_at")
     private LocalDateTime approvedAt;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "approval_remarks", columnDefinition = "TEXT")
     private String approvalRemarks;
 
+    @Column(name = "is_cancelled", nullable = false)
     private boolean isCancelled = false;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "rejection_reason", columnDefinition = "TEXT")
     private String rejectionReason;
 
     @OneToMany(
             mappedBy = "unbilledInvoice",
             cascade = CascadeType.ALL,
-            orphanRemoval = true
+            orphanRemoval = true,
+            fetch = FetchType.LAZY
     )
+    @OrderBy("createdAt ASC, id ASC")
     private List<PaymentReceipt> payments = new ArrayList<>();
 
+    /** Contains only payment-first Invoices. Advance Invoices have unbilledInvoice = null. */
     @OneToMany(
             mappedBy = "unbilledInvoice",
             cascade = CascadeType.ALL,
-            orphanRemoval = true
+            orphanRemoval = true,
+            fetch = FetchType.LAZY
     )
+    @OrderBy("createdAt ASC, id ASC")
     private List<Invoice> taxInvoices = new ArrayList<>();
 
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "created_by",
-            updatable = false
-    )
+    @JoinColumn(name = "created_by", updatable = false)
     private User createdBy;
 
     @LastModifiedBy
@@ -211,78 +160,87 @@ public class UnbilledInvoice {
     private User updatedBy;
 
     @CreatedDate
-    @Column(updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @LastModifiedDate
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @Column(
-            name = "cancel_attachment",
-            columnDefinition = "TEXT"
-    )
+    @Column(name = "cancel_attachment", columnDefinition = "TEXT")
     private String cancelAttachment;
 
-    /**
-     * Handles legacy unbilled records where gstRegistrationType
-     * may be null.
-     */
+    @PrePersist
+    protected void onCreate() {
+        if (publicUuid == null || publicUuid.isBlank()) {
+            publicUuid = UUID.randomUUID().toString();
+        }
+        if (gstRegistrationType == null) {
+            gstRegistrationType = GstRegistrationType.REGISTERED;
+        }
+        if (status == null) {
+            status = UnbilledStatus.PENDING_APPROVAL;
+        }
+        normalizeMoneyFields();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        normalizeMoneyFields();
+    }
+
+    private void normalizeMoneyFields() {
+        totalAmount = safeMoney(totalAmount);
+        receivedAmount = safeMoney(receivedAmount);
+        currentReceivedAmount = safeMoney(currentReceivedAmount);
+        outstandingAmount = safeMoney(outstandingAmount);
+    }
+
     public GstRegistrationType getEffectiveGstRegistrationType() {
         return gstRegistrationType != null
                 ? gstRegistrationType
                 : GstRegistrationType.REGISTERED;
     }
 
-    /**
-     * GST is applicable for registered and unregistered
-     * domestic customers.
-     */
     public boolean isGstApplicable() {
-        return getEffectiveGstRegistrationType()
-                .isGstApplicable();
+        return getEffectiveGstRegistrationType().isGstApplicable();
     }
 
-    /**
-     * SEZ and international/export customers are treated
-     * as zero-rated supplies.
-     */
     public boolean isZeroRatedSupply() {
-        return getEffectiveGstRegistrationType()
-                .isZeroRated();
+        return getEffectiveGstRegistrationType().isZeroRated();
     }
 
     /**
-     * Updates received and outstanding amounts only.
-     * Does NOT change status — status is controlled only by approval workflow.
+     * Reserves a pending settlement amount.
+     * Status remains controlled by the approval workflow.
      */
     public void applyPayment(BigDecimal amount) {
-
         if (amount == null) {
-            throw new IllegalArgumentException(
-                    "Payment amount cannot be null"
-            );
+            throw new IllegalArgumentException("Payment amount cannot be null");
         }
 
-        // add condition for PURCHASE_ORDER
-
-        BigDecimal safeAmount = amount.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
-
-        // Allow zero (for PURCHASE_ORDER) but block negative amounts
+        BigDecimal safeAmount = amount.setScale(2, RoundingMode.HALF_UP);
         if (safeAmount.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException(
-                    "Payment amount cannot be negative"
-            );
+            throw new IllegalArgumentException("Payment amount cannot be negative");
         }
 
-        // Only track pending amount
-        this.currentReceivedAmount =
-                this.currentReceivedAmount.add(safeAmount);
+        currentReceivedAmount = safeMoney(currentReceivedAmount)
+                .add(safeAmount)
+                .setScale(2, RoundingMode.HALF_UP);
 
-        // Outstanding should reflect only APPROVED amount
-        this.outstandingAmount =
-                this.totalAmount.subtract(this.receivedAmount);
+        outstandingAmount = safeMoney(totalAmount)
+                .subtract(safeMoney(receivedAmount))
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal safeMoney(BigDecimal value) {
+        return value == null
+                ? zeroMoney()
+                : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     }
 }

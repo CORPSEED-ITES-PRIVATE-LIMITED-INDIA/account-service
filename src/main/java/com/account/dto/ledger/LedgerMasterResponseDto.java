@@ -1,5 +1,6 @@
 package com.account.dto.ledger;
 
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.ledger.DebitCredit;
 import com.account.domain.ledger.LedgerGroupType;
 import com.account.domain.ledger.LedgerType;
@@ -40,6 +41,9 @@ public class LedgerMasterResponseDto {
     private Long unitId;
     private String unitName;
 
+    // GST registration type of the selected company unit
+    private GstRegistrationType gstRegistrationType;
+
     private Long contactId;
     private String contactName;
 
@@ -66,5 +70,4 @@ public class LedgerMasterResponseDto {
     private LocalDateTime updatedAt;
 
     private List<LedgerTransactionResponseDto> transactions;
-
 }

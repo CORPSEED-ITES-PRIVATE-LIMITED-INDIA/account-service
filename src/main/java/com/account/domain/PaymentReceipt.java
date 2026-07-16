@@ -1,130 +1,182 @@
 package com.account.domain;
 
+import com.account.domain.invoice.Invoice;
 import com.account.domain.ledger.LedgerMaster;
 import com.account.domain.status.PaymentStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedBy;
 import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedBy;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "payment_receipt",
+@Table(
+        name = "payment_receipt",
         indexes = {
-                @Index(name = "idx_payment_unbilled_id", columnList = "unbilled_invoice_id"),
-                @Index(name = "idx_payment_date", columnList = "payment_date"),
-                @Index(name = "idx_payment_type_id", columnList = "payment_type_id"),
-                @Index(name = "idx_payment_transaction_ref", columnList = "transaction_ref")
-        })
+                @Index(name = "idx_payment_receipt_unbilled_id", columnList = "unbilled_invoice_id"),
+                @Index(name = "idx_payment_receipt_invoice_id", columnList = "invoice_id"),
+                @Index(name = "idx_payment_receipt_status", columnList = "status"),
+                @Index(name = "idx_payment_receipt_payment_date", columnList = "payment_date"),
+                @Index(name = "idx_payment_receipt_received_by", columnList = "received_by"),
+                @Index(name = "idx_payment_receipt_bank_ledger", columnList = "bank_ledger_id")
+        }
+)
 @EntityListeners(AuditingEntityListener.class)
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"unbilledInvoice"})
+@ToString(exclude = {
+        "unbilledInvoice",
+        "invoice",
+        "paymentType",
+        "receivedBy",
+        "bankLedger"
+})
 public class PaymentReceipt {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "unbilled_invoice_id", nullable = false)
+    /**
+     * Existing payment-first source.
+     * Normal payment: unbilledInvoice != null and invoice == null.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unbilled_invoice_id")
     private UnbilledInvoice unbilledInvoice;
+
+    /**
+     * Advance Tax Invoice payment source.
+     * Advance payment: invoice != null and unbilledInvoice == null.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "invoice_id")
+    private Invoice invoice;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "payment_type_id", nullable = false)
-    private PaymentType paymentType;  // FULL, PARTIAL, INSTALLMENT, PURCHASE_ORDER
+    private PaymentType paymentType;
 
-    @Enumerated(EnumType.STRING)
-    private PaymentStatus status;
-
-    @Column(precision = 15, scale = 2, nullable = false)
-    private BigDecimal amount;
+    /** Actual amount received in Bank/Cash/Payment Gateway. */
+    @Column(name = "amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal amount = BigDecimal.ZERO;
 
     @Column(name = "payment_date", nullable = false)
     private LocalDate paymentDate;
 
-    private boolean isCancelled = false;
+    /**
+     * This is declared as String to match the service usage provided.
+     * If your existing project uses a PaymentMode enum, preserve that enum type
+     * and add @Enumerated(EnumType.STRING) instead.
+     */
+    @Column(name = "payment_mode", length = 50)
+    private String paymentMode;
 
-    @Column(length = 50)
-    private String paymentMode;  // UPI, NEFT, RTGS, CASH, CARD, CHEQUE, etc.
+    @Column(name = "transaction_reference", length = 255)
+    private String transactionReference;
 
-    @Column(name = "transaction_ref", length = 100)
-    private String transactionReference;  // Bank txn ID, UPI ID, Cheque No.
+    @Column(name = "remarks", columnDefinition = "TEXT")
+    private String remarks;
 
-    @Column(columnDefinition = "TEXT")
-    private String remarks;  // Salesperson notes: "Paid for Milestone 1", "Advance payment"
-
-    // Who registered this payment (usually salesperson)
-    @CreatedBy
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "received_by", updatable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "received_by", nullable = false)
     private User receivedBy;
 
-    // Future: Proof attachment (file path or S3 key)
-    @Column(name = "payment_proof", length = 500)
+    @Column(name = "payment_proof", columnDefinition = "TEXT")
     private String paymentProof;
 
-    @Column(length = 9)
-    private String eprFinancialYear;
-
-    @Column(length = 50)
-    private String eprPortalRegistrationNumber;
-
-    @Column(length = 100)
-    private String eprCertificateOrInvoiceNumber;
-
-    @CreatedDate
-    @Column(updatable = false)
-    private LocalDateTime createdAt;
-
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
-
-    @LastModifiedBy
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "updated_by")
-    private User updatedBy;
-
-    // ==================== NEW FIELDS FOR PO PAYMENT TERMS ====================
     @Column(name = "payment_terms_days")
-    private Integer paymentTermsDays;        // e.g. 90, 180
+    private Integer paymentTermsDays;
 
-    @Column(name = "next_payment_due_date")
-    private LocalDate nextPaymentDueDate;    // Most important for reminders
+    @Column(name = "payment_terms", length = 255)
+    private String paymentTerms;
 
-    @Column(length = 100)
-    private String paymentTerms;             // e.g. "Net 90 Days", "Immediate"
+    @Column(name = "po_number", length = 255)
+    private String poNumber;
 
-    /*
-     * Bank ledger selected during payment registration.
-     *
-     * Example:
-     * Yes Bank - Corpseed Current Account
-     * HDFC Bank - Corpseed Current Account
-     *
-     * This will be used later during account approval for:
-     *
-     * Dr Selected Bank Ledger
-     * Cr Customer Advance Ledger
-     */
+    @Column(name = "po_attachment_url", columnDefinition = "TEXT")
+    private String poAttachmentUrl;
+
+    /** Null only for an initial zero-value Purchase Order registration. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "bank_ledger_id")
     private LedgerMaster bankLedger;
 
-    @Column(name = "po_number", length = 100)
-    private String poNumber;
+    // ==================== EPR DETAILS ====================
 
-    @Column(name = "po_attachment_url", length = 500)
-    private String poAttachmentUrl;
+    @Column(name = "epr_financial_year", length = 20)
+    private String eprFinancialYear;
 
+    @Column(name = "epr_portal_registration_number", length = 255)
+    private String eprPortalRegistrationNumber;
 
+    @Column(name = "epr_certificate_or_invoice_number", length = 255)
+    private String eprCertificateOrInvoiceNumber;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private PaymentStatus status = PaymentStatus.PENDING;
+
+    @Column(name = "is_cancelled", nullable = false)
+    private boolean isCancelled = false;
+
+    @CreatedDate
+    @Column(name = "created_at", updatable = false)
+    private LocalDateTime createdAt;
+
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        if (paymentDate == null) {
+            paymentDate = LocalDate.now();
+        }
+        amount = safeMoney(amount);
+        if (status == null) {
+            status = PaymentStatus.PENDING;
+        }
+        validateSourceMapping();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        amount = safeMoney(amount);
+        validateSourceMapping();
+    }
+
+    private void validateSourceMapping() {
+        boolean hasUnbilled = unbilledInvoice != null;
+        boolean hasInvoice = invoice != null;
+
+        if (hasUnbilled == hasInvoice) {
+            throw new IllegalStateException(
+                    "PaymentReceipt must reference exactly one source: "
+                            + "either UnbilledInvoice or Advance Tax Invoice"
+            );
+        }
+    }
+
+    private static BigDecimal safeMoney(BigDecimal value) {
+        return value == null
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    public boolean isAdvanceInvoicePayment() {
+        return invoice != null && unbilledInvoice == null;
+    }
+
+    public boolean isUnbilledPayment() {
+        return unbilledInvoice != null && invoice == null;
+    }
 }

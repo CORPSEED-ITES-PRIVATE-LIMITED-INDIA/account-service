@@ -5,6 +5,7 @@
 package com.account.service;
 
 import com.account.domain.*;
+import com.account.domain.invoice.AdvanceTaxInvoiceRequest;
 import com.account.domain.invoice.Invoice;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
@@ -78,5 +79,9 @@ public interface InvoiceService {
 	InvoiceDetailDto confirmEInvoiceAndCreateProject(Long invoiceId, ConfirmInvoiceEInvoiceRequestDto request);
 
 
+	Invoice generateAdvanceTaxInvoice(
+			AdvanceTaxInvoiceRequest request,
+			User approver
+	);
 
 }

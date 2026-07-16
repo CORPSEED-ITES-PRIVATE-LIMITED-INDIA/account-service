@@ -1,6 +1,7 @@
 package com.account.repository;
 
 import com.account.domain.PaymentReceipt;
+import com.account.domain.invoice.Invoice;
 import com.account.domain.status.PaymentStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.dto.dashboard.MonthlyAmountProjection;
@@ -108,6 +109,14 @@ public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, 
             @Param("fromDate") LocalDate fromDate,
             @Param("toDate") LocalDate toDate
     );
+
+
+    Optional<PaymentReceipt> findTopByInvoiceAndIsCancelledFalseOrderByIdAsc(
+            Invoice invoice
+    );
+
+
+
 
 
 }

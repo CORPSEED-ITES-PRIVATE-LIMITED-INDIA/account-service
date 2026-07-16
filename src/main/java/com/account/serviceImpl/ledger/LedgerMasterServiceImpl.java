@@ -726,6 +726,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
                 .contactId(contact != null ? contact.getId() : null)
                 .contactName(contact != null ? contact.getName() : null)
+                .gstRegistrationType(
+                        unit != null ? unit.getGstRegistrationType() : null
+                )
 
                 .gstNo(ledger.getGstNo())
                 .panNo(ledger.getPanNo())

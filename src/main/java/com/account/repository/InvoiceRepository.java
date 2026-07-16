@@ -1,6 +1,8 @@
 package com.account.repository;
 
 import com.account.domain.invoice.Invoice;
+import com.account.domain.invoice.InvoiceOrigin;
+import com.account.domain.invoice.InvoicePaymentStatus;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
 import com.account.dto.dashboard.*;
@@ -14,6 +16,7 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -445,6 +448,21 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
 
 
     Optional<Invoice> findByTriggeringPaymentAndIsCancelledFalse(PaymentReceipt triggeringPayment);
+
+    @Query("""
+        select i
+        from Invoice i
+        where i.estimate.id = :estimateId
+          and i.invoiceOrigin = :origin
+          and i.isCancelled = false
+          and i.paymentStatus in :paymentStatuses
+        order by i.invoiceDate asc, i.id asc
+        """)
+    List<Invoice> findActiveAdvanceInvoicesForUpdate(
+            @Param("estimateId") Long estimateId,
+            @Param("origin") InvoiceOrigin origin,
+            @Param("paymentStatuses") Collection<InvoicePaymentStatus> paymentStatuses
+    );
 
 
 }

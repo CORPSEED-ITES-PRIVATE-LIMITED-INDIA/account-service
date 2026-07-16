@@ -14,14 +14,8 @@ import java.time.LocalDateTime;
 @Table(
         name = "invoice_line_item",
         indexes = {
-                @Index(
-                        name = "idx_invoice_line_item_invoice_id",
-                        columnList = "invoice_id"
-                ),
-                @Index(
-                        name = "idx_invoice_line_item_display_order",
-                        columnList = "display_order"
-                )
+                @Index(name = "idx_invoice_line_item_invoice_id", columnList = "invoice_id"),
+                @Index(name = "idx_invoice_line_item_display_order", columnList = "display_order")
         }
 )
 @EntityListeners(AuditingEntityListener.class)
@@ -43,13 +37,13 @@ public class InvoiceLineItem {
     @Column(name = "source_estimate_line_item_id")
     private Long sourceEstimateLineItemId;
 
-    @Column(nullable = false, length = 255)
+    @Column(name = "item_name", nullable = false, length = 255)
     private String itemName;
 
     @Column(length = 255)
     private String description;
 
-    @Column(length = 50)
+    @Column(name = "hsn_sac_code", length = 50)
     private String hsnSacCode;
 
     @Column(nullable = false)
@@ -58,234 +52,109 @@ public class InvoiceLineItem {
     @Column(length = 20)
     private String unit;
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal unitPriceExGst;
+    @Column(name = "unit_price_ex_gst", precision = 15, scale = 2, nullable = false)
+    private BigDecimal unitPriceExGst = BigDecimal.ZERO;
 
-    @Column(precision = 5, scale = 2)
+    @Column(name = "gst_rate", precision = 5, scale = 2)
     private BigDecimal gstRate = BigDecimal.ZERO;
 
-    /*
-     * false = CGST + SGST
-     * true  = IGST
-     */
+    /** false = CGST + SGST, true = IGST. */
     @Column(name = "igst_flag", nullable = false)
     private boolean igstFlag = false;
 
-    // ==================== CALCULATED AMOUNTS ====================
-
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
+    @Column(name = "line_total_ex_gst", precision = 15, scale = 2, nullable = false)
     private BigDecimal lineTotalExGst = BigDecimal.ZERO;
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
+    @Column(name = "gst_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal gstAmount = BigDecimal.ZERO;
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
+    @Column(name = "line_total_with_gst", precision = 15, scale = 2, nullable = false)
     private BigDecimal lineTotalWithGst = BigDecimal.ZERO;
 
-    // GST breakup per line for GSTR-1
-
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
+    @Column(name = "cgst_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal cgstAmount = BigDecimal.ZERO;
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
+    @Column(name = "sgst_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal sgstAmount = BigDecimal.ZERO;
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
+    @Column(name = "igst_amount", precision = 15, scale = 2, nullable = false)
     private BigDecimal igstAmount = BigDecimal.ZERO;
 
     @Column(name = "display_order")
     private Integer displayOrder;
 
-    @Column(length = 100)
+    @Column(name = "category_code", length = 100)
     private String categoryCode;
 
+    @Column(name = "is_cancelled", nullable = false)
     private boolean isCancelled = false;
 
-    @Column(length = 50)
+    @Column(name = "fee_type", length = 50)
     private String feeType;
 
     @CreatedDate
-    @Column(updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @LastModifiedDate
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-
 
     @PrePersist
     @PreUpdate
     public void calculateLineTotals() {
+        quantity = quantity != null && quantity > 0 ? quantity : 1;
+        unitPriceExGst = safeMoney(unitPriceExGst);
+        gstRate = safeMoney(gstRate);
 
-        Integer safeQuantity =
-                quantity != null && quantity > 0
-                        ? quantity
-                        : 1;
+        lineTotalExGst = unitPriceExGst
+                .multiply(BigDecimal.valueOf(quantity))
+                .setScale(2, RoundingMode.HALF_UP);
 
-        BigDecimal safeUnitPrice =
-                unitPriceExGst != null
-                        ? unitPriceExGst
-                        : BigDecimal.ZERO;
+        gstAmount = gstRate.compareTo(BigDecimal.ZERO) > 0
+                ? lineTotalExGst
+                .multiply(gstRate)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP)
+                : zeroMoney();
 
-        BigDecimal safeGstRate =
-                gstRate != null
-                        ? gstRate
-                        : BigDecimal.ZERO;
+        lineTotalWithGst = lineTotalExGst
+                .add(gstAmount)
+                .setScale(2, RoundingMode.HALF_UP);
 
-        this.quantity = safeQuantity;
+        if (gstAmount.compareTo(BigDecimal.ZERO) == 0) {
+            cgstAmount = zeroMoney();
+            sgstAmount = zeroMoney();
+            igstAmount = zeroMoney();
+            return;
+        }
 
-        this.unitPriceExGst = safeUnitPrice.setScale(
+        if (igstFlag) {
+            igstAmount = safeMoney(gstAmount);
+            cgstAmount = zeroMoney();
+            sgstAmount = zeroMoney();
+            return;
+        }
+
+        cgstAmount = gstAmount.divide(
+                BigDecimal.valueOf(2),
                 2,
                 RoundingMode.HALF_UP
         );
 
-        this.gstRate = safeGstRate.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
-
-        // Quantity × unit price
-        this.lineTotalExGst = this.unitPriceExGst
-                .multiply(BigDecimal.valueOf(this.quantity))
+        sgstAmount = gstAmount
+                .subtract(cgstAmount)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        // GST calculation
-        if (this.gstRate.compareTo(BigDecimal.ZERO) > 0) {
+        igstAmount = zeroMoney();
+    }
 
-            this.gstAmount = this.lineTotalExGst
-                    .multiply(this.gstRate)
-                    .divide(
-                            BigDecimal.valueOf(100),
-                            2,
-                            RoundingMode.HALF_UP
-                    );
+    private static BigDecimal safeMoney(BigDecimal value) {
+        return value == null
+                ? zeroMoney()
+                : value.setScale(2, RoundingMode.HALF_UP);
+    }
 
-        } else {
-
-            /*
-             * SEZ, INTERNATIONAL or other 0% GST item.
-             */
-            this.gstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-        }
-
-        this.lineTotalWithGst = this.lineTotalExGst
-                .add(this.gstAmount)
-                .setScale(2, RoundingMode.HALF_UP);
-
-        // ==================== GST BREAKUP ====================
-
-        if (this.gstAmount.compareTo(BigDecimal.ZERO) == 0) {
-
-            this.cgstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-            this.sgstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-            this.igstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-        } else if (this.igstFlag) {
-
-            /*
-             * Interstate transaction:
-             * Entire GST amount is IGST.
-             */
-            this.igstAmount =
-                    this.gstAmount.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-            this.cgstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-            this.sgstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-        } else {
-
-            /*
-             * Intrastate transaction:
-             * GST is split between CGST and SGST.
-             */
-            BigDecimal calculatedCgst =
-                    this.gstAmount.divide(
-                            BigDecimal.valueOf(2),
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-            /*
-             * Calculate SGST as the remaining amount so that:
-             *
-             * CGST + SGST = exact GST amount
-             *
-             * This prevents a ₹0.01 rounding mismatch.
-             */
-            BigDecimal calculatedSgst =
-                    this.gstAmount
-                            .subtract(calculatedCgst)
-                            .setScale(
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
-
-            this.cgstAmount = calculatedCgst;
-            this.sgstAmount = calculatedSgst;
-
-            this.igstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-        }
+    private static BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     }
 }

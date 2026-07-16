@@ -7,8 +7,7 @@ import com.account.domain.company.CompanyUnit;
 import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateLineItem;
-import com.account.domain.invoice.Invoice;
-import com.account.domain.invoice.InvoiceLineItem;
+import com.account.domain.invoice.*;
 import com.account.domain.ledger.*;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.status.PaymentStatus;
@@ -2948,6 +2947,739 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return ledgerMasterRepository.save(ledger);
 	}
+
+
+
+
+
+	/*
+	 * Add this method and its private helper methods inside your existing
+	 * InvoiceServiceImpl class.
+	 *
+	 * This method only generates the Invoice.
+	 * It does NOT post a Sales Invoice voucher and does NOT create/sync
+	 * an Operation Project. Those actions must remain in the origin-aware
+	 * E-Invoice confirmation/finalization workflow to avoid duplicate posting.
+	 */
+
+	@Override
+	@Transactional
+	public Invoice generateAdvanceTaxInvoice(
+			AdvanceTaxInvoiceRequest request,
+			User approver
+	) {
+
+		if (request == null || request.getId() == null) {
+			throw new ValidationException(
+					"Approved Advance Tax Invoice request is required",
+					"ERR_ADVANCE_REQUEST_REQUIRED_FOR_INVOICE",
+					"requestId"
+			);
+		}
+
+		if (request.getStatus()
+				!= AdvanceTaxInvoiceRequestStatus.APPROVED) {
+
+			throw new ValidationException(
+					"Advance Tax Invoice request must be APPROVED "
+							+ "before Invoice generation",
+					"ERR_ADVANCE_REQUEST_NOT_APPROVED",
+					"requestId"
+			);
+		}
+
+		if (request.getInvoice() != null) {
+			throw new ValidationException(
+					"Invoice has already been generated for this "
+							+ "Advance Tax Invoice request",
+					"ERR_ADVANCE_INVOICE_ALREADY_GENERATED",
+					"requestId"
+			);
+		}
+
+		if (approver == null || approver.getId() == null) {
+			throw new ValidationException(
+					"Approver is required for Invoice generation",
+					"ERR_APPROVER_REQUIRED_FOR_INVOICE",
+					"approverUserId"
+			);
+		}
+
+		Estimate estimate = request.getEstimate();
+
+		if (estimate == null || estimate.getId() == null) {
+			throw new ValidationException(
+					"Estimate is not linked with the Advance Tax "
+							+ "Invoice request",
+					"ERR_ESTIMATE_NOT_LINKED_WITH_ADVANCE_REQUEST",
+					"requestId"
+			);
+		}
+
+		if (estimate.getLineItems() == null
+				|| estimate.getLineItems().isEmpty()) {
+
+			throw new ValidationException(
+					"Estimate line items are required for Invoice generation",
+					"ERR_ESTIMATE_LINE_ITEMS_NOT_FOUND",
+					"estimateId"
+			);
+		}
+
+		BigDecimal approvedAmount =
+				safeMoney(request.getApprovedAmount());
+
+		if (approvedAmount.compareTo(BigDecimal.ZERO) <= 0) {
+			throw new ValidationException(
+					"Approved amount must be greater than zero",
+					"ERR_APPROVED_AMOUNT_NOT_POSITIVE",
+					"approvedAmount"
+			);
+		}
+
+		BigDecimal estimateGrandTotal =
+				safeMoney(estimate.getGrandTotal());
+
+		if (estimateGrandTotal.compareTo(BigDecimal.ZERO) <= 0) {
+			throw new ValidationException(
+					"Estimate grand total must be greater than zero",
+					"ERR_ESTIMATE_TOTAL_NOT_POSITIVE",
+					"estimateId"
+			);
+		}
+
+		if (approvedAmount.compareTo(estimateGrandTotal) > 0) {
+			throw new ValidationException(
+					"Approved amount cannot exceed Estimate grand total",
+					"ERR_APPROVED_AMOUNT_EXCEEDS_ESTIMATE_TOTAL",
+					"approvedAmount"
+			);
+		}
+
+		/*
+		 * Defensive duplicate check in addition to:
+		 * - request row lock
+		 * - one-to-one unique database constraint
+		 */
+		Long existingInvoiceCount =
+				entityManager.createQuery(
+								"""
+                                select count(invoice)
+                                from Invoice invoice
+                                where invoice.advanceTaxInvoiceRequest.id = :requestId
+                                  and invoice.isCancelled = false
+                                """,
+								Long.class
+						)
+						.setParameter(
+								"requestId",
+								request.getId()
+						)
+						.getSingleResult();
+
+		if (existingInvoiceCount != null
+				&& existingInvoiceCount > 0) {
+
+			throw new ValidationException(
+					"Invoice has already been generated for this request",
+					"ERR_ADVANCE_INVOICE_ALREADY_GENERATED",
+					"requestId"
+			);
+		}
+
+		GstRegistrationType gstRegistrationType =
+				resolveAdvanceInvoiceGstType(
+						estimate
+				);
+
+		boolean zeroRatedSupply =
+				gstRegistrationType.isZeroRated();
+
+		Organization organization =
+				organizationRepository
+						.findTopOrganization()
+						.orElseThrow(() ->
+								new ResourceNotFoundException(
+										"Organization details not found. "
+												+ "Please configure organization "
+												+ "profile before generating Invoice.",
+										"ORGANIZATION_NOT_FOUND"
+								)
+						);
+
+		boolean igstApplicable =
+				zeroRatedSupply
+						|| isIgstApplicableForEstimate(
+						estimate,
+						organization
+				);
+
+		Invoice invoice = new Invoice();
+
+		invoice.setPublicUuid(
+				UUID.randomUUID().toString()
+		);
+
+		invoice.setInvoiceNumber(
+				generateInvoiceNumber()
+		);
+
+		invoice.setEstimate(estimate);
+		invoice.setAdvanceTaxInvoiceRequest(request);
+
+		invoice.setInvoiceOrigin(
+				InvoiceOrigin.ADVANCE_TAX_INVOICE
+		);
+
+		invoice.setUnbilledInvoice(null);
+		invoice.setTriggeringPayment(null);
+
+		invoice.setGstRegistrationType(
+				gstRegistrationType
+		);
+
+		invoice.setInvoiceDate(LocalDate.now());
+		invoice.setCurrency("INR");
+		invoice.setStatus(InvoiceStatus.GENERATED);
+
+		invoice.setCreatedBy(approver);
+		invoice.setUpdatedBy(approver);
+		invoice.setCreatedAt(LocalDateTime.now());
+		invoice.setUpdatedAt(LocalDateTime.now());
+
+		invoice.setSolutionId(
+				estimate.getSolutionId()
+		);
+
+		invoice.setSolutionName(
+				estimate.getSolutionName()
+		);
+
+		copyOrganizationDetailsToInvoice(
+				invoice,
+				organization
+		);
+
+		CompanyUnit unit =
+				estimate.getUnit();
+
+		String buyerGstin = null;
+
+		if (unit != null
+				&& (
+				gstRegistrationType
+						== GstRegistrationType.REGISTERED
+						|| gstRegistrationType
+						== GstRegistrationType.SEZ
+		)) {
+
+			buyerGstin = unit.getGstNo();
+		}
+
+		invoice.setBuyerGstin(buyerGstin);
+
+		invoice.setPlaceOfSupplyStateCode(
+				estimate.getPlaceOfSupplyStateCode()
+		);
+
+		BigDecimal ratio =
+				approvedAmount.divide(
+						estimateGrandTotal,
+						10,
+						RoundingMode.HALF_UP
+				);
+
+		List<InvoiceLineItem> invoiceLines =
+				new ArrayList<>();
+
+		BigDecimal accumulatedWithGst =
+				BigDecimal.ZERO.setScale(
+						2,
+						RoundingMode.HALF_UP
+				);
+
+		for (EstimateLineItem estimateLine
+				: estimate.getLineItems()) {
+
+			if (estimateLine == null) {
+				continue;
+			}
+
+			InvoiceLineItem invoiceLine =
+					new InvoiceLineItem();
+
+			invoiceLine.setInvoice(invoice);
+
+			invoiceLine.setSourceEstimateLineItemId(
+					estimateLine.getId()
+			);
+
+			invoiceLine.setItemName(
+					estimateLine.getItemName()
+			);
+
+			invoiceLine.setDescription(
+					estimateLine.getDescription()
+			);
+
+			invoiceLine.setHsnSacCode(
+					estimateLine.getHsnSacCode()
+			);
+
+			invoiceLine.setQuantity(
+					estimateLine.getQuantity()
+			);
+
+			invoiceLine.setUnit(
+					estimateLine.getUnit()
+			);
+
+			BigDecimal estimateUnitPrice =
+					safeMoney(
+							estimateLine.getUnitPriceExGst()
+					);
+
+			BigDecimal proratedUnitPrice =
+					estimateUnitPrice
+							.multiply(ratio)
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							);
+
+			invoiceLine.setUnitPriceExGst(
+					proratedUnitPrice
+			);
+
+			BigDecimal effectiveGstRate =
+					zeroRatedSupply
+							? BigDecimal.ZERO.setScale(
+							2,
+							RoundingMode.HALF_UP
+					)
+							: safeMoney(
+							estimateLine.getGstRate()
+					);
+
+			invoiceLine.setGstRate(
+					effectiveGstRate
+			);
+
+			invoiceLine.setIgstFlag(
+					igstApplicable
+			);
+
+			invoiceLine.setDisplayOrder(
+					estimateLine.getDisplayOrder()
+			);
+
+			invoiceLine.setCategoryCode(
+					estimateLine.getCategoryCode()
+			);
+
+			invoiceLine.setFeeType(
+					estimateLine.getFeeType()
+			);
+
+			invoiceLine.calculateLineTotals();
+
+			invoiceLines.add(invoiceLine);
+
+			accumulatedWithGst =
+					accumulatedWithGst
+							.add(
+									safeMoney(
+											invoiceLine
+													.getLineTotalWithGst()
+									)
+							)
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							);
+		}
+
+		if (invoiceLines.isEmpty()) {
+			throw new ValidationException(
+					"No valid Estimate line items were available "
+							+ "for Invoice generation",
+					"ERR_NO_VALID_INVOICE_LINE_ITEMS",
+					"estimateId"
+			);
+		}
+
+		/*
+		 * Preserve the same exact-total adjustment used in the
+		 * current payment-generated Invoice method.
+		 */
+		adjustAdvanceInvoiceLastLine(
+				invoiceLines,
+				approvedAmount,
+				accumulatedWithGst,
+				request.getId()
+		);
+
+		invoice.setLineItems(invoiceLines);
+
+		BigDecimal subTotalExGst =
+				invoiceLines.stream()
+						.map(
+								InvoiceLineItem::getLineTotalExGst
+						)
+						.filter(Objects::nonNull)
+						.reduce(
+								BigDecimal.ZERO,
+								BigDecimal::add
+						)
+						.setScale(
+								2,
+								RoundingMode.HALF_UP
+						);
+
+		BigDecimal totalGstAmount =
+				invoiceLines.stream()
+						.map(
+								InvoiceLineItem::getGstAmount
+						)
+						.filter(Objects::nonNull)
+						.reduce(
+								BigDecimal.ZERO,
+								BigDecimal::add
+						)
+						.setScale(
+								2,
+								RoundingMode.HALF_UP
+						);
+
+		invoice.setSubTotalExGst(
+				subTotalExGst
+		);
+
+		invoice.setTotalGstAmount(
+				totalGstAmount
+		);
+
+		BigDecimal totalGst =
+				safeMoney(totalGstAmount);
+
+		if (zeroRatedSupply
+				|| totalGst.compareTo(
+				BigDecimal.ZERO
+		) == 0) {
+
+			invoice.setTotalGstAmount(
+					zeroMoneyForAdvanceInvoice()
+			);
+
+			invoice.setCgstAmount(
+					zeroMoneyForAdvanceInvoice()
+			);
+
+			invoice.setSgstAmount(
+					zeroMoneyForAdvanceInvoice()
+			);
+
+			invoice.setIgstAmount(
+					zeroMoneyForAdvanceInvoice()
+			);
+
+		} else if (igstApplicable) {
+
+			invoice.setIgstAmount(totalGst);
+
+			invoice.setCgstAmount(
+					zeroMoneyForAdvanceInvoice()
+			);
+
+			invoice.setSgstAmount(
+					zeroMoneyForAdvanceInvoice()
+			);
+
+		} else {
+
+			BigDecimal cgstAmount =
+					totalGst.divide(
+							BigDecimal.valueOf(2),
+							2,
+							RoundingMode.HALF_UP
+					);
+
+			BigDecimal sgstAmount =
+					totalGst
+							.subtract(cgstAmount)
+							.setScale(
+									2,
+									RoundingMode.HALF_UP
+							);
+
+			invoice.setCgstAmount(cgstAmount);
+			invoice.setSgstAmount(sgstAmount);
+
+			invoice.setIgstAmount(
+					zeroMoneyForAdvanceInvoice()
+			);
+		}
+
+		/*
+		 * The header amount is the Accounts-approved amount.
+		 */
+		invoice.setGrandTotal(
+				approvedAmount
+		);
+
+		/*
+		 * No payment has been received at generation time.
+		 */
+		invoice.setReceivedAmount(
+				zeroMoneyForAdvanceInvoice()
+		);
+
+		invoice.setPendingReceivedAmount(
+				zeroMoneyForAdvanceInvoice()
+		);
+
+		invoice.setOutstandingAmount(
+				approvedAmount
+		);
+
+		invoice.setPaymentStatus(
+				InvoicePaymentStatus.UNPAID
+		);
+
+		Invoice savedInvoice =
+				invoiceRepository.save(invoice);
+
+		request.setInvoice(savedInvoice);
+
+		log.info(
+				"Advance Tax Invoice generated | requestId={} "
+						+ "| estimateId={} | invoiceId={} "
+						+ "| invoiceNumber={} | gstType={} "
+						+ "| approvedAmount={} | taxable={} "
+						+ "| gst={} | outstanding={} | lines={}",
+				request.getId(),
+				estimate.getId(),
+				savedInvoice.getId(),
+				savedInvoice.getInvoiceNumber(),
+				savedInvoice.getGstRegistrationType(),
+				approvedAmount,
+				savedInvoice.getSubTotalExGst(),
+				savedInvoice.getTotalGstAmount(),
+				savedInvoice.getOutstandingAmount(),
+				invoiceLines.size()
+		);
+
+		return savedInvoice;
+	}
+
+
+
+	private GstRegistrationType resolveAdvanceInvoiceGstType(
+			Estimate estimate
+	) {
+
+		GstRegistrationType estimateType =
+				estimate != null
+						? estimate.getGstRegistrationType()
+						: null;
+
+		GstRegistrationType unitType =
+				estimate != null
+						&& estimate.getUnit() != null
+						? estimate.getUnit()
+						.getGstRegistrationType()
+						: null;
+
+		/*
+		 * Keep the same defensive INTERNATIONAL priority used
+		 * in the existing payment-generated Invoice method.
+		 */
+		if (estimateType
+				== GstRegistrationType.INTERNATIONAL
+				|| unitType
+				== GstRegistrationType.INTERNATIONAL) {
+
+			return GstRegistrationType.INTERNATIONAL;
+		}
+
+		if (estimateType != null) {
+			return estimateType;
+		}
+
+		if (unitType != null) {
+			return unitType;
+		}
+
+		return GstRegistrationType.REGISTERED;
+	}
+
+
+
+	private boolean isIgstApplicableForEstimate(
+			Estimate estimate,
+			Organization organization
+	) {
+
+		GstRegistrationType gstType =
+				resolveAdvanceInvoiceGstType(
+						estimate
+				);
+
+		if (gstType == GstRegistrationType.SEZ
+				|| gstType
+				== GstRegistrationType.INTERNATIONAL) {
+
+			return true;
+		}
+
+		if (organization == null) {
+			return true;
+		}
+
+		String organizationState =
+				organization.getState();
+
+		String unitState =
+				estimate != null
+						&& estimate.getUnit() != null
+						? estimate.getUnit().getState()
+						: null;
+
+		if (organizationState == null
+				|| organizationState.isBlank()
+				|| unitState == null
+				|| unitState.isBlank()) {
+
+			return true;
+		}
+
+		return !organizationState
+				.trim()
+				.equalsIgnoreCase(
+						unitState.trim()
+				);
+	}
+
+
+
+	private void adjustAdvanceInvoiceLastLine(
+			List<InvoiceLineItem> invoiceLines,
+			BigDecimal exactGrandTotal,
+			BigDecimal accumulatedWithGst,
+			Long requestId
+	) {
+
+		BigDecimal difference =
+				safeMoney(exactGrandTotal)
+						.subtract(
+								safeMoney(
+										accumulatedWithGst
+								)
+						)
+						.setScale(
+								2,
+								RoundingMode.HALF_UP
+						);
+
+		if (difference.abs().compareTo(
+				new BigDecimal("1.00")
+		) > 0) {
+
+			log.warn(
+					"Large Advance Invoice proration difference "
+							+ "| requestId={} | difference={}",
+					requestId,
+					difference
+			);
+		}
+
+		if (difference.compareTo(
+				BigDecimal.ZERO
+		) == 0 || invoiceLines.isEmpty()) {
+
+			return;
+		}
+
+		InvoiceLineItem lastLine =
+				invoiceLines.get(
+						invoiceLines.size() - 1
+				);
+
+		BigDecimal currentLineTotalWithGst =
+				safeMoney(
+						lastLine.getLineTotalWithGst()
+				);
+
+		BigDecimal targetLineTotalWithGst =
+				currentLineTotalWithGst
+						.add(difference)
+						.setScale(
+								2,
+								RoundingMode.HALF_UP
+						);
+
+		if (targetLineTotalWithGst.compareTo(
+				BigDecimal.ZERO
+		) < 0) {
+
+			throw new ValidationException(
+					"Advance Invoice rounding adjustment produced "
+							+ "a negative final line amount",
+					"ERR_ADVANCE_INVOICE_ROUNDING_INVALID",
+					"approvedAmount"
+			);
+		}
+
+		BigDecimal lastLineGstRate =
+				safeMoney(
+						lastLine.getGstRate()
+				);
+
+		BigDecimal divisor =
+				BigDecimal.ONE.add(
+						lastLineGstRate.divide(
+								BigDecimal.valueOf(100),
+								6,
+								RoundingMode.HALF_UP
+						)
+				);
+
+		BigDecimal targetLineTotalExGst =
+				targetLineTotalWithGst.divide(
+						divisor,
+						2,
+						RoundingMode.HALF_UP
+				);
+
+		Integer quantity =
+				lastLine.getQuantity() != null
+						&& lastLine.getQuantity() > 0
+						? lastLine.getQuantity()
+						: 1;
+
+		BigDecimal adjustedUnitPrice =
+				targetLineTotalExGst.divide(
+						BigDecimal.valueOf(quantity),
+						2,
+						RoundingMode.HALF_UP
+				);
+
+		lastLine.setUnitPriceExGst(
+				adjustedUnitPrice
+		);
+
+		lastLine.calculateLineTotals();
+	}
+
+
+	private BigDecimal zeroMoneyForAdvanceInvoice() {
+		return BigDecimal.ZERO.setScale(
+				2,
+				RoundingMode.HALF_UP
+		);
+	}
+
+
 
 
 

@@ -8,6 +8,8 @@ import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.domain.invoice.Invoice;
+import com.account.domain.invoice.InvoiceOrigin;
+import com.account.domain.invoice.InvoicePaymentStatus;
 import com.account.domain.ledger.*;
 import com.account.domain.status.*;
 import com.account.domain.unbilled.UnbilledInvoice;
@@ -393,6 +395,56 @@ public class PaymentServiceImpl implements PaymentService {
             request.setEprFinancialYear(null);
             request.setEprPortalRegistrationNumber(null);
             request.setEprCertificateOrInvoiceNumber(null);
+        }
+
+        // =====================================================
+        // 8.1 ROUTE TO EXISTING ADVANCE TAX INVOICE
+        // =====================================================
+        /*
+         * Initial zero-value PURCHASE_ORDER must continue through the
+         * existing UnbilledInvoice workflow. Every actual payment first
+         * checks for an active Advance Tax Invoice.
+         */
+        if (!isZeroAmountPurchaseOrder) {
+
+            List<Invoice> activeAdvanceInvoices =
+                    invoiceRepository.findActiveAdvanceInvoicesForUpdate(
+                            estimate.getId(),
+                            InvoiceOrigin.ADVANCE_TAX_INVOICE,
+                            List.of(
+                                    InvoicePaymentStatus.UNPAID,
+                                    InvoicePaymentStatus.PARTIALLY_PAID
+                            )
+                    );
+
+            if (!activeAdvanceInvoices.isEmpty()) {
+
+                Invoice openAdvanceInvoice = activeAdvanceInvoices
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .filter(invoice ->
+                                safe2(invoice.getOutstandingAmount())
+                                        .subtract(safe2(invoice.getPendingReceivedAmount()))
+                                        .compareTo(BigDecimal.ZERO) > 0
+                        )
+                        .findFirst()
+                        .orElseThrow(() -> new ValidationException(
+                                "An Advance Tax Invoice exists for this estimate, but its complete outstanding amount is already reserved by pending payments. Please wait for Accounts approval or rejection.",
+                                "ERR_ADVANCE_INVOICE_OUTSTANDING_ALREADY_RESERVED",
+                                "estimateId"
+                        ));
+
+                return registerPaymentAgainstAdvanceInvoice(
+                        request,
+                        estimate,
+                        openAdvanceInvoice,
+                        salesperson,
+                        paymentType,
+                        bankLedger,
+                        reqAmount,
+                        isPurchaseOrder
+                );
+            }
         }
 
         // =====================================================
@@ -945,6 +997,795 @@ public class PaymentServiceImpl implements PaymentService {
 
         return response;
     }
+
+
+    /**
+     * Registers a PENDING PaymentReceipt against an already-generated
+     * Advance Tax Invoice.
+     *
+     * This method intentionally does not:
+     * - create an UnbilledInvoice
+     * - generate another Invoice
+     * - post a Receipt voucher
+     * - update receivedAmount
+     *
+     * Receipt voucher and receivedAmount are handled only after Accounts approval.
+     */
+    private PaymentRegistrationResponseDto registerPaymentAgainstAdvanceInvoice(
+            PaymentRegistrationRequestDto request,
+            Estimate estimate,
+            Invoice invoice,
+            User salesperson,
+            PaymentType paymentType,
+            LedgerMaster bankLedger,
+            BigDecimal requestBankAmount,
+            boolean isPurchaseOrder
+    ) {
+
+        if (invoice == null || invoice.getId() == null) {
+            throw new ValidationException(
+                    "Advance Tax Invoice is required for payment registration",
+                    "ERR_ADVANCE_INVOICE_REQUIRED",
+                    "estimateId"
+            );
+        }
+
+        if (invoice.getInvoiceOrigin() != InvoiceOrigin.ADVANCE_TAX_INVOICE) {
+            throw new ValidationException(
+                    "Selected Invoice is not an Advance Tax Invoice",
+                    "ERR_INVALID_ADVANCE_INVOICE_ORIGIN",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.isCancelled()) {
+            throw new ValidationException(
+                    "Payment cannot be registered against a cancelled Invoice",
+                    "ERR_PAYMENT_ON_CANCELLED_ADVANCE_INVOICE",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getPaymentStatus() == InvoicePaymentStatus.PAID) {
+            throw new ValidationException(
+                    "Advance Tax Invoice is already fully paid",
+                    "ERR_ADVANCE_INVOICE_ALREADY_PAID",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getEstimate() == null
+                || invoice.getEstimate().getId() == null
+                || !Objects.equals(invoice.getEstimate().getId(), estimate.getId())) {
+
+            throw new ValidationException(
+                    "Advance Tax Invoice is not linked with the requested Estimate",
+                    "ERR_ADVANCE_INVOICE_ESTIMATE_MISMATCH",
+                    "estimateId"
+            );
+        }
+
+        /*
+         * Purchase Order is a pre-payment/legal-verification workflow and the
+         * current legal-verification entity is UnbilledInvoice-based. Once an
+         * Advance Tax Invoice already exists, register only actual payments.
+         */
+        if (isPurchaseOrder) {
+            throw new ValidationException(
+                    "PURCHASE_ORDER payment type cannot be used against an already-generated Advance Tax Invoice. Register the actual customer receipt using FULL, PARTIAL, or INSTALLMENT.",
+                    "ERR_PO_NOT_ALLOWED_FOR_ADVANCE_INVOICE_PAYMENT",
+                    "paymentTypeId"
+            );
+        }
+
+        if (Boolean.TRUE.equals(request.getGovernmentFeeActive())
+                || request.getGovernmentFee() != null) {
+
+            throw new ValidationException(
+                    "Government fee registration is not supported against an Advance Tax Invoice payment",
+                    "ERR_GOV_FEE_NOT_SUPPORTED_FOR_ADVANCE_INVOICE",
+                    "governmentFeeActive"
+            );
+        }
+
+        BigDecimal bankAmount = safe2(requestBankAmount);
+
+        if (bankAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Payment amount must be greater than zero for an Advance Tax Invoice",
+                    "ERR_ADVANCE_INVOICE_PAYMENT_AMOUNT_INVALID",
+                    "amount"
+            );
+        }
+
+        if (request.getPaymentDate() == null) {
+            throw new ValidationException(
+                    "Payment date is required for an Advance Tax Invoice payment",
+                    "ERR_PAYMENT_DATE_REQUIRED",
+                    "paymentDate"
+            );
+        }
+
+        // Prevent payment type change after the first receipt against this Invoice.
+        paymentReceiptRepository
+                .findTopByInvoiceAndIsCancelledFalseOrderByIdAsc(invoice)
+                .ifPresent(firstReceipt -> {
+
+                    String firstCode = firstReceipt.getPaymentType() != null
+                            && firstReceipt.getPaymentType().getCode() != null
+                            ? firstReceipt.getPaymentType().getCode().trim().toUpperCase()
+                            : "";
+
+                    String newCode = paymentType != null
+                            && paymentType.getCode() != null
+                            ? paymentType.getCode().trim().toUpperCase()
+                            : "";
+
+                    if (!firstCode.equals(newCode)) {
+                        throw new ValidationException(
+                                "Payment type cannot be changed after the first payment against this Advance Tax Invoice. First type: "
+                                        + firstCode,
+                                "ERR_ADVANCE_INVOICE_PAYMENT_TYPE_CHANGE_NOT_ALLOWED",
+                                "paymentTypeId"
+                        );
+                    }
+                });
+
+        BigDecimal tdsAmount = calculateAdvanceInvoiceTdsAmountIfRequired(
+                request,
+                invoice
+        );
+
+        BigDecimal settlementAmount = bankAmount
+                .add(tdsAmount)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal outstandingAmount = safe2(invoice.getOutstandingAmount());
+        BigDecimal pendingReceivedAmount = safe2(invoice.getPendingReceivedAmount());
+
+        BigDecimal availableOutstanding = outstandingAmount
+                .subtract(pendingReceivedAmount)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (availableOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "No available outstanding amount remains on Advance Tax Invoice "
+                            + invoice.getInvoiceNumber()
+                            + ". Existing pending payments have reserved the outstanding balance.",
+                    "ERR_NO_AVAILABLE_ADVANCE_INVOICE_OUTSTANDING",
+                    "amount"
+            );
+        }
+
+        if (settlementAmount.compareTo(availableOutstanding) > 0) {
+            throw new ValidationException(
+                    "Payment settlement exceeds the available outstanding amount of Advance Tax Invoice "
+                            + invoice.getInvoiceNumber()
+                            + ". Bank amount: ₹" + bankAmount
+                            + ", TDS amount: ₹" + tdsAmount
+                            + ", settlement amount: ₹" + settlementAmount
+                            + ", available outstanding: ₹" + availableOutstanding
+                            + ". This payment cannot be split automatically across multiple invoices.",
+                    "ERR_ADVANCE_INVOICE_SETTLEMENT_EXCEEDS_AVAILABLE",
+                    "amount"
+            );
+        }
+
+        validateAdvanceInvoicePaymentRules(
+                paymentType,
+                bankAmount,
+                tdsAmount,
+                invoice,
+                availableOutstanding
+        );
+
+        PaymentReceipt receipt = new PaymentReceipt();
+
+        receipt.setUnbilledInvoice(null);
+        receipt.setInvoice(invoice);
+        receipt.setPaymentType(paymentType);
+        receipt.setAmount(bankAmount);
+        receipt.setPaymentDate(request.getPaymentDate());
+        receipt.setPaymentMode(request.getPaymentMode());
+        receipt.setTransactionReference(request.getTransactionReference());
+        receipt.setRemarks(request.getRemarks());
+        receipt.setReceivedBy(salesperson);
+        receipt.setPaymentProof(request.getPaymentProof());
+        receipt.setPaymentTermsDays(request.getPaymentTermsDays());
+        receipt.setPoNumber(request.getPoNumber());
+        receipt.setPoAttachmentUrl(request.getPoAttachmentUrl());
+
+        if (request.getPaymentTermsDays() != null
+                && request.getPaymentTermsDays() > 0) {
+            receipt.setPaymentTerms(
+                    "Net " + request.getPaymentTermsDays() + " Days"
+            );
+        } else {
+            receipt.setPaymentTerms(request.getPaymentTerms());
+        }
+
+        receipt.setBankLedger(bankLedger);
+        receipt.setEprFinancialYear(request.getEprFinancialYear());
+        receipt.setEprPortalRegistrationNumber(
+                request.getEprPortalRegistrationNumber()
+        );
+        receipt.setEprCertificateOrInvoiceNumber(
+                request.getEprCertificateOrInvoiceNumber()
+        );
+        receipt.setStatus(PaymentStatus.PENDING);
+
+        receipt = paymentReceiptRepository.save(receipt);
+
+        createAdvanceInvoiceTdsIfRequired(
+                request,
+                estimate,
+                invoice,
+                receipt,
+                salesperson,
+                tdsAmount
+        );
+
+        invoice.setPendingReceivedAmount(
+                pendingReceivedAmount
+                        .add(settlementAmount)
+                        .setScale(2, RoundingMode.HALF_UP)
+        );
+
+        // receivedAmount and outstandingAmount change only on Accounts approval.
+        invoiceRepository.save(invoice);
+
+        pushAdvanceInvoicePaymentRegisteredNotificationToAccountUsers(
+                invoice,
+                receipt,
+                estimate,
+                salesperson,
+                settlementAmount
+        );
+
+        PaymentRegistrationResponseDto response =
+                new PaymentRegistrationResponseDto();
+
+        response.setPaymentReceiptId(receipt.getId());
+        response.setUnbilledNumber(null);
+        response.setUnbilledStatus(null);
+        response.setMessage(
+                "Payment of ₹" + bankAmount
+                        + (tdsAmount.compareTo(BigDecimal.ZERO) > 0
+                        ? " with TDS of ₹" + tdsAmount
+                        : "")
+                        + " registered against Advance Tax Invoice "
+                        + invoice.getInvoiceNumber()
+                        + ". Settlement amount ₹" + settlementAmount
+                        + " is awaiting Accounts approval. No Unbilled Invoice or new Tax Invoice was created."
+        );
+
+        log.info(
+                "Advance Invoice payment registered | estimateId={} | invoiceId={} | invoiceNumber={} "
+                        + "| receiptId={} | bankAmount={} | tdsAmount={} | settlement={} "
+                        + "| pendingReceived={} | availableBeforeRegistration={}",
+                estimate.getId(),
+                invoice.getId(),
+                invoice.getInvoiceNumber(),
+                receipt.getId(),
+                bankAmount,
+                tdsAmount,
+                settlementAmount,
+                invoice.getPendingReceivedAmount(),
+                availableOutstanding
+        );
+
+        return response;
+    }
+
+
+
+    private BigDecimal getTotalActiveTdsAmountForInvoice(Invoice invoice) {
+
+        if (invoice == null || invoice.getId() == null) {
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        if (invoice.getEffectiveGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+
+            return BigDecimal.ZERO.setScale(
+                    2,
+                    RoundingMode.HALF_UP
+            );
+        }
+
+        return tdsRegistrationRepository
+                .findAllByInvoiceAndIsDeletedFalse(invoice)
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(tds ->
+                        tds.getStatus() == TdsStatus.PENDING
+                                || tds.getStatus() == TdsStatus.APPROVED
+                )
+                .map(TdsRegistration::getTdsAmount)
+                .filter(Objects::nonNull)
+                .map(this::safe2)
+                .reduce(
+                        BigDecimal.ZERO.setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        ),
+                        BigDecimal::add
+                )
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void createAdvanceInvoiceTdsIfRequired(
+            PaymentRegistrationRequestDto request,
+            Estimate estimate,
+            Invoice invoice,
+            PaymentReceipt receipt,
+            User salesperson,
+            BigDecimal calculatedTdsAmount
+    ) {
+
+        if (!Boolean.TRUE.equals(request.getTdsActive())) {
+            return;
+        }
+
+        if (invoice.getEffectiveGstRegistrationType()
+                == GstRegistrationType.INTERNATIONAL) {
+
+            throw new ValidationException(
+                    "TDS is not applicable for INTERNATIONAL transactions",
+                    "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                    "tdsActive"
+            );
+        }
+
+        if (request.getTds() == null
+                || request.getTds().getTdsPercentage() == null) {
+
+            throw new ValidationException(
+                    "TDS details are required",
+                    "ERR_TDS_DETAILS_REQUIRED",
+                    "tds"
+            );
+        }
+
+        BigDecimal tdsAmount = safe2(calculatedTdsAmount);
+        BigDecimal tdsPercentage = safe2(
+                request.getTds().getTdsPercentage()
+        );
+
+        if (tdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "TDS amount must be greater than zero",
+                    "ERR_TDS_AMOUNT_INVALID",
+                    "tds"
+            );
+        }
+
+        tdsRegistrationRepository
+                .findByPaymentReceiptAndIsDeletedFalse(receipt)
+                .ifPresent(existing -> {
+                    throw new ValidationException(
+                            "TDS is already registered for payment receipt ID: "
+                                    + receipt.getId(),
+                            "ERR_TDS_ALREADY_EXISTS_FOR_PAYMENT",
+                            "tds"
+                    );
+                });
+
+        BigDecimal taxableAmount = tdsAmount
+                .multiply(BigDecimal.valueOf(100))
+                .divide(
+                        tdsPercentage,
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        BigDecimal invoiceTaxableAmount = safe2(
+                invoice.getSubTotalExGst()
+        );
+
+        if (taxableAmount.compareTo(invoiceTaxableAmount) > 0) {
+            throw new ValidationException(
+                    "Current payment taxable amount cannot exceed the Advance Tax Invoice taxable amount",
+                    "ERR_TDS_TAXABLE_AMOUNT_EXCEEDS_INVOICE",
+                    "tds"
+            );
+        }
+
+        TdsRegistration tds = new TdsRegistration();
+
+        tds.setPublicUuid(UUID.randomUUID().toString());
+        tds.setEstimate(estimate);
+        tds.setCompany(estimate.getCompany());
+        tds.setUnbilledInvoice(null);
+        tds.setInvoice(invoice);
+        tds.setPaymentReceipt(receipt);
+        tds.setTdsPercentage(tdsPercentage);
+        tds.setTaxableAmount(taxableAmount);
+        tds.setTdsAmount(tdsAmount);
+        tds.setTdsDate(null);
+        tds.setStatus(TdsStatus.PENDING);
+        tds.setDeleted(false);
+        tds.setCreatedBy(salesperson);
+        tds.setUpdatedBy(salesperson);
+
+        tdsRegistrationRepository.save(tds);
+    }
+
+
+
+
+    private void pushAdvanceInvoicePaymentRegisteredNotificationToAccountUsers(
+            Invoice invoice,
+            PaymentReceipt receipt,
+            Estimate estimate,
+            User salesperson,
+            BigDecimal settlementAmount
+    ) {
+
+        if (invoice == null || invoice.getId() == null
+                || receipt == null || receipt.getId() == null) {
+            return;
+        }
+
+        List<User> accountUsers = findAccountDepartmentApprovers();
+
+        if (accountUsers == null || accountUsers.isEmpty()) {
+            log.warn(
+                    "Advance Invoice payment notification skipped because no active Accounts users were found | invoiceId={}",
+                    invoice.getId()
+            );
+            return;
+        }
+
+        String salespersonName = getUserDisplayName2(salesperson);
+        String invoiceNumber = invoice.getInvoiceNumber() != null
+                ? invoice.getInvoiceNumber()
+                : "INVOICE-" + invoice.getId();
+
+        String estimateNumber = estimate != null
+                && estimate.getEstimateNumber() != null
+                ? estimate.getEstimateNumber()
+                : "";
+
+        String companyName = estimate != null
+                && estimate.getCompany() != null
+                && estimate.getCompany().getName() != null
+                ? estimate.getCompany().getName()
+                : "company";
+
+        String bankAmount = safe2(receipt.getAmount()).toPlainString();
+        String settlement = safe2(settlementAmount).toPlainString();
+
+        for (User accountUser : accountUsers) {
+            if (accountUser == null || accountUser.getId() == null) {
+                continue;
+            }
+
+            notificationPublisherService.sendNotification(
+                    NotificationCreateRequestDto.builder()
+                            .receiverId(accountUser.getId())
+                            .actorId(salesperson != null
+                                    ? salesperson.getId()
+                                    : null)
+                            .actorName(salespersonName)
+                            .module(NotificationCreateRequestDto.NotificationModule.PAYMENT)
+                            .eventType(NotificationCreateRequestDto.NotificationEventType.PAYMENT_REGISTERED)
+                            .referenceId(invoice.getId())
+                            .referenceNumber(invoiceNumber)
+                            .title("Advance Invoice Payment Approval Required")
+                            .message(
+                                    salespersonName
+                                            + " registered bank payment of ₹"
+                                            + bankAmount
+                                            + " against Advance Tax Invoice "
+                                            + invoiceNumber
+                                            + " for " + companyName + "."
+                            )
+                            .redirectUrl("/account/invoices/" + invoice.getId())
+                            .priority(NotificationPriority.HIGH)
+                            .displayType(NotificationCreateRequestDto.NotificationDisplayType.WARNING)
+                            .metadataJson(
+                                    "{"
+                                            + "\"invoiceId\":" + invoice.getId() + ","
+                                            + "\"paymentReceiptId\":" + receipt.getId() + ","
+                                            + "\"invoiceNumber\":\"" + escapeJson(invoiceNumber) + "\","
+                                            + "\"estimateNumber\":\"" + escapeJson(estimateNumber) + "\","
+                                            + "\"companyName\":\"" + escapeJson(companyName) + "\","
+                                            + "\"bankAmount\":\"" + escapeJson(bankAmount) + "\","
+                                            + "\"settlementAmount\":\"" + escapeJson(settlement) + "\","
+                                            + "\"registeredBy\":\"" + escapeJson(salespersonName) + "\""
+                                            + "}"
+                            )
+                            .build()
+            );
+        }
+    }
+
+
+    private BigDecimal calculateAdvanceInvoiceTdsAmountIfRequired(
+            PaymentRegistrationRequestDto request,
+            Invoice invoice
+    ) {
+
+        BigDecimal zero = BigDecimal.ZERO.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
+
+        if (invoice == null || invoice.getId() == null) {
+            throw new ValidationException(
+                    "Invoice is required for TDS calculation",
+                    "ERR_ADVANCE_INVOICE_REQUIRED_FOR_TDS",
+                    "invoiceId"
+            );
+        }
+
+        boolean internationalTransaction =
+                invoice.getEffectiveGstRegistrationType()
+                        == GstRegistrationType.INTERNATIONAL;
+
+        if (internationalTransaction) {
+            if (Boolean.TRUE.equals(request.getTdsActive())
+                    || request.getTds() != null) {
+
+                throw new ValidationException(
+                        "TDS is not applicable for INTERNATIONAL transactions",
+                        "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                        "tdsActive"
+                );
+            }
+            return zero;
+        }
+
+        if (!Boolean.TRUE.equals(request.getTdsActive())) {
+            return zero;
+        }
+
+        if (request.getTds() == null
+                || request.getTds().getTdsPercentage() == null) {
+
+            throw new ValidationException(
+                    "TDS percentage is required when TDS is active",
+                    "ERR_TDS_PERCENTAGE_REQUIRED",
+                    "tds.tdsPercentage"
+            );
+        }
+
+        BigDecimal bankAmount = safe2(request.getAmount());
+        BigDecimal tdsPercentage = safe2(
+                request.getTds().getTdsPercentage()
+        );
+
+        if (bankAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Payment amount must be greater than zero when TDS is active",
+                    "ERR_TDS_PAYMENT_AMOUNT_REQUIRED",
+                    "amount"
+            );
+        }
+
+        if (tdsPercentage.compareTo(new BigDecimal("2.00")) != 0
+                && tdsPercentage.compareTo(new BigDecimal("10.00")) != 0) {
+
+            throw new ValidationException(
+                    "TDS percentage must be either 2 or 10",
+                    "ERR_INVALID_TDS_PERCENTAGE",
+                    "tds.tdsPercentage"
+            );
+        }
+
+        BigDecimal taxableAmount = safe2(invoice.getSubTotalExGst());
+
+        if (taxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Invoice taxable amount excluding GST is not available for TDS calculation",
+                    "ERR_TDS_TAXABLE_AMOUNT_NOT_FOUND",
+                    "tds"
+            );
+        }
+
+        BigDecimal totalAllowedTds = taxableAmount
+                .multiply(tdsPercentage)
+                .divide(
+                        BigDecimal.valueOf(100),
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        BigDecimal alreadyUsedTds = getTotalActiveTdsAmountForInvoice(invoice);
+
+        BigDecimal remainingTdsLimit = totalAllowedTds
+                .subtract(alreadyUsedTds)
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (remainingTdsLimit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "TDS limit is already exhausted for Advance Tax Invoice "
+                            + invoice.getInvoiceNumber(),
+                    "ERR_TDS_LIMIT_EXHAUSTED",
+                    "tds"
+            );
+        }
+
+        BigDecimal availableOutstanding = safe2(invoice.getOutstandingAmount())
+                .subtract(safe2(invoice.getPendingReceivedAmount()))
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (availableOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "No available outstanding amount exists for TDS settlement",
+                    "ERR_NO_OUTSTANDING_FOR_TDS",
+                    "amount"
+            );
+        }
+
+        remainingTdsLimit = remainingTdsLimit
+                .min(availableOutstanding)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal remainingNetBankReceivable = availableOutstanding
+                .subtract(remainingTdsLimit)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (remainingNetBankReceivable.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Available outstanding cannot be settled with a positive bank amount under the selected TDS percentage",
+                    "ERR_INVALID_NET_BANK_RECEIVABLE",
+                    "amount"
+            );
+        }
+
+        if (bankAmount.compareTo(remainingNetBankReceivable) > 0) {
+            throw new ValidationException(
+                    "Bank payment exceeds maximum receivable after TDS. Bank amount: ₹"
+                            + bankAmount
+                            + ", maximum bank amount: ₹" + remainingNetBankReceivable
+                            + ", remaining TDS: ₹" + remainingTdsLimit,
+                    "ERR_BANK_AMOUNT_EXCEEDS_NET_RECEIVABLE",
+                    "amount"
+            );
+        }
+
+        BigDecimal calculatedTds = bankAmount
+                .multiply(remainingTdsLimit)
+                .divide(
+                        remainingNetBankReceivable,
+                        2,
+                        RoundingMode.HALF_UP
+                )
+                .min(remainingTdsLimit)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (calculatedTds.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Calculated TDS amount must be greater than zero",
+                    "ERR_TDS_AMOUNT_INVALID",
+                    "tds"
+            );
+        }
+
+        BigDecimal settlementAmount = bankAmount
+                .add(calculatedTds)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (settlementAmount.compareTo(availableOutstanding) > 0) {
+            throw new ValidationException(
+                    "Bank amount plus TDS exceeds available Invoice outstanding",
+                    "ERR_TDS_SETTLEMENT_EXCEEDS_OUTSTANDING",
+                    "amount"
+            );
+        }
+
+        return calculatedTds;
+    }
+
+
+    private void validateAdvanceInvoicePaymentRules(
+            PaymentType paymentType,
+            BigDecimal bankAmount,
+            BigDecimal tdsAmount,
+            Invoice invoice,
+            BigDecimal availableOutstanding
+    ) {
+
+        if (paymentType == null || paymentType.getCode() == null) {
+            throw new ValidationException(
+                    "Invalid payment type",
+                    "ERR_PAYMENT_TYPE_INVALID",
+                    "paymentTypeId"
+            );
+        }
+
+        String code = paymentType.getCode().trim().toUpperCase();
+
+        BigDecimal safeBankAmount = safe2(bankAmount);
+        BigDecimal safeTdsAmount = safe2(tdsAmount);
+        BigDecimal settlementAmount = safeBankAmount
+                .add(safeTdsAmount)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal invoiceTotal = safe2(invoice.getGrandTotal());
+        BigDecimal available = safe2(availableOutstanding);
+
+        if (safeBankAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Bank/Cash/Payment Gateway amount must be greater than zero",
+                    "ERR_AMOUNT_NOT_POSITIVE",
+                    "amount"
+            );
+        }
+
+        if (settlementAmount.compareTo(available) > 0) {
+            throw new ValidationException(
+                    "Settlement amount exceeds available Invoice outstanding",
+                    "ERR_ADVANCE_INVOICE_SETTLEMENT_EXCEEDS_AVAILABLE",
+                    "amount"
+            );
+        }
+
+        if ("FULL".equals(code)) {
+            if (settlementAmount.compareTo(available) != 0) {
+                throw new ValidationException(
+                        "FULL payment settlement must equal available outstanding amount ₹"
+                                + available
+                                + ". Current settlement is ₹" + settlementAmount,
+                        "ERR_FULL_AMOUNT_MISMATCH",
+                        "amount"
+                );
+            }
+            return;
+        }
+
+        if ("PARTIAL".equals(code)) {
+
+            BigDecimal halfInvoice = invoiceTotal
+                    .multiply(new BigDecimal("0.50"))
+                    .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal expected = available.compareTo(halfInvoice) < 0
+                    ? available
+                    : halfInvoice;
+
+            if (settlementAmount.compareTo(expected) != 0) {
+                throw new ValidationException(
+                        "PARTIAL payment settlement must be ₹" + expected
+                                + ". Bank amount: ₹" + safeBankAmount
+                                + ", TDS amount: ₹" + safeTdsAmount
+                                + ", settlement: ₹" + settlementAmount,
+                        "ERR_PARTIAL_AMOUNT_MISMATCH",
+                        "amount"
+                );
+            }
+            return;
+        }
+
+        if ("INSTALLMENT".equals(code)) {
+            return;
+        }
+
+        if ("PURCHASE_ORDER".equals(code)) {
+            throw new ValidationException(
+                    "PURCHASE_ORDER is not allowed against an already-generated Advance Tax Invoice",
+                    "ERR_PO_NOT_ALLOWED_FOR_ADVANCE_INVOICE_PAYMENT",
+                    "paymentTypeId"
+            );
+        }
+
+        throw new ValidationException(
+                "Unsupported payment type: " + paymentType.getCode(),
+                "ERR_UNSUPPORTED_PAYMENT_TYPE",
+                "paymentTypeId"
+        );
+    }
+
+
 
 
     private LedgerMaster validateAndGetBankLedger(
@@ -4949,6 +5790,12 @@ public class PaymentServiceImpl implements PaymentService {
         request.setTdsActive(false);
         request.setTds(null);
     }
+
+
+
+
+
+
 
 }
 

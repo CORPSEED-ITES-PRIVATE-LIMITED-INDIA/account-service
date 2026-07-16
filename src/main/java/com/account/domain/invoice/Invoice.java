@@ -3,6 +3,7 @@ package com.account.domain.invoice;
 import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
 import com.account.domain.company.GstRegistrationType;
+import com.account.domain.estimate.Estimate;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import jakarta.persistence.*;
@@ -15,37 +16,32 @@ import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Table(
         name = "invoice",
-        indexes = {
-                @Index(
-                        name = "idx_invoice_number_unique",
-                        columnList = "invoice_number",
-                        unique = true
-                ),
-                @Index(
-                        name = "idx_invoice_public_uuid_unique",
-                        columnList = "public_uuid",
-                        unique = true
-                ),
-                @Index(
-                        name = "idx_invoice_unbilled_id",
-                        columnList = "unbilled_invoice_id"
-                ),
-                @Index(
-                        name = "idx_invoice_status",
-                        columnList = "status"
-                ),
-                @Index(
-                        name = "idx_invoice_date",
-                        columnList = "invoice_date"
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_invoice_advance_tax_invoice_request",
+                        columnNames = "advance_tax_invoice_request_id"
                 )
+        },
+        indexes = {
+                @Index(name = "idx_invoice_number_unique", columnList = "invoice_number", unique = true),
+                @Index(name = "idx_invoice_public_uuid_unique", columnList = "public_uuid", unique = true),
+                @Index(name = "idx_invoice_estimate_id", columnList = "estimate_id"),
+                @Index(name = "idx_invoice_unbilled_id", columnList = "unbilled_invoice_id"),
+                @Index(name = "idx_invoice_advance_request_id", columnList = "advance_tax_invoice_request_id"),
+                @Index(name = "idx_invoice_origin", columnList = "invoice_origin"),
+                @Index(name = "idx_invoice_payment_status", columnList = "payment_status"),
+                @Index(name = "idx_invoice_status", columnList = "status"),
+                @Index(name = "idx_invoice_date", columnList = "invoice_date")
         }
 )
 @EntityListeners(AuditingEntityListener.class)
@@ -56,148 +52,140 @@ import java.util.List;
 @ToString(exclude = {
         "estimate",
         "unbilledInvoice",
+        "advanceTaxInvoiceRequest",
         "lineItems",
-        "triggeringPayment"})
+        "triggeringPayment",
+        "paymentReceipts",
+        "createdBy",
+        "updatedBy",
+        "eInvoiceConfirmedBy"
+})
 public class Invoice {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Public safe identifier for sharing (UUID v4)
-    @Column(
-            name = "public_uuid",
-            nullable = false,
-            unique = true,
-            length = 36
-    )
+    @Column(name = "public_uuid", nullable = false, unique = true, length = 36)
     private String publicUuid;
 
-    @Column(
-            name = "invoice_number",
-            nullable = false,
-            unique = true,
-            length = 32
-    )
+    @Column(name = "invoice_number", nullable = false, unique = true, length = 32)
     private String invoiceNumber;
 
-    @Column(name = "solution_id", length = 500)
+    /**
+     * Direct Estimate link for both workflows.
+     *
+     * PAYMENT_APPROVAL invoice:
+     * estimate != null, unbilledInvoice != null
+     *
+     * ADVANCE_TAX_INVOICE:
+     * estimate != null, unbilledInvoice == null
+     */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "estimate_id", nullable = false)
+    private Estimate estimate;
+
+    @Column(name = "solution_id")
     private Long solutionId;
 
-    @Column(
-            name = "solution_name",
-            nullable = false,
-            length = 255
-    )
+    @Column(name = "solution_name", nullable = false, length = 255)
     private String solutionName;
 
-    /*
-     * Present only for the existing payment-first workflow.
-     *
-     * Normal flow:
-     * unbilledInvoice != null
-     *
-     * Advance Tax Invoice flow:
-     * unbilledInvoice == null
-     */
+    /** Existing payment-first relation; null for Advance Tax Invoices. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "unbilled_invoice_id")
     private UnbilledInvoice unbilledInvoice;
 
-    /*
-     * GST registration type snapshot.
-     *
-     * This value is copied from UnbilledInvoice when the invoice
-     * is generated. It protects historical invoices if the unit's
-     * GST registration type changes later.
-     */
+    /** Owning side. One approved request can produce only one Invoice. */
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "advance_tax_invoice_request_id", unique = true)
+    private AdvanceTaxInvoiceRequest advanceTaxInvoiceRequest;
+
     @Enumerated(EnumType.STRING)
-    @Column(
-            name = "gst_registration_type",
-            nullable = false,
-            length = 30
-    )
-    private GstRegistrationType gstRegistrationType =
-            GstRegistrationType.REGISTERED;
+    @Column(name = "invoice_origin", nullable = false, length = 30)
+    private InvoiceOrigin invoiceOrigin = InvoiceOrigin.PAYMENT_APPROVAL;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gst_registration_type", nullable = false, length = 30)
+    private GstRegistrationType gstRegistrationType = GstRegistrationType.REGISTERED;
 
     @Column(name = "invoice_date", nullable = false)
     private LocalDate invoiceDate = LocalDate.now();
 
     // ==================== FINANCIALS ====================
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal subTotalExGst;
+    @Column(name = "sub_total_ex_gst", precision = 15, scale = 2, nullable = false)
+    private BigDecimal subTotalExGst = zeroMoney();
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal totalGstAmount;
+    @Column(name = "total_gst_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal totalGstAmount = zeroMoney();
 
-    // GST breakup - critical for GSTR-1 and customer visibility
+    @Column(name = "cgst_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal cgstAmount = zeroMoney();
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal cgstAmount = BigDecimal.ZERO;
+    @Column(name = "sgst_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal sgstAmount = zeroMoney();
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal sgstAmount = BigDecimal.ZERO;
+    @Column(name = "igst_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal igstAmount = zeroMoney();
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal igstAmount = BigDecimal.ZERO;
+    @Column(name = "grand_total", precision = 15, scale = 2, nullable = false)
+    private BigDecimal grandTotal = zeroMoney();
 
-    @Column(
-            precision = 15,
-            scale = 2,
-            nullable = false
-    )
-    private BigDecimal grandTotal;
+    // ==================== PAYMENT SETTLEMENT ====================
+
+    /** Accounts-approved settlement: bank amount + approved TDS amount. */
+    @Column(name = "received_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal receivedAmount = zeroMoney();
+
+    /** Settlement reserved by PENDING PaymentReceipts. */
+    @Column(name = "pending_received_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal pendingReceivedAmount = zeroMoney();
+
+    @Column(name = "outstanding_amount", precision = 15, scale = 2, nullable = false)
+    private BigDecimal outstandingAmount = zeroMoney();
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
+    @Column(name = "payment_status", nullable = false, length = 30)
+    private InvoicePaymentStatus paymentStatus = InvoicePaymentStatus.UNPAID;
+
+    // ==================== INVOICE LIFECYCLE ====================
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", length = 30, nullable = false)
     private InvoiceStatus status = InvoiceStatus.GENERATED;
 
-    @Column(length = 3, nullable = false)
+    @Column(name = "currency", length = 3, nullable = false)
     private String currency = "INR";
 
+    @Column(name = "is_cancelled", nullable = false)
     private boolean isCancelled = false;
 
     @OneToMany(
             mappedBy = "invoice",
             cascade = CascadeType.ALL,
-            orphanRemoval = true
+            orphanRemoval = true,
+            fetch = FetchType.LAZY
     )
+    @OrderBy("displayOrder ASC, id ASC")
     private List<InvoiceLineItem> lineItems = new ArrayList<>();
 
+    /** Existing payment that caused a payment-first Invoice to be generated. */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "payment_receipt_id")
     private PaymentReceipt triggeringPayment;
 
-    @Column(
-            name = "signed_qr_code",
-            columnDefinition = "TEXT"
-    )
+    /** Later payments linked to an Advance Tax Invoice. */
+    @OneToMany(mappedBy = "invoice", fetch = FetchType.LAZY)
+    @OrderBy("createdAt ASC, id ASC")
+    private List<PaymentReceipt> paymentReceipts = new ArrayList<>();
+
+    @Column(name = "signed_qr_code", columnDefinition = "TEXT")
     private String signedQrCode;
 
     // ==================== PLACE OF SUPPLY ====================
 
-    @Column(length = 2)
+    @Column(name = "place_of_supply_state_code", length = 2)
     private String placeOfSupplyStateCode;
 
     // ==================== BUYER GST DETAILS ====================
@@ -253,32 +241,27 @@ public class Invoice {
 
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(
-            name = "created_by",
-            updatable = false
-    )
-    @Comment("User who generated the invoice and registered the client payment")
+    @JoinColumn(name = "created_by", updatable = false)
+    @Comment("User who generated the invoice")
     private User createdBy;
 
     @LastModifiedBy
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
-    @Comment("Accounts team member who verified and approved the payment")
+    @Comment("User who last updated the invoice")
     private User updatedBy;
 
     @CreatedDate
-    @Column(updatable = false)
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
     @LastModifiedDate
+    @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
     // ==================== E-INVOICE DETAILS ====================
 
-    @Column(
-            name = "e_invoice_attachment_url",
-            columnDefinition = "TEXT"
-    )
+    @Column(name = "e_invoice_attachment_url", columnDefinition = "TEXT")
     private String eInvoiceAttachmentUrl;
 
     @Column(name = "e_invoice_irn", length = 100)
@@ -300,7 +283,6 @@ public class Invoice {
     // ==================== OPERATION SYNC ====================
 
     @Column(name = "operation_synced", nullable = false)
-
     private boolean operationSynced = false;
 
     @Column(name = "operation_synced_at")
@@ -308,6 +290,79 @@ public class Invoice {
 
     @Column(name = "operation_project_no", length = 100)
     private String operationProjectNo;
+
+    // ==================== CALLBACKS ====================
+
+    @PrePersist
+    protected void onCreate() {
+        if (publicUuid == null || publicUuid.isBlank()) {
+            publicUuid = UUID.randomUUID().toString();
+        }
+        if (invoiceDate == null) {
+            invoiceDate = LocalDate.now();
+        }
+        if (invoiceOrigin == null) {
+            invoiceOrigin = InvoiceOrigin.PAYMENT_APPROVAL;
+        }
+        if (gstRegistrationType == null) {
+            gstRegistrationType = GstRegistrationType.REGISTERED;
+        }
+        if (paymentStatus == null) {
+            paymentStatus = InvoicePaymentStatus.UNPAID;
+        }
+        if (status == null) {
+            status = InvoiceStatus.GENERATED;
+        }
+        if (currency == null || currency.isBlank()) {
+            currency = "INR";
+        }
+        normalizeMoneyFields();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        normalizeMoneyFields();
+    }
+
+    private void normalizeMoneyFields() {
+        subTotalExGst = safeMoney(subTotalExGst);
+        totalGstAmount = safeMoney(totalGstAmount);
+        cgstAmount = safeMoney(cgstAmount);
+        sgstAmount = safeMoney(sgstAmount);
+        igstAmount = safeMoney(igstAmount);
+        grandTotal = safeMoney(grandTotal);
+        receivedAmount = safeMoney(receivedAmount);
+        pendingReceivedAmount = safeMoney(pendingReceivedAmount);
+        outstandingAmount = safeMoney(outstandingAmount);
+    }
+
+    private static BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal safeMoney(BigDecimal value) {
+        return value == null
+                ? zeroMoney()
+                : value.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    // ==================== RELATIONSHIP HELPERS ====================
+
+    public void addLineItem(InvoiceLineItem lineItem) {
+        if (lineItem == null) {
+            return;
+        }
+        lineItem.setInvoice(this);
+        lineItems.add(lineItem);
+    }
+
+    public void removeLineItem(InvoiceLineItem lineItem) {
+        if (lineItem == null) {
+            return;
+        }
+        lineItems.remove(lineItem);
+        lineItem.setInvoice(null);
+    }
 
     // ==================== GST HELPERS ====================
 
@@ -318,15 +373,27 @@ public class Invoice {
     }
 
     public boolean isGstApplicable() {
-        return getEffectiveGstRegistrationType()
-                .isGstApplicable();
+        return getEffectiveGstRegistrationType().isGstApplicable();
     }
 
     public boolean isZeroRatedSupply() {
-        return getEffectiveGstRegistrationType()
-                .isZeroRated();
+        return getEffectiveGstRegistrationType().isZeroRated();
     }
 
+    // ==================== PAYMENT HELPERS ====================
 
+    public BigDecimal getAvailableOutstandingAmount() {
+        return safeMoney(outstandingAmount)
+                .subtract(safeMoney(pendingReceivedAmount))
+                .max(BigDecimal.ZERO)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
 
+    public boolean isAdvanceTaxInvoice() {
+        return invoiceOrigin == InvoiceOrigin.ADVANCE_TAX_INVOICE;
+    }
+
+    public boolean isPaymentApprovalInvoice() {
+        return invoiceOrigin == InvoiceOrigin.PAYMENT_APPROVAL;
+    }
 }
