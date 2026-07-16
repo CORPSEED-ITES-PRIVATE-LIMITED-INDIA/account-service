@@ -410,12 +410,76 @@ public class AdvanceTaxInvoiceServiceImpl
     @Override
     @Transactional(readOnly = true)
     public Page<AdvanceTaxInvoiceResponseDto> getRequests(
+            Long requestingUserId,
             AdvanceTaxInvoiceRequestStatus status,
             int page,
             int size
     ) {
 
+        // =====================================================
+        // 1. VALIDATE REQUESTING USER ID
+        // =====================================================
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException(
+                    "Valid userId is required",
+                    "ERR_INVALID_USER_ID",
+                    "userId"
+            );
+        }
+
+        // =====================================================
+        // 2. FETCH ACTIVE REQUESTING USER
+        // =====================================================
+
+        User requestingUser =
+                getActiveUser(
+                        requestingUserId,
+                        "userId"
+                );
+
+        // =====================================================
+        // 3. DETERMINE USER ACCESS
+        // =====================================================
+
+        boolean accountsUser =
+                belongsToAccountsDepartment(requestingUser);
+
+        boolean adminUser =
+                hasAdminRole(requestingUser);
+
+        boolean salesUser =
+                belongsToSalesDepartment(requestingUser);
+
+        if (!accountsUser && !adminUser && !salesUser) {
+            throw new ValidationException(
+                    "Only Sales, Accounts or Admin users can view "
+                            + "Advance Tax Invoice requests.",
+                    "ERR_ADVANCE_INVOICE_LIST_ACCESS_DENIED",
+                    "userId"
+            );
+        }
+
+        /*
+         * Accounts/Admin:
+         * requestedByUserIdFilter = null
+         * Therefore, all requests are returned.
+         *
+         * Sales:
+         * requestedByUserIdFilter = requestingUserId
+         * Therefore, only that salesperson's requests are returned.
+         */
+        Long requestedByUserIdFilter =
+                accountsUser || adminUser
+                        ? null
+                        : requestingUser.getId();
+
+        // =====================================================
+        // 4. VALIDATE PAGINATION
+        // =====================================================
+
         int safePage = Math.max(page, 0);
+
         int safeSize =
                 size <= 0 || size > 200
                         ? 20
@@ -431,15 +495,21 @@ public class AdvanceTaxInvoiceServiceImpl
                         )
                 );
 
+        // =====================================================
+        // 5. FETCH VISIBLE REQUESTS
+        // =====================================================
+
         Page<AdvanceTaxInvoiceRequest> requestPage =
-                status == null
-                        ? advanceTaxInvoiceRequestRepository
-                        .findAll(pageable)
-                        : advanceTaxInvoiceRequestRepository
-                        .findAllByStatus(
+                advanceTaxInvoiceRequestRepository
+                        .findVisibleRequests(
+                                requestedByUserIdFilter,
                                 status,
                                 pageable
                         );
+
+        // =====================================================
+        // 6. MAP RESPONSE
+        // =====================================================
 
         return requestPage.map(
                 request -> mapToResponse(
@@ -974,4 +1044,51 @@ public class AdvanceTaxInvoiceServiceImpl
                 ? null
                 : cleaned;
     }
+
+
+    private boolean belongsToAccountsDepartment(User user) {
+
+        if (user == null || user.getDepartment() == null) {
+            return false;
+        }
+
+        String department =
+                user.getDepartment().trim();
+
+        return "ACCOUNT".equalsIgnoreCase(department)
+                || "ACCOUNTS".equalsIgnoreCase(department);
+    }
+
+    private boolean belongsToSalesDepartment(User user) {
+
+        if (user == null || user.getDepartment() == null) {
+            return false;
+        }
+
+        String department =
+                user.getDepartment().trim();
+
+        return "SALE".equalsIgnoreCase(department)
+                || "SALES".equalsIgnoreCase(department);
+    }
+
+    private boolean hasAdminRole(User user) {
+
+        if (user == null || user.getUserRole() == null) {
+            return false;
+        }
+
+        return user.getUserRole()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(role -> !role.isDeleted())
+                .filter(role -> role.getName() != null)
+                .map(role -> role.getName().trim())
+                .anyMatch(roleName ->
+                        "ADMIN".equalsIgnoreCase(roleName)
+                                || "SUPER_ADMIN".equalsIgnoreCase(roleName)
+                );
+    }
+
+
 }

@@ -35,14 +35,6 @@ public interface AdvanceTaxInvoiceRequestRepository
             @Param("requestId") Long requestId
     );
 
-    Page<AdvanceTaxInvoiceRequest> findAllByStatus(
-            AdvanceTaxInvoiceRequestStatus status,
-            Pageable pageable
-    );
-
-    Optional<AdvanceTaxInvoiceRequest> findByPublicUuid(
-            String publicUuid
-    );
 
     @Query("""
             select coalesce(sum(request.requestedAmount), 0)
@@ -53,5 +45,28 @@ public interface AdvanceTaxInvoiceRequestRepository
     BigDecimal sumAmountByEstimateAndStatus(
             @Param("estimate") Estimate estimate,
             @Param("status") AdvanceTaxInvoiceRequestStatus status
+    );
+
+
+    @Query("""
+            SELECT request
+            FROM AdvanceTaxInvoiceRequest request
+            WHERE (
+                :requestedByUserId IS NULL
+                OR request.requestedBy.id = :requestedByUserId
+            )
+            AND (
+                :status IS NULL
+                OR request.status = :status
+            )
+            """)
+    Page<AdvanceTaxInvoiceRequest> findVisibleRequests(
+            @Param("requestedByUserId")
+            Long requestedByUserId,
+
+            @Param("status")
+            AdvanceTaxInvoiceRequestStatus status,
+
+            Pageable pageable
     );
 }

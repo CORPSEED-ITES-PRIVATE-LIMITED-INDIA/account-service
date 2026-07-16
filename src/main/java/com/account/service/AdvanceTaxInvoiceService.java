@@ -22,8 +22,11 @@ public interface AdvanceTaxInvoiceService {
     );
 
     Page<AdvanceTaxInvoiceResponseDto> getRequests(
+            Long requestingUserId,
             AdvanceTaxInvoiceRequestStatus status,
             int page,
             int size
     );
+
+
 }

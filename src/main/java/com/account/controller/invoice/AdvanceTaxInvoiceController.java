@@ -84,9 +84,17 @@ public class AdvanceTaxInvoiceController {
 
     @GetMapping
     @Operation(
-            summary = "List Advance Tax Invoice requests"
+            summary = "List Advance Tax Invoice requests",
+            description = """
+                Accounts/Admin users can view all requests.
+                Sales users can view only requests raised by themselves.
+                """
     )
     public ResponseEntity<Page<AdvanceTaxInvoiceResponseDto>> getRequests(
+
+            @RequestParam("userId")
+            Long requestingUserId,
+
             @RequestParam(required = false)
             AdvanceTaxInvoiceRequestStatus status,
 
@@ -99,13 +107,13 @@ public class AdvanceTaxInvoiceController {
 
         return ResponseEntity.ok(
                 advanceTaxInvoiceService.getRequests(
+                        requestingUserId,
                         status,
                         page,
                         size
                 )
         );
     }
-
 
 
 
