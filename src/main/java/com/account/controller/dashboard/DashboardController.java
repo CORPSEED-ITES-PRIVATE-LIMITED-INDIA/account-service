@@ -2,6 +2,8 @@ package com.account.controller.dashboard;
 
 import com.account.dto.dashboard.*;
 import com.account.service.DashboardService;
+import com.account.service.TdsCollectionService;
+import com.account.tds.TdsCollectionSummaryDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,8 @@ import java.time.LocalDate;
 public class DashboardController {
 
     private final DashboardService dashboardService;
+    private final TdsCollectionService
+            tdsCollectionService;
 
     @GetMapping("/top-selling-services")
     @Operation(summary = "Get top selling services/solutions from generated invoices")
@@ -431,7 +435,25 @@ public class DashboardController {
 
         return ResponseEntity.ok(response);
     }
+    @GetMapping("/tds-collect")
+    @Operation(
+            summary = "Get client TDS collection summary",
+            description = """
+                    Returns total, pending and claimed TDS amounts.
 
+                    Current status mapping:
+                    PENDING  = Pending amount
+                    APPROVED = Claimed amount
+                    """
+    )
+    public ResponseEntity<TdsCollectionSummaryDto>
+    getTdsCollectionSummary() {
+
+        return ResponseEntity.ok(
+                tdsCollectionService
+                        .getTdsCollectionSummary()
+        );
+    }
 
 
 
