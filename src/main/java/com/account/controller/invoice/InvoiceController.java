@@ -134,6 +134,8 @@ public class InvoiceController {
         return ResponseEntity.ok(invoiceService.taxationReport(request));
     }
 
+
+
     @GetMapping("/by-unbilled")
     @Operation(
             summary = "Get invoices by user and unbilled invoice",

@@ -1,11 +1,11 @@
 package com.account.controller.invoice;
 
 import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
-import com.account.dto.invoice.AdvanceTaxInvoiceApprovalRequestDto;
-import com.account.dto.invoice.AdvanceTaxInvoiceCreateRequestDto;
-import com.account.dto.invoice.AdvanceTaxInvoiceResponseDto;
+import com.account.dto.invoice.*;
 import com.account.service.AdvanceTaxInvoiceService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +62,7 @@ public class AdvanceTaxInvoiceController {
                 advanceTaxInvoiceService.approveRequest(
                         requestId,
                         requestDto
+                        // i want same invoice feataute i
                 );
 
         return ResponseEntity.ok(response);
@@ -116,5 +117,27 @@ public class AdvanceTaxInvoiceController {
     }
 
 
+    @PutMapping("/{invoiceId}/confirm-e-invoice-and-create-project")
+    @Operation(
+            summary = "Confirm/finalize Advance Tax Invoice and synchronize Operation Project"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invoice processed successfully"),
+            @ApiResponse(responseCode = "400", description = "Validation failure"),
+            @ApiResponse(responseCode = "403", description = "User not authorized"),
+            @ApiResponse(responseCode = "404", description = "Advance Tax Invoice not found")
+    })
+    public ResponseEntity<ConfirmAdvanceInvoiceResponseDto>
+    confirmEInvoiceAndCreateProject(
+            @PathVariable Long invoiceId,
+            @Valid @RequestBody ConfirmInvoiceEInvoiceRequestDto request
+    ) {
+        return ResponseEntity.ok(
+                advanceTaxInvoiceService.confirmEInvoiceAndCreateProject(
+                        invoiceId,
+                        request
+                )
+        );
+    }
 
 }

@@ -291,6 +291,33 @@ public class Invoice {
     @Column(name = "operation_project_no", length = 100)
     private String operationProjectNo;
 
+
+    @Column(name = "e_invoice_remarks", length = 1000)
+    private String eInvoiceRemarks;
+
+    @Column(name = "finalized_at")
+    private LocalDateTime finalizedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "finalized_by")
+    private User finalizedBy;
+
+    @Column(name = "finalization_remarks", length = 1000)
+    private String finalizationRemarks;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "operation_sync_status", length = 30)
+    private OperationSyncStatus operationSyncStatus = OperationSyncStatus.PENDING;
+
+    @Column(name = "operation_last_error", length = 1000)
+    private String operationLastError;
+
+    @Column(name = "operation_sync_attempts", nullable = false)
+    private int operationSyncAttempts = 0;
+
+    @Column(name = "operation_next_retry_at")
+    private LocalDateTime operationNextRetryAt;
+
     // ==================== CALLBACKS ====================
 
     @PrePersist

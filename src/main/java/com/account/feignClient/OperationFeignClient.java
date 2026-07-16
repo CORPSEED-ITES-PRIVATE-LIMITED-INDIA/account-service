@@ -117,4 +117,17 @@ public interface OperationFeignClient {
     );
 
 
+    @GetMapping("/operationService/api/v1/projects/by-estimate/{estimateId}")
+    ResponseEntity<AdvanceInvoiceOperationProjectResponseDto> getProjectByEstimateId(
+            @PathVariable("estimateId") Long estimateId
+    );
+
+    @PostMapping("/operationService/api/v1/projects/from-advance-invoice")
+    ResponseEntity<AdvanceInvoiceOperationProjectResponseDto>
+    createOrSyncProjectFromAdvanceInvoice(
+            @RequestBody AdvanceInvoiceOperationProjectRequestDto request
+    );
+
+
+
 }

@@ -6,10 +6,12 @@ import com.account.domain.invoice.InvoicePaymentStatus;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
 import com.account.dto.dashboard.*;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -462,6 +464,34 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("estimateId") Long estimateId,
             @Param("origin") InvoiceOrigin origin,
             @Param("paymentStatuses") Collection<InvoicePaymentStatus> paymentStatuses
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+       select distinct invoice
+       from Invoice invoice
+       join fetch invoice.estimate estimate
+       left join fetch invoice.advanceTaxInvoiceRequest advanceRequest
+       left join fetch estimate.company company
+       left join fetch estimate.unit unit
+       left join fetch estimate.contact contact
+       left join fetch invoice.lineItems lineItem
+       where invoice.id = :invoiceId
+       """)
+    Optional<Invoice> findByIdForAdvanceEInvoiceConfirmation(
+            @Param("invoiceId") Long invoiceId
+    );
+
+    @Query("""
+        SELECT CASE WHEN COUNT(i) > 0 THEN true ELSE false END
+        FROM Invoice i
+        WHERE LOWER(TRIM(i.eInvoiceIrn)) = LOWER(TRIM(:eInvoiceIrn))
+          AND (:excludedInvoiceId IS NULL OR i.id <> :excludedInvoiceId)
+          AND i.isCancelled = false
+        """)
+    boolean existsByEInvoiceIrnExcludingInvoice(
+            @Param("eInvoiceIrn") String eInvoiceIrn,
+            @Param("excludedInvoiceId") Long excludedInvoiceId
     );
 
 

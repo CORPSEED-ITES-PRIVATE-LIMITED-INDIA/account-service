@@ -1,9 +1,7 @@
 package com.account.service;
 
 import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
-import com.account.dto.invoice.AdvanceTaxInvoiceApprovalRequestDto;
-import com.account.dto.invoice.AdvanceTaxInvoiceCreateRequestDto;
-import com.account.dto.invoice.AdvanceTaxInvoiceResponseDto;
+import com.account.dto.invoice.*;
 import org.springframework.data.domain.Page;
 
 public interface AdvanceTaxInvoiceService {
@@ -26,6 +24,13 @@ public interface AdvanceTaxInvoiceService {
             AdvanceTaxInvoiceRequestStatus status,
             int page,
             int size
+    );
+
+
+
+    ConfirmAdvanceInvoiceResponseDto confirmEInvoiceAndCreateProject(
+            Long invoiceId,
+            ConfirmInvoiceEInvoiceRequestDto request
     );
 
 

@@ -208,6 +208,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		invoice.setPublicUuid(UUID.randomUUID().toString());
 		invoice.setInvoiceNumber(generateInvoiceNumber());
+		invoice.setEstimate(estimate);
 
 		invoice.setUnbilledInvoice(unbilled);
 		invoice.setTriggeringPayment(receipt);
@@ -3317,6 +3318,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				request.getId()
 		);
 
+
 		invoice.setLineItems(invoiceLines);
 
 		BigDecimal subTotalExGst =
@@ -3676,6 +3678,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 				RoundingMode.HALF_UP
 		);
 	}
+
+
+
+
 
 
 

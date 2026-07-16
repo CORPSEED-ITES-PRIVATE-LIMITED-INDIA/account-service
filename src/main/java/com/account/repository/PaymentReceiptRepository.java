@@ -13,9 +13,11 @@ import org.springframework.stereotype.Repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -113,6 +115,29 @@ public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, 
 
     Optional<PaymentReceipt> findTopByInvoiceAndIsCancelledFalseOrderByIdAsc(
             Invoice invoice
+    );
+
+
+    @Query("""
+        select coalesce(sum(receipt.amount), 0)
+        from PaymentReceipt receipt
+        where receipt.isCancelled = false
+          and receipt.status in :statuses
+          and (
+                (
+                    receipt.invoice is not null
+                    and receipt.invoice.estimate.id = :estimateId
+                )
+                or
+                (
+                    receipt.unbilledInvoice is not null
+                    and receipt.unbilledInvoice.estimate.id = :estimateId
+                )
+          )
+        """)
+    BigDecimal sumRegisteredBankAmountForEstimate(
+            @Param("estimateId") Long estimateId,
+            @Param("statuses") Collection<PaymentStatus> statuses
     );
 
 

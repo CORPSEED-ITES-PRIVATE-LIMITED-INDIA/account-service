@@ -4,25 +4,28 @@ import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
+import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
-import com.account.domain.invoice.AdvanceTaxInvoiceRequest;
-import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
-import com.account.domain.invoice.Invoice;
+import com.account.domain.invoice.*;
+import com.account.domain.ledger.*;
+import com.account.domain.status.InvoiceStatus;
 import com.account.domain.status.PaymentStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
-import com.account.dto.invoice.AdvanceTaxInvoiceApprovalRequestDto;
-import com.account.dto.invoice.AdvanceTaxInvoiceCreateRequestDto;
-import com.account.dto.invoice.AdvanceTaxInvoiceResponseDto;
+import com.account.dto.invoice.*;
+import com.account.dto.ledger.AccountingVoucherEntryRequestDto;
+import com.account.dto.ledger.AccountingVoucherRequestDto;
 import com.account.dto.operationService.OperationProjectResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.feignClient.OperationFeignClient;
 import com.account.repository.AdvanceTaxInvoiceRequestRepository;
+import com.account.repository.InvoiceRepository;
 import com.account.repository.UnbilledInvoiceRepository;
 import com.account.repository.UserRepository;
 import com.account.service.AdvanceTaxInvoiceService;
 import com.account.service.InvoiceService;
+import com.account.service.ledger.AccountingVoucherService;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
@@ -32,19 +35,28 @@ import org.springframework.data.domain.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import com.account.domain.invoice.InvoiceOrigin;
+import com.account.domain.invoice.OperationSyncStatus;
+
+import com.account.dto.invoice.ConfirmAdvanceInvoiceResponseDto;
+import com.account.dto.invoice.ConfirmInvoiceEInvoiceRequestDto;
+import com.account.repository.ledger.LedgerGroupRepository;
+import com.account.repository.ledger.LedgerMasterRepository;
+
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
-public class AdvanceTaxInvoiceServiceImpl
-        implements AdvanceTaxInvoiceService {
+public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
     private static final BigDecimal MINIMUM_REQUEST_PERCENTAGE =
             new BigDecimal("0.25");
@@ -60,6 +72,16 @@ public class AdvanceTaxInvoiceServiceImpl
     private final InvoiceService invoiceService;
 
     private final OperationFeignClient operationFeignClient;
+
+    private final InvoiceRepository invoiceRepository;
+    private final AccountingVoucherService accountingVoucherService;
+    private final LedgerMasterRepository ledgerMasterRepository;
+    private final LedgerGroupRepository ledgerGroupRepository;
+    private final AdvanceInvoiceOperationSyncService
+            advanceInvoiceOperationSyncService;
+
+    private static final Logger log =
+            LoggerFactory.getLogger(AdvanceTaxInvoiceServiceImpl.class);
 
     @PersistenceContext
     private EntityManager entityManager;
@@ -1392,6 +1414,831 @@ public class AdvanceTaxInvoiceServiceImpl
                         "ADMIN".equalsIgnoreCase(roleName)
                                 || "SUPER_ADMIN".equalsIgnoreCase(roleName)
                 );
+    }
+
+
+
+    @Override
+    @Transactional
+    public ConfirmAdvanceInvoiceResponseDto confirmEInvoiceAndCreateProject(
+            Long invoiceId,
+            ConfirmInvoiceEInvoiceRequestDto request
+    ) {
+        if (invoiceId == null || invoiceId <= 0) {
+            throw new ValidationException(
+                    "Valid invoiceId is required",
+                    "ERR_ADVANCE_INVOICE_NOT_FOUND",
+                    "invoiceId"
+            );
+        }
+
+        if (request == null || request.getUserId() == null) {
+            throw new ValidationException(
+                    "User ID is required",
+                    "ERR_USER_NOT_FOUND",
+                    "userId"
+            );
+        }
+
+        log.info(
+                "Advance Invoice confirmation started | invoiceId={} | userId={}",
+                invoiceId,
+                request.getUserId()
+        );
+
+        Invoice invoice = invoiceRepository
+                .findByIdForAdvanceEInvoiceConfirmation(invoiceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Advance Tax Invoice not found with ID: " + invoiceId,
+                        "ERR_ADVANCE_INVOICE_NOT_FOUND",
+                        "Invoice",
+                        invoiceId
+                ));
+
+        validateAdvanceInvoiceForConfirmation(invoice);
+
+        User confirmedBy = getActiveUser(request.getUserId(), "userId");
+        validateAccountsOrAdminForEInvoice(confirmedBy);
+
+        GstRegistrationType gstType =
+                resolveAdvanceInvoiceGstRegistrationType(invoice);
+
+        boolean eInvoiceRequired = isEInvoiceRequired(gstType);
+
+        log.info(
+                "Advance Invoice GST route resolved | invoiceId={} | gstType={} | eInvoiceRequired={}",
+                invoiceId,
+                gstType,
+                eInvoiceRequired
+        );
+
+        String incomingIrn = clean(request.getEInvoiceIrn());
+
+        /*
+         * Idempotency:
+         * confirmed/finalized invoice with locally posted voucher is returned
+         * without changing financial data. Operation sync can still be retried.
+         */
+        if (isLocallyFinalized(invoice, eInvoiceRequired)) {
+            if (eInvoiceRequired
+                    && hasText(incomingIrn)
+                    && hasText(invoice.getEInvoiceIrn())
+                    && !invoice.getEInvoiceIrn().equalsIgnoreCase(incomingIrn)) {
+
+                throw new ValidationException(
+                        "Advance Tax Invoice is already confirmed with another IRN",
+                        "ERR_E_INVOICE_ALREADY_CONFIRMED_WITH_DIFFERENT_IRN",
+                        "eInvoiceIrn"
+                );
+            }
+
+            scheduleOperationSyncAfterCommit(invoice.getId(), confirmedBy.getId());
+
+            return buildConfirmResponse(
+                    invoice,
+                    gstType,
+                    eInvoiceRequired,
+                    "Advance Tax Invoice was already processed. "
+                            + operationMessage(invoice)
+            );
+        }
+
+        if (eInvoiceRequired) {
+            validateConditionalEInvoiceFields(request);
+
+            if (invoiceRepository
+                    .existsByEInvoiceIrnExcludingInvoice(
+                            incomingIrn,
+                            invoice.getId()
+                    )) {
+
+                throw new ValidationException(
+                        "The supplied IRN is already assigned to another active Invoice",
+                        "ERR_DUPLICATE_E_INVOICE_IRN",
+                        "eInvoiceIrn"
+                );
+            }
+
+            invoice.setEInvoiceIrn(incomingIrn);
+            invoice.setEInvoiceAckNo(clean(request.getEInvoiceAckNo()));
+            invoice.setEInvoiceAckDate(request.getEInvoiceAckDate());
+            invoice.setEInvoiceAttachmentUrl(
+                    clean(request.getEInvoiceAttachmentUrl())
+            );
+            invoice.setEInvoiceConfirmedBy(confirmedBy);
+            invoice.setEInvoiceConfirmedAt(LocalDateTime.now());
+            invoice.setEInvoiceRemarks(clean(request.getRemarks()));
+            invoice.setStatus(InvoiceStatus.E_INVOICE_CONFIRMED);
+
+            log.info(
+                    "Advance Invoice e-invoice confirmed | invoiceId={} | invoiceNumber={} | irn={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber(),
+                    maskIrn(incomingIrn)
+            );
+
+        } else {
+            /*
+             * Never store fake e-invoice values for UNREGISTERED/INTERNATIONAL.
+             */
+            invoice.setEInvoiceIrn(null);
+            invoice.setEInvoiceAckNo(null);
+            invoice.setEInvoiceAckDate(null);
+            invoice.setEInvoiceAttachmentUrl(null);
+            invoice.setEInvoiceConfirmedBy(null);
+            invoice.setEInvoiceConfirmedAt(null);
+            invoice.setEInvoiceRemarks(null);
+
+            invoice.setFinalizedAt(LocalDateTime.now());
+            invoice.setFinalizedBy(confirmedBy);
+            invoice.setFinalizationRemarks(clean(request.getRemarks()));
+            invoice.setStatus(InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE);
+
+            log.info(
+                    "E-invoice skipped for Advance Invoice | invoiceId={} | gstType={}",
+                    invoice.getId(),
+                    gstType
+            );
+        }
+
+        invoice.setUpdatedBy(confirmedBy);
+        invoice.setOperationSynced(false);
+        invoice.setOperationSyncStatus(OperationSyncStatus.PENDING);
+        invoice.setOperationLastError(null);
+
+        invoice = invoiceRepository.save(invoice);
+
+        postAdvanceInvoiceSalesVoucherExactlyOnce(
+                invoice,
+                invoice.getEstimate(),
+                confirmedBy
+        );
+
+        /*
+         * Local financial work commits first. The remote Feign call runs after commit.
+         */
+        scheduleOperationSyncAfterCommit(invoice.getId(), confirmedBy.getId());
+
+        String message = eInvoiceRequired
+                ? "Advance Tax Invoice e-invoice confirmed and Sales Voucher posted. "
+                : "E-invoice was not required for " + gstType
+                + ". Invoice finalized and Sales Voucher posted. ";
+
+        message += "Operation Project synchronization has been queued.";
+
+        return buildConfirmResponse(
+                invoice,
+                gstType,
+                eInvoiceRequired,
+                message
+        );
+    }
+
+    private void validateAdvanceInvoiceForConfirmation(Invoice invoice) {
+        if (invoice.isCancelled()) {
+            throw new ValidationException(
+                    "Cancelled Invoice cannot be confirmed",
+                    "ERR_CANNOT_CONFIRM_CANCELLED_INVOICE",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getInvoiceOrigin() != InvoiceOrigin.ADVANCE_TAX_INVOICE) {
+            throw new ValidationException(
+                    "This API supports only Advance Tax Invoices",
+                    "ERR_NOT_AN_ADVANCE_TAX_INVOICE",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getEstimate() == null) {
+            throw new ValidationException(
+                    "Estimate is missing from Advance Tax Invoice",
+                    "ERR_ADVANCE_INVOICE_ESTIMATE_MISSING",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getAdvanceTaxInvoiceRequest() == null
+                || invoice.getAdvanceTaxInvoiceRequest().getStatus()
+                != AdvanceTaxInvoiceRequestStatus.APPROVED) {
+
+            throw new ValidationException(
+                    "Advance Tax Invoice request must be APPROVED",
+                    "ERR_ADVANCE_REQUEST_NOT_APPROVED",
+                    "invoiceId"
+            );
+        }
+
+        if (money(invoice.getGrandTotal()).compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Advance Tax Invoice grand total must be greater than zero",
+                    "ERR_ADVANCE_INVOICE_AMOUNT_INVALID",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getLineItems() == null || invoice.getLineItems().isEmpty()) {
+            throw new ValidationException(
+                    "Advance Tax Invoice line items are missing",
+                    "ERR_INVOICE_LINE_ITEMS_MISSING",
+                    "invoiceId"
+            );
+        }
+    }
+
+    private GstRegistrationType resolveAdvanceInvoiceGstRegistrationType(
+            Invoice invoice
+    ) {
+        if (invoice.getGstRegistrationType() != null) {
+            return invoice.getGstRegistrationType();
+        }
+
+        Estimate estimate = invoice.getEstimate();
+
+        if (estimate != null
+                && estimate.getUnit() != null
+                && estimate.getUnit().getGstRegistrationType() != null) {
+            return estimate.getUnit().getGstRegistrationType();
+        }
+
+        throw new ValidationException(
+                "GST registration type is missing on Invoice and Company Unit",
+                "ERR_GST_REGISTRATION_TYPE_MISSING",
+                "invoiceId"
+        );
+    }
+
+    private boolean isEInvoiceRequired(GstRegistrationType gstType) {
+        return gstType == GstRegistrationType.REGISTERED
+                || gstType == GstRegistrationType.SEZ;
+    }
+
+    private void validateConditionalEInvoiceFields(
+            ConfirmInvoiceEInvoiceRequestDto request
+    ) {
+        if (!hasText(request.getEInvoiceIrn())) {
+            throw new ValidationException(
+                    "E-invoice IRN is required",
+                    "ERR_E_INVOICE_IRN_REQUIRED",
+                    "eInvoiceIrn"
+            );
+        }
+
+        if (!hasText(request.getEInvoiceAckNo())) {
+            throw new ValidationException(
+                    "E-invoice acknowledgement number is required",
+                    "ERR_E_INVOICE_ACK_NO_REQUIRED",
+                    "eInvoiceAckNo"
+            );
+        }
+
+        if (request.getEInvoiceAckDate() == null) {
+            throw new ValidationException(
+                    "E-invoice acknowledgement date is required",
+                    "ERR_E_INVOICE_ACK_DATE_REQUIRED",
+                    "eInvoiceAckDate"
+            );
+        }
+    }
+
+    private void validateAccountsOrAdminForEInvoice(User user) {
+        boolean accounts = user.getDepartment() != null
+                && "accounts".equalsIgnoreCase(user.getDepartment().trim());
+
+        boolean admin = user.getUserRole() != null
+                && user.getUserRole().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(role -> role.getName() != null
+                        && "ADMIN".equalsIgnoreCase(role.getName().trim()));
+
+        if (!accounts && !admin) {
+            throw new ValidationException(
+                    "Only Accounts or Admin users can confirm an e-invoice",
+                    "ERR_USER_NOT_AUTHORIZED_FOR_E_INVOICE",
+                    "userId"
+            );
+        }
+    }
+
+    private boolean isLocallyFinalized(
+            Invoice invoice,
+            boolean eInvoiceRequired
+    ) {
+        if (eInvoiceRequired) {
+            return invoice.getStatus() == InvoiceStatus.E_INVOICE_CONFIRMED
+                    && hasText(invoice.getEInvoiceIrn());
+        }
+
+        return invoice.getStatus() == InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE
+                || invoice.getFinalizedAt() != null;
+    }
+
+    private void postAdvanceInvoiceSalesVoucherExactlyOnce(
+            Invoice invoice,
+            Estimate estimate,
+            User confirmedBy
+    ) {
+        if (accountingVoucherService.existsPostedVoucher(
+                VoucherType.SALES_INVOICE,
+                VoucherSourceType.INVOICE,
+                invoice.getId()
+        )) {
+            log.info(
+                    "Advance Invoice Sales Voucher already exists | invoiceId={}",
+                    invoice.getId()
+            );
+            return;
+        }
+
+        try {
+            LedgerMaster customerLedger =
+                    getOrCreateCustomerLedgerFromEstimate(estimate, confirmedBy);
+
+            LedgerMaster serviceIncomeLedger = getOrCreateSystemLedger(
+                    LedgerType.SERVICE_INCOME,
+                    LedgerGroupType.SALES_ACCOUNTS,
+                    "Service Income",
+                    DebitCredit.CREDIT,
+                    confirmedBy
+            );
+
+            BigDecimal grandTotal = money(invoice.getGrandTotal());
+            BigDecimal taxable = money(invoice.getSubTotalExGst());
+            BigDecimal cgst = money(invoice.getCgstAmount());
+            BigDecimal sgst = money(invoice.getSgstAmount());
+            BigDecimal igst = money(invoice.getIgstAmount());
+
+            List<AccountingVoucherEntryRequestDto> entries = new ArrayList<>();
+
+            entries.add(buildVoucherEntry(
+                    customerLedger.getId(),
+                    grandTotal,
+                    BigDecimal.ZERO,
+                    "Customer receivable for Advance Tax Invoice "
+                            + invoice.getInvoiceNumber()
+            ));
+
+            entries.add(buildVoucherEntry(
+                    serviceIncomeLedger.getId(),
+                    BigDecimal.ZERO,
+                    taxable,
+                    "Service income for Advance Tax Invoice "
+                            + invoice.getInvoiceNumber()
+            ));
+
+            if (cgst.compareTo(BigDecimal.ZERO) > 0) {
+                LedgerMaster ledger = getOrCreateSystemLedger(
+                        LedgerType.OUTPUT_CGST,
+                        LedgerGroupType.DUTIES_AND_TAXES,
+                        "Output CGST",
+                        DebitCredit.CREDIT,
+                        confirmedBy
+                );
+                entries.add(buildVoucherEntry(
+                        ledger.getId(),
+                        BigDecimal.ZERO,
+                        cgst,
+                        "Output CGST for " + invoice.getInvoiceNumber()
+                ));
+            }
+
+            if (sgst.compareTo(BigDecimal.ZERO) > 0) {
+                LedgerMaster ledger = getOrCreateSystemLedger(
+                        LedgerType.OUTPUT_SGST,
+                        LedgerGroupType.DUTIES_AND_TAXES,
+                        "Output SGST",
+                        DebitCredit.CREDIT,
+                        confirmedBy
+                );
+                entries.add(buildVoucherEntry(
+                        ledger.getId(),
+                        BigDecimal.ZERO,
+                        sgst,
+                        "Output SGST for " + invoice.getInvoiceNumber()
+                ));
+            }
+
+            if (igst.compareTo(BigDecimal.ZERO) > 0) {
+                LedgerMaster ledger = getOrCreateSystemLedger(
+                        LedgerType.OUTPUT_IGST,
+                        LedgerGroupType.DUTIES_AND_TAXES,
+                        "Output IGST",
+                        DebitCredit.CREDIT,
+                        confirmedBy
+                );
+                entries.add(buildVoucherEntry(
+                        ledger.getId(),
+                        BigDecimal.ZERO,
+                        igst,
+                        "Output IGST for " + invoice.getInvoiceNumber()
+                ));
+            }
+
+            AccountingVoucherRequestDto voucherRequest =
+                    AccountingVoucherRequestDto.builder()
+                            .voucherType(VoucherType.SALES_INVOICE)
+                            .voucherDate(invoice.getInvoiceDate() != null
+                                    ? invoice.getInvoiceDate()
+                                    : LocalDate.now())
+                            .sourceType(VoucherSourceType.INVOICE)
+                            .sourceId(invoice.getId())
+                            .narration(
+                                    "Advance Tax Invoice posted: "
+                                            + invoice.getInvoiceNumber()
+                            )
+                            .entries(entries)
+                            .build();
+
+            accountingVoucherService.createVoucher(voucherRequest);
+
+        } catch (Exception ex) {
+            throw new ValidationException(
+                    "Unable to post Sales Voucher for Advance Tax Invoice",
+                    "ERR_SALES_VOUCHER_POSTING_FAILED",
+                    "invoiceId"
+            );
+        }
+    }
+
+    private LedgerMaster getOrCreateCustomerLedgerFromEstimate(
+            Estimate estimate,
+            User createdBy
+    ) {
+        if (estimate == null
+                || estimate.getCompany() == null
+                || estimate.getCompany().getId() == null) {
+            throw new ValidationException(
+                    "Company is required to resolve customer ledger",
+                    "ERR_COMPANY_REQUIRED_FOR_LEDGER",
+                    "companyId"
+            );
+        }
+
+        Long companyId = estimate.getCompany().getId();
+
+        Optional<LedgerMaster> existing =
+                ledgerMasterRepository.findByCompanyIdAndLedgerTypeAndDeletedFalse(
+                        companyId,
+                        LedgerType.CUSTOMER
+                );
+
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
+        LedgerGroup debtors = ledgerGroupRepository
+                .findByGroupTypeAndDeletedFalse(LedgerGroupType.SUNDRY_DEBTORS)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sundry Debtors ledger group not found",
+                        "SUNDRY_DEBTORS_GROUP_NOT_FOUND"
+                ));
+
+        LedgerMaster ledger = new LedgerMaster();
+        ledger.setLedgerName(
+                hasText(estimate.getCompany().getName())
+                        ? estimate.getCompany().getName().trim()
+                        : "Company-" + companyId
+        );
+        ledger.setLedgerCode(
+                "CUST-" + companyId
+        );
+        ledger.setLedgerType(LedgerType.CUSTOMER);
+        ledger.setLedgerGroup(debtors);
+        ledger.setCompany(estimate.getCompany());
+        ledger.setUnit(estimate.getUnit());
+        ledger.setContact(estimate.getContact());
+        ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2));
+        ledger.setOpeningBalanceType(DebitCredit.DEBIT);
+        ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2));
+        ledger.setCurrentBalanceType(DebitCredit.DEBIT);
+        ledger.setSystemCreated(true);
+        ledger.setActive(true);
+        ledger.setDeleted(false);
+        ledger.setCreatedBy(createdBy);
+        ledger.setUpdatedBy(createdBy);
+
+        return ledgerMasterRepository.save(ledger);
+    }
+
+    private void scheduleOperationSyncAfterCommit(
+            Long invoiceId,
+            Long confirmedByUserId
+    ) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            advanceInvoiceOperationSyncService.synchronizeAfterCommit(
+                    invoiceId,
+                    confirmedByUserId
+            );
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        advanceInvoiceOperationSyncService.synchronizeAfterCommit(
+                                invoiceId,
+                                confirmedByUserId
+                        );
+                    }
+                }
+        );
+    }
+
+    private ConfirmAdvanceInvoiceResponseDto buildConfirmResponse(
+            Invoice invoice,
+            GstRegistrationType gstType,
+            boolean eInvoiceRequired,
+            String message
+    ) {
+        boolean voucherPosted =
+                accountingVoucherService.existsPostedVoucher(
+                        VoucherType.SALES_INVOICE,
+                        VoucherSourceType.INVOICE,
+                        invoice.getId()
+                );
+
+        return ConfirmAdvanceInvoiceResponseDto.builder()
+                .invoiceId(invoice.getId())
+                .invoiceNumber(invoice.getInvoiceNumber())
+                .invoiceOrigin(invoice.getInvoiceOrigin())
+                .gstRegistrationType(gstType)
+                .eInvoiceRequired(eInvoiceRequired)
+                .eInvoiceConfirmed(
+                        eInvoiceRequired
+                                && invoice.getStatus()
+                                == InvoiceStatus.E_INVOICE_CONFIRMED
+                )
+                .eInvoiceIrn(eInvoiceRequired
+                        ? invoice.getEInvoiceIrn() : null)
+                .eInvoiceAckNo(eInvoiceRequired
+                        ? invoice.getEInvoiceAckNo() : null)
+                .eInvoiceAckDate(eInvoiceRequired
+                        ? invoice.getEInvoiceAckDate() : null)
+                .salesVoucherPosted(voucherPosted)
+                .operationSynced(invoice.isOperationSynced())
+                .operationProjectNo(invoice.getOperationProjectNo())
+                .operationSyncStatus(
+                        invoice.getOperationSyncStatus() != null
+                                ? invoice.getOperationSyncStatus().name()
+                                : null
+                )
+                .message(message)
+                .build();
+    }
+
+    private String operationMessage(Invoice invoice) {
+        return invoice.isOperationSynced()
+                ? "Operation Project is already synchronized."
+                : "Operation Project synchronization is pending.";
+    }
+
+    private String maskIrn(String irn) {
+        if (!hasText(irn) || irn.length() <= 8) {
+            return "********";
+        }
+        return irn.substring(0, 4)
+                + "..."
+                + irn.substring(irn.length() - 4);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private AccountingVoucherEntryRequestDto buildVoucherEntry(
+            Long ledgerId,
+            BigDecimal debitAmount,
+            BigDecimal creditAmount,
+            String narration
+    ) {
+        if (ledgerId == null) {
+            throw new ValidationException(
+                    "Ledger ID is required for voucher entry",
+                    "ERR_VOUCHER_LEDGER_REQUIRED",
+                    "ledgerId"
+            );
+        }
+
+        BigDecimal safeDebitAmount = money(debitAmount);
+        BigDecimal safeCreditAmount = money(creditAmount);
+
+        if (safeDebitAmount.compareTo(BigDecimal.ZERO) < 0
+                || safeCreditAmount.compareTo(BigDecimal.ZERO) < 0) {
+
+            throw new ValidationException(
+                    "Voucher debit and credit amounts cannot be negative",
+                    "ERR_INVALID_VOUCHER_ENTRY_AMOUNT",
+                    "amount"
+            );
+        }
+
+        if (safeDebitAmount.compareTo(BigDecimal.ZERO) > 0
+                && safeCreditAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            throw new ValidationException(
+                    "A voucher entry cannot contain both debit and credit amounts",
+                    "ERR_VOUCHER_ENTRY_HAS_DEBIT_AND_CREDIT",
+                    "amount"
+            );
+        }
+
+        if (safeDebitAmount.compareTo(BigDecimal.ZERO) == 0
+                && safeCreditAmount.compareTo(BigDecimal.ZERO) == 0) {
+
+            throw new ValidationException(
+                    "Voucher entry must contain either a debit or credit amount",
+                    "ERR_EMPTY_VOUCHER_ENTRY",
+                    "amount"
+            );
+        }
+
+        return AccountingVoucherEntryRequestDto.builder()
+                .ledgerId(ledgerId)
+                .debitAmount(safeDebitAmount)
+                .creditAmount(safeCreditAmount)
+                .narration(clean(narration))
+                .build();
+    }
+
+    private LedgerMaster getOrCreateSystemLedger(
+            LedgerType ledgerType,
+            LedgerGroupType ledgerGroupType,
+            String ledgerName,
+            DebitCredit balanceType,
+            User createdBy
+    ) {
+        if (ledgerType == null) {
+            throw new ValidationException(
+                    "Ledger type is required",
+                    "ERR_LEDGER_TYPE_REQUIRED",
+                    "ledgerType"
+            );
+        }
+
+        if (ledgerGroupType == null) {
+            throw new ValidationException(
+                    "Ledger group type is required",
+                    "ERR_LEDGER_GROUP_TYPE_REQUIRED",
+                    "ledgerGroupType"
+            );
+        }
+
+        Optional<LedgerMaster> existingLedger =
+                ledgerMasterRepository.findByLedgerTypeAndDeletedFalse(
+                        ledgerType
+                );
+
+        if (existingLedger.isPresent()) {
+            LedgerMaster ledger = existingLedger.get();
+
+            if (!ledger.isActive()) {
+                ledger.setActive(true);
+                ledger.setUpdatedBy(createdBy);
+                ledger = ledgerMasterRepository.save(ledger);
+            }
+
+            log.debug(
+                    "System ledger reused | ledgerType={} | ledgerId={}",
+                    ledgerType,
+                    ledger.getId()
+            );
+
+            return ledger;
+        }
+
+        LedgerGroup ledgerGroup =
+                ledgerGroupRepository
+                        .findByGroupTypeAndDeletedFalse(
+                                ledgerGroupType
+                        )
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        ledgerGroupType
+                                                + " ledger group not found",
+                                        ledgerGroupType
+                                                + "_GROUP_NOT_FOUND"
+                                )
+                        );
+
+        LedgerMaster ledger = new LedgerMaster();
+
+        ledger.setLedgerName(
+                hasText(ledgerName)
+                        ? ledgerName.trim()
+                        : formatLedgerTypeName(ledgerType)
+        );
+
+        ledger.setLedgerCode(
+                generateSystemLedgerCode(ledgerType)
+        );
+
+        ledger.setLedgerType(ledgerType);
+        ledger.setLedgerGroup(ledgerGroup);
+
+        ledger.setOpeningBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setOpeningBalanceType(balanceType);
+
+        ledger.setCurrentBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setCurrentBalanceType(balanceType);
+
+        ledger.setSystemCreated(true);
+        ledger.setActive(true);
+        ledger.setDeleted(false);
+
+        if (createdBy != null) {
+            ledger.setCreatedBy(createdBy);
+            ledger.setUpdatedBy(createdBy);
+        }
+
+        LedgerMaster savedLedger =
+                ledgerMasterRepository.save(ledger);
+
+        log.info(
+                "System ledger created | ledgerType={} | ledgerId={} | ledgerName={}",
+                ledgerType,
+                savedLedger.getId(),
+                savedLedger.getLedgerName()
+        );
+
+        return savedLedger;
+    }
+
+
+    private String generateSystemLedgerCode(
+            LedgerType ledgerType
+    ) {
+        String prefix = switch (ledgerType) {
+            case SERVICE_INCOME -> "LED-SERVICE-";
+            case OUTPUT_CGST -> "LED-OUT-CGST-";
+            case OUTPUT_SGST -> "LED-OUT-SGST-";
+            case OUTPUT_IGST -> "LED-OUT-IGST-";
+            case TDS_RECEIVABLE -> "LED-TDS-REC-";
+            case TDS_PAYABLE -> "LED-TDS-PAY-";
+            case INPUT_CGST -> "LED-IN-CGST-";
+            case INPUT_SGST -> "LED-IN-SGST-";
+            case INPUT_IGST -> "LED-IN-IGST-";
+            default -> "LED-SYS-";
+        };
+
+        String ledgerCode;
+
+        do {
+            ledgerCode =
+                    prefix
+                            + System.currentTimeMillis()
+                            + "-"
+                            + UUID.randomUUID()
+                            .toString()
+                            .substring(0, 6)
+                            .toUpperCase();
+
+        } while (
+                ledgerMasterRepository
+                        .existsByLedgerCodeIgnoreCase(
+                                ledgerCode
+                        )
+        );
+
+        return ledgerCode;
+    }
+
+    private String formatLedgerTypeName(
+            LedgerType ledgerType
+    ) {
+        if (ledgerType == null) {
+            return "System Ledger";
+        }
+
+        return Arrays.stream(
+                        ledgerType.name()
+                                .toLowerCase()
+                                .split("_")
+                )
+                .filter(word -> !word.isBlank())
+                .map(word ->
+                        Character.toUpperCase(
+                                word.charAt(0)
+                        ) + word.substring(1)
+                )
+                .reduce(
+                        (first, second) ->
+                                first + " " + second
+                )
+                .orElse("System Ledger");
     }
 
 

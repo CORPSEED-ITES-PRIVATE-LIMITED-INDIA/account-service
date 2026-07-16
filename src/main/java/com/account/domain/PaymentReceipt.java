@@ -136,6 +136,24 @@ public class PaymentReceipt {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(
+            name = "allocated_amount",
+            nullable = false,
+            precision = 19,
+            scale = 2
+    )
+    private BigDecimal allocatedAmount =
+            BigDecimal.ZERO.setScale(2);
+
+    @Column(
+            name = "unallocated_amount",
+            nullable = false,
+            precision = 19,
+            scale = 2
+    )
+    private BigDecimal unallocatedAmount =
+            BigDecimal.ZERO.setScale(2);
+
     @PrePersist
     protected void onCreate() {
         if (paymentDate == null) {
@@ -153,6 +171,8 @@ public class PaymentReceipt {
         amount = safeMoney(amount);
         validateSourceMapping();
     }
+
+
 
     private void validateSourceMapping() {
         boolean hasUnbilled = unbilledInvoice != null;
