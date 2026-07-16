@@ -3,6 +3,7 @@ package com.account.domain.invoice;
 import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
 import com.account.domain.company.GstRegistrationType;
+import com.account.domain.status.GstFilingStatus;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import jakarta.persistence.*;
@@ -45,8 +46,13 @@ import java.util.List;
                 @Index(
                         name = "idx_invoice_date",
                         columnList = "invoice_date"
+                ),
+                @Index(
+                        name = "idx_invoice_gst_summary",
+                        columnList = "created_by, invoice_date, gst_filing_status"
                 )
         }
+
 )
 @EntityListeners(AuditingEntityListener.class)
 @Getter
@@ -301,6 +307,26 @@ public class Invoice {
 
     @Column(name = "operation_project_no", length = 100)
     private String operationProjectNo;
+
+    // ==================== GST FILING DETAILS ====================
+
+    @Enumerated(EnumType.STRING)
+    @Column(
+            name = "gst_filing_status",
+            nullable = false,
+            length = 20
+    )
+    private GstFilingStatus gstFilingStatus =
+            GstFilingStatus.PENDING;
+
+    @Column(name = "gst_filed_date")
+    private LocalDate gstFiledDate;
+
+    @Column(name = "gst_reconciled_date")
+    private LocalDate gstReconciledDate;
+
+    @Column(name = "gst_filing_reference", length = 100)
+    private String gstFilingReference;
 
     // ==================== GST HELPERS ====================
 
