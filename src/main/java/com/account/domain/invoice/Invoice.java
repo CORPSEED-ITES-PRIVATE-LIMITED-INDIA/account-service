@@ -4,6 +4,7 @@ import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
 import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
+import com.account.domain.status.GstFilingStatus;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
 import jakarta.persistence.*;
@@ -380,6 +381,11 @@ public class Invoice {
         return getEffectiveGstRegistrationType().isZeroRated();
     }
 
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gst_filing_status", nullable = false, length = 30)
+    private GstFilingStatus gstFilingStatus = GstFilingStatus.PENDING;
+
     // ==================== PAYMENT HELPERS ====================
 
     public BigDecimal getAvailableOutstandingAmount() {
@@ -396,4 +402,6 @@ public class Invoice {
     public boolean isPaymentApprovalInvoice() {
         return invoiceOrigin == InvoiceOrigin.PAYMENT_APPROVAL;
     }
+
+
 }

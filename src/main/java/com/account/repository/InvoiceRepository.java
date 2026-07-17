@@ -463,6 +463,46 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("origin") InvoiceOrigin origin,
             @Param("paymentStatuses") Collection<InvoicePaymentStatus> paymentStatuses
     );
+    @Query("""
+        SELECT new com.account.dto.dashboard.GstCollectedSummaryDto(
+            SUM(i.subTotalExGst),
+            SUM(i.totalGstAmount),
 
+            SUM(
+                CASE
+                    WHEN i.gstFilingStatus = com.account.domain.status.GstFilingStatus.PENDING
+                    THEN i.totalGstAmount
+                    ELSE NULL
+                END
+            ),
+
+            SUM(
+                CASE
+                    WHEN i.gstFilingStatus = com.account.domain.status.GstFilingStatus.FILED
+                    THEN i.totalGstAmount
+                    ELSE NULL
+                END
+            ),
+
+            SUM(
+                CASE
+                    WHEN i.gstFilingStatus = com.account.domain.status.GstFilingStatus.RECONCILED
+                    THEN i.totalGstAmount
+                    ELSE NULL
+                END
+            )
+        )
+        FROM Invoice i
+        WHERE i.isCancelled = false
+          AND i.createdBy.id = :userId
+          AND i.invoiceDate >= :fromDate
+          AND i.invoiceDate <= :toDate
+          AND i.totalGstAmount > 0
+        """)
+    GstCollectedSummaryDto findGstCollectedSummary(
+            @Param("userId") Long userId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
 
 }

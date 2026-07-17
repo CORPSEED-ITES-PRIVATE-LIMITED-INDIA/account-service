@@ -112,6 +112,12 @@ public interface DashboardService {
             LocalDate toDate
     );
 
+    GstCollectedSummaryDto getGstCollectedSummary(
+            Long userId,
+            LocalDate fromDate,
+            LocalDate toDate
+    );
+
 
 
 }

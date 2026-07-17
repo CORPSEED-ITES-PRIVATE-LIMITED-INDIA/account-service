@@ -1370,6 +1370,40 @@ public class DashboardServiceImpl implements DashboardService {
                 .build();
     }
 
+    @Override
+    public GstCollectedSummaryDto getGstCollectedSummary(Long userId, LocalDate fromDate, LocalDate toDate) {
+        LocalDate effectiveFromDate = fromDate;
+        LocalDate effectiveToDate = toDate;
+
+        if (effectiveFromDate == null && effectiveToDate == null) {
+            effectiveFromDate = LocalDate.now().withDayOfMonth(1);
+            effectiveToDate = LocalDate.now();
+        } else if (effectiveFromDate == null) {
+            effectiveFromDate = effectiveToDate.withDayOfMonth(1);
+        } else if (effectiveToDate == null) {
+            effectiveToDate = LocalDate.now();
+        }
+
+        if (effectiveFromDate.isAfter(effectiveToDate)) {
+            throw new IllegalArgumentException(
+                    "From date cannot be after to date"
+            );
+        }
+
+        GstCollectedSummaryDto summary =
+                invoiceRepository.findGstCollectedSummary(
+                        userId,
+                        effectiveFromDate,
+                        effectiveToDate
+                );
+
+        /*if (summary == null) {
+            return createEmptySummary();
+        }*/
+
+        return summary;
+    }
+
     private Object[] unwrapRow(Object[] row) {
         if (row == null) {
             return new Object[0];
