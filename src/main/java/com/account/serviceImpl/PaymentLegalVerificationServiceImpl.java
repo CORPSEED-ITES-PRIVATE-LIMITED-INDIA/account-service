@@ -35,6 +35,7 @@ public class PaymentLegalVerificationServiceImpl implements PaymentLegalVerifica
     private final UserRepository userRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
 
+
     @Override
     public void createIfPurchaseOrder(PaymentReceipt receipt, User requestedBy) {
 
@@ -50,11 +51,11 @@ public class PaymentLegalVerificationServiceImpl implements PaymentLegalVerifica
             return;
         }
 
-        if (!StringUtils.hasText(receipt.getPaymentProof())) {
+        if (!StringUtils.hasText(receipt.getPoAttachmentUrl())) {
             throw new ValidationException(
                     "PO attachment is required for Purchase Order payment",
                     "ERR_PO_ATTACHMENT_REQUIRED",
-                    "paymentProof"
+                    "poAttachmentUrl"
             );
         }
 
@@ -71,7 +72,7 @@ public class PaymentLegalVerificationServiceImpl implements PaymentLegalVerifica
         legalRequest.setEstimate(estimate);
         legalRequest.setCompany(unbilled != null ? unbilled.getCompany() : null);
         legalRequest.setUnit(unbilled != null ? unbilled.getUnit() : null);
-        legalRequest.setPoAttachmentUrl(receipt.getPaymentProof());
+        legalRequest.setPoAttachmentUrl(receipt.getPoAttachmentUrl());
         legalRequest.setPaymentTermsDays(receipt.getPaymentTermsDays());
         legalRequest.setPaymentTerms(receipt.getPaymentTerms());
         legalRequest.setRequestedBy(requestedBy);
@@ -82,6 +83,7 @@ public class PaymentLegalVerificationServiceImpl implements PaymentLegalVerifica
 
         legalRequestRepository.save(legalRequest);
     }
+
 
     @Override
     @Transactional(readOnly = true)

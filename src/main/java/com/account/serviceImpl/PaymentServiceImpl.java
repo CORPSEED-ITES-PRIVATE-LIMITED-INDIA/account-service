@@ -116,8 +116,9 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
+
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public PaymentRegistrationResponseDto registerPayment(
             PaymentRegistrationRequestDto request,
             Long salespersonUserId
@@ -323,6 +324,19 @@ public class PaymentServiceImpl implements PaymentService {
         boolean isZeroAmountPurchaseOrder =
                 isPurchaseOrder
                         && reqAmount.compareTo(BigDecimal.ZERO) == 0;
+
+        /*
+         * Validate the Purchase Order attachment before creating:
+         * - UnbilledInvoice
+         * - PaymentReceipt
+         * - Legal verification request
+         *
+         * Non-PURCHASE_ORDER flows are unaffected.
+         */
+        validatePurchaseOrderRequest(
+                request,
+                isPurchaseOrder
+        );
 
         // =====================================================
         // 6. VALIDATE BANK LEDGER
@@ -6144,6 +6158,85 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
+    private void validatePurchaseOrderRequest(
+            PaymentRegistrationRequestDto request,
+            boolean isPurchaseOrder
+    ) {
+
+        if (!isPurchaseOrder) {
+            return;
+        }
+
+        if (request == null
+                || request.getPoAttachmentUrl() == null
+                || request.getPoAttachmentUrl().trim().isEmpty()) {
+
+            throw new ValidationException(
+                    "PO attachment is required for Purchase Order payment",
+                    "ERR_PO_ATTACHMENT_REQUIRED",
+                    "poAttachmentUrl"
+            );
+        }
+    }
+
+
+
+
+//    private void validatePurchaseOrderRequest(
+//            PaymentRegistrationRequestDto request,
+//            boolean isPurchaseOrder
+//    ) {
+//
+//        if (!isPurchaseOrder) {
+//            return;
+//        }
+//
+//        if (request.getPoNumber() == null
+//                || request.getPoNumber().trim().isEmpty()) {
+//
+//            throw new ValidationException(
+//                    "PO number is required for Purchase Order payment",
+//                    "ERR_PO_NUMBER_REQUIRED",
+//                    "poNumber"
+//            );
+//        }
+//
+//        if (request.getPoAttachmentUrl() == null
+//                || request.getPoAttachmentUrl().trim().isEmpty()) {
+//
+//            throw new ValidationException(
+//                    "PO attachment is required for Purchase Order payment",
+//                    "ERR_PO_ATTACHMENT_REQUIRED",
+//                    "poAttachmentUrl"
+//            );
+//        }
+//
+//        if (request.getPaymentTermsDays() == null
+//                || request.getPaymentTermsDays() < 0) {
+//
+//            throw new ValidationException(
+//                    "Payment terms days is required for Purchase Order payment",
+//                    "ERR_PAYMENT_TERMS_DAYS_REQUIRED",
+//                    "paymentTermsDays"
+//            );
+//        }
+//
+//        if (request.getAmount() == null) {
+//            throw new ValidationException(
+//                    "Payment amount is required",
+//                    "ERR_AMOUNT_REQUIRED",
+//                    "amount"
+//            );
+//        }
+//
+//        if (request.getAmount().compareTo(BigDecimal.ZERO) < 0) {
+//            throw new ValidationException(
+//                    "Purchase Order amount cannot be negative",
+//                    "ERR_AMOUNT_NEGATIVE",
+//                    "amount"
+//            );
+//        }
+//    }
 
 
 
