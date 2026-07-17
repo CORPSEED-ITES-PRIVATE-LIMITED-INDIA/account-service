@@ -64,4 +64,22 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
 
     Optional<LedgerMaster> findByLedgerCodeIgnoreCase(String ledgerCode);
 
+    boolean existsByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
+            Long companyId,
+            Long unitId,
+            Collection<LedgerType> ledgerTypes
+    );
+
+    boolean existsByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalseAndIdNot(
+            Long companyId,
+            Long unitId,
+            Collection<LedgerType> ledgerTypes,
+            Long id
+    );
+
+
+
+
+
+
 }

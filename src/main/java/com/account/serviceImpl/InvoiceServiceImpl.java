@@ -32,7 +32,6 @@ import com.account.repository.ledger.LedgerGroupRepository;
 import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.service.InvoiceService;
 import com.account.service.ledger.AccountingVoucherService;
-import com.account.util.DateTimeUtil;
 import feign.FeignException;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -1027,9 +1026,40 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	@Override
 	@Transactional(readOnly = true)
-	public InvoiceDetailDto getInvoiceById(Long invoiceId, Long requestingUserId) {
-		if (invoiceId == null || requestingUserId == null) {
-			throw new IllegalArgumentException("Invoice ID and requesting user ID are required");
+	public InvoiceDetailDto getInvoiceById(
+			Long invoiceId,
+			Long requestingUserId
+	) {
+		if (invoiceId == null || invoiceId <= 0) {
+			throw new ValidationException(
+					"Valid invoice ID is required",
+					"ERR_INVALID_INVOICE_ID",
+					"invoiceId"
+			);
+		}
+
+		if (requestingUserId == null || requestingUserId <= 0) {
+			throw new ValidationException(
+					"Valid requesting user ID is required",
+					"ERR_INVALID_REQUESTING_USER",
+					"userId"
+			);
+		}
+
+		User requestingUser = userRepository
+				.findByIdAndNotDeleted(requestingUserId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"User not found with ID: " + requestingUserId,
+						"USER_NOT_FOUND",
+						"User",
+						requestingUserId
+				));
+
+		if (!requestingUser.isActive()) {
+			throw new AccessDeniedException(
+					"Inactive user is not authorized to view invoices",
+					"ACCESS_DENIED_INACTIVE_USER"
+			);
 		}
 
 		Invoice invoice = invoiceRepository.findById(invoiceId)
@@ -1040,56 +1070,124 @@ public class InvoiceServiceImpl implements InvoiceService {
 						invoiceId
 				));
 
-		if (invoice.getCreatedBy() == null ||
-				!invoice.getCreatedBy().getId().equals(requestingUserId)) {
+		validateInvoiceViewAccess(
+				requestingUser,
+				invoice
+		);
+
+		return toDetailDto(invoice);
+	}
+
+	private void validateInvoiceViewAccess(
+			User requestingUser,
+			Invoice invoice
+	) {
+		boolean adminUser = isAdminUser(requestingUser);
+		boolean accountsUser = isAccountsDepartment(requestingUser);
+
+		boolean invoiceCreator =
+				invoice.getCreatedBy() != null
+						&& invoice.getCreatedBy().getId() != null
+						&& Objects.equals(
+						invoice.getCreatedBy().getId(),
+						requestingUser.getId()
+				);
+
+		/*
+		 * Allowed when:
+		 *
+		 * 1. User has ADMIN role
+		 * 2. User belongs to ACCOUNT/ACCOUNTS department
+		 * 3. User created the invoice
+		 */
+		if (!adminUser && !accountsUser && !invoiceCreator) {
+			log.warn(
+					"Invoice view access denied | invoiceId={} | userId={} " +
+							"| admin={} | accountsDepartment={} | creator={}",
+					invoice.getId(),
+					requestingUser.getId(),
+					adminUser,
+					accountsUser,
+					invoiceCreator
+			);
 
 			throw new AccessDeniedException(
 					"You are not authorized to view this invoice",
 					"ACCESS_DENIED_INVOICE"
 			);
 		}
-		return toDetailDto(invoice);
+
+		log.debug(
+				"Invoice view access granted | invoiceId={} | userId={} " +
+						"| admin={} | accountsDepartment={} | creator={}",
+				invoice.getId(),
+				requestingUser.getId(),
+				adminUser,
+				accountsUser,
+				invoiceCreator
+		);
 	}
 
 	@Override
 	@Transactional(readOnly = true)
-	public InvoiceDetailDto getInvoiceByInvoiceNumber(String invoiceNumber, Long requestingUserId) {
-		log.info("Fetching invoice by invoiceNumber: {} | requestedByUser={}", invoiceNumber, requestingUserId);
+	public InvoiceDetailDto getInvoiceByInvoiceNumber(
+			String invoiceNumber,
+			Long requestingUserId
+	) {
+		log.info(
+				"Fetching invoice by invoice number | invoiceNumber={} | userId={}",
+				invoiceNumber,
+				requestingUserId
+		);
 
 		if (requestingUserId == null || requestingUserId <= 0) {
-			throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+			throw new ValidationException(
+					"Valid requesting user ID is required",
+					"ERR_INVALID_REQUESTING_USER",
+					"userId"
+			);
 		}
 
 		if (invoiceNumber == null || invoiceNumber.trim().isEmpty()) {
-			throw new ValidationException("Invoice number is required", "ERR_INVALID_INVOICE_NUMBER", "invoiceNumber");
+			throw new ValidationException(
+					"Invoice number is required",
+					"ERR_INVALID_INVOICE_NUMBER",
+					"invoiceNumber"
+			);
 		}
 
-		// Validate user exists
-		if (!userRepository.existsById(requestingUserId)) {
-			throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+		User requestingUser = userRepository
+				.findByIdAndNotDeleted(requestingUserId)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"User not found with ID: " + requestingUserId,
+						"USER_NOT_FOUND",
+						"User",
+						requestingUserId
+				));
+
+		if (!requestingUser.isActive()) {
+			throw new AccessDeniedException(
+					"Inactive user is not authorized to view invoices",
+					"ACCESS_DENIED_INACTIVE_USER"
+			);
 		}
 
 		Invoice invoice = invoiceRepository
-				.findByInvoiceNumberAndIsCancelledFalse(invoiceNumber.trim())
+				.findByInvoiceNumberAndIsCancelledFalse(
+						invoiceNumber.trim()
+				)
 				.orElseThrow(() -> new ResourceNotFoundException(
 						"Invoice not found with number: " + invoiceNumber,
 						"INVOICE_NOT_FOUND"
 				));
 
-		// Security check: Only creator can view
-		if (invoice.getCreatedBy() == null ||
-				!invoice.getCreatedBy().getId().equals(requestingUserId)) {
-			throw new AccessDeniedException(
-					"You are not authorized to view this invoice",
-					"ACCESS_DENIED_INVOICE"
-			);
-		}
-
-		log.info("Invoice found | number={} | id={}", invoice.getInvoiceNumber(), invoice.getId());
+		validateInvoiceViewAccess(
+				requestingUser,
+				invoice
+		);
 
 		return toDetailDto(invoice);
 	}
-
 
 	@Override
 	@Transactional(readOnly = true)
@@ -1855,14 +1953,60 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 
 	private boolean isAdminUser(User user) {
-		return user.getUserRole() != null
-				&& user.getUserRole()
-				.stream()
-				.anyMatch(role ->
-						role != null
-								&& role.getName() != null
-								&& "ADMIN".equalsIgnoreCase(role.getName())
-				);
+		return hasRole(user, "ADMIN");
+	}
+
+	private boolean hasRole(
+			User user,
+			String requiredRole
+	) {
+		if (user == null || requiredRole == null) {
+			return false;
+		}
+
+		boolean roleEntityMatch =
+				user.getUserRole() != null
+						&& user.getUserRole()
+						.stream()
+						.filter(Objects::nonNull)
+						.map(Role::getName)
+						.filter(Objects::nonNull)
+						.anyMatch(roleName ->
+								requiredRole.equalsIgnoreCase(
+										roleName.trim()
+								)
+						);
+
+		boolean stringRoleMatch =
+				user.getRole() != null
+						&& user.getRole()
+						.stream()
+						.filter(Objects::nonNull)
+						.anyMatch(roleName ->
+								requiredRole.equalsIgnoreCase(
+										roleName.trim()
+								)
+						);
+
+		return roleEntityMatch || stringRoleMatch;
+	}
+
+	private boolean isAccountsDepartment(User user) {
+		if (user == null || user.getDepartment() == null) {
+			return false;
+		}
+
+		String department = user.getDepartment()
+				.trim()
+				.replace("_", "")
+				.replace("-", "")
+				.replace(" ", "")
+				.toUpperCase(Locale.ROOT);
+
+		return "ACCOUNT".equals(department)
+				|| "ACCOUNTS".equals(department)
+				|| "ACCOUNTDEPARTMENT".equals(department)
+				|| "ACCOUNTSDEPARTMENT".equals(department);
 	}
 
 	private List<Predicate> buildTdsTaxationPredicates(

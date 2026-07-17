@@ -49,37 +49,48 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
     @Override
     @Transactional
-    public LedgerMasterResponseDto createLedger(LedgerMasterRequestDto request) {
+    public LedgerMasterResponseDto createLedger(
+            LedgerMasterRequestDto request
+    ) {
 
-        log.info("Creating ledger. ledgerType={}, companyId={}, unitId={}",
+        log.info(
+                "Creating ledger. ledgerType={}, companyId={}, unitId={}",
                 request != null ? request.getLedgerType() : null,
                 request != null ? request.getCompanyId() : null,
-                request != null ? request.getUnitId() : null);
-
-        validateRequest(request);
-
-        String ledgerName = normalizeName(request.getLedgerName());
-
-        if (ledgerMasterRepository.existsByLedgerNameIgnoreCase(ledgerName)) {
-            log.warn("Ledger creation failed. Duplicate ledgerName={}", ledgerName);
-            throw new ValidationException(
-                    "Ledger already exists with name: " + ledgerName,
-                    "ERR_LEDGER_DUPLICATE",
-                    "ledgerName"
-            );
-        }
-
-        LedgerGroup ledgerGroup = resolveLedgerGroupForLedgerType(
-                request.getLedgerType(),
-                request.getLedgerGroupId()
+                request != null ? request.getUnitId() : null
         );
 
+        validateRequest(request);
 
         Company company = getCompany(request.getCompanyId());
         CompanyUnit unit = getUnit(request.getUnitId());
         Contact contact = getContact(request.getContactId());
 
-        validateLedgerBusinessRules(request, company, unit);
+        validateLedgerBusinessRules(
+                request,
+                company,
+                unit
+        );
+
+        String ledgerName = resolveLedgerName(
+                request,
+                company,
+                unit,
+                null
+        );
+
+        validateLedgerUniquenessForCreate(
+                request,
+                company,
+                unit,
+                ledgerName
+        );
+
+        LedgerGroup ledgerGroup =
+                resolveLedgerGroupForLedgerType(
+                        request.getLedgerType(),
+                        request.getLedgerGroupId()
+                );
 
         LedgerMaster ledger = buildLedgerMaster(
                 request,
@@ -90,15 +101,17 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 contact
         );
 
-        // i want new feature articture that tax invoice
-        // where suppose i create estimate of 50 rs
+        LedgerMaster saved =
+                ledgerMasterRepository.save(ledger);
 
-        LedgerMaster saved = ledgerMasterRepository.save(ledger);
-
-        log.info("Ledger created successfully. ledgerId={}, ledgerCode={}, ledgerName={}",
+        log.info(
+                "Ledger created successfully. ledgerId={}, ledgerCode={}, ledgerName={}, companyId={}, unitId={}",
                 saved.getId(),
                 saved.getLedgerCode(),
-                saved.getLedgerName());
+                saved.getLedgerName(),
+                company != null ? company.getId() : null,
+                unit != null ? unit.getId() : null
+        );
 
         return mapToResponse(saved);
     }
@@ -160,41 +173,61 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
     @Override
     @Transactional
-    public LedgerMasterResponseDto updateLedger(Long id, LedgerMasterRequestDto request, Long userId) {
+    public LedgerMasterResponseDto updateLedger(
+            Long id,
+            LedgerMasterRequestDto request,
+            Long userId
+    ) {
 
-        log.info("Updating ledger. ledgerId={}, userId={}", id, userId);
+        log.info(
+                "Updating ledger. ledgerId={}, userId={}",
+                id,
+                userId
+        );
 
         validateAdminUserForLedgerEdit(userId);
-
         validateRequest(request);
 
-        LedgerMaster ledger = ledgerMasterRepository.findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Ledger not found with ID: " + id,
-                        "LEDGER_NOT_FOUND"
-                ));
-
-        String ledgerName = normalizeName(request.getLedgerName());
-
-        if (ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(ledgerName, id)) {
-            log.warn("Ledger update failed. Duplicate ledgerName={}, ledgerId={}", ledgerName, id);
-            throw new ValidationException(
-                    "Ledger already exists with name: " + ledgerName,
-                    "ERR_LEDGER_DUPLICATE",
-                    "ledgerName"
-            );
-        }
-
-        LedgerGroup ledgerGroup = resolveLedgerGroupForLedgerType(
-                request.getLedgerType(),
-                request.getLedgerGroupId()
-        );
+        LedgerMaster ledger =
+                ledgerMasterRepository
+                        .findByIdAndDeletedFalse(id)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Ledger not found with ID: " + id,
+                                        "LEDGER_NOT_FOUND"
+                                )
+                        );
 
         Company company = getCompany(request.getCompanyId());
         CompanyUnit unit = getUnit(request.getUnitId());
         Contact contact = getContact(request.getContactId());
 
-        validateLedgerBusinessRules(request, company, unit);
+        validateLedgerBusinessRules(
+                request,
+                company,
+                unit
+        );
+
+        String ledgerName = resolveLedgerName(
+                request,
+                company,
+                unit,
+                id
+        );
+
+        validateLedgerUniquenessForUpdate(
+                id,
+                request,
+                company,
+                unit,
+                ledgerName
+        );
+
+        LedgerGroup ledgerGroup =
+                resolveLedgerGroupForLedgerType(
+                        request.getLedgerType(),
+                        request.getLedgerGroupId()
+                );
 
         ledger.setLedgerName(ledgerName);
         ledger.setLedgerType(request.getLedgerType());
@@ -204,31 +237,228 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         ledger.setUnit(unit);
         ledger.setContact(contact);
 
-        ledger.setGstNo(clean(request.getGstNo()));
-        ledger.setPanNo(clean(request.getPanNo()));
+        applyLedgerTaxDetails(
+                ledger,
+                request,
+                company,
+                unit
+        );
 
         ledger.setBankName(clean(request.getBankName()));
-        ledger.setAccountHolderName(clean(request.getAccountHolderName()));
-        ledger.setAccountNumber(clean(request.getAccountNumber()));
+        ledger.setAccountHolderName(
+                clean(request.getAccountHolderName())
+        );
+        ledger.setAccountNumber(
+                clean(request.getAccountNumber())
+        );
         ledger.setIfscCode(clean(request.getIfscCode()));
         ledger.setBranchName(clean(request.getBranchName()));
 
-        ledger.setOpeningBalance(safeMoney(request.getOpeningBalance()));
-        ledger.setOpeningBalanceType(request.getOpeningBalanceType());
+        ledger.setOpeningBalance(
+                moneyForStatement(request.getOpeningBalance())
+        );
+
+        ledger.setOpeningBalanceType(
+                resolveOpeningBalanceType(request)
+        );
 
         if (request.getActive() != null) {
             ledger.setActive(request.getActive());
         }
 
-        LedgerMaster saved = ledgerMasterRepository.save(ledger);
+        LedgerMaster saved =
+                ledgerMasterRepository.save(ledger);
 
-        log.info("Ledger updated successfully. ledgerId={}, ledgerCode={}, ledgerName={}",
+        log.info(
+                "Ledger updated successfully. ledgerId={}, ledgerCode={}, ledgerName={}, companyId={}, unitId={}",
                 saved.getId(),
                 saved.getLedgerCode(),
-                saved.getLedgerName());
+                saved.getLedgerName(),
+                company != null ? company.getId() : null,
+                unit != null ? unit.getId() : null
+        );
 
         return mapToResponse(saved);
     }
+
+
+    private boolean isCustomerLedgerType(
+            LedgerType ledgerType
+    ) {
+        return ledgerType == LedgerType.CUSTOMER
+                || ledgerType == LedgerType.CUSTOMER_ADVANCE;
+    }
+
+    private List<LedgerType> customerLedgerTypes() {
+        return List.of(
+                LedgerType.CUSTOMER,
+                LedgerType.CUSTOMER_ADVANCE
+        );
+    }
+
+    private DebitCredit resolveOpeningBalanceType(
+            LedgerMasterRequestDto request
+    ) {
+        BigDecimal openingBalance =
+                safeMoney(request.getOpeningBalance());
+
+        if (openingBalance.compareTo(BigDecimal.ZERO) == 0
+                && request.getOpeningBalanceType() == null) {
+            return DebitCredit.DEBIT;
+        }
+
+        return request.getOpeningBalanceType();
+    }
+
+    private String resolveLedgerName(
+            LedgerMasterRequestDto request,
+            Company company,
+            CompanyUnit unit,
+            Long existingLedgerId
+    ) {
+
+        if (!isCustomerLedgerType(request.getLedgerType())) {
+            return normalizeName(request.getLedgerName());
+        }
+
+        String companyName =
+                company.getName() != null
+                        && !company.getName().trim().isEmpty()
+                        ? company.getName().trim()
+                        : "Company-" + company.getId();
+
+        String unitName =
+                unit.getUnitName() != null
+                        && !unit.getUnitName().trim().isEmpty()
+                        ? unit.getUnitName().trim()
+                        : "Unit-" + unit.getId();
+
+        String baseName =
+                normalizeName(
+                        companyName + " - " + unitName
+                );
+
+        boolean duplicateName;
+
+        if (existingLedgerId == null) {
+            duplicateName =
+                    ledgerMasterRepository
+                            .existsByLedgerNameIgnoreCase(
+                                    baseName
+                            );
+        } else {
+            duplicateName =
+                    ledgerMasterRepository
+                            .existsByLedgerNameIgnoreCaseAndIdNot(
+                                    baseName,
+                                    existingLedgerId
+                            );
+        }
+
+        /*
+         * Another company may have the same company and unit names.
+         * Add the unit ID only when a ledger-name collision exists.
+         */
+        if (duplicateName) {
+            return normalizeName(
+                    baseName + " - Unit-" + unit.getId()
+            );
+        }
+
+        return baseName;
+    }
+
+    private void validateLedgerUniquenessForCreate(
+            LedgerMasterRequestDto request,
+            Company company,
+            CompanyUnit unit,
+            String ledgerName
+    ) {
+
+        if (isCustomerLedgerType(request.getLedgerType())) {
+
+            boolean exists =
+                    ledgerMasterRepository
+                            .existsByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
+                                    company.getId(),
+                                    unit.getId(),
+                                    customerLedgerTypes()
+                            );
+
+            if (exists) {
+                throw new ValidationException(
+                        "Customer ledger already exists for company "
+                                + company.getName()
+                                + " and unit "
+                                + unit.getUnitName(),
+                        "ERR_CUSTOMER_UNIT_LEDGER_DUPLICATE",
+                        "unitId"
+                );
+            }
+
+            return;
+        }
+
+        if (ledgerMasterRepository
+                .existsByLedgerNameIgnoreCase(ledgerName)) {
+
+            throw new ValidationException(
+                    "Ledger already exists with name: "
+                            + ledgerName,
+                    "ERR_LEDGER_DUPLICATE",
+                    "ledgerName"
+            );
+        }
+    }
+
+    private void validateLedgerUniquenessForUpdate(
+            Long ledgerId,
+            LedgerMasterRequestDto request,
+            Company company,
+            CompanyUnit unit,
+            String ledgerName
+    ) {
+
+        if (isCustomerLedgerType(request.getLedgerType())) {
+
+            boolean exists =
+                    ledgerMasterRepository
+                            .existsByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalseAndIdNot(
+                                    company.getId(),
+                                    unit.getId(),
+                                    customerLedgerTypes(),
+                                    ledgerId
+                            );
+
+            if (exists) {
+                throw new ValidationException(
+                        "Customer ledger already exists for company "
+                                + company.getName()
+                                + " and unit "
+                                + unit.getUnitName(),
+                        "ERR_CUSTOMER_UNIT_LEDGER_DUPLICATE",
+                        "unitId"
+                );
+            }
+
+            return;
+        }
+
+        if (ledgerMasterRepository
+                .existsByLedgerNameIgnoreCaseAndIdNot(
+                        ledgerName,
+                        ledgerId
+                )) {
+
+            throw new ValidationException(
+                    "Ledger already exists with name: "
+                            + ledgerName,
+                    "ERR_LEDGER_DUPLICATE",
+                    "ledgerName"
+            );
+        }
+    }
+
 
     @Override
     @Transactional(readOnly = true)
@@ -367,69 +597,18 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         log.info("Ledger deleted successfully. ledgerId={}", id);
     }
 
-    private Specification<LedgerMaster> buildSpecification(
-            String search,
-            LedgerType ledgerType,
-            Long ledgerGroupId,
-            Boolean active
-    ) {
-        return (root, query, criteriaBuilder) -> {
-
-            List<Predicate> predicates = new ArrayList<>();
-
-            predicates.add(criteriaBuilder.isFalse(root.get("deleted")));
-
-            if (search != null && !search.trim().isEmpty()) {
-                String likeSearch = "%" + search.trim().toLowerCase() + "%";
-
-                predicates.add(
-                        criteriaBuilder.or(
-                                criteriaBuilder.like(criteriaBuilder.lower(root.get("ledgerName")), likeSearch),
-                                criteriaBuilder.like(criteriaBuilder.lower(root.get("ledgerCode")), likeSearch)
-                        )
-                );
-            }
-
-            if (ledgerType != null) {
-                predicates.add(criteriaBuilder.equal(root.get("ledgerType"), ledgerType));
-            }
-
-            if (ledgerGroupId != null) {
-                Join<LedgerMaster, LedgerGroup> groupJoin = root.join("ledgerGroup", JoinType.LEFT);
-                predicates.add(criteriaBuilder.equal(groupJoin.get("id"), ledgerGroupId));
-            }
-
-            if (active != null) {
-                predicates.add(criteriaBuilder.equal(root.get("active"), active));
-            }
-
-            return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
-        };
-    }
-
     private void validateRequest(LedgerMasterRequestDto request) {
 
         log.debug("Validating ledger request");
 
         if (request == null) {
-            log.warn("Ledger request validation failed. Request body is null");
             throw new ValidationException(
                     "Request body is required",
                     "ERR_REQUEST_REQUIRED"
             );
         }
 
-        if (request.getLedgerName() == null || request.getLedgerName().trim().isEmpty()) {
-            log.warn("Ledger request validation failed. Ledger name is missing");
-            throw new ValidationException(
-                    "Ledger name is required",
-                    "ERR_LEDGER_NAME_REQUIRED",
-                    "ledgerName"
-            );
-        }
-
         if (request.getLedgerType() == null) {
-            log.warn("Ledger request validation failed. Ledger type is missing");
             throw new ValidationException(
                     "Ledger type is required",
                     "ERR_LEDGER_TYPE_REQUIRED",
@@ -437,19 +616,41 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             );
         }
 
-        if (request.getLedgerGroupId() == null || request.getLedgerGroupId() <= 0) {
-            log.warn("Ledger request validation failed. Ledger group ID is invalid");
+        /*
+         * Customer ledger name is generated automatically as:
+         *
+         * Company Name - Unit Name
+         *
+         * Therefore ledgerName is mandatory only for non-customer ledgers.
+         */
+        if (!isCustomerLedgerType(request.getLedgerType())
+                && (request.getLedgerName() == null
+                || request.getLedgerName().trim().isEmpty())) {
+
             throw new ValidationException(
-                    "Ledger group ID is required",
-                    "ERR_LEDGER_GROUP_REQUIRED",
+                    "Ledger name is required",
+                    "ERR_LEDGER_NAME_REQUIRED",
+                    "ledgerName"
+            );
+        }
+
+        /*
+         * ledgerGroupId is optional.
+         * When it is not supplied, the group is resolved from LedgerType.
+         */
+        if (request.getLedgerGroupId() != null
+                && request.getLedgerGroupId() <= 0) {
+
+            throw new ValidationException(
+                    "Ledger group ID must be greater than zero",
+                    "ERR_LEDGER_GROUP_INVALID",
                     "ledgerGroupId"
             );
         }
 
         if (request.getOpeningBalance() != null
                 && request.getOpeningBalance().compareTo(BigDecimal.ZERO) < 0) {
-            log.warn("Ledger request validation failed. Opening balance is negative. openingBalance={}",
-                    request.getOpeningBalance());
+
             throw new ValidationException(
                     "Opening balance cannot be negative",
                     "ERR_OPENING_BALANCE_NEGATIVE",
@@ -460,8 +661,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         if (request.getOpeningBalance() != null
                 && request.getOpeningBalance().compareTo(BigDecimal.ZERO) > 0
                 && request.getOpeningBalanceType() == null) {
-            log.warn("Ledger request validation failed. Opening balance type is missing. openingBalance={}",
-                    request.getOpeningBalance());
+
             throw new ValidationException(
                     "Opening balance type is required when opening balance is greater than zero",
                     "ERR_OPENING_BALANCE_TYPE_REQUIRED",
@@ -478,38 +678,63 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         LedgerType ledgerType = request.getLedgerType();
 
-        if (ledgerType == LedgerType.BANK) {
-            if (request.getBankName() == null || request.getBankName().trim().isEmpty()) {
-                log.warn("Ledger business validation failed. Bank name missing for bank ledger");
-                throw new ValidationException(
-                        "Bank name is required for bank ledger",
-                        "ERR_BANK_NAME_REQUIRED",
-                        "bankName"
-                );
-            }
+        if (ledgerType == LedgerType.BANK
+                && (request.getBankName() == null
+                || request.getBankName().trim().isEmpty())) {
+
+            throw new ValidationException(
+                    "Bank name is required for bank ledger",
+                    "ERR_BANK_NAME_REQUIRED",
+                    "bankName"
+            );
         }
 
-        if (ledgerType == LedgerType.CUSTOMER || ledgerType == LedgerType.CUSTOMER_ADVANCE) {
-            if (company == null) {
-                log.warn("Ledger business validation failed. Company missing for customer ledger. ledgerType={}", ledgerType);
+        if (isCustomerLedgerType(ledgerType)) {
+
+            if (company == null || company.getId() == null) {
                 throw new ValidationException(
                         "Company is required for customer ledger",
                         "ERR_COMPANY_REQUIRED_FOR_CUSTOMER_LEDGER",
                         "companyId"
                 );
             }
+
+            if (unit == null || unit.getId() == null) {
+                throw new ValidationException(
+                        "Company unit is required for customer ledger",
+                        "ERR_UNIT_REQUIRED_FOR_CUSTOMER_LEDGER",
+                        "unitId"
+                );
+            }
         }
 
-        if (unit != null && company != null && unit.getCompany() != null
-                && !unit.getCompany().getId().equals(company.getId())) {
-            log.warn("Ledger business validation failed. Unit company mismatch. companyId={}, unitId={}",
-                    company.getId(),
-                    unit.getId());
+        if (unit != null && company == null) {
             throw new ValidationException(
-                    "Selected unit does not belong to selected company",
-                    "ERR_UNIT_COMPANY_MISMATCH",
-                    "unitId"
+                    "Company is required when a company unit is selected",
+                    "ERR_COMPANY_REQUIRED_FOR_UNIT",
+                    "companyId"
             );
+        }
+
+        if (unit != null) {
+
+            if (unit.getCompany() == null
+                    || unit.getCompany().getId() == null) {
+
+                throw new ValidationException(
+                        "Selected unit is not linked with a company",
+                        "ERR_UNIT_COMPANY_LINK_MISSING",
+                        "unitId"
+                );
+            }
+
+            if (!unit.getCompany().getId().equals(company.getId())) {
+                throw new ValidationException(
+                        "Selected unit does not belong to selected company",
+                        "ERR_UNIT_COMPANY_MISMATCH",
+                        "unitId"
+                );
+            }
         }
     }
 
@@ -597,36 +822,36 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             case CASH -> LedgerGroupType.CASH_IN_HAND;
 
             case BANK,
-                 PAYMENT_GATEWAY -> LedgerGroupType.BANK_ACCOUNTS;
+                    PAYMENT_GATEWAY -> LedgerGroupType.BANK_ACCOUNTS;
 
             case CUSTOMER -> LedgerGroupType.SUNDRY_DEBTORS;
 
             case SUPPLIER,
-                 VENDOR,
-                 VENDOR_PAYABLE -> LedgerGroupType.SUNDRY_CREDITORS;
+                    VENDOR,
+                    VENDOR_PAYABLE -> LedgerGroupType.SUNDRY_CREDITORS;
 
             case CUSTOMER_ADVANCE,
-                 LIABILITY,
-                 REFUND_PAYABLE -> LedgerGroupType.CURRENT_LIABILITIES;
+                    LIABILITY,
+                    REFUND_PAYABLE -> LedgerGroupType.CURRENT_LIABILITIES;
 
             case SALES,
-                 SERVICE_INCOME,
-                 SALES_RETURN -> LedgerGroupType.SALES_ACCOUNTS;
+                    SERVICE_INCOME,
+                    SALES_RETURN -> LedgerGroupType.SALES_ACCOUNTS;
 
             case PURCHASE -> LedgerGroupType.PURCHASE_ACCOUNTS;
 
             case TAX,
-                 OUTPUT_IGST,
-                 OUTPUT_CGST,
-                 OUTPUT_SGST,
-                 INPUT_IGST,
-                 INPUT_CGST,
-                 INPUT_SGST,
-                 TDS_RECEIVABLE,
-                 TDS_PAYABLE -> LedgerGroupType.DUTIES_AND_TAXES;
+                    OUTPUT_IGST,
+                    OUTPUT_CGST,
+                    OUTPUT_SGST,
+                    INPUT_IGST,
+                    INPUT_CGST,
+                    INPUT_SGST,
+                    TDS_RECEIVABLE,
+                    TDS_PAYABLE -> LedgerGroupType.DUTIES_AND_TAXES;
 
             case EXPENSE,
-                 ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;
+                    ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;
 
             case INCOME -> LedgerGroupType.INDIRECT_INCOMES;
 
@@ -805,12 +1030,19 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             CompanyUnit unit,
             Contact contact
     ) {
-        BigDecimal openingBalance = safeMoney(request.getOpeningBalance());
+
+        BigDecimal openingBalance =
+                moneyForStatement(request.getOpeningBalance());
+
+        DebitCredit openingBalanceType =
+                resolveOpeningBalanceType(request);
 
         LedgerMaster ledger = new LedgerMaster();
 
         ledger.setLedgerName(ledgerName);
-        ledger.setLedgerCode(generateLedgerCode(request.getLedgerType()));
+        ledger.setLedgerCode(
+                generateLedgerCode(request.getLedgerType())
+        );
 
         ledger.setLedgerType(request.getLedgerType());
         ledger.setLedgerGroup(ledgerGroup);
@@ -819,30 +1051,68 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         ledger.setUnit(unit);
         ledger.setContact(contact);
 
-        ledger.setGstNo(clean(request.getGstNo()));
-        ledger.setPanNo(clean(request.getPanNo()));
+        applyLedgerTaxDetails(
+                ledger,
+                request,
+                company,
+                unit
+        );
 
         ledger.setBankName(clean(request.getBankName()));
-        ledger.setAccountHolderName(clean(request.getAccountHolderName()));
-        ledger.setAccountNumber(clean(request.getAccountNumber()));
+        ledger.setAccountHolderName(
+                clean(request.getAccountHolderName())
+        );
+        ledger.setAccountNumber(
+                clean(request.getAccountNumber())
+        );
         ledger.setIfscCode(clean(request.getIfscCode()));
         ledger.setBranchName(clean(request.getBranchName()));
 
         ledger.setOpeningBalance(openingBalance);
-        ledger.setOpeningBalanceType(request.getOpeningBalanceType());
+        ledger.setOpeningBalanceType(openingBalanceType);
 
         /*
-         * At the time of ledger creation, current balance should be same as opening balance.
-         * Later, voucher posting will update currentBalance.
+         * On creation, current balance starts from opening balance.
          */
         ledger.setCurrentBalance(openingBalance);
-        ledger.setCurrentBalanceType(request.getOpeningBalanceType());
+        ledger.setCurrentBalanceType(openingBalanceType);
 
         ledger.setSystemCreated(false);
-        ledger.setActive(request.getActive() == null || request.getActive());
+        ledger.setActive(
+                request.getActive() == null
+                        || request.getActive()
+        );
         ledger.setDeleted(false);
 
         return ledger;
+    }
+
+    private void applyLedgerTaxDetails(
+            LedgerMaster ledger,
+            LedgerMasterRequestDto request,
+            Company company,
+            CompanyUnit unit
+    ) {
+
+        if (isCustomerLedgerType(request.getLedgerType())) {
+
+            ledger.setGstNo(
+                    unit != null
+                            ? clean(unit.getGstNo())
+                            : null
+            );
+
+            ledger.setPanNo(
+                    company != null
+                            ? clean(company.getPanNo())
+                            : null
+            );
+
+            return;
+        }
+
+        ledger.setGstNo(clean(request.getGstNo()));
+        ledger.setPanNo(clean(request.getPanNo()));
     }
 
     private LedgerGroup resolveLedgerGroupForLedgerType(
@@ -1608,14 +1878,20 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             return null;
         }
 
+        /*
+         * Customer ledgers are unit-wise, so prefer the ledger name:
+         * Microsoft - Delhi
+         * Microsoft - Mumbai
+         */
+        if (ledger.getLedgerName() != null
+                && !ledger.getLedgerName().trim().isEmpty()) {
+            return ledger.getLedgerName().trim();
+        }
+
         if (ledger.getCompany() != null
                 && ledger.getCompany().getName() != null
                 && !ledger.getCompany().getName().trim().isEmpty()) {
             return ledger.getCompany().getName().trim();
-        }
-
-        if (ledger.getLedgerName() != null && !ledger.getLedgerName().trim().isEmpty()) {
-            return ledger.getLedgerName().trim();
         }
 
         return null;

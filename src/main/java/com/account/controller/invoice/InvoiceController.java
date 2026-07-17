@@ -97,7 +97,7 @@ public class InvoiceController {
         })
         public ResponseEntity<InvoiceDetailDto> getInvoiceDetail(
                 @PathVariable Long id,
-                @RequestParam Long userId   // ← in production → replace with @AuthenticationPrincipal
+                @RequestParam Long userId
         ) {
             InvoiceDetailDto detail = invoiceService.getInvoiceById(id, userId);
             return ResponseEntity.ok(detail);
