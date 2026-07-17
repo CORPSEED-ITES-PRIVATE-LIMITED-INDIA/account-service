@@ -5375,125 +5375,210 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        /*
+         * Unit is mandatory because customer ledgers are maintained
+         * separately for every company unit.
+         */
+        if (unit == null || unit.getId() == null) {
+            throw new ValidationException(
+                    "Company unit is required to create customer ledger",
+                    "ERR_COMPANY_UNIT_REQUIRED_FOR_LEDGER",
+                    "unitId"
+            );
+        }
+
         Long companyId = company.getId();
-
-        LedgerGroup sundryDebtorsGroup =
-                getOrCreateLedgerGroupByType(LedgerGroupType.SUNDRY_DEBTORS);
-
-        String companyName = company.getName() != null && !company.getName().trim().isEmpty()
-                ? company.getName().trim()
-                : "Company-" + companyId;
+        Long unitId = unit.getId();
 
         /*
-         * IMPORTANT:
-         * Only ONE ledger per company.
-         *
-         * If old CUSTOMER_ADVANCE ledger already exists,
-         * reuse and convert it to CUSTOMER / SUNDRY_DEBTORS.
-         *
-         * Do not create separate:
-         * 1. CUSTOMER_ADVANCE
-         * 2. CUSTOMER
+         * First search for the exact CUSTOMER ledger belonging to
+         * this company and this unit.
          */
-        List<LedgerMaster> existingLedgers =
-                ledgerMasterRepository.findByCompanyIdAndLedgerTypeInAndDeletedFalse(
-                        companyId,
-                        List.of(
-                                LedgerType.CUSTOMER,
-                                LedgerType.CUSTOMER_ADVANCE
-                        )
-                );
+        Optional<LedgerMaster> existingCustomerLedger =
+                ledgerMasterRepository
+                        .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+                                companyId,
+                                unitId,
+                                LedgerType.CUSTOMER
+                        );
 
-        if (existingLedgers != null && !existingLedgers.isEmpty()) {
-            LedgerMaster ledger = existingLedgers.get(0);
+        if (existingCustomerLedger.isPresent()) {
+            LedgerMaster ledger = existingCustomerLedger.get();
 
-            ledger.setLedgerType(LedgerType.CUSTOMER);
-            ledger.setLedgerGroup(sundryDebtorsGroup);
+            refreshCustomerLedgerDetails(
+                    ledger,
+                    company,
+                    unit,
+                    contact,
+                    createdBy
+            );
 
-            /*
-             * Ledger name should be company name only.
-             * Example: Nestle
-             */
-            if (!ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(
-                    companyName,
-                    ledger.getId()
-            )) {
-                ledger.setLedgerName(companyName);
-            }
-
-            ledger.setCompany(company);
-
-            /*
-             * Keep latest unit/contact details in the same company ledger.
-             * Do NOT create unit-wise separate ledger.
-             */
-            if (unit != null && unit.getId() != null) {
-                ledger.setUnit(unit);
-                ledger.setGstNo(unit.getGstNo());
-            }
-
-            if (contact != null && contact.getId() != null) {
-                ledger.setContact(contact);
-            }
-
-            ledger.setPanNo(company.getPanNo());
-            ledger.setSystemCreated(true);
-            ledger.setActive(true);
-            ledger.setDeleted(false);
-
-            if (createdBy != null && createdBy.getId() != null) {
-                ledger.setUpdatedBy(createdBy);
-            }
-
-            LedgerMaster savedLedger = ledgerMasterRepository.save(ledger);
-            log.debug("Customer ledger reused for company | companyId={} | ledgerId={} | ledgerName={}",
-                    companyId, savedLedger.getId(), savedLedger.getLedgerName());
-            return savedLedger;
+            return ledgerMasterRepository.save(ledger);
         }
 
         /*
-         * No old ledger found, so create only ONE new company ledger.
+         * Backward compatibility:
+         * Convert an old CUSTOMER_ADVANCE ledger only when it belongs
+         * to the same company and the same unit.
+         *
+         * Never convert another unit's ledger.
          */
-        LedgerMaster ledger = new LedgerMaster();
+        Optional<LedgerMaster> existingAdvanceLedger =
+                ledgerMasterRepository
+                        .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+                                companyId,
+                                unitId,
+                                LedgerType.CUSTOMER_ADVANCE
+                        );
 
-        ledger.setLedgerName(companyName);
-        ledger.setLedgerCode(generateLedgerCode("CUST"));
+        LedgerMaster ledger =
+                existingAdvanceLedger.orElseGet(LedgerMaster::new);
+
+        LedgerGroup sundryDebtorsGroup =
+                getOrCreateLedgerGroupByType(
+                        LedgerGroupType.SUNDRY_DEBTORS
+                );
+
+        String companyName =
+                company.getName() != null
+                        && !company.getName().trim().isEmpty()
+                        ? company.getName().trim()
+                        : "Company-" + companyId;
+
+        String unitName =
+                unit.getUnitName() != null
+                        && !unit.getUnitName().trim().isEmpty()
+                        ? unit.getUnitName().trim()
+                        : "Unit-" + unitId;
+
+        String ledgerName =
+                companyName + " - " + unitName;
+
+        /*
+         * Protect against another unrelated ledger having the same name.
+         */
+        boolean duplicateName;
+
+        if (ledger.getId() == null) {
+            duplicateName =
+                    ledgerMasterRepository
+                            .existsByLedgerNameIgnoreCase(ledgerName);
+        } else {
+            duplicateName =
+                    ledgerMasterRepository
+                            .existsByLedgerNameIgnoreCaseAndIdNot(
+                                    ledgerName,
+                                    ledger.getId()
+                            );
+        }
+
+        if (duplicateName) {
+            ledgerName =
+                    companyName
+                            + " - "
+                            + unitName
+                            + " ["
+                            + unitId
+                            + "]";
+        }
+
+        ledger.setLedgerName(ledgerName);
+
+        if (ledger.getLedgerCode() == null
+                || ledger.getLedgerCode().trim().isEmpty()) {
+            ledger.setLedgerCode(
+                    generateLedgerCode("CUST")
+            );
+        }
 
         ledger.setLedgerType(LedgerType.CUSTOMER);
         ledger.setLedgerGroup(sundryDebtorsGroup);
 
         ledger.setCompany(company);
+        ledger.setUnit(unit);
+        ledger.setContact(contact);
 
-        if (unit != null && unit.getId() != null) {
-            ledger.setUnit(unit);
-            ledger.setGstNo(unit.getGstNo());
-        }
-
-        if (contact != null && contact.getId() != null) {
-            ledger.setContact(contact);
-        }
-
+        ledger.setGstNo(unit.getGstNo());
         ledger.setPanNo(company.getPanNo());
 
-        ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-        ledger.setOpeningBalanceType(DebitCredit.DEBIT);
+        if (ledger.getOpeningBalance() == null) {
+            ledger.setOpeningBalance(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
+        }
 
-        ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-        ledger.setCurrentBalanceType(DebitCredit.DEBIT);
+        if (ledger.getOpeningBalanceType() == null) {
+            ledger.setOpeningBalanceType(
+                    DebitCredit.DEBIT
+            );
+        }
+
+        if (ledger.getCurrentBalance() == null) {
+            ledger.setCurrentBalance(
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    )
+            );
+        }
+
+        if (ledger.getCurrentBalanceType() == null) {
+            ledger.setCurrentBalanceType(
+                    DebitCredit.DEBIT
+            );
+        }
 
         ledger.setSystemCreated(true);
         ledger.setActive(true);
         ledger.setDeleted(false);
 
-        if (createdBy != null && createdBy.getId() != null) {
+        if (ledger.getId() == null && createdBy != null) {
             ledger.setCreatedBy(createdBy);
+        }
+
+        if (createdBy != null) {
             ledger.setUpdatedBy(createdBy);
         }
 
-        LedgerMaster savedLedger = ledgerMasterRepository.save(ledger);
-        log.info("Customer ledger created for company | companyId={} | ledgerId={} | ledgerName={}",
-                companyId, savedLedger.getId(), savedLedger.getLedgerName());
+        LedgerMaster savedLedger =
+                ledgerMasterRepository.save(ledger);
+
+        log.info(
+                "Unit-wise customer ledger resolved | companyId={} | unitId={} "
+                        + "| ledgerId={} | ledgerName={}",
+                companyId,
+                unitId,
+                savedLedger.getId(),
+                savedLedger.getLedgerName()
+        );
+
         return savedLedger;
+    }
+
+    private void refreshCustomerLedgerDetails(
+            LedgerMaster ledger,
+            Company company,
+            CompanyUnit unit,
+            Contact contact,
+            User updatedBy
+    ) {
+        ledger.setCompany(company);
+        ledger.setUnit(unit);
+        ledger.setContact(contact);
+
+        ledger.setGstNo(unit.getGstNo());
+        ledger.setPanNo(company.getPanNo());
+
+        ledger.setActive(true);
+        ledger.setDeleted(false);
+        ledger.setSystemCreated(true);
+
+        if (updatedBy != null) {
+            ledger.setUpdatedBy(updatedBy);
+        }
     }
 
     private LedgerGroup getOrCreateLedgerGroupByType(LedgerGroupType groupType) {

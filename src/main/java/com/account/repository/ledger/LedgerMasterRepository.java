@@ -80,6 +80,4 @@ public interface LedgerMasterRepository extends JpaRepository<LedgerMaster, Long
 
 
 
-
-
 }

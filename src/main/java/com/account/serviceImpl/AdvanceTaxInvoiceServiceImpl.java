@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import com.account.domain.Contact;
 import com.account.domain.Organization;
 import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
@@ -2582,48 +2583,122 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             );
         }
 
-        Long companyId = estimate.getCompany().getId();
-
-        Optional<LedgerMaster> existing =
-                ledgerMasterRepository.findByCompanyIdAndLedgerTypeAndDeletedFalse(
-                        companyId,
-                        LedgerType.CUSTOMER
-                );
-
-        if (existing.isPresent()) {
-            return existing.get();
+        if (estimate.getUnit() == null
+                || estimate.getUnit().getId() == null) {
+            throw new ValidationException(
+                    "Company unit is required to resolve customer ledger",
+                    "ERR_COMPANY_UNIT_REQUIRED_FOR_LEDGER",
+                    "unitId"
+            );
         }
 
-        LedgerGroup debtors = ledgerGroupRepository
-                .findByGroupTypeAndDeletedFalse(LedgerGroupType.SUNDRY_DEBTORS)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Sundry Debtors ledger group not found",
-                        "SUNDRY_DEBTORS_GROUP_NOT_FOUND"
-                ));
+        Company company = estimate.getCompany();
+        CompanyUnit unit = estimate.getUnit();
+        Contact contact = estimate.getContact();
+
+        Long companyId = company.getId();
+        Long unitId = unit.getId();
+
+        Optional<LedgerMaster> existing =
+                ledgerMasterRepository
+                        .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+                                companyId,
+                                unitId,
+                                LedgerType.CUSTOMER
+                        );
+
+        if (existing.isPresent()) {
+            LedgerMaster ledger = existing.get();
+
+            ledger.setCompany(company);
+            ledger.setUnit(unit);
+            ledger.setContact(contact);
+            ledger.setGstNo(unit.getGstNo());
+            ledger.setPanNo(company.getPanNo());
+            ledger.setActive(true);
+            ledger.setDeleted(false);
+
+            if (createdBy != null) {
+                ledger.setUpdatedBy(createdBy);
+            }
+
+            return ledgerMasterRepository.save(ledger);
+        }
+
+        LedgerGroup debtors =
+                ledgerGroupRepository
+                        .findByGroupTypeAndDeletedFalse(
+                                LedgerGroupType.SUNDRY_DEBTORS
+                        )
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Sundry Debtors ledger group not found",
+                                        "SUNDRY_DEBTORS_GROUP_NOT_FOUND"
+                                )
+                        );
+
+        String companyName =
+                company.getName() != null
+                        && !company.getName().trim().isEmpty()
+                        ? company.getName().trim()
+                        : "Company-" + companyId;
+
+        String unitName =
+                unit.getUnitName() != null
+                        && !unit.getUnitName().trim().isEmpty()
+                        ? unit.getUnitName().trim()
+                        : "Unit-" + unitId;
 
         LedgerMaster ledger = new LedgerMaster();
+
         ledger.setLedgerName(
-                hasText(estimate.getCompany().getName())
-                        ? estimate.getCompany().getName().trim()
-                        : "Company-" + companyId
+                companyName + " - " + unitName
         );
+
         ledger.setLedgerCode(
-                "CUST-" + companyId
+                generateLedgerCode("CUST")
         );
+
         ledger.setLedgerType(LedgerType.CUSTOMER);
         ledger.setLedgerGroup(debtors);
-        ledger.setCompany(estimate.getCompany());
-        ledger.setUnit(estimate.getUnit());
-        ledger.setContact(estimate.getContact());
-        ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2));
-        ledger.setOpeningBalanceType(DebitCredit.DEBIT);
-        ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2));
-        ledger.setCurrentBalanceType(DebitCredit.DEBIT);
+
+        ledger.setCompany(company);
+        ledger.setUnit(unit);
+        ledger.setContact(contact);
+
+        ledger.setGstNo(unit.getGstNo());
+        ledger.setPanNo(company.getPanNo());
+
+        ledger.setOpeningBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setOpeningBalanceType(
+                DebitCredit.DEBIT
+        );
+
+        ledger.setCurrentBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setCurrentBalanceType(
+                DebitCredit.DEBIT
+        );
+
         ledger.setSystemCreated(true);
         ledger.setActive(true);
         ledger.setDeleted(false);
-        ledger.setCreatedBy(createdBy);
-        ledger.setUpdatedBy(createdBy);
+
+        if (createdBy != null) {
+            ledger.setCreatedBy(createdBy);
+            ledger.setUpdatedBy(createdBy);
+        }
 
         return ledgerMasterRepository.save(ledger);
     }
@@ -2930,6 +3005,37 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 first + " " + second
                 )
                 .orElse("System Ledger");
+    }
+
+    private String generateLedgerCode(String prefix) {
+
+        String safePrefix =
+                prefix == null || prefix.trim().isEmpty()
+                        ? "SYS"
+                        : prefix.trim()
+                        .replaceAll("[^A-Za-z0-9]", "-")
+                        .toUpperCase();
+
+        String ledgerCode;
+
+        do {
+            ledgerCode =
+                    "LED-"
+                            + safePrefix
+                            + "-"
+                            + System.currentTimeMillis()
+                            + "-"
+                            + UUID.randomUUID()
+                            .toString()
+                            .substring(0, 6)
+                            .toUpperCase();
+
+        } while (
+                ledgerMasterRepository
+                        .existsByLedgerCodeIgnoreCase(ledgerCode)
+        );
+
+        return ledgerCode;
     }
 
 
