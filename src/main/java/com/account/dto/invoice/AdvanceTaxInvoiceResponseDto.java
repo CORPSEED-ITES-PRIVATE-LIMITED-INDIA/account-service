@@ -1,27 +1,39 @@
 package com.account.dto.invoice;
 
 import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
+import com.account.domain.invoice.InvoiceOrigin;
 import com.account.domain.invoice.InvoicePaymentStatus;
+import com.account.domain.status.InvoiceStatus;
 import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
 public class AdvanceTaxInvoiceResponseDto {
 
-    private Long requestId;
-    private String publicUuid;
+    // =====================================================
+    // ADVANCE TAX INVOICE REQUEST
+    // =====================================================
 
-    private Long estimateId;
-    private String estimateNumber;
-    private BigDecimal estimateGrandTotal;
+    private Long requestId;
+
+    /**
+     * AdvanceTaxInvoiceRequest UUID.
+     */
+    private String publicUuid;
 
     private BigDecimal requestedAmount;
     private BigDecimal approvedAmount;
+
     private AdvanceTaxInvoiceRequestStatus requestStatus;
+
+    private String requestRemarks;
+    private String reviewRemarks;
 
     private Long requestedByUserId;
     private String requestedByName;
@@ -29,18 +41,155 @@ public class AdvanceTaxInvoiceResponseDto {
     private Long reviewedByUserId;
     private String reviewedByName;
 
+    private LocalDateTime createdAt;
+    private LocalDateTime reviewedAt;
+
+    // =====================================================
+    // ESTIMATE
+    // =====================================================
+
+    private Long estimateId;
+    private String estimateNumber;
+    private BigDecimal estimateGrandTotal;
+
+    private Long solutionId;
+    private String solutionName;
+
+    // =====================================================
+    // COMPANY / UNIT / CONTACT
+    // =====================================================
+
+    private Long companyId;
+    private String companyName;
+
+    private Long unitId;
+    private String unitName;
+
+    private Long contactId;
+    private String contactName;
+
+    // =====================================================
+    // GENERATED INVOICE
+    // =====================================================
+
+    private Boolean invoiceGenerated;
+
     private Long invoiceId;
+    private String invoicePublicUuid;
     private String invoiceNumber;
+
+    /**
+     * Null for the standard Advance Tax Invoice flow.
+     */
+    private String unbilledNumber;
+
+    private InvoiceOrigin invoiceOrigin;
+
+    private LocalDate invoiceDate;
+    private String currency;
+
+    private InvoiceStatus invoiceStatus;
+
+    private String placeOfSupplyStateCode;
+
+    private String buyerGstin;
+    private String sellerGstin;
+
+    private Boolean cancelled;
+
+    // =====================================================
+    // GST
+    // =====================================================
+
+    private String gstRegistrationType;
+    private Boolean gstApplicable;
+    private Boolean zeroRatedSupply;
+
+    // =====================================================
+    // INVOICE FINANCIALS
+    // =====================================================
+
+    private BigDecimal subTotalExGst;
+    private BigDecimal totalGstAmount;
+
+    private BigDecimal cgstAmount;
+    private BigDecimal sgstAmount;
+    private BigDecimal igstAmount;
+
     private BigDecimal invoiceGrandTotal;
+
+    // =====================================================
+    // PAYMENT STATUS
+    // =====================================================
+
+    /**
+     * UNPAID when an Advance Tax Invoice is first generated.
+     */
+    private InvoicePaymentStatus invoicePaymentStatus;
 
     private BigDecimal receivedAmount;
     private BigDecimal pendingReceivedAmount;
-    private BigDecimal availableOutstandingAmount;
-    private BigDecimal outstandingAmount;
-    private InvoicePaymentStatus invoicePaymentStatus;
 
-    private LocalDateTime createdAt;
-    private LocalDateTime reviewedAt;
+    /**
+     * Outstanding minus payment amount currently pending approval.
+     */
+    private BigDecimal availableOutstandingAmount;
+
+    private BigDecimal outstandingAmount;
+
+    // =====================================================
+    // E-INVOICE
+    // =====================================================
+
+    private String irn;
+    private String eInvoiceAckNo;
+    private LocalDateTime eInvoiceAckDate;
+
+    private String eInvoiceAttachmentUrl;
+
+    private LocalDateTime eInvoiceConfirmedAt;
+    private Long eInvoiceConfirmedByUserId;
+    private String eInvoiceConfirmedByName;
+
+    private String eInvoiceRemarks;
+
+    // =====================================================
+    // ORGANIZATION / SELLER SNAPSHOT
+    // =====================================================
+
+    private String organizationName;
+    private String organizationAddressLine1;
+    private String organizationAddressLine2;
+
+    private String organizationCity;
+    private String organizationState;
+    private String organizationCountry;
+    private String organizationPinCode;
+
+    private String organizationGstNo;
+    private String organizationPanNo;
+    private String organizationCinNumber;
+
+    private String organizationEmail;
+    private String organizationPhone;
+    private String organizationWebsite;
+    private String organizationLogoUrl;
+
+    // =====================================================
+    // INVOICE AUDIT
+    // =====================================================
+
+    private Long invoiceCreatedByUserId;
+    private String invoiceCreatedByName;
+
+    private LocalDateTime invoiceCreatedAt;
+    private LocalDateTime invoiceUpdatedAt;
+
+    // =====================================================
+    // INVOICE LINE ITEMS
+    // =====================================================
+
+    private List<InvoiceDetailDto.LineItemDto> lineItems;
 
     private String message;
 }

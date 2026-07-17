@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import com.account.domain.Contact;
 import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
 import com.account.domain.company.Company;
@@ -1196,49 +1197,102 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             AdvanceTaxInvoiceRequest request,
             String message
     ) {
+        if (request == null) {
+            return null;
+        }
 
-        Estimate estimate =
-                request.getEstimate();
+        Invoice invoice = request.getInvoice();
 
-        Invoice invoice =
-                request.getInvoice();
+        /*
+         * Advance Tax Invoice has:
+         *
+         * invoice.unbilledInvoice == null
+         * invoice.estimate != null
+         *
+         * Therefore, never depend on UnbilledInvoice for the
+         * Estimate, Company, Unit or Contact.
+         */
+        Estimate estimate = request.getEstimate();
+
+        if (estimate == null
+                && invoice != null) {
+
+            estimate = invoice.getEstimate();
+        }
+
+        Company company =
+                estimate != null
+                        ? estimate.getCompany()
+                        : null;
+
+        CompanyUnit unit =
+                estimate != null
+                        ? estimate.getUnit()
+                        : null;
+
+        Contact contact =
+                estimate != null
+                        ? estimate.getContact()
+                        : null;
+
+        GstRegistrationType gstRegistrationType = null;
+
+        if (invoice != null
+                && invoice.getGstRegistrationType() != null) {
+
+            gstRegistrationType =
+                    invoice.getGstRegistrationType();
+
+        } else if (unit != null
+                && unit.getGstRegistrationType() != null) {
+
+            gstRegistrationType =
+                    unit.getGstRegistrationType();
+        }
+
+        InvoicePaymentStatus paymentStatus = null;
+
+        if (invoice != null) {
+            /*
+             * Defensive fallback for old database records where
+             * payment_status may be null.
+             */
+            paymentStatus =
+                    invoice.getPaymentStatus() != null
+                            ? invoice.getPaymentStatus()
+                            : InvoicePaymentStatus.UNPAID;
+        }
+
+        List<InvoiceDetailDto.LineItemDto> lineItems =
+                mapAdvanceInvoiceLineItems(invoice);
 
         return AdvanceTaxInvoiceResponseDto.builder()
+
+                // =================================================
+                // REQUEST
+                // =================================================
+
                 .requestId(request.getId())
                 .publicUuid(request.getPublicUuid())
 
-                .estimateId(
-                        estimate != null
-                                ? estimate.getId()
-                                : null
+                .requestedAmount(
+                        money(request.getRequestedAmount())
                 )
-                .estimateNumber(
-                        estimate != null
-                                ? estimate.getEstimateNumber()
-                                : null
-                )
-                .estimateGrandTotal(
-                        estimate != null
-                                ? money(
-                                estimate.getGrandTotal()
-                        )
+
+                .approvedAmount(
+                        request.getApprovedAmount() != null
+                                ? money(request.getApprovedAmount())
                                 : null
                 )
 
-                .requestedAmount(
-                        money(
-                                request.getRequestedAmount()
-                        )
+                .requestStatus(request.getStatus())
+
+                .requestRemarks(
+                        request.getRequestRemarks()
                 )
-                .approvedAmount(
-                        request.getApprovedAmount() != null
-                                ? money(
-                                request.getApprovedAmount()
-                        )
-                                : null
-                )
-                .requestStatus(
-                        request.getStatus()
+
+                .reviewRemarks(
+                        request.getReviewRemarks()
                 )
 
                 .requestedByUserId(
@@ -1246,10 +1300,9 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? request.getRequestedBy().getId()
                                 : null
                 )
+
                 .requestedByName(
-                        resolveUserName(
-                                request.getRequestedBy()
-                        )
+                        resolveUserName(request.getRequestedBy())
                 )
 
                 .reviewedByUserId(
@@ -1257,44 +1310,259 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? request.getReviewedBy().getId()
                                 : null
                 )
+
                 .reviewedByName(
-                        resolveUserName(
-                                request.getReviewedBy()
-                        )
+                        resolveUserName(request.getReviewedBy())
                 )
+
+                .createdAt(request.getCreatedAt())
+                .reviewedAt(request.getReviewedAt())
+
+                // =================================================
+                // ESTIMATE
+                // =================================================
+
+                .estimateId(
+                        estimate != null
+                                ? estimate.getId()
+                                : null
+                )
+
+                .estimateNumber(
+                        estimate != null
+                                ? estimate.getEstimateNumber()
+                                : null
+                )
+
+                .estimateGrandTotal(
+                        estimate != null
+                                ? money(estimate.getGrandTotal())
+                                : null
+                )
+
+                .solutionId(
+                        invoice != null
+                                ? invoice.getSolutionId()
+                                : estimate != null
+                                ? estimate.getSolutionId()
+                                : null
+                )
+
+                .solutionName(
+                        invoice != null
+                                ? invoice.getSolutionName()
+                                : estimate != null
+                                ? estimate.getSolutionName()
+                                : null
+                )
+
+                // =================================================
+                // COMPANY / UNIT / CONTACT
+                // =================================================
+
+                .companyId(
+                        company != null
+                                ? company.getId()
+                                : null
+                )
+
+                .companyName(
+                        company != null
+                                ? company.getName()
+                                : null
+                )
+
+                .unitId(
+                        unit != null
+                                ? unit.getId()
+                                : null
+                )
+
+                .unitName(
+                        unit != null
+                                ? unit.getUnitName()
+                                : null
+                )
+
+                .contactId(
+                        contact != null
+                                ? contact.getId()
+                                : null
+                )
+
+                .contactName(
+                        contact != null
+                                ? contact.getName()
+                                : null
+                )
+
+                // =================================================
+                // INVOICE BASIC DETAILS
+                // =================================================
+
+                .invoiceGenerated(invoice != null)
 
                 .invoiceId(
                         invoice != null
                                 ? invoice.getId()
                                 : null
                 )
+
+                .invoicePublicUuid(
+                        invoice != null
+                                ? invoice.getPublicUuid()
+                                : null
+                )
+
                 .invoiceNumber(
                         invoice != null
                                 ? invoice.getInvoiceNumber()
                                 : null
                 )
-                .invoiceGrandTotal(
+
+                /*
+                 * Standard Advance Tax Invoice has no Unbilled Invoice.
+                 */
+                .unbilledNumber(
                         invoice != null
-                                ? money(
-                                invoice.getGrandTotal()
-                        )
+                                && invoice.getUnbilledInvoice() != null
+                                ? invoice.getUnbilledInvoice()
+                                .getUnbilledNumber()
                                 : null
                 )
 
+                .invoiceOrigin(
+                        invoice != null
+                                ? invoice.getInvoiceOrigin()
+                                : null
+                )
+
+                .invoiceDate(
+                        invoice != null
+                                ? invoice.getInvoiceDate()
+                                : null
+                )
+
+                .currency(
+                        invoice != null
+                                ? invoice.getCurrency()
+                                : null
+                )
+
+                .invoiceStatus(
+                        invoice != null
+                                ? invoice.getStatus()
+                                : null
+                )
+
+                .placeOfSupplyStateCode(
+                        invoice != null
+                                ? invoice.getPlaceOfSupplyStateCode()
+                                : estimate != null
+                                ? estimate.getPlaceOfSupplyStateCode()
+                                : null
+                )
+
+                .buyerGstin(
+                        invoice != null
+                                ? invoice.getBuyerGstin()
+                                : unit != null
+                                ? unit.getGstNo()
+                                : null
+                )
+
+                .sellerGstin(
+                        invoice != null
+                                ? invoice.getOrganizationGstNo()
+                                : null
+                )
+
+                .cancelled(
+                        invoice != null
+                                ? invoice.isCancelled()
+                                : null
+                )
+
+                // =================================================
+                // GST
+                // =================================================
+
+                .gstRegistrationType(
+                        gstRegistrationType != null
+                                ? gstRegistrationType.name()
+                                : null
+                )
+
+                .gstApplicable(
+                        gstRegistrationType != null
+                                ? gstRegistrationType.isGstApplicable()
+                                : null
+                )
+
+                .zeroRatedSupply(
+                        gstRegistrationType != null
+                                ? gstRegistrationType.isZeroRated()
+                                : null
+                )
+
+                // =================================================
+                // FINANCIALS
+                // =================================================
+
+                .subTotalExGst(
+                        invoice != null
+                                ? money(invoice.getSubTotalExGst())
+                                : null
+                )
+
+                .totalGstAmount(
+                        invoice != null
+                                ? money(invoice.getTotalGstAmount())
+                                : null
+                )
+
+                .cgstAmount(
+                        invoice != null
+                                ? money(invoice.getCgstAmount())
+                                : null
+                )
+
+                .sgstAmount(
+                        invoice != null
+                                ? money(invoice.getSgstAmount())
+                                : null
+                )
+
+                .igstAmount(
+                        invoice != null
+                                ? money(invoice.getIgstAmount())
+                                : null
+                )
+
+                .invoiceGrandTotal(
+                        invoice != null
+                                ? money(invoice.getGrandTotal())
+                                : null
+                )
+
+                // =================================================
+                // PAYMENT
+                // =================================================
+
+                .invoicePaymentStatus(paymentStatus)
+
                 .receivedAmount(
                         invoice != null
-                                ? money(
-                                invoice.getReceivedAmount()
-                        )
+                                ? money(invoice.getReceivedAmount())
                                 : null
                 )
+
                 .pendingReceivedAmount(
                         invoice != null
-                                ? money(
-                                invoice.getPendingReceivedAmount()
-                        )
+                                ? money(invoice.getPendingReceivedAmount())
                                 : null
                 )
+
                 .availableOutstandingAmount(
                         invoice != null
                                 ? money(
@@ -1302,23 +1570,282 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                         )
                                 : null
                 )
+
                 .outstandingAmount(
                         invoice != null
-                                ? money(
-                                invoice.getOutstandingAmount()
-                        )
-                                : null
-                )
-                .invoicePaymentStatus(
-                        invoice != null
-                                ? invoice.getPaymentStatus()
+                                ? money(invoice.getOutstandingAmount())
                                 : null
                 )
 
-                .createdAt(request.getCreatedAt())
-                .reviewedAt(request.getReviewedAt())
+                // =================================================
+                // E-INVOICE
+                // =================================================
+
+                .irn(
+                        invoice != null
+                                ? invoice.getEInvoiceIrn()
+                                : null
+                )
+
+                .eInvoiceAckNo(
+                        invoice != null
+                                ? invoice.getEInvoiceAckNo()
+                                : null
+                )
+
+                .eInvoiceAckDate(
+                        invoice != null
+                                ? invoice.getEInvoiceAckDate()
+                                : null
+                )
+
+                .eInvoiceAttachmentUrl(
+                        invoice != null
+                                ? invoice.getEInvoiceAttachmentUrl()
+                                : null
+                )
+
+                .eInvoiceConfirmedAt(
+                        invoice != null
+                                ? invoice.getEInvoiceConfirmedAt()
+                                : null
+                )
+
+                .eInvoiceConfirmedByUserId(
+                        invoice != null
+                                && invoice.getEInvoiceConfirmedBy() != null
+                                ? invoice.getEInvoiceConfirmedBy().getId()
+                                : null
+                )
+
+                .eInvoiceConfirmedByName(
+                        invoice != null
+                                ? resolveUserName(
+                                invoice.getEInvoiceConfirmedBy()
+                        )
+                                : null
+                )
+
+                .eInvoiceRemarks(
+                        invoice != null
+                                ? invoice.getEInvoiceRemarks()
+                                : null
+                )
+
+                // =================================================
+                // ORGANIZATION SNAPSHOT
+                // =================================================
+
+                .organizationName(
+                        invoice != null
+                                ? invoice.getOrganizationName()
+                                : null
+                )
+
+                .organizationAddressLine1(
+                        invoice != null
+                                ? invoice.getOrganizationAddressLine1()
+                                : null
+                )
+
+                .organizationAddressLine2(
+                        invoice != null
+                                ? invoice.getOrganizationAddressLine2()
+                                : null
+                )
+
+                .organizationCity(
+                        invoice != null
+                                ? invoice.getOrganizationCity()
+                                : null
+                )
+
+                .organizationState(
+                        invoice != null
+                                ? invoice.getOrganizationState()
+                                : null
+                )
+
+                .organizationCountry(
+                        invoice != null
+                                ? invoice.getOrganizationCountry()
+                                : null
+                )
+
+                .organizationPinCode(
+                        invoice != null
+                                ? invoice.getOrganizationPinCode()
+                                : null
+                )
+
+                .organizationGstNo(
+                        invoice != null
+                                ? invoice.getOrganizationGstNo()
+                                : null
+                )
+
+                .organizationPanNo(
+                        invoice != null
+                                ? invoice.getOrganizationPanNo()
+                                : null
+                )
+
+                .organizationCinNumber(
+                        invoice != null
+                                ? invoice.getOrganizationCinNumber()
+                                : null
+                )
+
+                .organizationEmail(
+                        invoice != null
+                                ? invoice.getOrganizationEmail()
+                                : null
+                )
+
+                .organizationPhone(
+                        invoice != null
+                                ? invoice.getOrganizationPhone()
+                                : null
+                )
+
+                .organizationWebsite(
+                        invoice != null
+                                ? invoice.getOrganizationWebsite()
+                                : null
+                )
+
+                .organizationLogoUrl(
+                        invoice != null
+                                ? invoice.getOrganizationLogoUrl()
+                                : null
+                )
+
+                // =================================================
+                // INVOICE AUDIT
+                // =================================================
+
+                .invoiceCreatedByUserId(
+                        invoice != null
+                                && invoice.getCreatedBy() != null
+                                ? invoice.getCreatedBy().getId()
+                                : null
+                )
+
+                .invoiceCreatedByName(
+                        invoice != null
+                                ? resolveUserName(invoice.getCreatedBy())
+                                : null
+                )
+
+                .invoiceCreatedAt(
+                        invoice != null
+                                ? invoice.getCreatedAt()
+                                : null
+                )
+
+                .invoiceUpdatedAt(
+                        invoice != null
+                                ? invoice.getUpdatedAt()
+                                : null
+                )
+
+                // =================================================
+                // LINE ITEMS
+                // =================================================
+
+                .lineItems(lineItems)
+
                 .message(message)
                 .build();
+    }
+
+
+
+    private List<InvoiceDetailDto.LineItemDto>
+    mapAdvanceInvoiceLineItems(
+            Invoice invoice
+    ) {
+        if (invoice == null
+                || invoice.getLineItems() == null
+                || invoice.getLineItems().isEmpty()) {
+
+            return Collections.emptyList();
+        }
+
+        return invoice.getLineItems()
+                .stream()
+                .filter(Objects::nonNull)
+                .sorted(
+                        Comparator.comparing(
+                                InvoiceLineItem::getDisplayOrder,
+                                Comparator.nullsLast(
+                                        Integer::compareTo
+                                )
+                        )
+                )
+                .map(this::mapAdvanceInvoiceLineItem)
+                .toList();
+    }
+
+    private InvoiceDetailDto.LineItemDto
+    mapAdvanceInvoiceLineItem(
+            InvoiceLineItem item
+    ) {
+        InvoiceDetailDto.LineItemDto dto =
+                new InvoiceDetailDto.LineItemDto();
+
+        dto.setId(item.getId());
+
+        dto.setSourceEstimateLineItemId(
+                item.getSourceEstimateLineItemId()
+        );
+
+        dto.setItemName(item.getItemName());
+        dto.setDescription(item.getDescription());
+        dto.setHsnSacCode(item.getHsnSacCode());
+
+        dto.setQuantity(item.getQuantity());
+        dto.setUnit(item.getUnit());
+
+        dto.setUnitPriceExGst(
+                money(item.getUnitPriceExGst())
+        );
+
+        dto.setLineTotalExGst(
+                money(item.getLineTotalExGst())
+        );
+
+        dto.setGstRate(
+                money(item.getGstRate())
+        );
+
+        dto.setGstAmount(
+                money(item.getGstAmount())
+        );
+
+        dto.setLineTotalWithGst(
+                money(item.getLineTotalWithGst())
+        );
+
+        dto.setCgstAmount(
+                money(item.getCgstAmount())
+        );
+
+        dto.setSgstAmount(
+                money(item.getSgstAmount())
+        );
+
+        dto.setIgstAmount(
+                money(item.getIgstAmount())
+        );
+
+        dto.setDisplayOrder(item.getDisplayOrder());
+        dto.setCategoryCode(item.getCategoryCode());
+        dto.setFeeType(item.getFeeType());
+
+        dto.setIgstFlag(item.isIgstFlag());
+
+        return dto;
     }
 
     private String resolveUserName(
@@ -1424,6 +1951,9 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             Long invoiceId,
             ConfirmInvoiceEInvoiceRequestDto request
     ) {
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
         if (invoiceId == null || invoiceId <= 0) {
             throw new ValidationException(
                     "Valid invoiceId is required",
@@ -1432,7 +1962,17 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             );
         }
 
-        if (request == null || request.getUserId() == null) {
+        if (request == null) {
+            throw new ValidationException(
+                    "Confirmation request is required",
+                    "ERR_E_INVOICE_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (request.getUserId() == null
+                || request.getUserId() <= 0) {
+
             throw new ValidationException(
                     "User ID is required",
                     "ERR_USER_NOT_FOUND",
@@ -1446,6 +1986,9 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 request.getUserId()
         );
 
+        // =====================================================
+        // 2. FETCH INVOICE WITH PESSIMISTIC LOCK
+        // =====================================================
         Invoice invoice = invoiceRepository
                 .findByIdForAdvanceEInvoiceConfirmation(invoiceId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -1457,53 +2000,82 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
         validateAdvanceInvoiceForConfirmation(invoice);
 
-        User confirmedBy = getActiveUser(request.getUserId(), "userId");
+        // =====================================================
+        // 3. AUTHORIZE USER
+        // =====================================================
+        User confirmedBy = getActiveUser(
+                request.getUserId(),
+                "userId"
+        );
+
         validateAccountsOrAdminForEInvoice(confirmedBy);
 
+        // =====================================================
+        // 4. RESOLVE GST ROUTE
+        // =====================================================
         GstRegistrationType gstType =
                 resolveAdvanceInvoiceGstRegistrationType(invoice);
 
-        boolean eInvoiceRequired = isEInvoiceRequired(gstType);
+        boolean eInvoiceRequired =
+                isEInvoiceRequired(gstType);
+
+        String incomingIrn =
+                clean(request.getEInvoiceIrn());
 
         log.info(
-                "Advance Invoice GST route resolved | invoiceId={} | gstType={} | eInvoiceRequired={}",
+                "Advance Invoice GST route resolved | "
+                        + "invoiceId={} | gstType={} | "
+                        + "eInvoiceRequired={} | incomingIrnPresent={}",
                 invoiceId,
                 gstType,
-                eInvoiceRequired
+                eInvoiceRequired,
+                hasText(incomingIrn)
         );
 
-        String incomingIrn = clean(request.getEInvoiceIrn());
-
-        /*
-         * Idempotency:
-         * confirmed/finalized invoice with locally posted voucher is returned
-         * without changing financial data. Operation sync can still be retried.
-         */
+        // =====================================================
+        // 5. IDEMPOTENT PROCESSING
+        // =====================================================
         if (isLocallyFinalized(invoice, eInvoiceRequired)) {
+
             if (eInvoiceRequired
                     && hasText(incomingIrn)
                     && hasText(invoice.getEInvoiceIrn())
-                    && !invoice.getEInvoiceIrn().equalsIgnoreCase(incomingIrn)) {
+                    && !invoice.getEInvoiceIrn()
+                    .equalsIgnoreCase(incomingIrn)) {
 
                 throw new ValidationException(
-                        "Advance Tax Invoice is already confirmed with another IRN",
+                        "Advance Tax Invoice is already confirmed "
+                                + "with another IRN",
                         "ERR_E_INVOICE_ALREADY_CONFIRMED_WITH_DIFFERENT_IRN",
                         "eInvoiceIrn"
                 );
             }
 
-            scheduleOperationSyncAfterCommit(invoice.getId(), confirmedBy.getId());
+            /*
+             * Ensure the Sales Invoice voucher exists.
+             * This is idempotent and will not create a duplicate.
+             */
+            postAdvanceInvoiceSalesVoucherExactlyOnce(
+                    invoice,
+                    invoice.getEstimate(),
+                    confirmedBy
+            );
 
             return buildConfirmResponse(
                     invoice,
                     gstType,
                     eInvoiceRequired,
                     "Advance Tax Invoice was already processed. "
-                            + operationMessage(invoice)
+                            + "Sales Voucher is available. "
+                            + "No Operation Project was created."
             );
         }
 
+        // =====================================================
+        // 6. REGISTERED / SEZ E-INVOICE CONFIRMATION
+        // =====================================================
         if (eInvoiceRequired) {
+
             validateConditionalEInvoiceFields(request);
 
             if (invoiceRepository
@@ -1513,34 +2085,50 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                     )) {
 
                 throw new ValidationException(
-                        "The supplied IRN is already assigned to another active Invoice",
+                        "The supplied IRN is already assigned "
+                                + "to another active Invoice",
                         "ERR_DUPLICATE_E_INVOICE_IRN",
                         "eInvoiceIrn"
                 );
             }
 
             invoice.setEInvoiceIrn(incomingIrn);
-            invoice.setEInvoiceAckNo(clean(request.getEInvoiceAckNo()));
-            invoice.setEInvoiceAckDate(request.getEInvoiceAckDate());
+
+            invoice.setEInvoiceAckNo(
+                    clean(request.getEInvoiceAckNo())
+            );
+
+            invoice.setEInvoiceAckDate(
+                    request.getEInvoiceAckDate()
+            );
+
             invoice.setEInvoiceAttachmentUrl(
                     clean(request.getEInvoiceAttachmentUrl())
             );
+
             invoice.setEInvoiceConfirmedBy(confirmedBy);
             invoice.setEInvoiceConfirmedAt(LocalDateTime.now());
-            invoice.setEInvoiceRemarks(clean(request.getRemarks()));
-            invoice.setStatus(InvoiceStatus.E_INVOICE_CONFIRMED);
+
+            invoice.setEInvoiceRemarks(
+                    clean(request.getRemarks())
+            );
+
+            invoice.setStatus(
+                    InvoiceStatus.E_INVOICE_CONFIRMED
+            );
 
             log.info(
-                    "Advance Invoice e-invoice confirmed | invoiceId={} | invoiceNumber={} | irn={}",
+                    "Advance Invoice e-invoice confirmed | "
+                            + "invoiceId={} | invoiceNumber={} | irn={}",
                     invoice.getId(),
                     invoice.getInvoiceNumber(),
                     maskIrn(incomingIrn)
             );
 
         } else {
-            /*
-             * Never store fake e-invoice values for UNREGISTERED/INTERNATIONAL.
-             */
+            // =====================================================
+            // 7. UNREGISTERED / INTERNATIONAL FINALIZATION
+            // =====================================================
             invoice.setEInvoiceIrn(null);
             invoice.setEInvoiceAckNo(null);
             invoice.setEInvoiceAckDate(null);
@@ -1551,40 +2139,85 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
             invoice.setFinalizedAt(LocalDateTime.now());
             invoice.setFinalizedBy(confirmedBy);
-            invoice.setFinalizationRemarks(clean(request.getRemarks()));
-            invoice.setStatus(InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE);
+
+            invoice.setFinalizationRemarks(
+                    clean(request.getRemarks())
+            );
+
+            invoice.setStatus(
+                    InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE
+            );
 
             log.info(
-                    "E-invoice skipped for Advance Invoice | invoiceId={} | gstType={}",
+                    "E-invoice skipped for Advance Invoice | "
+                            + "invoiceId={} | gstType={}",
                     invoice.getId(),
                     gstType
             );
         }
 
+        // =====================================================
+        // 8. DO NOT CREATE/SYNCHRONIZE OPERATION PROJECT
+        // =====================================================
         invoice.setUpdatedBy(confirmedBy);
-        invoice.setOperationSynced(false);
-        invoice.setOperationSyncStatus(OperationSyncStatus.PENDING);
-        invoice.setOperationLastError(null);
+        invoice.setUpdatedAt(LocalDateTime.now());
 
-        invoice = invoiceRepository.save(invoice);
+        /*
+         * This API does not create an Operation Project.
+         *
+         * Do not set:
+         * operationSynced = false
+         * operationSyncStatus = PENDING
+         * operationNextRetryAt
+         *
+         * Existing operation fields are left unchanged.
+         */
 
+        invoice = invoiceRepository.saveAndFlush(invoice);
+
+        // =====================================================
+        // 9. POST SALES VOUCHER EXACTLY ONCE
+        // =====================================================
         postAdvanceInvoiceSalesVoucherExactlyOnce(
                 invoice,
                 invoice.getEstimate(),
                 confirmedBy
         );
 
-        /*
-         * Local financial work commits first. The remote Feign call runs after commit.
-         */
-        scheduleOperationSyncAfterCommit(invoice.getId(), confirmedBy.getId());
+        boolean voucherPosted =
+                accountingVoucherService.existsPostedVoucher(
+                        VoucherType.SALES_INVOICE,
+                        VoucherSourceType.INVOICE,
+                        invoice.getId()
+                );
 
-        String message = eInvoiceRequired
-                ? "Advance Tax Invoice e-invoice confirmed and Sales Voucher posted. "
-                : "E-invoice was not required for " + gstType
-                + ". Invoice finalized and Sales Voucher posted. ";
+        if (!voucherPosted) {
+            throw new ValidationException(
+                    "Advance Tax Invoice was confirmed, but "
+                            + "the Sales Voucher could not be verified",
+                    "ERR_SALES_VOUCHER_POSTING_FAILED",
+                    "invoiceId"
+            );
+        }
 
-        message += "Operation Project synchronization has been queued.";
+        // =====================================================
+        // 10. RESPONSE
+        // =====================================================
+        String message;
+
+        if (eInvoiceRequired) {
+            message =
+                    "Advance Tax Invoice e-invoice confirmed successfully. "
+                            + "Sales Voucher posted successfully. "
+                            + "No Operation Project was created.";
+        } else {
+            message =
+                    "E-invoice was not required for "
+                            + gstType
+                            + ". Advance Tax Invoice finalized successfully. "
+                            + "Sales Voucher posted successfully. "
+                            + "No Operation Project was created.";
+        }
 
         return buildConfirmResponse(
                 invoice,
@@ -1970,20 +2603,28 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 && invoice.getStatus()
                                 == InvoiceStatus.E_INVOICE_CONFIRMED
                 )
-                .eInvoiceIrn(eInvoiceRequired
-                        ? invoice.getEInvoiceIrn() : null)
-                .eInvoiceAckNo(eInvoiceRequired
-                        ? invoice.getEInvoiceAckNo() : null)
-                .eInvoiceAckDate(eInvoiceRequired
-                        ? invoice.getEInvoiceAckDate() : null)
-                .salesVoucherPosted(voucherPosted)
-                .operationSynced(invoice.isOperationSynced())
-                .operationProjectNo(invoice.getOperationProjectNo())
-                .operationSyncStatus(
-                        invoice.getOperationSyncStatus() != null
-                                ? invoice.getOperationSyncStatus().name()
+                .eInvoiceIrn(
+                        eInvoiceRequired
+                                ? invoice.getEInvoiceIrn()
                                 : null
                 )
+                .eInvoiceAckNo(
+                        eInvoiceRequired
+                                ? invoice.getEInvoiceAckNo()
+                                : null
+                )
+                .eInvoiceAckDate(
+                        eInvoiceRequired
+                                ? invoice.getEInvoiceAckDate()
+                                : null
+                )
+                .salesVoucherPosted(voucherPosted)
+
+                // Operation Project is intentionally not created.
+                .operationSynced(false)
+                .operationProjectNo(null)
+                .operationSyncStatus("NOT_APPLICABLE")
+
                 .message(message)
                 .build();
     }

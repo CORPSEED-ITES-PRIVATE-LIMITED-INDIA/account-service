@@ -117,18 +117,30 @@ public class AdvanceTaxInvoiceController {
     }
 
 
-    @PutMapping("/{invoiceId}/confirm-e-invoice-and-create-project")
+    @PutMapping("/{invoiceId}/confirm-e-invoice")
     @Operation(
-            summary = "Confirm/finalize Advance Tax Invoice and synchronize Operation Project"
+            summary = "Confirm/finalize Advance Tax Invoice and post Sales Voucher"
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Invoice processed successfully"),
-            @ApiResponse(responseCode = "400", description = "Validation failure"),
-            @ApiResponse(responseCode = "403", description = "User not authorized"),
-            @ApiResponse(responseCode = "404", description = "Advance Tax Invoice not found")
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Advance Tax Invoice processed successfully"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Validation failure"
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "User not authorized"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Advance Tax Invoice not found"
+            )
     })
     public ResponseEntity<ConfirmAdvanceInvoiceResponseDto>
-    confirmEInvoiceAndCreateProject(
+    confirmEInvoice(
             @PathVariable Long invoiceId,
             @Valid @RequestBody ConfirmInvoiceEInvoiceRequestDto request
     ) {
