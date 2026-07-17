@@ -157,6 +157,10 @@ public class AdvanceTaxInvoiceResponseDto {
     // ORGANIZATION / SELLER SNAPSHOT
     // =====================================================
 
+// =====================================================
+// ORGANIZATION / SELLER SNAPSHOT
+// =====================================================
+
     private String organizationName;
     private String organizationAddressLine1;
     private String organizationAddressLine2;
@@ -174,6 +178,24 @@ public class AdvanceTaxInvoiceResponseDto {
     private String organizationPhone;
     private String organizationWebsite;
     private String organizationLogoUrl;
+
+// =====================================================
+// ORGANIZATION BANK DETAILS
+// =====================================================
+
+    private Boolean organizationBankAccountPresent;
+
+    private String organizationAccountHolderName;
+    private String organizationAccountNumber;
+
+    private String organizationIfscCode;
+    private String organizationSwiftCode;
+
+    private String organizationBankName;
+    private String organizationBankBranch;
+
+    private String organizationUpiId;
+    private String organizationPaymentPageLink;
 
     // =====================================================
     // INVOICE AUDIT

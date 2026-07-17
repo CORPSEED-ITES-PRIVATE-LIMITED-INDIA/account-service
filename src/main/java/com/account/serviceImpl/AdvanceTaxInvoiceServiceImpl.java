@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import com.account.domain.Organization;
 import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
 import com.account.domain.company.Company;
@@ -20,10 +21,7 @@ import com.account.dto.operationService.OperationProjectResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
 import com.account.feignClient.OperationFeignClient;
-import com.account.repository.AdvanceTaxInvoiceRequestRepository;
-import com.account.repository.InvoiceRepository;
-import com.account.repository.UnbilledInvoiceRepository;
-import com.account.repository.UserRepository;
+import com.account.repository.*;
 import com.account.service.AdvanceTaxInvoiceService;
 import com.account.service.InvoiceService;
 import com.account.service.ledger.AccountingVoucherService;
@@ -67,6 +65,8 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             unbilledInvoiceRepository;
 
     private final InvoiceService invoiceService;
+
+    private final OrganizationRepository organizationRepository;
 
     private final OperationFeignClient operationFeignClient;
 
@@ -1502,15 +1502,64 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             String message
     ) {
 
-        Estimate estimate =
-                request.getEstimate();
+        Invoice invoice = request.getInvoice();
+        Estimate estimate = request.getEstimate();
 
-        Invoice invoice =
-                request.getInvoice();
+        Organization organization =
+                organizationRepository
+                        .findTopOrganization()
+                        .orElse(null);
+
+        GstRegistrationType gstRegistrationType =
+                invoice != null && invoice.getGstRegistrationType() != null
+                        ? invoice.getGstRegistrationType()
+                        : estimate != null
+                        && estimate.getUnit() != null
+                        && estimate.getUnit().getGstRegistrationType() != null
+                        ? estimate.getUnit().getGstRegistrationType()
+                        : GstRegistrationType.REGISTERED;
 
         return AdvanceTaxInvoiceResponseDto.builder()
+
+                // =====================================================
+                // REQUEST
+                // =====================================================
+
                 .requestId(request.getId())
                 .publicUuid(request.getPublicUuid())
+
+                .requestedAmount(request.getRequestedAmount())
+                .approvedAmount(request.getApprovedAmount())
+
+                .requestStatus(request.getStatus())
+
+                .requestRemarks(request.getRequestRemarks())
+                .reviewRemarks(request.getReviewRemarks())
+
+                .requestedByUserId(
+                        request.getRequestedBy() != null
+                                ? request.getRequestedBy().getId()
+                                : null
+                )
+                .requestedByName(
+                        resolveUserName(request.getRequestedBy())
+                )
+
+                .reviewedByUserId(
+                        request.getReviewedBy() != null
+                                ? request.getReviewedBy().getId()
+                                : null
+                )
+                .reviewedByName(
+                        resolveUserName(request.getReviewedBy())
+                )
+
+                .createdAt(request.getCreatedAt())
+                .reviewedAt(request.getReviewedAt())
+
+                // =====================================================
+                // ESTIMATE
+                // =====================================================
 
                 .estimateId(
                         estimate != null
@@ -1524,53 +1573,77 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 )
                 .estimateGrandTotal(
                         estimate != null
-                                ? money(
-                                estimate.getGrandTotal()
-                        )
+                                ? estimate.getGrandTotal()
+                                : null
+                )
+                .solutionId(
+                        estimate != null
+                                ? estimate.getSolutionId()
+                                : null
+                )
+                .solutionName(
+                        estimate != null
+                                ? estimate.getSolutionName()
                                 : null
                 )
 
-                .requestedAmount(
-                        money(
-                                request.getRequestedAmount()
-                        )
-                )
-                .approvedAmount(
-                        request.getApprovedAmount() != null
-                                ? money(
-                                request.getApprovedAmount()
-                        )
+                // =====================================================
+                // COMPANY / UNIT / CONTACT
+                // =====================================================
+
+                .companyId(
+                        estimate != null
+                                && estimate.getCompany() != null
+                                ? estimate.getCompany().getId()
                                 : null
                 )
-                .requestStatus(
-                        request.getStatus()
+                .companyName(
+                        estimate != null
+                                && estimate.getCompany() != null
+                                ? estimate.getCompany().getName()
+                                : null
                 )
 
-                .requestedByUserId(
-                        request.getRequestedBy() != null
-                                ? request.getRequestedBy().getId()
+                .unitId(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getId()
                                 : null
                 )
-                .requestedByName(
-                        resolveUserName(
-                                request.getRequestedBy()
-                        )
+                .unitName(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getUnitName()
+                                : null
                 )
 
-                .reviewedByUserId(
-                        request.getReviewedBy() != null
-                                ? request.getReviewedBy().getId()
+                .contactId(
+                        estimate != null
+                                && estimate.getContact() != null
+                                ? estimate.getContact().getId()
                                 : null
                 )
-                .reviewedByName(
-                        resolveUserName(
-                                request.getReviewedBy()
-                        )
+                .contactName(
+                        estimate != null
+                                && estimate.getContact() != null
+                                ? estimate.getContact().getName()
+                                : null
                 )
+
+                // =====================================================
+                // INVOICE
+                // =====================================================
+
+                .invoiceGenerated(invoice != null)
 
                 .invoiceId(
                         invoice != null
                                 ? invoice.getId()
+                                : null
+                )
+                .invoicePublicUuid(
+                        invoice != null
+                                ? invoice.getPublicUuid()
                                 : null
                 )
                 .invoiceNumber(
@@ -1578,54 +1651,257 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? invoice.getInvoiceNumber()
                                 : null
                 )
+                .unbilledNumber(
+                        invoice != null
+                                && invoice.getUnbilledInvoice() != null
+                                ? invoice.getUnbilledInvoice().getUnbilledNumber()
+                                : null
+                )
+                .invoiceOrigin(
+                        invoice != null
+                                ? invoice.getInvoiceOrigin()
+                                : null
+                )
+                .invoiceDate(
+                        invoice != null
+                                ? invoice.getInvoiceDate()
+                                : null
+                )
+                .currency(
+                        invoice != null
+                                ? invoice.getCurrency()
+                                : null
+                )
+                .invoiceStatus(
+                        invoice != null
+                                ? invoice.getStatus()
+                                : null
+                )
+                .placeOfSupplyStateCode(
+                        invoice != null
+                                ? invoice.getPlaceOfSupplyStateCode()
+                                : null
+                )
+                .buyerGstin(
+                        invoice != null
+                                ? invoice.getBuyerGstin()
+                                : null
+                )
+                .sellerGstin(
+                        invoice != null
+                                ? invoice.getOrganizationGstNo()
+                                : organization != null
+                                ? organization.getGstNo()
+                                : null
+                )
+                .cancelled(
+                        invoice != null
+                                ? invoice.isCancelled()
+                                : false
+                )
+
+                // =====================================================
+                // GST
+                // =====================================================
+
+                .gstRegistrationType(gstRegistrationType.name())
+                .gstApplicable(gstRegistrationType.isGstApplicable())
+                .zeroRatedSupply(gstRegistrationType.isZeroRated())
+
+                // =====================================================
+                // FINANCIALS
+                // =====================================================
+
+                .subTotalExGst(
+                        invoice != null
+                                ? invoice.getSubTotalExGst()
+                                : null
+                )
+                .totalGstAmount(
+                        invoice != null
+                                ? invoice.getTotalGstAmount()
+                                : null
+                )
+                .cgstAmount(
+                        invoice != null
+                                ? invoice.getCgstAmount()
+                                : null
+                )
+                .sgstAmount(
+                        invoice != null
+                                ? invoice.getSgstAmount()
+                                : null
+                )
+                .igstAmount(
+                        invoice != null
+                                ? invoice.getIgstAmount()
+                                : null
+                )
                 .invoiceGrandTotal(
                         invoice != null
-                                ? money(
-                                invoice.getGrandTotal()
-                        )
+                                ? invoice.getGrandTotal()
                                 : null
                 )
 
-                .receivedAmount(
+                // =====================================================
+                // ORGANIZATION GENERAL DETAILS
+                // Prefer invoice snapshot after invoice generation.
+                // Otherwise use current organization configuration.
+                // =====================================================
+
+                .organizationName(
                         invoice != null
-                                ? money(
-                                invoice.getReceivedAmount()
-                        )
+                                ? invoice.getOrganizationName()
+                                : organization != null
+                                ? organization.getName()
                                 : null
                 )
-                .pendingReceivedAmount(
+                .organizationAddressLine1(
                         invoice != null
-                                ? money(
-                                invoice.getPendingReceivedAmount()
-                        )
+                                ? invoice.getOrganizationAddressLine1()
+                                : organization != null
+                                ? organization.getAddressLine1()
                                 : null
                 )
-                .availableOutstandingAmount(
+                .organizationAddressLine2(
                         invoice != null
-                                ? money(
-                                invoice.getAvailableOutstandingAmount()
-                        )
+                                ? invoice.getOrganizationAddressLine2()
+                                : organization != null
+                                ? organization.getAddressLine2()
                                 : null
                 )
-                .outstandingAmount(
+                .organizationCity(
                         invoice != null
-                                ? money(
-                                invoice.getOutstandingAmount()
-                        )
+                                ? invoice.getOrganizationCity()
+                                : organization != null
+                                ? organization.getCity()
                                 : null
                 )
-                .invoicePaymentStatus(
+                .organizationState(
                         invoice != null
-                                ? invoice.getPaymentStatus()
+                                ? invoice.getOrganizationState()
+                                : organization != null
+                                ? organization.getState()
+                                : null
+                )
+                .organizationCountry(
+                        invoice != null
+                                ? invoice.getOrganizationCountry()
+                                : organization != null
+                                ? organization.getCountry()
+                                : null
+                )
+                .organizationPinCode(
+                        invoice != null
+                                ? invoice.getOrganizationPinCode()
+                                : organization != null
+                                ? organization.getPinCode()
+                                : null
+                )
+                .organizationGstNo(
+                        invoice != null
+                                ? invoice.getOrganizationGstNo()
+                                : organization != null
+                                ? organization.getGstNo()
+                                : null
+                )
+                .organizationPanNo(
+                        invoice != null
+                                ? invoice.getOrganizationPanNo()
+                                : organization != null
+                                ? organization.getPanNo()
+                                : null
+                )
+                .organizationCinNumber(
+                        invoice != null
+                                ? invoice.getOrganizationCinNumber()
+                                : organization != null
+                                ? organization.getCinNumber()
+                                : null
+                )
+                .organizationEmail(
+                        invoice != null
+                                ? invoice.getOrganizationEmail()
+                                : organization != null
+                                ? organization.getEmail()
+                                : null
+                )
+                .organizationPhone(
+                        invoice != null
+                                ? invoice.getOrganizationPhone()
+                                : organization != null
+                                ? organization.getPhone()
+                                : null
+                )
+                .organizationWebsite(
+                        invoice != null
+                                ? invoice.getOrganizationWebsite()
+                                : organization != null
+                                ? organization.getWebsite()
+                                : null
+                )
+                .organizationLogoUrl(
+                        invoice != null
+                                ? invoice.getOrganizationLogoUrl()
+                                : organization != null
+                                ? organization.getLogoUrl()
                                 : null
                 )
 
-                .createdAt(request.getCreatedAt())
-                .reviewedAt(request.getReviewedAt())
+                // =====================================================
+                // ORGANIZATION BANK DETAILS
+                // Currently read from Organization master.
+                // =====================================================
+
+                .organizationBankAccountPresent(
+                        organization != null
+                                ? organization.isBankAccountPresent()
+                                : null
+                )
+                .organizationAccountHolderName(
+                        organization != null
+                                ? organization.getAccountHolderName()
+                                : null
+                )
+                .organizationAccountNumber(
+                        organization != null
+                                ? organization.getAccountNo()
+                                : null
+                )
+                .organizationIfscCode(
+                        organization != null
+                                ? organization.getIfscCode()
+                                : null
+                )
+                .organizationSwiftCode(
+                        organization != null
+                                ? organization.getSwiftCode()
+                                : null
+                )
+                .organizationBankName(
+                        organization != null
+                                ? organization.getBankName()
+                                : null
+                )
+                .organizationBankBranch(
+                        organization != null
+                                ? organization.getBranch()
+                                : null
+                )
+                .organizationUpiId(
+                        organization != null
+                                ? organization.getUpiId()
+                                : null
+                )
+                .organizationPaymentPageLink(
+                        organization != null
+                                ? organization.getPaymentPageLink()
+                                : null
+                )
+
                 .message(message)
                 .build();
     }
-
     private String resolveUserName(
             User user
     ) {
