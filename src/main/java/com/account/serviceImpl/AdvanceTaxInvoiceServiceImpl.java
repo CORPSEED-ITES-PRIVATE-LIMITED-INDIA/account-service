@@ -298,9 +298,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             Long requestId,
             AdvanceTaxInvoiceApprovalRequestDto requestDto
     ) {
+
         // =====================================================
         // 1. BASIC VALIDATION
         // =====================================================
+
         if (requestId == null || requestId <= 0) {
             throw new ValidationException(
                     "Valid requestId is required",
@@ -330,13 +332,13 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         // =====================================================
         // 2. FETCH AND LOCK REQUEST
         // =====================================================
+
         AdvanceTaxInvoiceRequest request =
                 advanceTaxInvoiceRequestRepository
                         .findByIdForUpdate(requestId)
                         .orElseThrow(() ->
                                 new ResourceNotFoundException(
-                                        "Advance Tax Invoice request "
-                                                + "not found with ID: "
+                                        "Advance Tax Invoice request not found with ID: "
                                                 + requestId,
                                         "ADVANCE_TAX_INVOICE_REQUEST_NOT_FOUND",
                                         "AdvanceTaxInvoiceRequest",
@@ -348,10 +350,18 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 != AdvanceTaxInvoiceRequestStatus.PENDING) {
 
             throw new ValidationException(
-                    "Only PENDING Advance Tax Invoice requests "
-                            + "can be approved. Current status: "
+                    "Only PENDING Advance Tax Invoice requests can be approved. "
+                            + "Current status: "
                             + request.getStatus(),
                     "ERR_ADVANCE_REQUEST_NOT_PENDING",
+                    "requestId"
+            );
+        }
+
+        if (request.getInvoice() != null) {
+            throw new ValidationException(
+                    "Invoice has already been generated for this request",
+                    "ERR_ADVANCE_INVOICE_ALREADY_GENERATED",
                     "requestId"
             );
         }
@@ -359,6 +369,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         // =====================================================
         // 3. AUTHORIZE APPROVER
         // =====================================================
+
         User approver =
                 getActiveUser(
                         requestDto.getApproverUserId(),
@@ -366,6 +377,10 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 );
 
         validateAccountsOrAdmin(approver);
+
+        // =====================================================
+        // 4. FETCH AND LOCK ESTIMATE
+        // =====================================================
 
         if (request.getEstimate() == null
                 || request.getEstimate().getId() == null) {
@@ -385,13 +400,12 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         validateEstimateForAdvanceInvoice(estimate);
 
         // =====================================================
-        // 4. REVALIDATE COMPLETED PO CONVERSION
+        // 5. FIND EXISTING PO UNBILLED
         // =====================================================
+
         UnbilledInvoice existingUnbilled =
                 unbilledInvoiceRepository
-                        .findByEstimateAndIsCancelledFalse(
-                                estimate
-                        )
+                        .findByEstimateAndIsCancelledFalse(estimate)
                         .orElse(null);
 
         boolean purchaseOrderConversion =
@@ -408,76 +422,106 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         }
 
         // =====================================================
-        // 5. RESOLVE APPROVED AMOUNT
+        // 6. CALCULATE COMPLETE REMAINING ESTIMATE AMOUNT
         // =====================================================
-        BigDecimal requestedAmount =
-                money(request.getRequestedAmount());
 
-        BigDecimal approvedAmount;
-
-        if (purchaseOrderConversion) {
-            if (requestDto.getApprovedAmount() != null
-                    && money(requestDto.getApprovedAmount())
-                    .compareTo(requestedAmount) != 0) {
-
-                throw new ValidationException(
-                        "A completed zero-value PURCHASE_ORDER conversion "
-                                + "must be approved for the complete requested "
-                                + "amount of ₹"
-                                + requestedAmount
-                                + ". Partial approval is not allowed.",
-                        "ERR_PO_CONVERSION_PARTIAL_APPROVAL_NOT_ALLOWED",
-                        "approvedAmount"
-                );
-            }
-
-            approvedAmount =
-                    requestedAmount;
-
-        } else {
-            if (requestDto.getApprovedAmount() == null) {
-                throw new ValidationException(
-                        "approvedAmount is required",
-                        "ERR_APPROVED_AMOUNT_REQUIRED",
-                        "approvedAmount"
-                );
-            }
-
-            approvedAmount =
-                    money(requestDto.getApprovedAmount());
-
-            if (approvedAmount.compareTo(requestedAmount) > 0) {
-                throw new ValidationException(
-                        "Approved amount cannot exceed requested amount. "
-                                + "Requested amount: ₹"
-                                + requestedAmount
-                                + ", approved amount: ₹"
-                                + approvedAmount,
-                        "ERR_APPROVED_AMOUNT_EXCEEDS_REQUESTED",
-                        "approvedAmount"
-                );
-            }
-        }
-
-        // =====================================================
-        // 6. RECHECK REMAINING INVOICEABLE AMOUNT
-        // =====================================================
         BigDecimal estimateTotal =
                 money(estimate.getGrandTotal());
 
+        if (estimateTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Estimate grand total must be greater than zero",
+                    "ERR_ESTIMATE_TOTAL_NOT_POSITIVE",
+                    "estimateId"
+            );
+        }
+
+        /*
+         * Total amount of active Advance Tax Invoices already generated
+         * for this Estimate.
+         */
         BigDecimal alreadyInvoicedAmount =
-                getAlreadyInvoicedAdvanceAmount(
-                        estimate.getId()
+                money(
+                        getAlreadyInvoicedAdvanceAmount(
+                                estimate.getId()
+                        )
                 );
 
         BigDecimal remainingInvoiceableAmount =
                 estimateTotal
                         .subtract(alreadyInvoicedAmount)
-                        .max(BigDecimal.ZERO)
                         .setScale(
                                 2,
                                 RoundingMode.HALF_UP
                         );
+
+        if (remainingInvoiceableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "The complete Estimate amount has already been invoiced. "
+                            + "Estimate total: ₹"
+                            + estimateTotal
+                            + ", already invoiced: ₹"
+                            + alreadyInvoicedAmount,
+                    "ERR_NO_REMAINING_INVOICEABLE_AMOUNT",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 7. FORCE COMPLETE REMAINING AMOUNT
+        // =====================================================
+
+        /*
+         * Business rule:
+         *
+         * Advance Tax Invoice must always be generated for the complete
+         * remaining amount of the Estimate.
+         *
+         * Partial approval is not allowed.
+         */
+        BigDecimal approvedAmount =
+                remainingInvoiceableAmount;
+
+        /*
+         * Frontend may send approvedAmount.
+         * When sent, it must exactly equal the remaining Estimate amount.
+         */
+        if (requestDto.getApprovedAmount() != null) {
+
+            BigDecimal submittedApprovedAmount =
+                    money(requestDto.getApprovedAmount());
+
+            if (submittedApprovedAmount.compareTo(
+                    remainingInvoiceableAmount
+            ) != 0) {
+
+                throw new ValidationException(
+                        "Advance Tax Invoice must be approved for the complete "
+                                + "remaining Estimate amount of ₹"
+                                + remainingInvoiceableAmount
+                                + ". Submitted approved amount: ₹"
+                                + submittedApprovedAmount
+                                + ". Partial approval is not allowed.",
+                        "ERR_PARTIAL_ADVANCE_INVOICE_APPROVAL_NOT_ALLOWED",
+                        "approvedAmount"
+                );
+            }
+        }
+
+        /*
+         * Keep request amount synchronized with the actual complete
+         * remaining amount.
+         *
+         * This prevents:
+         *
+         * Estimate total       = 13644
+         * Requested amount     = 9000
+         * Approved amount      = 9000
+         * Invoice outstanding  = 9000
+         */
+        request.setRequestedAmount(
+                approvedAmount
+        );
 
         validateRequestedAmount(
                 approvedAmount,
@@ -487,22 +531,43 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         );
 
         // =====================================================
-        // 7. APPROVE REQUEST
+        // 8. APPROVE REQUEST
         // =====================================================
+
         request.setEstimate(estimate);
-        request.setApprovedAmount(approvedAmount);
-        request.setReviewedBy(approver);
-        request.setReviewedAt(LocalDateTime.now());
+
+        request.setApprovedAmount(
+                approvedAmount
+        );
+
+        request.setReviewedBy(
+                approver
+        );
+
+        request.setReviewedAt(
+                LocalDateTime.now()
+        );
+
         request.setReviewRemarks(
                 clean(requestDto.getReviewRemarks())
         );
+
         request.setStatus(
                 AdvanceTaxInvoiceRequestStatus.APPROVED
         );
 
+        /*
+         * Save request before invoice generation so the invoice service
+         * receives the approved amount and APPROVED status.
+         */
+        advanceTaxInvoiceRequestRepository.saveAndFlush(
+                request
+        );
+
         // =====================================================
-        // 8. GENERATE ADVANCE TAX INVOICE
+        // 9. GENERATE ADVANCE TAX INVOICE
         // =====================================================
+
         Invoice generatedInvoice =
                 invoiceService.generateAdvanceTaxInvoice(
                         request,
@@ -519,19 +584,76 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             );
         }
 
-        request.setInvoice(generatedInvoice);
+        /*
+         * Defensive verification:
+         * Generated invoice must equal the complete approved amount.
+         */
+        BigDecimal generatedInvoiceTotal =
+                money(generatedInvoice.getGrandTotal());
+
+        if (generatedInvoiceTotal.compareTo(
+                approvedAmount
+        ) != 0) {
+
+            throw new ValidationException(
+                    "Generated Invoice total does not match the approved amount. "
+                            + "Approved amount: ₹"
+                            + approvedAmount
+                            + ", Invoice total: ₹"
+                            + generatedInvoiceTotal,
+                    "ERR_GENERATED_INVOICE_TOTAL_MISMATCH",
+                    "invoice"
+            );
+        }
+
+        BigDecimal generatedOutstanding =
+                money(generatedInvoice.getOutstandingAmount());
+
+        if (generatedOutstanding.compareTo(
+                approvedAmount
+        ) != 0) {
+
+            /*
+             * No payment exists at Advance Tax Invoice generation time,
+             * therefore outstanding must equal the approved amount.
+             */
+            generatedInvoice.setReceivedAmount(
+                    zeroMoney()
+            );
+
+            generatedInvoice.setPendingReceivedAmount(
+                    zeroMoney()
+            );
+
+            generatedInvoice.setOutstandingAmount(
+                    approvedAmount
+            );
+
+            generatedInvoice.setPaymentStatus(
+                    InvoicePaymentStatus.UNPAID
+            );
+
+            generatedInvoice =
+                    invoiceRepository.saveAndFlush(
+                            generatedInvoice
+                    );
+        }
+
+        request.setInvoice(
+                generatedInvoice
+        );
 
         // =====================================================
-        // 9. REUSE ORIGINAL PO UNBILLED — CREATE NOTHING NEW
+        // 10. REUSE ORIGINAL PO UNBILLED
         // =====================================================
+
         if (purchaseOrderConversion) {
+
             /*
-             * The existing approved PO Unbilled record remains unchanged
-             * as the original workflow record. The generated Advance Tax
-             * Invoice is linked to that same Unbilled record.
+             * Preserve and reuse the existing PO Unbilled.
              *
-             * No new Unbilled Invoice is created.
-             * No new Operation Project is created.
+             * Do not create another Unbilled Invoice.
+             * Do not create another Operation Project.
              */
             generatedInvoice.setUnbilledInvoice(
                     existingUnbilled
@@ -544,24 +666,37 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             }
 
             /*
-             * The project already exists for this PO. Marking this true
-             * records that the Invoice is associated with the existing
-             * project; it does not call Operation Service to create one.
+             * The project already exists for the original PO workflow.
+             * This only associates the invoice with that existing project.
              */
-            generatedInvoice.setOperationSynced(true);
-            generatedInvoice.setOperationSyncedAt(LocalDateTime.now());
+            generatedInvoice.setOperationSynced(
+                    true
+            );
+
+            generatedInvoice.setOperationSyncedAt(
+                    LocalDateTime.now()
+            );
 
             generatedInvoice.setOperationSyncStatus(
                     OperationSyncStatus.SYNCED
             );
 
-            generatedInvoice.setOperationLastError(null);
-            generatedInvoice.setOperationNextRetryAt(null);
-            generatedInvoice.setOperationSyncAttempts(0);
-            generatedInvoice.setOperationSyncedAt(
-                    LocalDateTime.now()
+            generatedInvoice.setOperationLastError(
+                    null
             );
-            generatedInvoice.setUpdatedBy(approver);
+
+            generatedInvoice.setOperationNextRetryAt(
+                    null
+            );
+
+            generatedInvoice.setOperationSyncAttempts(
+                    0
+            );
+
+            generatedInvoice.setUpdatedBy(
+                    approver
+            );
+
             generatedInvoice.setUpdatedAt(
                     LocalDateTime.now()
             );
@@ -574,7 +709,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             existingUnbilled.setConvertedToAdvanceTaxInvoice(
                     true
             );
-            existingUnbilled.setUpdatedBy(approver);
+
+            existingUnbilled.setUpdatedBy(
+                    approver
+            );
+
             existingUnbilled.setUpdatedAt(
                     LocalDateTime.now()
             );
@@ -585,51 +724,108 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
             log.info(
                     "Completed PURCHASE_ORDER converted to Advance Tax Invoice "
-                            + "| requestId={} | estimateId={} "
-                            + "| unbilledId={} | unbilledNumber={} "
-                            + "| invoiceId={} | invoiceNumber={} "
-                            + "| projectNo={} | amount={} "
+                            + "| requestId={} "
+                            + "| estimateId={} "
+                            + "| estimateTotal={} "
+                            + "| alreadyInvoiced={} "
+                            + "| approvedAmount={} "
+                            + "| invoiceOutstanding={} "
+                            + "| unbilledId={} "
+                            + "| unbilledNumber={} "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| projectNo={} "
                             + "| noNewUnbilledCreated=true "
                             + "| noNewProjectCreated=true",
                     request.getId(),
                     estimate.getId(),
+                    estimateTotal,
+                    alreadyInvoicedAmount,
+                    approvedAmount,
+                    generatedInvoice.getOutstandingAmount(),
                     existingUnbilled.getId(),
                     existingUnbilled.getUnbilledNumber(),
                     generatedInvoice.getId(),
                     generatedInvoice.getInvoiceNumber(),
                     existingPoProject != null
                             ? existingPoProject.getProjectNo()
-                            : null,
-                    approvedAmount
+                            : null
+            );
+
+        } else {
+
+            log.info(
+                    "Advance Tax Invoice approved for complete remaining "
+                            + "Estimate amount "
+                            + "| requestId={} "
+                            + "| estimateId={} "
+                            + "| estimateTotal={} "
+                            + "| alreadyInvoiced={} "
+                            + "| approvedAmount={} "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| outstanding={}",
+                    request.getId(),
+                    estimate.getId(),
+                    estimateTotal,
+                    alreadyInvoicedAmount,
+                    approvedAmount,
+                    generatedInvoice.getId(),
+                    generatedInvoice.getInvoiceNumber(),
+                    generatedInvoice.getOutstandingAmount()
             );
         }
 
         // =====================================================
-        // 10. SAVE REQUEST AND RETURN
+        // 11. SAVE REQUEST
         // =====================================================
+
         AdvanceTaxInvoiceRequest savedRequest =
-                advanceTaxInvoiceRequestRepository.save(
+                advanceTaxInvoiceRequestRepository.saveAndFlush(
                         request
                 );
 
-        String message =
-                purchaseOrderConversion
-                        ? "Advance Tax Invoice approved and Invoice "
-                        + generatedInvoice.getInvoiceNumber()
-                        + " generated successfully for the complete "
-                        + "PURCHASE_ORDER amount of ₹"
-                        + approvedAmount
-                        + ". Existing Unbilled Invoice "
-                        + existingUnbilled.getUnbilledNumber()
-                        + " was preserved and linked. No new Unbilled "
-                        + "Invoice or Operation Project was created."
-                        : "Advance Tax Invoice approved and Invoice "
-                        + generatedInvoice.getInvoiceNumber()
-                        + " generated successfully.";
+        // =====================================================
+        // 12. RESPONSE
+        // =====================================================
+
+        String message;
+
+        if (purchaseOrderConversion) {
+
+            message =
+                    "Advance Tax Invoice approved and Invoice "
+                            + generatedInvoice.getInvoiceNumber()
+                            + " generated successfully for the complete "
+                            + "remaining Estimate amount of ₹"
+                            + approvedAmount
+                            + ". Existing Unbilled Invoice "
+                            + existingUnbilled.getUnbilledNumber()
+                            + " was preserved and linked. "
+                            + "No new Unbilled Invoice or Operation Project "
+                            + "was created.";
+
+        } else {
+
+            message =
+                    "Advance Tax Invoice approved and Invoice "
+                            + generatedInvoice.getInvoiceNumber()
+                            + " generated successfully for the complete "
+                            + "remaining Estimate amount of ₹"
+                            + approvedAmount
+                            + ".";
+        }
 
         return mapToResponse(
                 savedRequest,
                 message
+        );
+    }
+
+    private BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(
+                2,
+                RoundingMode.HALF_UP
         );
     }
 
