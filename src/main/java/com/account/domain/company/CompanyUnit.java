@@ -140,33 +140,12 @@ public class CompanyUnit {
                 : GstRegistrationType.REGISTERED;
     }
 
-    public boolean isSez() {
-        return getEffectiveGstRegistrationType()
-                == GstRegistrationType.SEZ;
-    }
 
     public boolean isInternational() {
         return getEffectiveGstRegistrationType()
                 == GstRegistrationType.INTERNATIONAL;
     }
 
-    public boolean isUnregistered() {
-        return getEffectiveGstRegistrationType()
-                == GstRegistrationType.UNREGISTERED;
-    }
-
-    public boolean isGstRegistered() {
-        return getEffectiveGstRegistrationType()
-                == GstRegistrationType.REGISTERED;
-    }
-
-    public boolean isZeroRatedSupply() {
-        return getEffectiveGstRegistrationType().isZeroRated();
-    }
-
-    public boolean isGstApplicable() {
-        return getEffectiveGstRegistrationType().isGstApplicable();
-    }
 
 
 

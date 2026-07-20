@@ -1390,35 +1390,97 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 
 	private InvoiceDetailDto toDetailDto(Invoice invoice) {
+
 		UnbilledInvoice unbilled = invoice.getUnbilledInvoice();
-		Estimate estimate = (unbilled != null) ? unbilled.getEstimate() : null;
 
-		// Map and sort line items
-		List<InvoiceDetailDto.LineItemDto> lineItems = invoice.getLineItems().stream()
-				.map(this::toLineItemDto)
-				.sorted(java.util.Comparator.comparing(
-						InvoiceDetailDto.LineItemDto::getDisplayOrder,
-						java.util.Comparator.nullsLast(Integer::compareTo)))
-				.collect(Collectors.toList());
+		Estimate estimate = invoice.getEstimate() != null
+				? invoice.getEstimate()
+				: unbilled != null
+				? unbilled.getEstimate()
+				: null;
 
-		// Create DTO instance with setters
+		Company company = unbilled != null
+				? unbilled.getCompany()
+				: estimate != null
+				? estimate.getCompany()
+				: null;
+
+		CompanyUnit companyUnit = unbilled != null
+				? unbilled.getUnit()
+				: estimate != null
+				? estimate.getUnit()
+				: null;
+
+		List<InvoiceDetailDto.LineItemDto> lineItems =
+				invoice.getLineItems() == null
+						? Collections.emptyList()
+						: invoice.getLineItems()
+						.stream()
+						.map(this::toLineItemDto)
+						.sorted(Comparator.comparing(
+								InvoiceDetailDto.LineItemDto::getDisplayOrder,
+								Comparator.nullsLast(Integer::compareTo)
+						))
+						.collect(Collectors.toList());
+
 		InvoiceDetailDto dto = new InvoiceDetailDto();
 
 		dto.setId(invoice.getId());
 		dto.setPublicUuid(invoice.getPublicUuid());
 		dto.setInvoiceNumber(invoice.getInvoiceNumber());
-		dto.setUnbilledNumber(unbilled != null ? unbilled.getUnbilledNumber() : null);
-		dto.setEstimateNumber(estimate != null ? estimate.getEstimateNumber() : null);
 
-		// Optional: also add to detail view if desired
-		dto.setSolutionId(estimate != null ? estimate.getSolutionId() : null);
-		dto.setSolutionName(estimate != null ? estimate.getSolutionName() : null);
-
-		dto.setCompanyName(
-				unbilled != null && unbilled.getCompany() != null
-						? unbilled.getCompany().getName()
+		dto.setUnbilledNumber(
+				unbilled != null
+						? unbilled.getUnbilledNumber()
 						: null
 		);
+
+		dto.setEstimateNumber(
+				estimate != null
+						? estimate.getEstimateNumber()
+						: null
+		);
+
+		dto.setSolutionId(
+				invoice.getSolutionId() != null
+						? invoice.getSolutionId()
+						: estimate != null
+						? estimate.getSolutionId()
+						: null
+		);
+
+		dto.setSolutionName(
+				invoice.getSolutionName() != null
+						? invoice.getSolutionName()
+						: estimate != null
+						? estimate.getSolutionName()
+						: null
+		);
+
+		// =====================================================
+		// BUYER COMPANY
+		// =====================================================
+
+		if (company != null) {
+			dto.setCompanyId(company.getId());
+			dto.setCompanyName(company.getName());
+		}
+
+		// =====================================================
+		// BUYER COMPANY UNIT / ADDRESS
+		// =====================================================
+
+		if (companyUnit != null) {
+			dto.setCompanyUnitId(companyUnit.getId());
+			dto.setCompanyUnitName(companyUnit.getUnitName());
+			dto.setCompanyUnitAddressLine1(companyUnit.getAddressLine1());
+			dto.setCompanyUnitAddressLine2(companyUnit.getAddressLine2());
+			dto.setCompanyUnitCity(companyUnit.getCity());
+			dto.setCompanyUnitState(companyUnit.getState());
+			dto.setCompanyUnitCountry(companyUnit.getCountry());
+			dto.setCompanyUnitPinCode(companyUnit.getPinCode());
+			dto.setCompanyUnitGstNo(companyUnit.getGstNo());
+		}
 
 		dto.setContactName(
 				unbilled != null && unbilled.getContact() != null
@@ -1429,25 +1491,22 @@ public class InvoiceServiceImpl implements InvoiceService {
 		GstRegistrationType gstRegistrationType =
 				invoice.getGstRegistrationType() != null
 						? invoice.getGstRegistrationType()
+						: companyUnit != null
+						? companyUnit.getEffectiveGstRegistrationType()
 						: GstRegistrationType.REGISTERED;
 
-		dto.setGstRegistrationType(
-				gstRegistrationType.name()
-		);
-
-		dto.setGstApplicable(
-				gstRegistrationType.isGstApplicable()
-		);
-
-		dto.setZeroRatedSupply(
-				gstRegistrationType.isZeroRated()
-		);
+		dto.setGstRegistrationType(gstRegistrationType.name());
+		dto.setGstApplicable(gstRegistrationType.isGstApplicable());
+		dto.setZeroRatedSupply(gstRegistrationType.isZeroRated());
 
 		dto.setInvoiceDate(invoice.getInvoiceDate());
 		dto.setCurrency(invoice.getCurrency());
 		dto.setStatus(invoice.getStatus());
+
+		dto.setIrn(invoice.getEInvoiceIrn());
 		dto.setPlaceOfSupplyStateCode(invoice.getPlaceOfSupplyStateCode());
 		dto.setBuyerGstin(invoice.getBuyerGstin());
+		dto.setSellerGstin(invoice.getOrganizationGstNo());
 
 		dto.setSubTotalExGst(invoice.getSubTotalExGst());
 		dto.setTotalGstAmount(invoice.getTotalGstAmount());
@@ -1456,11 +1515,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setIgstAmount(invoice.getIgstAmount());
 		dto.setGrandTotal(invoice.getGrandTotal());
 
-		dto.setCreatedByName(getUserDisplayName(invoice.getCreatedBy()));
-		dto.setCreatedAt(invoice.getCreatedAt());
-		dto.setUpdatedAt(invoice.getUpdatedAt());
-
-		dto.setLineItems(lineItems);
+		// =====================================================
+		// SELLER / ORGANIZATION SNAPSHOT
+		// =====================================================
 
 		dto.setOrganizationName(invoice.getOrganizationName());
 		dto.setOrganizationAddressLine1(invoice.getOrganizationAddressLine1());
@@ -1477,9 +1534,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setOrganizationWebsite(invoice.getOrganizationWebsite());
 		dto.setOrganizationLogoUrl(invoice.getOrganizationLogoUrl());
 
+		dto.setCreatedByName(getUserDisplayName(invoice.getCreatedBy()));
+		dto.setCreatedAt(invoice.getCreatedAt());
+		dto.setUpdatedAt(invoice.getUpdatedAt());
+
+		dto.setLineItems(lineItems);
+
 		return dto;
 	}
-
 
 	private InvoiceDetailDto.LineItemDto toLineItemDto(InvoiceLineItem li) {
 		InvoiceDetailDto.LineItemDto lineDto = new InvoiceDetailDto.LineItemDto();
