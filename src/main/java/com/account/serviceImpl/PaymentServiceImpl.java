@@ -1959,10 +1959,19 @@ public class PaymentServiceImpl implements PaymentService {
             Invoice invoice
     ) {
 
-        BigDecimal zero = BigDecimal.ZERO.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
+        final BigDecimal zero =
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        if (request == null) {
+            throw new ValidationException(
+                    "Payment registration request is required",
+                    "ERR_PAYMENT_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
 
         if (invoice == null || invoice.getId() == null) {
             throw new ValidationException(
@@ -1972,11 +1981,11 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        boolean internationalTransaction =
-                invoice.getEffectiveGstRegistrationType()
-                        == GstRegistrationType.INTERNATIONAL;
+        GstRegistrationType gstRegistrationType =
+                invoice.getEffectiveGstRegistrationType();
 
-        if (internationalTransaction) {
+        if (gstRegistrationType == GstRegistrationType.INTERNATIONAL) {
+
             if (Boolean.TRUE.equals(request.getTdsActive())
                     || request.getTds() != null) {
 
@@ -1986,6 +1995,7 @@ public class PaymentServiceImpl implements PaymentService {
                         "tdsActive"
                 );
             }
+
             return zero;
         }
 
@@ -2003,10 +2013,14 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal bankAmount = safe2(request.getAmount());
-        BigDecimal tdsPercentage = safe2(
-                request.getTds().getTdsPercentage()
-        );
+        BigDecimal bankAmount =
+                safe2(request.getAmount());
+
+        BigDecimal tdsPercentage =
+                safe2(
+                        request.getTds()
+                                .getTdsPercentage()
+                );
 
         if (bankAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2026,9 +2040,13 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal taxableAmount = safe2(invoice.getSubTotalExGst());
+        BigDecimal totalTaxableAmount =
+                safe2(invoice.getSubTotalExGst());
 
-        if (taxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal totalInvoiceAmount =
+                safe2(invoice.getGrandTotal());
+
+        if (totalTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
                     "Invoice taxable amount excluding GST is not available for TDS calculation",
                     "ERR_TDS_TAXABLE_AMOUNT_NOT_FOUND",
@@ -2036,20 +2054,46 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal totalAllowedTds = taxableAmount
-                .multiply(tdsPercentage)
-                .divide(
-                        BigDecimal.valueOf(100),
-                        2,
-                        RoundingMode.HALF_UP
+        if (totalInvoiceAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Invoice total amount is not available for TDS calculation",
+                    "ERR_TDS_TOTAL_AMOUNT_NOT_FOUND",
+                    "tds"
+            );
+        }
+
+        if (totalTaxableAmount.compareTo(totalInvoiceAmount) > 0) {
+            throw new ValidationException(
+                    "Invoice taxable amount cannot exceed Invoice grand total",
+                    "ERR_INVALID_TDS_TAXABLE_AMOUNT",
+                    "tds"
+            );
+        }
+
+        BigDecimal totalAllowedTds =
+                totalTaxableAmount
+                        .multiply(tdsPercentage)
+                        .divide(
+                                BigDecimal.valueOf(100),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+        BigDecimal alreadyUsedTds =
+                safe2(
+                        getTotalActiveTdsAmountForInvoice(
+                                invoice
+                        )
                 );
 
-        BigDecimal alreadyUsedTds = getTotalActiveTdsAmountForInvoice(invoice);
-
-        BigDecimal remainingTdsLimit = totalAllowedTds
-                .subtract(alreadyUsedTds)
-                .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal remainingTdsLimit =
+                totalAllowedTds
+                        .subtract(alreadyUsedTds)
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         if (remainingTdsLimit.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2060,10 +2104,18 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal availableOutstanding = safe2(invoice.getOutstandingAmount())
-                .subtract(safe2(invoice.getPendingReceivedAmount()))
-                .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal availableOutstanding =
+                safe2(invoice.getOutstandingAmount())
+                        .subtract(
+                                safe2(
+                                        invoice.getPendingReceivedAmount()
+                                )
+                        )
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         if (availableOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2073,13 +2125,21 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        remainingTdsLimit = remainingTdsLimit
-                .min(availableOutstanding)
-                .setScale(2, RoundingMode.HALF_UP);
+        remainingTdsLimit =
+                remainingTdsLimit
+                        .min(availableOutstanding)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
-        BigDecimal remainingNetBankReceivable = availableOutstanding
-                .subtract(remainingTdsLimit)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal remainingNetBankReceivable =
+                availableOutstanding
+                        .subtract(remainingTdsLimit)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         if (remainingNetBankReceivable.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2093,26 +2153,36 @@ public class PaymentServiceImpl implements PaymentService {
             throw new ValidationException(
                     "Bank payment exceeds maximum receivable after TDS. Bank amount: ₹"
                             + bankAmount
-                            + ", maximum bank amount: ₹" + remainingNetBankReceivable
-                            + ", remaining TDS: ₹" + remainingTdsLimit,
+                            + ", maximum bank amount: ₹"
+                            + remainingNetBankReceivable
+                            + ", remaining TDS: ₹"
+                            + remainingTdsLimit,
                     "ERR_BANK_AMOUNT_EXCEEDS_NET_RECEIVABLE",
                     "amount"
             );
         }
 
         /*
-         * TDS is calculated directly on the actual Bank/Cash amount entered.
-         * Example: ₹6,500 at 10% = ₹650.
+         * Backend calculation without adding a DTO field.
+         *
+         * REGISTERED:
+         * Bank = Taxable + GST - TDS
+         *
+         * SEZ:
+         * Bank = Taxable - TDS
+         *
+         * UNREGISTERED:
+         * Preserve the existing Bank × TDS% behaviour.
          */
-        BigDecimal calculatedTds = bankAmount
-                .multiply(tdsPercentage)
-                .divide(
-                        BigDecimal.valueOf(100),
-                        2,
-                        RoundingMode.HALF_UP
-                )
-                .min(remainingTdsLimit)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal calculatedTds =
+                calculateCurrentPaymentTdsAtBackend(
+                        bankAmount,
+                        tdsPercentage,
+                        totalTaxableAmount,
+                        totalInvoiceAmount,
+                        gstRegistrationType,
+                        remainingTdsLimit
+                );
 
         if (calculatedTds.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2122,17 +2192,46 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal settlementAmount = bankAmount
-                .add(calculatedTds)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal settlementAmount =
+                bankAmount
+                        .add(calculatedTds)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
         if (settlementAmount.compareTo(availableOutstanding) > 0) {
             throw new ValidationException(
-                    "Bank amount plus TDS exceeds available Invoice outstanding",
+                    "Bank amount plus TDS exceeds available Invoice outstanding. "
+                            + "Bank amount: ₹" + bankAmount
+                            + ", TDS amount: ₹" + calculatedTds
+                            + ", settlement amount: ₹" + settlementAmount
+                            + ", available outstanding: ₹"
+                            + availableOutstanding,
                     "ERR_TDS_SETTLEMENT_EXCEEDS_OUTSTANDING",
                     "amount"
             );
         }
+
+        log.info(
+                "Advance Invoice TDS calculated at backend "
+                        + "| invoiceId={} | invoiceNumber={} "
+                        + "| gstRegistrationType={} "
+                        + "| totalTaxableAmount={} | totalInvoiceAmount={} "
+                        + "| bankAmount={} | tdsPercentage={} "
+                        + "| calculatedTds={} | settlementAmount={} "
+                        + "| remainingTdsLimit={}",
+                invoice.getId(),
+                invoice.getInvoiceNumber(),
+                gstRegistrationType,
+                totalTaxableAmount,
+                totalInvoiceAmount,
+                bankAmount,
+                tdsPercentage,
+                calculatedTds,
+                settlementAmount,
+                remainingTdsLimit
+        );
 
         return calculatedTds;
     }
@@ -3309,26 +3408,19 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 12. CALCULATE TDS FOR CURRENT PAYMENT
         // =====================================================
+        GstRegistrationType gstRegistrationType =
+                resolveGstRegistrationType(
+                        estimate,
+                        unbilled
+                );
+
         BigDecimal calculatedTds;
 
         if ("FULL".equals(paymentTypeCode)) {
 
             /*
-             * MINIMAL FIX FOR FULL PAYMENT ONLY.
-             *
-             * For a FULL payment, all remaining TDS must be included so:
-             *
-             * Bank amount + remaining TDS = outstanding amount
-             *
-             * Example:
-             *
-             * Outstanding   = ₹20,000
-             * Bank received = ₹18,000
-             * Remaining TDS = ₹2,000
-             * Settlement    = ₹20,000
-             *
-             * Do not calculate ₹18,000 × 10% here because that gives
-             * ₹1,800 and leaves ₹200 outstanding.
+             * Preserve the existing FULL payment behaviour.
+             * The complete remaining TDS must settle with the bank amount.
              */
             calculatedTds =
                     remainingTdsLimit
@@ -3340,30 +3432,25 @@ public class PaymentServiceImpl implements PaymentService {
         } else {
 
             /*
-             * PRESERVE EXISTING BEHAVIOUR.
+             * No DTO field is added.
              *
-             * For PARTIAL, INSTALLMENT and actual PURCHASE_ORDER payments,
-             * continue calculating TDS directly on the entered bank amount.
+             * REGISTERED and SEZ are calculated at backend from:
+             * - actual Bank amount
+             * - existing taxable amount
+             * - existing GST amount/rate
+             * - selected TDS percentage
              *
-             * Example:
-             *
-             * Bank amount = ₹6,500
-             * TDS rate    = 10%
-             * TDS amount  = ₹650
+             * Other GST types preserve their old calculation.
              */
             calculatedTds =
-                    paymentAmount
-                            .multiply(tdsPercentage)
-                            .divide(
-                                    BigDecimal.valueOf(100),
-                                    2,
-                                    RoundingMode.HALF_UP
-                            )
-                            .min(remainingTdsLimit)
-                            .setScale(
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
+                    calculateCurrentPaymentTdsAtBackend(
+                            paymentAmount,
+                            tdsPercentage,
+                            totalTaxableAmount,
+                            totalInvoiceAmount,
+                            gstRegistrationType,
+                            remainingTdsLimit
+                    );
         }
 
         if (calculatedTds.compareTo(BigDecimal.ZERO) <= 0) {
@@ -3438,6 +3525,186 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
+
+
+    /**
+     * Calculates TDS for the current receipt without requiring any new DTO field.
+     *
+     * request.amount continues to mean the actual Bank/Cash/Payment Gateway
+     * amount received.
+     *
+     * REGISTERED:
+     *     Bank amount = Taxable amount + GST - TDS
+     *
+     * SEZ:
+     *     GST is zero-rated, therefore:
+     *     Bank amount = Taxable amount - TDS
+     *
+     * Other domestic GST types preserve the old Bank amount × TDS% behaviour.
+     */
+    private BigDecimal calculateCurrentPaymentTdsAtBackend(
+            BigDecimal bankAmount,
+            BigDecimal tdsPercentage,
+            BigDecimal totalTaxableAmount,
+            BigDecimal totalInvoiceAmount,
+            GstRegistrationType gstRegistrationType,
+            BigDecimal remainingTdsLimit
+    ) {
+
+        final BigDecimal zero =
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        BigDecimal safeBankAmount =
+                safe2(bankAmount);
+
+        BigDecimal safeTdsPercentage =
+                safe2(tdsPercentage);
+
+        BigDecimal safeTotalTaxableAmount =
+                safe2(totalTaxableAmount);
+
+        BigDecimal safeTotalInvoiceAmount =
+                safe2(totalInvoiceAmount);
+
+        BigDecimal safeRemainingTdsLimit =
+                safe2(remainingTdsLimit);
+
+        if (safeBankAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return zero;
+        }
+
+        if (safeTdsPercentage.compareTo(BigDecimal.ZERO) <= 0) {
+            return zero;
+        }
+
+        BigDecimal calculatedTds;
+
+        if (gstRegistrationType == GstRegistrationType.REGISTERED
+                || gstRegistrationType == GstRegistrationType.SEZ) {
+
+            if (safeTotalTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "Taxable amount excluding GST is required for backend TDS calculation",
+                        "ERR_TDS_TAXABLE_AMOUNT_NOT_FOUND",
+                        "tds"
+                );
+            }
+
+            /*
+             * Resolve the effective GST percentage from the existing
+             * Invoice/Estimate totals. No GST rate field is added to the DTO.
+             */
+            BigDecimal effectiveGstPercentage =
+                    BigDecimal.ZERO.setScale(
+                            8,
+                            RoundingMode.HALF_UP
+                    );
+
+            if (gstRegistrationType == GstRegistrationType.REGISTERED) {
+
+                BigDecimal totalGstAmount =
+                        safeTotalInvoiceAmount
+                                .subtract(safeTotalTaxableAmount)
+                                .max(BigDecimal.ZERO)
+                                .setScale(
+                                        2,
+                                        RoundingMode.HALF_UP
+                                );
+
+                effectiveGstPercentage =
+                        totalGstAmount
+                                .multiply(BigDecimal.valueOf(100))
+                                .divide(
+                                        safeTotalTaxableAmount,
+                                        8,
+                                        RoundingMode.HALF_UP
+                                );
+            }
+
+            /*
+             * REGISTERED:
+             * Bank = Taxable × (100 + GST% - TDS%) / 100
+             *
+             * SEZ:
+             * GST% = 0, therefore
+             * Bank = Taxable × (100 - TDS%) / 100
+             */
+            BigDecimal denominator =
+                    BigDecimal.valueOf(100)
+                            .add(effectiveGstPercentage)
+                            .subtract(safeTdsPercentage);
+
+            if (denominator.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "Unable to calculate TDS because GST and TDS percentages produce an invalid denominator",
+                        "ERR_INVALID_TDS_BACKEND_CALCULATION",
+                        "tds"
+                );
+            }
+
+            BigDecimal currentTaxableAmount =
+                    safeBankAmount
+                            .multiply(BigDecimal.valueOf(100))
+                            .divide(
+                                    denominator,
+                                    8,
+                                    RoundingMode.HALF_UP
+                            );
+
+            calculatedTds =
+                    currentTaxableAmount
+                            .multiply(safeTdsPercentage)
+                            .divide(
+                                    BigDecimal.valueOf(100),
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            log.info(
+                    "Backend TDS base derived "
+                            + "| gstRegistrationType={} "
+                            + "| bankAmount={} "
+                            + "| effectiveGstPercentage={} "
+                            + "| tdsPercentage={} "
+                            + "| currentTaxableAmount={} "
+                            + "| calculatedTds={}",
+                    gstRegistrationType,
+                    safeBankAmount,
+                    effectiveGstPercentage,
+                    safeTdsPercentage,
+                    currentTaxableAmount.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    ),
+                    calculatedTds
+            );
+
+        } else {
+
+            /*
+             * Preserve old behaviour for GST types not requested
+             * in this change.
+             */
+            calculatedTds =
+                    safeBankAmount
+                            .multiply(safeTdsPercentage)
+                            .divide(
+                                    BigDecimal.valueOf(100),
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+        }
+
+        return calculatedTds
+                .min(safeRemainingTdsLimit)
+                .setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
+    }
 
 
     private BigDecimal safe2(BigDecimal val) {
