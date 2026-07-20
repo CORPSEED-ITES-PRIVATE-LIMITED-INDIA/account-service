@@ -753,7 +753,8 @@ public class PaymentServiceImpl implements PaymentService {
                 calculateTdsAmountIfRequired(
                         request,
                         estimate,
-                        unbilled
+                        unbilled,
+                        paymentType
                 );
 
         // =====================================================
@@ -1685,6 +1686,8 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+
+
         BigDecimal estimateGrandTotal =
                 safe2(estimate.getGrandTotal());
 
@@ -2415,31 +2418,40 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 7. PARTIAL PAYMENT VALIDATION
-        // =====================================================
-        // PARTIAL payment must be either:
-        //   - 50% of total estimate amount, OR
-        //   - Full outstanding (if outstanding is less than 50%)
+// 7. PARTIAL PAYMENT VALIDATION
+// =====================================================
         if ("PARTIAL".equals(code)) {
 
-            BigDecimal half = total
-                    .multiply(new BigDecimal("0.50"))
-                    .setScale(2, RoundingMode.HALF_UP);
-
-            BigDecimal expected = (outstanding.compareTo(half) < 0)
-                    ? outstanding
-                    : half;
-
-            if (settlementAmount.compareTo(expected) != 0) {
+            /*
+             * PARTIAL payment can be any positive settlement amount
+             * up to the current outstanding amount.
+             *
+             * Settlement = Bank amount + TDS amount.
+             */
+            if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new ValidationException(
-                        "PARTIAL payment settlement must be " + expected
-                                + ". Bank amount: " + safeReqAmount
-                                + ", TDS amount: " + safeTdsAmount
-                                + ", Settlement amount: " + settlementAmount,
-                        "ERR_PARTIAL_AMOUNT_MISMATCH",
+                        "PARTIAL payment settlement must be greater than zero. "
+                                + "Bank amount: ₹" + safeReqAmount
+                                + ", TDS amount: ₹" + safeTdsAmount
+                                + ", settlement amount: ₹" + settlementAmount,
+                        "ERR_PARTIAL_SETTLEMENT_NOT_POSITIVE",
                         "amount"
                 );
             }
+
+            if (settlementAmount.compareTo(outstanding) >= 0) {
+                throw new ValidationException(
+                        "PARTIAL payment settlement must be less than the outstanding amount. "
+                                + "Bank amount: ₹" + safeReqAmount
+                                + ", TDS amount: ₹" + safeTdsAmount
+                                + ", settlement amount: ₹" + settlementAmount
+                                + ", outstanding amount: ₹" + outstanding
+                                + ". Use FULL payment when settling the complete outstanding amount.",
+                        "ERR_PARTIAL_SETTLEMENT_MUST_BE_LESS_THAN_OUTSTANDING",
+                        "amount"
+                );
+            }
+
             return;
         }
 
@@ -2975,7 +2987,8 @@ public class PaymentServiceImpl implements PaymentService {
     private BigDecimal calculateTdsAmountIfRequired(
             PaymentRegistrationRequestDto request,
             Estimate estimate,
-            UnbilledInvoice unbilled
+            UnbilledInvoice unbilled,
+            PaymentType paymentType
     ) {
 
         final BigDecimal zero =
@@ -3051,6 +3064,17 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        if (paymentType == null
+                || paymentType.getCode() == null
+                || paymentType.getCode().trim().isEmpty()) {
+
+            throw new ValidationException(
+                    "Payment type is required for TDS calculation",
+                    "ERR_PAYMENT_TYPE_REQUIRED",
+                    "paymentTypeId"
+            );
+        }
+
         BigDecimal paymentAmount =
                 safe2(request.getAmount());
 
@@ -3059,6 +3083,11 @@ public class PaymentServiceImpl implements PaymentService {
                         request.getTds()
                                 .getTdsPercentage()
                 );
+
+        String paymentTypeCode =
+                paymentType.getCode()
+                        .trim()
+                        .toUpperCase();
 
         /*
          * paymentAmount is the actual amount received in the
@@ -3090,7 +3119,7 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
 
         /*
-         * TDS is calculated on taxable value excluding GST.
+         * TDS limit is calculated on taxable value excluding GST.
          */
         BigDecimal totalTaxableAmount =
                 safe2(
@@ -3169,10 +3198,9 @@ public class PaymentServiceImpl implements PaymentService {
         /*
          * Example:
          *
-         * Taxable amount = ₹50,000
-         * TDS percentage = 10%
-         *
-         * Total TDS allowed = ₹5,000
+         * Taxable amount    = ₹20,000
+         * TDS percentage    = 10%
+         * Total allowed TDS = ₹2,000
          */
         BigDecimal totalAllowedTds =
                 totalTaxableAmount
@@ -3233,20 +3261,15 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
 
         /*
-         * Outstanding liability is settled through:
+         * Outstanding is settled through:
          *
-         *     Bank amount + TDS amount
-         *
-         * Therefore:
-         *
-         *     Remaining net bank receivable
-         *         = Outstanding amount - Remaining TDS
+         * Bank amount + TDS amount
          *
          * Example:
          *
-         * Outstanding amount     = ₹50,000
-         * Remaining TDS          = ₹5,000
-         * Net bank receivable    = ₹45,000
+         * Outstanding amount = ₹20,000
+         * Remaining TDS      = ₹2,000
+         * Net bank amount    = ₹18,000
          */
         BigDecimal remainingNetBankReceivable =
                 outstandingAmount
@@ -3268,7 +3291,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         /*
          * Actual bank receipt cannot be higher than the remaining
-         * net bank receivable when TDS is being applied.
+         * net bank receivable when TDS is active.
          */
         if (paymentAmount.compareTo(remainingNetBankReceivable) > 0) {
             throw new ValidationException(
@@ -3284,37 +3307,64 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-// 12. CALCULATE TDS FOR CURRENT PAYMENT
-// =====================================================
+        // 12. CALCULATE TDS FOR CURRENT PAYMENT
+        // =====================================================
+        BigDecimal calculatedTds;
 
-        /*
-         * TDS is calculated directly on the entered payment amount.
-         *
-         * Example:
-         * Payment amount = ₹6,500
-         * TDS rate       = 10%
-         * TDS amount     = ₹650
-         */
-        BigDecimal calculatedTds =
-                paymentAmount
-                        .multiply(tdsPercentage)
-                        .divide(
-                                BigDecimal.valueOf(100),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+        if ("FULL".equals(paymentTypeCode)) {
 
-        /*
-         * TDS for the current payment must not exceed the
-         * remaining TDS available for the estimate.
-         */
-        calculatedTds =
-                calculatedTds
-                        .min(remainingTdsLimit)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+            /*
+             * MINIMAL FIX FOR FULL PAYMENT ONLY.
+             *
+             * For a FULL payment, all remaining TDS must be included so:
+             *
+             * Bank amount + remaining TDS = outstanding amount
+             *
+             * Example:
+             *
+             * Outstanding   = ₹20,000
+             * Bank received = ₹18,000
+             * Remaining TDS = ₹2,000
+             * Settlement    = ₹20,000
+             *
+             * Do not calculate ₹18,000 × 10% here because that gives
+             * ₹1,800 and leaves ₹200 outstanding.
+             */
+            calculatedTds =
+                    remainingTdsLimit
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+        } else {
+
+            /*
+             * PRESERVE EXISTING BEHAVIOUR.
+             *
+             * For PARTIAL, INSTALLMENT and actual PURCHASE_ORDER payments,
+             * continue calculating TDS directly on the entered bank amount.
+             *
+             * Example:
+             *
+             * Bank amount = ₹6,500
+             * TDS rate    = 10%
+             * TDS amount  = ₹650
+             */
+            calculatedTds =
+                    paymentAmount
+                            .multiply(tdsPercentage)
+                            .divide(
+                                    BigDecimal.valueOf(100),
+                                    2,
+                                    RoundingMode.HALF_UP
+                            )
+                            .min(remainingTdsLimit)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+        }
 
         if (calculatedTds.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -3324,10 +3374,9 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-// =====================================================
-// 13. CALCULATE SETTLEMENT AMOUNT
-// =====================================================
-
+        // =====================================================
+        // 13. CALCULATE SETTLEMENT AMOUNT
+        // =====================================================
         BigDecimal settlementAmount =
                 paymentAmount
                         .add(calculatedTds)
@@ -3353,11 +3402,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         log.info(
                 "TDS calculated | estimateId={} | unbilledId={} "
-                        + "| gstRegistrationType={} | taxableAmount={} "
-                        + "| invoiceTotal={} | outstandingAmount={} "
-                        + "| bankAmount={} | tdsPercentage={} "
-                        + "| totalAllowedTds={} | alreadyUsedTds={} "
-                        + "| remainingTdsLimit={} "
+                        + "| paymentType={} | gstRegistrationType={} "
+                        + "| taxableAmount={} | invoiceTotal={} "
+                        + "| outstandingAmount={} | bankAmount={} "
+                        + "| tdsPercentage={} | totalAllowedTds={} "
+                        + "| alreadyUsedTds={} | remainingTdsLimit={} "
                         + "| remainingNetBankReceivable={} "
                         + "| calculatedTds={} | settlementAmount={}",
                 estimate != null
@@ -3366,6 +3415,7 @@ public class PaymentServiceImpl implements PaymentService {
                 unbilled != null
                         ? unbilled.getId()
                         : null,
+                paymentTypeCode,
                 resolveGstRegistrationType(
                         estimate,
                         unbilled
@@ -6307,13 +6357,38 @@ public class PaymentServiceImpl implements PaymentService {
         );
     }
 
-
     private void validatePoBillingEligibility(UnbilledInvoice unbilled) {
-        try {
-            ResponseEntity<OperationProjectResponseDto> res =
-                    operationFeignClient.getProjectByUnbilledNumber(unbilled.getUnbilledNumber());
 
-            if (!res.getStatusCode().is2xxSuccessful() || res.getBody() == null) {
+        if (unbilled == null) {
+            throw new ValidationException(
+                    "Unbilled invoice is required to validate Purchase Order billing eligibility",
+                    "ERR_PO_UNBILLED_REQUIRED",
+                    "unbilledNumber"
+            );
+        }
+
+        if (unbilled.getUnbilledNumber() == null
+                || unbilled.getUnbilledNumber().trim().isEmpty()) {
+
+            throw new ValidationException(
+                    "Unbilled number is required to validate Purchase Order billing eligibility",
+                    "ERR_PO_UNBILLED_NUMBER_REQUIRED",
+                    "unbilledNumber"
+            );
+        }
+
+        String unbilledNumber = unbilled.getUnbilledNumber().trim();
+
+        try {
+            ResponseEntity<OperationProjectResponseDto> response =
+                    operationFeignClient.getProjectByUnbilledNumber(
+                            unbilledNumber
+                    );
+
+            if (response == null
+                    || !response.getStatusCode().is2xxSuccessful()
+                    || response.getBody() == null) {
+
                 throw new ValidationException(
                         "Project details not found from Operation Service",
                         "ERR_OPERATION_PROJECT_NOT_FOUND",
@@ -6321,20 +6396,112 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
 
-            OperationProjectResponseDto project = res.getBody();
+            OperationProjectResponseDto project = response.getBody();
 
-            if (!Boolean.TRUE.equals(project.getPoBillingEligible())) {
+            String projectNo =
+                    project.getProjectNo() != null
+                            ? project.getProjectNo().trim()
+                            : null;
+
+            Boolean poBillingEligible =
+                    project.getPoBillingEligible();
+
+            log.info(
+                    "PURCHASE_ORDER project status received | "
+                            + "unbilledNumber={} | projectNo={} | poBillingEligible={}",
+                    unbilledNumber,
+                    projectNo,
+                    poBillingEligible
+            );
+
+            /*
+             * TEMPORARY RULE:
+             *
+             * true  -> allow
+             * null  -> temporarily allow because Operation Service is not
+             *          currently populating poBillingEligible
+             * false -> block
+             */
+            if (Boolean.FALSE.equals(poBillingEligible)) {
+
                 throw new ValidationException(
-                        "Tax invoice cannot be raised yet. All non-Certification milestones must be completed first.",
-                        "ERR_PO_PROJECT_NOT_READY_FOR_TAX_INVOICE",
-                        "unbilledNumber"
+                        "Advance Tax Invoice cannot be raised yet because Operation Project "
+                                + (projectNo != null
+                                ? projectNo
+                                : unbilledNumber)
+                                + " is not eligible for PURCHASE_ORDER billing. "
+                                + "Complete all required non-Certification milestones first.",
+                        "ERR_PO_PROJECT_NOT_READY_FOR_ADVANCE_INVOICE",
+                        "estimateId"
                 );
             }
 
+            if (poBillingEligible == null) {
+
+                log.warn(
+                        "TEMPORARY PO eligibility bypass active because "
+                                + "poBillingEligible is null | "
+                                + "unbilledNumber={} | projectNo={}",
+                        unbilledNumber,
+                        projectNo
+                );
+            }
+
+            log.info(
+                    "PURCHASE_ORDER billing eligibility validation passed | "
+                            + "unbilledNumber={} | projectNo={} | poBillingEligible={}",
+                    unbilledNumber,
+                    projectNo,
+                    poBillingEligible
+            );
+
+        } catch (ValidationException ex) {
+            throw ex;
+
         } catch (FeignException.NotFound ex) {
+
+            log.warn(
+                    "Operation project not found while validating PO billing eligibility | "
+                            + "unbilledNumber={} | status={}",
+                    unbilledNumber,
+                    ex.status()
+            );
+
             throw new ValidationException(
                     "Project not found in Operation Service for this PO unbilled",
                     "ERR_OPERATION_PROJECT_NOT_FOUND",
+                    "unbilledNumber"
+            );
+
+        } catch (FeignException ex) {
+
+            log.error(
+                    "Operation Service error while validating PO billing eligibility | "
+                            + "unbilledNumber={} | status={} | message={}",
+                    unbilledNumber,
+                    ex.status(),
+                    ex.getMessage(),
+                    ex
+            );
+
+            throw new ValidationException(
+                    "Unable to verify Purchase Order billing eligibility from Operation Service",
+                    "ERR_OPERATION_SERVICE_UNAVAILABLE",
+                    "unbilledNumber"
+            );
+
+        } catch (Exception ex) {
+
+            log.error(
+                    "Unexpected error while validating PO billing eligibility | "
+                            + "unbilledNumber={}",
+                    unbilledNumber,
+                    ex
+            );
+
+            throw new ValidationException(
+                    "Unable to verify Purchase Order billing eligibility",
+                    "ERR_PO_BILLING_ELIGIBILITY_VERIFICATION_FAILED",
                     "unbilledNumber"
             );
         }
