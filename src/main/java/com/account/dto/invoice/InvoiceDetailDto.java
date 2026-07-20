@@ -2,25 +2,35 @@ package com.account.dto.invoice;
 
 import com.account.domain.status.InvoiceStatus;
 import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+
 @Data
 public class InvoiceDetailDto {
 
-    // Basic invoice information
+    // =====================================================
+    // BASIC INVOICE INFORMATION
+    // =====================================================
+
     private Long id;
     private String publicUuid;
     private String invoiceNumber;
     private String unbilledNumber;
     private String estimateNumber;
 
+    // =====================================================
+    // BUYER COMPANY
+    // =====================================================
+
     private Long companyId;
     private String companyName;
+
+    // =====================================================
+    // BUYER COMPANY UNIT
+    // =====================================================
 
     private Long companyUnitId;
     private String companyUnitName;
@@ -34,6 +44,10 @@ public class InvoiceDetailDto {
 
     private String contactName;
 
+    // =====================================================
+    // INVOICE DETAILS
+    // =====================================================
+
     private LocalDate invoiceDate;
     private String currency;
     private InvoiceStatus status;
@@ -45,7 +59,10 @@ public class InvoiceDetailDto {
     private Long solutionId;
     private String solutionName;
 
-    // Financials
+    // =====================================================
+    // FINANCIALS
+    // =====================================================
+
     private BigDecimal subTotalExGst;
     private BigDecimal totalGstAmount;
     private BigDecimal cgstAmount;
@@ -53,7 +70,10 @@ public class InvoiceDetailDto {
     private BigDecimal igstAmount;
     private BigDecimal grandTotal;
 
-    // Seller/organization details
+    // =====================================================
+    // SELLER / ORGANIZATION DETAILS
+    // =====================================================
+
     private String organizationName;
     private String organizationAddressLine1;
     private String organizationAddressLine2;
@@ -69,11 +89,37 @@ public class InvoiceDetailDto {
     private String organizationWebsite;
     private String organizationLogoUrl;
 
+    // =====================================================
+    // ORGANIZATION BANK DETAILS
+    // =====================================================
+
+    private Boolean organizationBankAccountPresent;
+    private String organizationAccountHolderName;
+    private String organizationAccountNo;
+    private String organizationIfscCode;
+    private String organizationSwiftCode;
+    private String organizationBankName;
+    private String organizationBankBranch;
+
+    // =====================================================
+    // ORGANIZATION PAYMENT DETAILS
+    // =====================================================
+
+    private String organizationUpiId;
+    private String organizationPaymentPageLink;
+
+    // =====================================================
+    // GST DETAILS
+    // =====================================================
+
     private String gstRegistrationType;
     private Boolean gstApplicable;
     private Boolean zeroRatedSupply;
 
-    // Audit
+    // =====================================================
+    // AUDIT
+    // =====================================================
+
     private String createdByName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

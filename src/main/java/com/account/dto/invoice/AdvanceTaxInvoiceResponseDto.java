@@ -153,9 +153,6 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private String eInvoiceRemarks;
 
-    // =====================================================
-    // ORGANIZATION / SELLER SNAPSHOT
-    // =====================================================
 
 // =====================================================
 // ORGANIZATION / SELLER SNAPSHOT

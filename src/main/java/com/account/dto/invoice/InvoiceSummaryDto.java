@@ -43,6 +43,7 @@ public class InvoiceSummaryDto {
     private String irn;
     private InvoiceStatus status;
 
+    // Seller/organization details
     private String organizationName;
     private String organizationAddressLine1;
     private String organizationAddressLine2;
@@ -57,6 +58,19 @@ public class InvoiceSummaryDto {
     private String organizationPhone;
     private String organizationWebsite;
     private String organizationLogoUrl;
+
+    // Organization bank details
+    private Boolean organizationBankAccountPresent;
+    private String organizationAccountHolderName;
+    private String organizationAccountNo;
+    private String organizationIfscCode;
+    private String organizationSwiftCode;
+    private String organizationBankName;
+    private String organizationBankBranch;
+
+    // Organization payment details
+    private String organizationUpiId;
+    private String organizationPaymentPageLink;
 
     private String createdByName;
     private LocalDateTime createdAt;

@@ -548,19 +548,56 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setCreatedAt(LocalDateTime.now());
             unbilled.setUpdatedAt(LocalDateTime.now());
 
-            BigDecimal total =
-                    existingAdvanceTaxInvoice != null
-                            ? safe2(existingAdvanceTaxInvoice.getOutstandingAmount())
-                            : estimate.getGrandTotal() != null
-                            ? estimate.getGrandTotal()
-                            .setScale(
-                                    2,
-                                    RoundingMode.HALF_UP
-                            )
+            BigDecimal estimateTotal =
+                    estimate.getGrandTotal() != null
+                            ? safe2(estimate.getGrandTotal())
                             : BigDecimal.ZERO.setScale(
                             2,
                             RoundingMode.HALF_UP
                     );
+
+            if (estimateTotal.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "Estimate grand total must be greater than zero",
+                        "ERR_ESTIMATE_TOTAL_INVALID",
+                        "estimateId"
+                );
+            }
+
+            BigDecimal total;
+
+            if (existingAdvanceTaxInvoice != null) {
+
+                BigDecimal invoiceGrandTotal =
+                        safe2(existingAdvanceTaxInvoice.getGrandTotal());
+
+                BigDecimal invoiceOutstanding =
+                        safe2(existingAdvanceTaxInvoice.getOutstandingAmount());
+
+                /*
+                 * ATI must represent the full Estimate amount.
+                 * Do not silently create an Unbilled for a different amount.
+                 */
+                if (invoiceGrandTotal.compareTo(estimateTotal) != 0) {
+                    throw new ValidationException(
+                            "Existing Advance Tax Invoice amount does not match "
+                                    + "the Estimate amount. Estimate total: ₹"
+                                    + estimateTotal
+                                    + ", Invoice total: ₹"
+                                    + invoiceGrandTotal
+                                    + ". Please correct or regenerate Invoice "
+                                    + existingAdvanceTaxInvoice.getInvoiceNumber()
+                                    + " before registering payment.",
+                            "ERR_ADVANCE_INVOICE_ESTIMATE_TOTAL_MISMATCH",
+                            "estimateId"
+                    );
+                }
+
+                total = invoiceOutstanding;
+
+            } else {
+                total = estimateTotal;
+            }
 
             unbilled.setTotalAmount(total);
 

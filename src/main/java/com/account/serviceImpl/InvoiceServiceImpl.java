@@ -1384,6 +1384,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		return predicates;
 	}
+
 	private BigDecimal nz(BigDecimal val) {
 		return val != null ? val : BigDecimal.ZERO;
 	}
@@ -1410,6 +1411,12 @@ public class InvoiceServiceImpl implements InvoiceService {
 				: estimate != null
 				? estimate.getUnit()
 				: null;
+
+		Organization organization = organizationRepository
+				.findTopOrganization()
+				.orElse(null);
+
+
 
 		List<InvoiceDetailDto.LineItemDto> lineItems =
 				invoice.getLineItems() == null
@@ -1533,6 +1540,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setOrganizationPhone(invoice.getOrganizationPhone());
 		dto.setOrganizationWebsite(invoice.getOrganizationWebsite());
 		dto.setOrganizationLogoUrl(invoice.getOrganizationLogoUrl());
+
+
 
 		dto.setCreatedByName(getUserDisplayName(invoice.getCreatedBy()));
 		dto.setCreatedAt(invoice.getCreatedAt());
