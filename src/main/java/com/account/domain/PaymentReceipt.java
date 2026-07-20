@@ -180,7 +180,7 @@ public class PaymentReceipt {
 
         if (hasUnbilled == hasInvoice) {
             throw new IllegalStateException(
-                    "PaymentReceipt must reference exactly one source: "
+                    "TdsRegistration must reference exactly one source: "
                             + "either UnbilledInvoice or Advance Tax Invoice"
             );
         }

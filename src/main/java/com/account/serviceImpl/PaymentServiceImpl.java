@@ -412,13 +412,20 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 8.1 ROUTE TO EXISTING ADVANCE TAX INVOICE
+        // 8.1 RESOLVE EXISTING ADVANCE TAX INVOICE
         // =====================================================
         /*
-         * Initial zero-value PURCHASE_ORDER must continue through the
-         * existing UnbilledInvoice workflow. Every actual payment first
-         * checks for an active Advance Tax Invoice.
+         * Updated workflow:
+         *
+         * - Even when an approved Advance Tax Invoice already exists,
+         *   customer payment registration must continue through the
+         *   UnbilledInvoice approval workflow.
+         * - The existing Advance Tax Invoice is settled only after
+         *   Accounts approves the payment.
+         * - No second Tax Invoice is generated during approval.
          */
+        Invoice existingAdvanceTaxInvoice = null;
+
         if (!isZeroAmountPurchaseOrder) {
 
             List<Invoice> activeAdvanceInvoices =
@@ -431,32 +438,21 @@ public class PaymentServiceImpl implements PaymentService {
                             )
                     );
 
-            if (!activeAdvanceInvoices.isEmpty()) {
+            existingAdvanceTaxInvoice = activeAdvanceInvoices
+                    .stream()
+                    .filter(Objects::nonNull)
+                    .filter(invoice -> !invoice.isCancelled())
+                    .max(Comparator.comparing(Invoice::getId))
+                    .orElse(null);
 
-                Invoice openAdvanceInvoice = activeAdvanceInvoices
-                        .stream()
-                        .filter(Objects::nonNull)
-                        .filter(invoice ->
-                                safe2(invoice.getOutstandingAmount())
-                                        .subtract(safe2(invoice.getPendingReceivedAmount()))
-                                        .compareTo(BigDecimal.ZERO) > 0
-                        )
-                        .findFirst()
-                        .orElseThrow(() -> new ValidationException(
-                                "An Advance Tax Invoice exists for this estimate, but its complete outstanding amount is already reserved by pending payments. Please wait for Accounts approval or rejection.",
-                                "ERR_ADVANCE_INVOICE_OUTSTANDING_ALREADY_RESERVED",
-                                "estimateId"
-                        ));
-
-                return registerPaymentAgainstAdvanceInvoice(
-                        request,
-                        estimate,
-                        openAdvanceInvoice,
-                        salesperson,
-                        paymentType,
-                        bankLedger,
-                        reqAmount,
-                        isPurchaseOrder
+            if (existingAdvanceTaxInvoice != null) {
+                log.info(
+                        "Existing Advance Tax Invoice found. Payment will create/use Unbilled and settle this Invoice after approval "
+                                + "| estimateId={} | invoiceId={} | invoiceNumber={} | outstanding={}",
+                        estimate.getId(),
+                        existingAdvanceTaxInvoice.getId(),
+                        existingAdvanceTaxInvoice.getInvoiceNumber(),
+                        safe2(existingAdvanceTaxInvoice.getOutstandingAmount())
                 );
             }
         }
@@ -535,7 +531,9 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setUpdatedAt(LocalDateTime.now());
 
             BigDecimal total =
-                    estimate.getGrandTotal() != null
+                    existingAdvanceTaxInvoice != null
+                            ? safe2(existingAdvanceTaxInvoice.getOutstandingAmount())
+                            : estimate.getGrandTotal() != null
                             ? estimate.getGrandTotal()
                             .setScale(
                                     2,
@@ -716,6 +714,31 @@ public class PaymentServiceImpl implements PaymentService {
                                 2,
                                 RoundingMode.HALF_UP
                         );
+
+        /*
+         * When an Advance Tax Invoice already exists, do not allow the
+         * newly registered settlement to exceed its current outstanding.
+         * The PaymentReceipt still remains linked to the UnbilledInvoice.
+         */
+        if (existingAdvanceTaxInvoice != null) {
+
+            BigDecimal advanceInvoiceOutstanding =
+                    safe2(existingAdvanceTaxInvoice.getOutstandingAmount());
+
+            if (settlementAmountForThisRegistration
+                    .compareTo(advanceInvoiceOutstanding) > 0) {
+
+                throw new ValidationException(
+                        "Payment settlement exceeds the existing Advance Tax Invoice outstanding amount. "
+                                + "Bank amount: ₹" + reqAmount
+                                + ", TDS amount: ₹" + tdsAmountForThisRegistration
+                                + ", settlement amount: ₹" + settlementAmountForThisRegistration
+                                + ", Advance Tax Invoice outstanding: ₹" + advanceInvoiceOutstanding,
+                        "ERR_PAYMENT_EXCEEDS_ADVANCE_INVOICE_OUTSTANDING",
+                        "amount"
+                );
+            }
+        }
 
         if (settlementAmountForThisRegistration
                 .compareTo(outstandingBeforeThisPayment) > 0) {
@@ -2019,10 +2042,14 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        /*
+         * TDS is calculated directly on the actual Bank/Cash amount entered.
+         * Example: ₹6,500 at 10% = ₹650.
+         */
         BigDecimal calculatedTds = bankAmount
-                .multiply(remainingTdsLimit)
+                .multiply(tdsPercentage)
                 .divide(
-                        remainingNetBankReceivable,
+                        BigDecimal.valueOf(100),
                         2,
                         RoundingMode.HALF_UP
                 )
@@ -3202,47 +3229,29 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 12. CALCULATE TDS FOR CURRENT PAYMENT
-        // =====================================================
+// 12. CALCULATE TDS FOR CURRENT PAYMENT
+// =====================================================
 
         /*
-         * TDS is allocated proportionately against the actual
-         * bank receipt.
+         * TDS is calculated directly on the entered payment amount.
          *
-         * Formula:
-         *
-         * Current TDS =
-         *     Current Bank Amount
-         *     × Remaining TDS
-         *     ÷ Remaining Net Bank Receivable
-         *
-         * Full-payment example:
-         *
-         * Current bank amount            = ₹45,000
-         * Remaining TDS                  = ₹5,000
-         * Remaining net bank receivable  = ₹45,000
-         *
-         * Current TDS:
-         *
-         * ₹45,000 × ₹5,000 ÷ ₹45,000
-         * = ₹5,000
-         *
-         * Settlement:
-         *
-         * ₹45,000 + ₹5,000
-         * = ₹50,000
+         * Example:
+         * Payment amount = ₹6,500
+         * TDS rate       = 10%
+         * TDS amount     = ₹650
          */
         BigDecimal calculatedTds =
                 paymentAmount
-                        .multiply(remainingTdsLimit)
+                        .multiply(tdsPercentage)
                         .divide(
-                                remainingNetBankReceivable,
+                                BigDecimal.valueOf(100),
                                 2,
                                 RoundingMode.HALF_UP
                         );
 
         /*
-         * Defensive cap for rounding differences.
+         * TDS for the current payment must not exceed the
+         * remaining TDS available for the estimate.
          */
         calculatedTds =
                 calculatedTds
@@ -3260,9 +3269,10 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        // =====================================================
-        // 13. CALCULATE SETTLEMENT AMOUNT
-        // =====================================================
+// =====================================================
+// 13. CALCULATE SETTLEMENT AMOUNT
+// =====================================================
+
         BigDecimal settlementAmount =
                 paymentAmount
                         .add(calculatedTds)
@@ -3694,16 +3704,19 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
         /*
-         * Generate invoice payment-wise.
+         * Invoice handling after payment approval.
          *
-         * For initial PURCHASE_ORDER approval:
-         * - amount = 0
-         * - project should be created
-         * - tax invoice should NOT be generated
+         * Updated Advance Tax Invoice workflow:
+         * - Payment was registered through UnbilledInvoice.
+         * - If an active Advance Tax Invoice already exists for the Estimate,
+         *   apply the approved settlement to that Invoice.
+         * - Do not create a second Tax Invoice.
          *
-         * For normal payments and later PO actual payments:
-         * - invoice generation remains same
+         * Normal workflow remains unchanged when no Advance Tax Invoice exists.
          */
+        Invoice existingAdvanceTaxInvoice =
+                findOpenAdvanceTaxInvoiceForEstimate(estimate);
+
         for (PaymentReceipt payment : paymentsToApprove) {
 
             boolean skipInvoiceForInitialPurchaseOrder =
@@ -3716,6 +3729,26 @@ public class PaymentServiceImpl implements PaymentService {
                         unbilled.getUnbilledNumber(),
                         payment.getId()
                 );
+                continue;
+            }
+
+            BigDecimal tdsForInvoice = getTdsAmountForPayment(payment);
+
+            if (existingAdvanceTaxInvoice != null) {
+
+                applyApprovedPaymentToExistingAdvanceTaxInvoice(
+                        existingAdvanceTaxInvoice,
+                        payment,
+                        tdsForInvoice,
+                        approver
+                );
+
+                approveTdsForPaymentAfterInvoiceCreated(
+                        payment,
+                        approver,
+                        existingAdvanceTaxInvoice
+                );
+
                 continue;
             }
 
@@ -3735,8 +3768,6 @@ public class PaymentServiceImpl implements PaymentService {
                 if (isPurchaseOrderPayment(payment)) {
                     validatePoBillingEligibility(unbilled);
                 }
-
-                BigDecimal tdsForInvoice = getTdsAmountForPayment(payment);
 
                 invoice = invoiceService.generateInvoiceForPayment(
                         unbilled,
@@ -5395,14 +5426,14 @@ public class PaymentServiceImpl implements PaymentService {
          * this company and this unit.
          */
         Optional<LedgerMaster> existingCustomerLedger =
-                ledgerMasterRepository
-                        .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
-                                companyId,
-                                unitId,
-                                LedgerType.CUSTOMER
-                        );
+                findExistingUnitLedger(
+                        companyId,
+                        unitId,
+                        LedgerType.CUSTOMER
+                );
 
         if (existingCustomerLedger.isPresent()) {
+
             LedgerMaster ledger = existingCustomerLedger.get();
 
             refreshCustomerLedgerDetails(
@@ -5417,19 +5448,15 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         /*
-         * Backward compatibility:
          * Convert an old CUSTOMER_ADVANCE ledger only when it belongs
-         * to the same company and the same unit.
-         *
-         * Never convert another unit's ledger.
+         * to the same company and unit.
          */
         Optional<LedgerMaster> existingAdvanceLedger =
-                ledgerMasterRepository
-                        .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
-                                companyId,
-                                unitId,
-                                LedgerType.CUSTOMER_ADVANCE
-                        );
+                findExistingUnitLedger(
+                        companyId,
+                        unitId,
+                        LedgerType.CUSTOMER_ADVANCE
+                );
 
         LedgerMaster ledger =
                 existingAdvanceLedger.orElseGet(LedgerMaster::new);
@@ -5983,6 +6010,157 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
+    /**
+     * Finds the latest active Advance Tax Invoice for the Estimate.
+     *
+     * The repository query already applies a pessimistic write lock, so the
+     * returned Invoice can safely be settled inside the approval transaction.
+     */
+    private Invoice findOpenAdvanceTaxInvoiceForEstimate(Estimate estimate) {
+
+        if (estimate == null || estimate.getId() == null) {
+            return null;
+        }
+
+        List<Invoice> activeAdvanceInvoices =
+                invoiceRepository.findActiveAdvanceInvoicesForUpdate(
+                        estimate.getId(),
+                        InvoiceOrigin.ADVANCE_TAX_INVOICE,
+                        List.of(
+                                InvoicePaymentStatus.UNPAID,
+                                InvoicePaymentStatus.PARTIALLY_PAID
+                        )
+                );
+
+        Invoice invoice = activeAdvanceInvoices
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(item -> !item.isCancelled())
+                .max(Comparator.comparing(Invoice::getId))
+                .orElse(null);
+
+        if (invoice != null) {
+            log.info(
+                    "Open Advance Tax Invoice resolved for approved Unbilled payment "
+                            + "| estimateId={} | invoiceId={} | invoiceNumber={} "
+                            + "| received={} | outstanding={} | paymentStatus={}",
+                    estimate.getId(),
+                    invoice.getId(),
+                    invoice.getInvoiceNumber(),
+                    safe2(invoice.getReceivedAmount()),
+                    safe2(invoice.getOutstandingAmount()),
+                    invoice.getPaymentStatus()
+            );
+        }
+
+        return invoice;
+    }
+
+
+    /**
+     * Applies an approved Unbilled payment to an already-created Advance Tax
+     * Invoice. This method never creates a new Invoice and never posts another
+     * Sales Invoice voucher. The Receipt voucher has already been posted by the
+     * normal payment approval flow.
+     */
+    private void applyApprovedPaymentToExistingAdvanceTaxInvoice(
+            Invoice invoice,
+            PaymentReceipt payment,
+            BigDecimal tdsAmount,
+            User approver
+    ) {
+
+        if (invoice == null || invoice.getId() == null) {
+            throw new ValidationException(
+                    "Existing Advance Tax Invoice is required for payment settlement",
+                    "ERR_ADVANCE_INVOICE_REQUIRED",
+                    "invoiceId"
+            );
+        }
+
+        if (payment == null || payment.getId() == null) {
+            throw new ValidationException(
+                    "Approved Payment Receipt is required for Advance Tax Invoice settlement",
+                    "ERR_PAYMENT_RECEIPT_REQUIRED",
+                    "paymentReceiptId"
+            );
+        }
+
+        BigDecimal bankAmount = safe2(payment.getAmount());
+        BigDecimal safeTdsAmount = safe2(tdsAmount);
+
+        BigDecimal settlementAmount = bankAmount
+                .add(safeTdsAmount)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        BigDecimal currentOutstanding =
+                safe2(invoice.getOutstandingAmount());
+
+        if (settlementAmount.compareTo(currentOutstanding) > 0) {
+            throw new ValidationException(
+                    "Approved payment settlement exceeds the Advance Tax Invoice outstanding amount. "
+                            + "Invoice: " + invoice.getInvoiceNumber()
+                            + ", Bank amount: ₹" + bankAmount
+                            + ", TDS amount: ₹" + safeTdsAmount
+                            + ", Settlement amount: ₹" + settlementAmount
+                            + ", Outstanding amount: ₹" + currentOutstanding,
+                    "ERR_PAYMENT_EXCEEDS_ADVANCE_INVOICE_OUTSTANDING",
+                    "amount"
+            );
+        }
+
+        BigDecimal updatedReceived =
+                safe2(invoice.getReceivedAmount())
+                        .add(settlementAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal updatedOutstanding =
+                currentOutstanding
+                        .subtract(settlementAmount)
+                        .max(BigDecimal.ZERO)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        invoice.setReceivedAmount(updatedReceived);
+        invoice.setOutstandingAmount(updatedOutstanding);
+
+        invoice.setPaymentStatus(
+                updatedOutstanding.compareTo(BigDecimal.ZERO) == 0
+                        ? InvoicePaymentStatus.PAID
+                        : InvoicePaymentStatus.PARTIALLY_PAID
+        );
+
+        /*
+         * This Unbilled-based workflow does not reserve Invoice pending amount
+         * during registration, so pendingReceivedAmount is intentionally not
+         * increased or decreased here.
+         */
+        invoiceRepository.save(invoice);
+
+        log.info(
+                "Approved Unbilled payment applied to existing Advance Tax Invoice "
+                        + "| invoiceId={} | invoiceNumber={} | paymentReceiptId={} "
+                        + "| approvedBy={} | bankAmount={} | tdsAmount={} "
+                        + "| settlementAmount={} | receivedAfter={} "
+                        + "| outstandingAfter={} | paymentStatus={}",
+                invoice.getId(),
+                invoice.getInvoiceNumber(),
+                payment.getId(),
+                approver != null ? approver.getId() : null,
+                bankAmount,
+                safeTdsAmount,
+                settlementAmount,
+                updatedReceived,
+                updatedOutstanding,
+                invoice.getPaymentStatus()
+        );
+    }
+
+
+
     private boolean isPurchaseOrderPayment(PaymentReceipt payment) {
         if (payment == null || payment.getPaymentType() == null) {
             return false;
@@ -6324,6 +6502,46 @@ public class PaymentServiceImpl implements PaymentService {
 //    }
 
 
+    private Optional<LedgerMaster> findExistingUnitLedger(
+            Long companyId,
+            Long unitId,
+            LedgerType ledgerType
+    ) {
+
+        List<LedgerMaster> matchingLedgers =
+                ledgerMasterRepository
+                        .findAllByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+                                companyId,
+                                unitId,
+                                ledgerType
+                        );
+
+        if (matchingLedgers == null || matchingLedgers.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (matchingLedgers.size() > 1) {
+            log.error(
+                    "Duplicate active ledger records found | companyId={} | "
+                            + "unitId={} | ledgerType={} | ledgerIds={}. "
+                            + "Using the first active ledger.",
+                    companyId,
+                    unitId,
+                    ledgerType,
+                    matchingLedgers.stream()
+                            .map(LedgerMaster::getId)
+                            .toList()
+            );
+        }
+
+        LedgerMaster selectedLedger =
+                matchingLedgers.stream()
+                        .filter(LedgerMaster::isActive)
+                        .findFirst()
+                        .orElse(matchingLedgers.get(0));
+
+        return Optional.of(selectedLedger);
+    }
 
 
 
