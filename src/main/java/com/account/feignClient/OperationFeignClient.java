@@ -128,6 +128,10 @@ public interface OperationFeignClient {
             @RequestBody AdvanceInvoiceOperationProjectRequestDto request
     );
 
+    @GetMapping("/operationService/api/projects/status/{projectNumber}")
+    ResponseEntity<String> getProjectStatusByProjectNumber(
+            @PathVariable("projectNumber") String projectNumber
+    );
 
 
 }

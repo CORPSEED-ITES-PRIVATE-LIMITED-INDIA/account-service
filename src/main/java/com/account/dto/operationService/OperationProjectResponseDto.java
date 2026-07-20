@@ -11,7 +11,6 @@ public class OperationProjectResponseDto {
 
     private Long id;
     private String name;
-    private String projectNo;
     private String unbilledNumber;
     private String estimateNumber;
 
@@ -47,6 +46,9 @@ public class OperationProjectResponseDto {
     private String unitName;
 
     private Integer milestoneCompletionPercentage;
+
+    private String projectNo;
+    private String projectStatus;
 
     private Boolean poBillingEligible;
 }

@@ -467,6 +467,24 @@ public class PaymentServiceImpl implements PaymentService {
 
         boolean isFirstPayment = unbilled == null;
 
+
+// =====================================================
+// 9.1 VALIDATE PROJECT COMPLETION FOR ACTUAL PO PAYMENT
+// =====================================================
+        if (isPurchaseOrder && !isZeroAmountPurchaseOrder) {
+
+            if (unbilled == null) {
+                throw new ValidationException(
+                        "Initial Purchase Order registration was not found. "
+                                + "Create and approve the zero-value Purchase Order first.",
+                        "ERR_INITIAL_PO_NOT_FOUND",
+                        "estimateId"
+                );
+            }
+
+            validatePurchaseOrderProjectCompleted(unbilled);
+        }
+
         /*
          * Defensive recheck using the existing UnbilledInvoice snapshot.
          *
@@ -6544,6 +6562,114 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
+    private void validatePurchaseOrderProjectCompleted(
+            UnbilledInvoice unbilled
+    ) {
+        if (unbilled == null) {
+            throw new ValidationException(
+                    "Unbilled invoice is required to verify Purchase Order project status",
+                    "ERR_PO_UNBILLED_REQUIRED",
+                    "estimateId"
+            );
+        }
+
+        if (unbilled.getUnbilledNumber() == null
+                || unbilled.getUnbilledNumber().trim().isEmpty()) {
+
+            throw new ValidationException(
+                    "Unbilled number is required to verify Purchase Order project status",
+                    "ERR_PO_UNBILLED_NUMBER_REQUIRED",
+                    "unbilledNumber"
+            );
+        }
+
+        String unbilledNumber = unbilled.getUnbilledNumber().trim();
+
+        try {
+            ResponseEntity<OperationProjectResponseDto> response =
+                    operationFeignClient.getProjectByUnbilledNumber(
+                            unbilledNumber
+                    );
+
+            if (!response.getStatusCode().is2xxSuccessful()
+                    || response.getBody() == null) {
+
+                throw new ValidationException(
+                        "Operation project was not found for Purchase Order",
+                        "ERR_PO_OPERATION_PROJECT_NOT_FOUND",
+                        "unbilledNumber"
+                );
+            }
+
+            OperationProjectResponseDto project = response.getBody();
+
+            String projectStatus = project.getProjectStatus();
+
+            if (projectStatus == null
+                    || !"COMPLETED".equalsIgnoreCase(projectStatus.trim())) {
+
+                String currentStatus =
+                        projectStatus != null
+                                ? projectStatus
+                                : "STATUS_NOT_AVAILABLE";
+
+                throw new ValidationException(
+                        "Purchase Order payment cannot be registered because "
+                                + "the Operation project is not completed. "
+                                + "Current project status: " + currentStatus,
+                        "ERR_PO_PROJECT_NOT_COMPLETED",
+                        "paymentTypeId"
+                );
+            }
+
+            log.info(
+                    "Purchase Order project completion verified | "
+                            + "unbilledNumber={} | projectNo={} | status={}",
+                    unbilledNumber,
+                    project.getProjectNo(),
+                    projectStatus
+            );
+
+        } catch (ValidationException ex) {
+            throw ex;
+
+        } catch (FeignException.NotFound ex) {
+            throw new ValidationException(
+                    "Operation project was not found for Purchase Order",
+                    "ERR_PO_OPERATION_PROJECT_NOT_FOUND",
+                    "unbilledNumber"
+            );
+
+        } catch (FeignException ex) {
+            log.error(
+                    "Operation Service error while checking PO project status "
+                            + "| unbilledNumber={} | status={}",
+                    unbilledNumber,
+                    ex.status(),
+                    ex
+            );
+
+            throw new ValidationException(
+                    "Unable to verify Purchase Order project status from Operation Service",
+                    "ERR_OPERATION_SERVICE_UNAVAILABLE",
+                    "unbilledNumber"
+            );
+
+        } catch (Exception ex) {
+            log.error(
+                    "Unexpected error while checking PO project status "
+                            + "| unbilledNumber={}",
+                    unbilledNumber,
+                    ex
+            );
+
+            throw new ValidationException(
+                    "Unable to verify Purchase Order project status",
+                    "ERR_PO_PROJECT_STATUS_VERIFICATION_FAILED",
+                    "unbilledNumber"
+            );
+        }
+    }
 
 }
 
