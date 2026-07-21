@@ -80,6 +80,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentCalculationEngine paymentCalculationEngine;
 
     private final RegisteredPaymentCalculator registeredPaymentCalculator;
+    private final SezPaymentCalculator sezPaymentCalculator;
 
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
@@ -99,7 +100,8 @@ public class PaymentServiceImpl implements PaymentService {
             LedgerGroupRepository ledgerGroupRepository,
             PaymentLegalVerificationService paymentLegalVerificationService,
             PaymentCalculationEngine paymentCalculationEngine,
-            RegisteredPaymentCalculator registeredPaymentCalculator
+            RegisteredPaymentCalculator registeredPaymentCalculator,
+            SezPaymentCalculator sezPaymentCalculator
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -119,6 +121,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.paymentLegalVerificationService = paymentLegalVerificationService;
         this.paymentCalculationEngine = paymentCalculationEngine;
         this.registeredPaymentCalculator = registeredPaymentCalculator;
+        this.sezPaymentCalculator = sezPaymentCalculator;
     }
 
 
@@ -925,18 +928,16 @@ public class PaymentServiceImpl implements PaymentService {
             /*
              * TEMPORARY:
              * Until an InstallmentSchedule table/DTO field is added,
-             * only outstanding validation will be applied.
+             * use the currently available outstanding amount as the
+             * installment ceiling.
              *
-             * Later replace this with the eligible gross milestone amount:
+             * Later replace this with:
              *
              * installmentEligibleAmount =
              *         installmentSchedule.getOutstandingAmount();
              */
             installmentEligibleAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
+                    outstandingBeforePayment;
         }
 
         // =====================================================
@@ -952,9 +953,16 @@ public class PaymentServiceImpl implements PaymentService {
          *     settlement     = bank amount + TDS amount.
          *
          * Normal Unbilled payment workflow:
-         *     request.amount = taxable/base amount entered by salesperson.
-         *     actual bank    = taxable + GST - TDS.
-         *     settlement     = taxable + GST.
+         *     request.amount = actual Bank/Cash/Payment Gateway amount.
+         *
+         * REGISTERED:
+         *     taxable   = bank / (1 + GST% - TDS%)
+         *     settlement = bank + TDS
+         *
+         * SEZ:
+         *     GST       = 0
+         *     taxable   = bank / (1 - TDS%)
+         *     settlement = bank + TDS
          *
          * Do not run the new taxable-base engine for an existing
          * Advance Tax Invoice. This keeps the older Advance Invoice
@@ -1122,9 +1130,7 @@ public class PaymentServiceImpl implements PaymentService {
                                                 tdsPercentage
                                         )
                                         .totalTaxableAmount(
-                                                safe2(
-                                                        estimate.getSubTotalExGst()
-                                                )
+                                                totalTaxableAmount
                                         )
                                         .totalGstAmount(
                                                 safe2(
@@ -1216,6 +1222,143 @@ public class PaymentServiceImpl implements PaymentService {
                         registeredResult.getOutstandingAfter(),
                         registeredResult.isInitialPurchaseOrder(),
                         registeredResult.isFinalSettlement()
+                );
+
+            } else if (paymentGstRegistrationType
+                    == GstRegistrationType.SEZ) {
+
+                SezPaymentCalculator.Result sezResult =
+                        sezPaymentCalculator.calculate(
+                                SezPaymentCalculator.Input
+                                        .builder()
+                                        .estimateId(
+                                                estimate.getId()
+                                        )
+                                        .unbilledId(
+                                                resolvedUnbilled.getId()
+                                        )
+                                        .gstRegistrationType(
+                                                paymentGstRegistrationType
+                                        )
+                                        .paymentTypeCode(
+                                                paymentTypeCode
+                                        )
+                                        /*
+                                         * The salesperson enters only the amount
+                                         * actually credited to Bank/Cash/Gateway.
+                                         */
+                                        .actualBankAmount(
+                                                reqAmount
+                                        )
+                                        .tdsActive(
+                                                Boolean.TRUE.equals(
+                                                        request.getTdsActive()
+                                                )
+                                        )
+                                        .tdsPercentage(
+                                                tdsPercentage
+                                        )
+                                        /*
+                                         * SEZ is zero-rated, therefore Estimate GST
+                                         * must be zero and taxable must equal total.
+                                         */
+                                        .totalTaxableAmount(
+                                                safe2(
+                                                        estimate.getSubTotalExGst()
+                                                )
+                                        )
+                                        .totalGstAmount(
+                                                safe2(
+                                                        estimate.getTotalGstAmount()
+                                                )
+                                        )
+                                        .totalInvoiceAmount(
+                                                totalInvoiceAmount
+                                        )
+                                        .outstandingAmount(
+                                                outstandingBeforePayment
+                                        )
+                                        .approvedAmount(
+                                                safe2(
+                                                        resolvedUnbilled
+                                                                .getReceivedAmount()
+                                                )
+                                        )
+                                        .alreadyUsedTds(
+                                                alreadyUsedTds
+                                        )
+                                        .installmentEligibleAmount(
+                                                installmentEligibleAmount
+                                        )
+                                        .paymentTermsDays(
+                                                request.getPaymentTermsDays()
+                                        )
+                                        .poNumber(
+                                                request.getPoNumber()
+                                        )
+                                        .poAttachmentUrl(
+                                                request.getPoAttachmentUrl()
+                                        )
+                                        .purchaseOrderProjectCompleted(
+                                                purchaseOrderProjectCompleted
+                                        )
+                                        .build()
+                        );
+
+                taxableAmountForThisRegistration =
+                        safe2(
+                                sezResult.getCurrentTaxableAmount()
+                        );
+
+                /*
+                 * Always zero for the SEZ zero-rated flow.
+                 */
+                gstAmountForThisRegistration =
+                        safe2(
+                                sezResult.getCurrentGstAmount()
+                        );
+
+                tdsAmountForThisRegistration =
+                        safe2(
+                                sezResult.getTdsAmount()
+                        );
+
+                actualBankAmountForThisRegistration =
+                        safe2(
+                                sezResult.getActualBankAmount()
+                        );
+
+                /*
+                 * For SEZ:
+                 * settlement = bank + TDS = taxable.
+                 */
+                settlementAmountForThisRegistration =
+                        safe2(
+                                sezResult.getSettlementAmount()
+                        );
+
+                log.info(
+                        "[SEZ-PAYMENT-CALCULATION] traceId={} | "
+                                + "estimateId={} | unbilledId={} | "
+                                + "paymentType={} | actualBankAmount={} | "
+                                + "taxableAmount={} | gstAmount={} | "
+                                + "tdsPercentage={} | tdsAmount={} | "
+                                + "settlementAmount={} | outstandingBefore={} | "
+                                + "outstandingAfter={} | initialPO={} | finalSettlement={}",
+                        traceId,
+                        estimate.getId(),
+                        resolvedUnbilled.getId(),
+                        paymentTypeCode,
+                        actualBankAmountForThisRegistration,
+                        taxableAmountForThisRegistration,
+                        gstAmountForThisRegistration,
+                        sezResult.getTdsPercentage(),
+                        tdsAmountForThisRegistration,
+                        settlementAmountForThisRegistration,
+                        sezResult.getOutstandingBefore(),
+                        sezResult.getOutstandingAfter(),
+                        sezResult.isInitialPurchaseOrder(),
+                        sezResult.isFinalSettlement()
                 );
 
             } else {
@@ -1611,14 +1754,20 @@ public class PaymentServiceImpl implements PaymentService {
         // 27. UPDATE UNBILLED PENDING TOTAL
         // =====================================================
 
+        /*
+         * TDS may be applicable to domestic REGISTERED, UNREGISTERED
+         * and SEZ payments. INTERNATIONAL never supports domestic TDS.
+         */
         if (paymentGstRegistrationType
-                == GstRegistrationType.REGISTERED) {
+                != GstRegistrationType.INTERNATIONAL) {
 
             resolvedUnbilled.setTdsActive(
                     Boolean.TRUE.equals(
                             request.getTdsActive()
                     )
             );
+        } else {
+            resolvedUnbilled.setTdsActive(false);
         }
 
         resolvedUnbilled.applyPayment(
@@ -7629,64 +7778,6 @@ public class PaymentServiceImpl implements PaymentService {
         }
     }
 
-
-
-
-//    private void validatePurchaseOrderRequest(
-//            PaymentRegistrationRequestDto request,
-//            boolean isPurchaseOrder
-//    ) {
-//
-//        if (!isPurchaseOrder) {
-//            return;
-//        }
-//
-//        if (request.getPoNumber() == null
-//                || request.getPoNumber().trim().isEmpty()) {
-//
-//            throw new ValidationException(
-//                    "PO number is required for Purchase Order payment",
-//                    "ERR_PO_NUMBER_REQUIRED",
-//                    "poNumber"
-//            );
-//        }
-//
-//        if (request.getPoAttachmentUrl() == null
-//                || request.getPoAttachmentUrl().trim().isEmpty()) {
-//
-//            throw new ValidationException(
-//                    "PO attachment is required for Purchase Order payment",
-//                    "ERR_PO_ATTACHMENT_REQUIRED",
-//                    "poAttachmentUrl"
-//            );
-//        }
-//
-//        if (request.getPaymentTermsDays() == null
-//                || request.getPaymentTermsDays() < 0) {
-//
-//            throw new ValidationException(
-//                    "Payment terms days is required for Purchase Order payment",
-//                    "ERR_PAYMENT_TERMS_DAYS_REQUIRED",
-//                    "paymentTermsDays"
-//            );
-//        }
-//
-//        if (request.getAmount() == null) {
-//            throw new ValidationException(
-//                    "Payment amount is required",
-//                    "ERR_AMOUNT_REQUIRED",
-//                    "amount"
-//            );
-//        }
-//
-//        if (request.getAmount().compareTo(BigDecimal.ZERO) < 0) {
-//            throw new ValidationException(
-//                    "Purchase Order amount cannot be negative",
-//                    "ERR_AMOUNT_NEGATIVE",
-//                    "amount"
-//            );
-//        }
-//    }
 
 
     private Optional<LedgerMaster> findExistingUnitLedger(
