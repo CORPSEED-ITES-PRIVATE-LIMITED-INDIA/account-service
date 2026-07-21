@@ -154,49 +154,5 @@ public class PaymentReceipt {
     private BigDecimal unallocatedAmount =
             BigDecimal.ZERO.setScale(2);
 
-    @PrePersist
-    protected void onCreate() {
-        if (paymentDate == null) {
-            paymentDate = LocalDate.now();
-        }
-        amount = safeMoney(amount);
-        if (status == null) {
-            status = PaymentStatus.PENDING;
-        }
-        validateSourceMapping();
-    }
 
-    @PreUpdate
-    protected void onUpdate() {
-        amount = safeMoney(amount);
-        validateSourceMapping();
-    }
-
-
-
-    private void validateSourceMapping() {
-        boolean hasUnbilled = unbilledInvoice != null;
-        boolean hasInvoice = invoice != null;
-
-        if (hasUnbilled == hasInvoice) {
-            throw new IllegalStateException(
-                    "TdsRegistration must reference exactly one source: "
-                            + "either UnbilledInvoice or Advance Tax Invoice"
-            );
-        }
-    }
-
-    private static BigDecimal safeMoney(BigDecimal value) {
-        return value == null
-                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-                : value.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    public boolean isAdvanceInvoicePayment() {
-        return invoice != null && unbilledInvoice == null;
-    }
-
-    public boolean isUnbilledPayment() {
-        return unbilledInvoice != null && invoice == null;
-    }
 }

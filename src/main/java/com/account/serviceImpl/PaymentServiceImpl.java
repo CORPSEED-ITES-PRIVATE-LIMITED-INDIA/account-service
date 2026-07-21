@@ -77,6 +77,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final LedgerGroupRepository ledgerGroupRepository;
     private final PaymentLegalVerificationService paymentLegalVerificationService;
 
+    private final PaymentCalculationEngine paymentCalculationEngine;
+
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
             UnbilledInvoiceRepository unbilledInvoiceRepository,
@@ -93,7 +95,8 @@ public class PaymentServiceImpl implements PaymentService {
             LedgerMasterRepository ledgerMasterRepository,
             AccountingVoucherService accountingVoucherService,
             LedgerGroupRepository ledgerGroupRepository,
-            PaymentLegalVerificationService paymentLegalVerificationService
+            PaymentLegalVerificationService paymentLegalVerificationService,
+            PaymentCalculationEngine paymentCalculationEngine
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -110,9 +113,11 @@ public class PaymentServiceImpl implements PaymentService {
         this.ledgerMasterRepository = ledgerMasterRepository;
         this.accountingVoucherService = accountingVoucherService;
         this.ledgerGroupRepository = ledgerGroupRepository;
-        this.paymentLegalVerificationService = paymentLegalVerificationService;
+        this.paymentLegalVerificationService =
+                paymentLegalVerificationService;
+        this.paymentCalculationEngine =
+                paymentCalculationEngine;
     }
-
 
 
 
@@ -123,6 +128,23 @@ public class PaymentServiceImpl implements PaymentService {
             PaymentRegistrationRequestDto request,
             Long salespersonUserId
     ) {
+
+        String traceId =
+                "PAYMENT-REGISTRATION-" + UUID.randomUUID();
+
+        log.info(
+                "[PAYMENT-REGISTRATION-START] traceId={} | estimateId={} | "
+                        + "paymentTypeId={} | bankAmount={} | salespersonId={}",
+                traceId,
+                request != null ? request.getEstimateId() : null,
+                request != null ? request.getPaymentTypeId() : null,
+                request != null ? request.getAmount() : null,
+                salespersonUserId
+        );
+
+        // =====================================================
+        // 1. BASIC REQUEST VALIDATION
+        // =====================================================
 
         if (request == null) {
             throw new ValidationException(
@@ -156,18 +178,6 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        log.info(
-                "Registering payment | estimateId: {}, amount: {}, mode: {}, ref: {}, salespersonId: {}",
-                request.getEstimateId(),
-                request.getAmount(),
-                request.getPaymentMode(),
-                request.getTransactionReference(),
-                salespersonUserId
-        );
-
-        // =====================================================
-        // 1. BASIC VALIDATIONS
-        // =====================================================
         if (request.getAmount() == null) {
             throw new ValidationException(
                     "Payment amount is required",
@@ -176,24 +186,49 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal reqAmount = request.getAmount()
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal reqAmount =
+                safe2(request.getAmount());
+
+        if (reqAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException(
+                    "Payment amount cannot be negative",
+                    "ERR_AMOUNT_NEGATIVE",
+                    "amount"
+            );
+        }
+
+        log.info(
+                "[PAYMENT-REQUEST-VALIDATED] traceId={} | estimateId={} | "
+                        + "bankAmount={} | paymentMode={} | transactionReference={}",
+                traceId,
+                request.getEstimateId(),
+                reqAmount,
+                request.getPaymentMode(),
+                request.getTransactionReference()
+        );
 
         // =====================================================
         // 2. GOVERNMENT FEE VALIDATION
         // =====================================================
+
         validateGovernmentFeeRequest(request);
 
         // =====================================================
         // 3. FETCH AND VALIDATE ESTIMATE
         // =====================================================
-        Estimate estimate = estimateRepository.findById(request.getEstimateId())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Estimate not found with ID: " + request.getEstimateId(),
-                        "ESTIMATE_NOT_FOUND",
-                        "Estimate",
-                        request.getEstimateId()
-                ));
+
+        Estimate estimate =
+                estimateRepository
+                        .findById(request.getEstimateId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Estimate not found with ID: "
+                                                + request.getEstimateId(),
+                                        "ESTIMATE_NOT_FOUND",
+                                        "Estimate",
+                                        request.getEstimateId()
+                                )
+                        );
 
         if (estimate.getStatus() == EstimateStatus.REJECTED) {
             throw new ValidationException(
@@ -206,31 +241,39 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        // =====================================================
-        // 4. COMPANY & UNIT APPROVAL CHECK
-        // =====================================================
         Company company = estimate.getCompany();
         CompanyUnit unit = estimate.getUnit();
 
+        if (company == null || company.getId() == null) {
+            throw new ValidationException(
+                    "Company is required for payment registration",
+                    "ERR_PAYMENT_COMPANY_REQUIRED",
+                    "companyId"
+            );
+        }
+
+        if (unit == null || unit.getId() == null) {
+            throw new ValidationException(
+                    "Company Unit is required for payment registration",
+                    "ERR_PAYMENT_UNIT_REQUIRED",
+                    "unitId"
+            );
+        }
+
         // =====================================================
-        // INTERNATIONAL TRANSACTION CHECK
+        // 4. RESOLVE GST REGISTRATION TYPE
         // =====================================================
+
         GstRegistrationType paymentGstRegistrationType =
-                resolveGstRegistrationType(estimate, null);
+                resolveGstRegistrationType(
+                        estimate,
+                        null
+                );
 
         boolean internationalTransaction =
                 paymentGstRegistrationType
                         == GstRegistrationType.INTERNATIONAL;
 
-        /*
-         * INTERNATIONAL transactions cannot use the domestic TDS workflow.
-         *
-         * This validation happens before:
-         * - TDS calculation
-         * - PaymentReceipt creation
-         * - TdsRegistration creation
-         * - Unbilled amount update
-         */
         validateInternationalTdsRestriction(
                 request,
                 estimate,
@@ -238,12 +281,18 @@ public class PaymentServiceImpl implements PaymentService {
         );
 
         log.info(
-                "Payment GST type resolved | estimateId={} | unitId={} | gstRegistrationType={} | international={}",
+                "[PAYMENT-GST-RESOLVED] traceId={} | estimateId={} | unitId={} | "
+                        + "gstRegistrationType={} | international={}",
+                traceId,
                 estimate.getId(),
-                unit != null ? unit.getId() : null,
+                unit.getId(),
                 paymentGstRegistrationType,
                 internationalTransaction
         );
+
+        // =====================================================
+        // 5. COMPANY AND UNIT APPROVAL CHECK
+        // =====================================================
 
         boolean companyApproved =
                 isCompanyApprovedForPayment(company);
@@ -254,30 +303,28 @@ public class PaymentServiceImpl implements PaymentService {
         if (!companyApproved || !unitApproved) {
 
             String companyName =
-                    company != null && company.getName() != null
+                    company.getName() != null
                             ? company.getName()
                             : "N/A";
 
             String companyStatus =
-                    company != null
-                            && company.getOnboardingStatus() != null
+                    company.getOnboardingStatus() != null
                             ? company.getOnboardingStatus().name()
                             : "N/A";
 
             String unitName =
-                    unit != null && unit.getUnitName() != null
+                    unit.getUnitName() != null
                             ? unit.getUnitName()
                             : "N/A";
 
             String unitStatus =
-                    unit != null
-                            && unit.getOnboardingStatus() != null
+                    unit.getOnboardingStatus() != null
                             ? unit.getOnboardingStatus().name()
                             : "N/A";
 
             throw new ValidationException(
-                    "Payment registration is not allowed because Company and Company Unit "
-                            + "must both be approved by Accounts. "
+                    "Payment registration is not allowed because Company and "
+                            + "Company Unit must both be approved by Accounts. "
                             + "Company: " + companyName
                             + ", Company Status: " + companyStatus
                             + ", Company Approved: " + companyApproved
@@ -285,38 +332,60 @@ public class PaymentServiceImpl implements PaymentService {
                             + ", Unit Status: " + unitStatus
                             + ", Unit Approved: " + unitApproved,
                     "ERR_COMPANY_OR_UNIT_NOT_APPROVED_FOR_PAYMENT",
-                    !companyApproved ? "companyId" : "unitId"
+                    !companyApproved
+                            ? "companyId"
+                            : "unitId"
             );
         }
 
         // =====================================================
-        // 5. FETCH SALESPERSON AND PAYMENT TYPE
+        // 6. FETCH SALESPERSON
         // =====================================================
-        User salesperson = userRepository.findById(salespersonUserId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Salesperson not found with ID: " + salespersonUserId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        salespersonUserId
-                ));
+
+        User salesperson =
+                userRepository
+                        .findById(salespersonUserId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Salesperson not found with ID: "
+                                                + salespersonUserId,
+                                        "USER_NOT_FOUND",
+                                        "User",
+                                        salespersonUserId
+                                )
+                        );
+
+        // =====================================================
+        // 7. FETCH PAYMENT TYPE
+        // =====================================================
 
         PaymentType paymentType =
                 paymentTypeRepository
                         .findById(request.getPaymentTypeId())
-                        .orElseThrow(() -> new ResourceNotFoundException(
-                                "Payment type not found with ID: "
-                                        + request.getPaymentTypeId(),
-                                "PAYMENT_TYPE_NOT_FOUND",
-                                "PaymentType",
-                                request.getPaymentTypeId()
-                        ));
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Payment type not found with ID: "
+                                                + request.getPaymentTypeId(),
+                                        "PAYMENT_TYPE_NOT_FOUND",
+                                        "PaymentType",
+                                        request.getPaymentTypeId()
+                                )
+                        );
 
         String paymentTypeCode =
                 paymentType.getCode() != null
                         ? paymentType.getCode()
                         .trim()
-                        .toUpperCase()
+                        .toUpperCase(Locale.ROOT)
                         : "";
+
+        if (paymentTypeCode.isEmpty()) {
+            throw new ValidationException(
+                    "Payment type code is missing",
+                    "ERR_PAYMENT_TYPE_CODE_REQUIRED",
+                    "paymentTypeId"
+            );
+        }
 
         boolean isPurchaseOrder =
                 "PURCHASE_ORDER".equals(paymentTypeCode);
@@ -325,35 +394,6 @@ public class PaymentServiceImpl implements PaymentService {
                 isPurchaseOrder
                         && reqAmount.compareTo(BigDecimal.ZERO) == 0;
 
-        /*
-         * Validate the Purchase Order attachment before creating:
-         * - UnbilledInvoice
-         * - PaymentReceipt
-         * - Legal verification request
-         *
-         * Non-PURCHASE_ORDER flows are unaffected.
-         */
-        validatePurchaseOrderRequest(
-                request,
-                isPurchaseOrder
-        );
-
-        // =====================================================
-        // 6. VALIDATE BANK LEDGER
-        // =====================================================
-        LedgerMaster bankLedger =
-                validateAndGetBankLedger(request, reqAmount);
-
-        // Negative amount is never allowed.
-        if (reqAmount.compareTo(BigDecimal.ZERO) < 0) {
-            throw new ValidationException(
-                    "Payment amount cannot be negative",
-                    "ERR_AMOUNT_NEGATIVE",
-                    "amount"
-            );
-        }
-
-        // Zero amount is allowed only for PURCHASE_ORDER.
         if (!isPurchaseOrder
                 && reqAmount.compareTo(BigDecimal.ZERO) == 0) {
 
@@ -364,12 +404,15 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        /*
-         * For initial zero-value Purchase Order registration, no actual
-         * payment has been received, so paymentDate may be absent.
-         *
-         * Every actual payment must contain a payment date.
-         */
+        // =====================================================
+        // 8. PURCHASE ORDER VALIDATION
+        // =====================================================
+
+        validatePurchaseOrderRequest(
+                request,
+                isPurchaseOrder
+        );
+
         if (!isZeroAmountPurchaseOrder
                 && request.getPaymentDate() == null) {
 
@@ -381,29 +424,46 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 7. TDS VALIDATION
+        // 9. VALIDATE BANK/CASH/PAYMENT GATEWAY LEDGER
         // =====================================================
+
+        LedgerMaster bankLedger =
+                validateAndGetBankLedger(
+                        request,
+                        reqAmount
+                );
+
+        // =====================================================
+        // 10. TDS REQUEST STRUCTURE VALIDATION
+        // =====================================================
+
         if (isZeroAmountPurchaseOrder
-                && Boolean.TRUE.equals(request.getTdsActive())) {
+                && (
+                Boolean.TRUE.equals(request.getTdsActive())
+                        || request.getTds() != null
+        )) {
 
             throw new ValidationException(
                     "TDS cannot be registered during initial Purchase Order "
-                            + "registration because no tax invoice/payment "
-                            + "is generated yet",
+                            + "registration because no actual payment is received",
                     "ERR_TDS_NOT_ALLOWED_ON_INITIAL_PO",
                     "tdsActive"
             );
         }
 
-        validateTdsRequest(request, paymentType);
+        validateTdsRequest(
+                request,
+                paymentType
+        );
 
         // =====================================================
-        // 8. EPR HANDLING
+        // 11. EPR HANDLING
         // =====================================================
-        boolean isProductRelated =
+
+        boolean productRelated =
                 isProductRelatedEstimate(estimate);
 
-        if (isProductRelated) {
+        if (productRelated) {
             validateEprFields(request);
         } else {
             request.setEprFinancialYear(null);
@@ -412,66 +472,73 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 8.1 RESOLVE EXISTING ADVANCE TAX INVOICE
+        // 12. RESOLVE EXISTING ADVANCE TAX INVOICE
         // =====================================================
-        /*
-         * Updated workflow:
-         *
-         * - Even when an approved Advance Tax Invoice already exists,
-         *   customer payment registration must continue through the
-         *   UnbilledInvoice approval workflow.
-         * - The existing Advance Tax Invoice is settled only after
-         *   Accounts approves the payment.
-         * - No second Tax Invoice is generated during approval.
-         */
+
         Invoice existingAdvanceTaxInvoice = null;
 
         if (!isZeroAmountPurchaseOrder) {
 
             List<Invoice> activeAdvanceInvoices =
-                    invoiceRepository.findActiveAdvanceInvoicesForUpdate(
-                            estimate.getId(),
-                            InvoiceOrigin.ADVANCE_TAX_INVOICE,
-                            List.of(
-                                    InvoicePaymentStatus.UNPAID,
-                                    InvoicePaymentStatus.PARTIALLY_PAID
-                            )
-                    );
+                    invoiceRepository
+                            .findActiveAdvanceInvoicesForUpdate(
+                                    estimate.getId(),
+                                    InvoiceOrigin.ADVANCE_TAX_INVOICE,
+                                    List.of(
+                                            InvoicePaymentStatus.UNPAID,
+                                            InvoicePaymentStatus.PARTIALLY_PAID
+                                    )
+                            );
 
-            existingAdvanceTaxInvoice = activeAdvanceInvoices
-                    .stream()
-                    .filter(Objects::nonNull)
-                    .filter(invoice -> !invoice.isCancelled())
-                    .max(Comparator.comparing(Invoice::getId))
-                    .orElse(null);
+            existingAdvanceTaxInvoice =
+                    activeAdvanceInvoices
+                            .stream()
+                            .filter(Objects::nonNull)
+                            .filter(invoice ->
+                                    !invoice.isCancelled()
+                            )
+                            .max(
+                                    Comparator.comparing(
+                                            Invoice::getId
+                                    )
+                            )
+                            .orElse(null);
 
             if (existingAdvanceTaxInvoice != null) {
                 log.info(
-                        "Existing Advance Tax Invoice found. Payment will create/use Unbilled and settle this Invoice after approval "
-                                + "| estimateId={} | invoiceId={} | invoiceNumber={} | outstanding={}",
+                        "[ADVANCE-INVOICE-FOUND] traceId={} | estimateId={} | "
+                                + "invoiceId={} | invoiceNumber={} | "
+                                + "invoiceGrandTotal={} | invoiceOutstanding={}",
+                        traceId,
                         estimate.getId(),
                         existingAdvanceTaxInvoice.getId(),
                         existingAdvanceTaxInvoice.getInvoiceNumber(),
+                        safe2(existingAdvanceTaxInvoice.getGrandTotal()),
                         safe2(existingAdvanceTaxInvoice.getOutstandingAmount())
                 );
             }
         }
 
         // =====================================================
-        // 9. FIND OR CREATE UNBILLED INVOICE
+        // 13. FIND EXISTING UNBILLED
         // =====================================================
+
         UnbilledInvoice unbilled =
                 unbilledInvoiceRepository
-                        .findByEstimateAndIsCancelledFalse(estimate)
+                        .findByEstimateAndIsCancelledFalse(
+                                estimate
+                        )
                         .orElse(null);
 
-        boolean isFirstPayment = unbilled == null;
+        boolean isFirstPayment =
+                unbilled == null;
 
+        // =====================================================
+        // 14. ACTUAL PURCHASE ORDER PAYMENT VALIDATION
+        // =====================================================
 
-// =====================================================
-// 9.1 VALIDATE PROJECT COMPLETION FOR ACTUAL PO PAYMENT
-// =====================================================
-        if (isPurchaseOrder && !isZeroAmountPurchaseOrder) {
+        if (isPurchaseOrder
+                && !isZeroAmountPurchaseOrder) {
 
             if (unbilled == null) {
                 throw new ValidationException(
@@ -482,15 +549,15 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
 
-            validatePurchaseOrderProjectCompleted(unbilled);
+            validatePurchaseOrderProjectCompleted(
+                    unbilled
+            );
         }
 
-        /*
-         * Defensive recheck using the existing UnbilledInvoice snapshot.
-         *
-         * This handles old records where the estimate or unit may have
-         * changed after the unbilled invoice was created.
-         */
+        // =====================================================
+        // 15. RECHECK GST TYPE FROM UNBILLED SNAPSHOT
+        // =====================================================
+
         if (!isFirstPayment) {
 
             validateInternationalTdsRestriction(
@@ -516,7 +583,60 @@ public class PaymentServiceImpl implements PaymentService {
             }
         }
 
+        // =====================================================
+        // 16. CREATE UNBILLED FOR FIRST PAYMENT
+        // =====================================================
+
         if (isFirstPayment) {
+
+            BigDecimal estimateTotal =
+                    safe2(estimate.getGrandTotal());
+
+            if (estimateTotal.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "Estimate grand total must be greater than zero",
+                        "ERR_ESTIMATE_TOTAL_INVALID",
+                        "estimateId"
+                );
+            }
+
+            BigDecimal unbilledTotal;
+
+            if (existingAdvanceTaxInvoice != null) {
+
+                BigDecimal invoiceGrandTotal =
+                        safe2(
+                                existingAdvanceTaxInvoice
+                                        .getGrandTotal()
+                        );
+
+                BigDecimal invoiceOutstanding =
+                        safe2(
+                                existingAdvanceTaxInvoice
+                                        .getOutstandingAmount()
+                        );
+
+                if (invoiceGrandTotal.compareTo(estimateTotal) != 0) {
+                    throw new ValidationException(
+                            "Existing Advance Tax Invoice amount does not match "
+                                    + "the Estimate amount. Estimate total: ₹"
+                                    + estimateTotal
+                                    + ", Invoice total: ₹"
+                                    + invoiceGrandTotal
+                                    + ". Correct Invoice "
+                                    + existingAdvanceTaxInvoice
+                                    .getInvoiceNumber()
+                                    + " before registering payment.",
+                            "ERR_ADVANCE_INVOICE_ESTIMATE_TOTAL_MISMATCH",
+                            "estimateId"
+                    );
+                }
+
+                unbilledTotal = invoiceOutstanding;
+
+            } else {
+                unbilledTotal = estimateTotal;
+            }
 
             unbilled = new UnbilledInvoice();
 
@@ -533,73 +653,19 @@ public class PaymentServiceImpl implements PaymentService {
             );
 
             unbilled.setEstimate(estimate);
-            unbilled.setCompany(estimate.getCompany());
-
-            // =====================================================
-            // UNIT + GST REGISTRATION TYPE SNAPSHOT
-            // =====================================================
+            unbilled.setCompany(company);
             unbilled.setUnit(unit);
+            unbilled.setContact(
+                    estimate.getContact()
+            );
 
             unbilled.setGstRegistrationType(
                     paymentGstRegistrationType
             );
 
-            unbilled.setContact(estimate.getContact());
-            unbilled.setCreatedAt(LocalDateTime.now());
-            unbilled.setUpdatedAt(LocalDateTime.now());
-
-            BigDecimal estimateTotal =
-                    estimate.getGrandTotal() != null
-                            ? safe2(estimate.getGrandTotal())
-                            : BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
-            if (estimateTotal.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new ValidationException(
-                        "Estimate grand total must be greater than zero",
-                        "ERR_ESTIMATE_TOTAL_INVALID",
-                        "estimateId"
-                );
-            }
-
-            BigDecimal total;
-
-            if (existingAdvanceTaxInvoice != null) {
-
-                BigDecimal invoiceGrandTotal =
-                        safe2(existingAdvanceTaxInvoice.getGrandTotal());
-
-                BigDecimal invoiceOutstanding =
-                        safe2(existingAdvanceTaxInvoice.getOutstandingAmount());
-
-                /*
-                 * ATI must represent the full Estimate amount.
-                 * Do not silently create an Unbilled for a different amount.
-                 */
-                if (invoiceGrandTotal.compareTo(estimateTotal) != 0) {
-                    throw new ValidationException(
-                            "Existing Advance Tax Invoice amount does not match "
-                                    + "the Estimate amount. Estimate total: ₹"
-                                    + estimateTotal
-                                    + ", Invoice total: ₹"
-                                    + invoiceGrandTotal
-                                    + ". Please correct or regenerate Invoice "
-                                    + existingAdvanceTaxInvoice.getInvoiceNumber()
-                                    + " before registering payment.",
-                            "ERR_ADVANCE_INVOICE_ESTIMATE_TOTAL_MISMATCH",
-                            "estimateId"
-                    );
-                }
-
-                total = invoiceOutstanding;
-
-            } else {
-                total = estimateTotal;
-            }
-
-            unbilled.setTotalAmount(total);
+            unbilled.setTotalAmount(
+                    unbilledTotal
+            );
 
             unbilled.setReceivedAmount(
                     BigDecimal.ZERO.setScale(
@@ -615,13 +681,17 @@ public class PaymentServiceImpl implements PaymentService {
                     )
             );
 
-            unbilled.setOutstandingAmount(total);
+            unbilled.setOutstandingAmount(
+                    unbilledTotal
+            );
 
             unbilled.setStatus(
                     UnbilledStatus.PENDING_APPROVAL
             );
 
-            unbilled.setCreatedBy(salesperson);
+            unbilled.setCreatedBy(
+                    salesperson
+            );
 
             unbilled.setApprovedBy(null);
             unbilled.setApprovedAt(null);
@@ -641,20 +711,42 @@ public class PaymentServiceImpl implements PaymentService {
                     )
             );
 
+            unbilled.setCreatedAt(
+                    LocalDateTime.now()
+            );
+
+            unbilled.setUpdatedAt(
+                    LocalDateTime.now()
+            );
+
             unbilled =
-                    unbilledInvoiceRepository.save(unbilled);
+                    unbilledInvoiceRepository.save(
+                            unbilled
+                    );
 
             log.info(
-                    "Created new UnbilledInvoice {} for estimate {} | gstRegistrationType={}",
+                    "[UNBILLED-CREATED] traceId={} | unbilledId={} | "
+                            + "unbilledNumber={} | estimateId={} | "
+                            + "totalAmount={} | gstRegistrationType={}",
+                    traceId,
+                    unbilled.getId(),
                     unbilled.getUnbilledNumber(),
-                    estimate.getEstimateNumber(),
+                    estimate.getId(),
+                    unbilled.getTotalAmount(),
                     unbilled.getGstRegistrationType()
             );
         }
 
+        /*
+         * Effectively final references are required for lambdas.
+         */
+        final UnbilledInvoice resolvedUnbilled =
+                unbilled;
+
         // =====================================================
-        // 10. GOVERNMENT FEE DUPLICATE CHECK
+        // 17. GOVERNMENT FEE DUPLICATE VALIDATION
         // =====================================================
+
         if (Boolean.TRUE.equals(
                 request.getGovernmentFeeActive()
         )) {
@@ -667,11 +759,14 @@ public class PaymentServiceImpl implements PaymentService {
 
                 Optional<GovernmentFee> existingByUnbilled =
                         governmentFeeRepository
-                                .findByUnbilledInvoice(unbilled);
+                                .findByUnbilledInvoice(
+                                        resolvedUnbilled
+                                );
 
                 GovernmentFee existingGovernmentFee =
                         existingByUnbilled.orElse(
-                                existingByEstimate.orElse(null)
+                                existingByEstimate
+                                        .orElse(null)
                         );
 
                 if (existingGovernmentFee != null) {
@@ -681,7 +776,7 @@ public class PaymentServiceImpl implements PaymentService {
 
                         throw new ValidationException(
                                 "Government fee is already registered and pending approval "
-                                        + "for this estimate/unbilled invoice",
+                                        + "for this Estimate/Unbilled Invoice",
                                 "ERR_GOV_FEE_ALREADY_PENDING",
                                 "governmentFee"
                         );
@@ -691,49 +786,54 @@ public class PaymentServiceImpl implements PaymentService {
                             == GovernmentFeeStatus.APPROVED) {
 
                         throw new ValidationException(
-                                "Government fee is already approved for this "
-                                        + "estimate/unbilled invoice and cannot be added again",
+                                "Government fee is already approved and cannot be added again",
                                 "ERR_GOV_FEE_ALREADY_APPROVED",
                                 "governmentFee"
                         );
                     }
 
                     throw new ValidationException(
-                            "Government fee already exists for this "
-                                    + "estimate/unbilled invoice",
+                            "Government fee already exists for this Estimate/Unbilled Invoice",
                             "ERR_GOV_FEE_ALREADY_EXISTS",
                             "governmentFee"
                     );
                 }
 
-                unbilled.setGovernmentFeeActive(true);
+                resolvedUnbilled.setGovernmentFeeActive(
+                        true
+                );
             }
         }
 
         // =====================================================
-        // 11. PREVENT PAYMENT TYPE CHANGE AFTER FIRST PAYMENT
+        // 18. PREVENT PAYMENT-TYPE CHANGE
         // =====================================================
+
         paymentReceiptRepository
                 .findTopByUnbilledInvoiceAndIsCancelledFalseOrderByIdAsc(
-                        unbilled
+                        resolvedUnbilled
                 )
                 .ifPresent(firstReceipt -> {
 
                     String firstCode =
-                            firstReceipt.getPaymentType()
+                            firstReceipt.getPaymentType() != null
+                                    && firstReceipt
+                                    .getPaymentType()
+                                    .getCode() != null
+                                    ? firstReceipt
+                                    .getPaymentType()
                                     .getCode()
                                     .trim()
-                                    .toUpperCase();
+                                    .toUpperCase(Locale.ROOT)
+                                    : "";
 
-                    String newCode =
-                            paymentType.getCode()
-                                    .trim()
-                                    .toUpperCase();
-
-                    if (!firstCode.equals(newCode)) {
+                    if (!firstCode.equals(
+                            paymentTypeCode
+                    )) {
                         throw new ValidationException(
-                                "Payment type cannot be changed after first payment. "
-                                        + "First type: " + firstCode,
+                                "Payment type cannot be changed after the first payment. "
+                                        + "First payment type: "
+                                        + firstCode,
                                 "ERR_PAYMENT_TYPE_CHANGE_NOT_ALLOWED",
                                 "paymentTypeId"
                         );
@@ -741,118 +841,421 @@ public class PaymentServiceImpl implements PaymentService {
                 });
 
         // =====================================================
-        // 12. TDS CALCULATION
+        // 19. PREPARE CENTRAL CALCULATION INPUT
         // =====================================================
-        /*
-         * TDS is calculated on taxable value excluding GST.
-         *
-         * Settlement amount:
-         * Bank amount + TDS amount
-         */
-        BigDecimal tdsAmountForThisRegistration =
-                calculateTdsAmountIfRequired(
-                        request,
+
+        BigDecimal totalTaxableAmount =
+                calculateTdsTaxableAmount(
                         estimate,
-                        unbilled,
-                        paymentType
+                        resolvedUnbilled
                 );
 
-        // =====================================================
-        // 12.1 SETTLEMENT VALIDATION BEFORE PAYMENT RULES
-        // =====================================================
-        BigDecimal outstandingBeforeThisPayment =
-                safe2(unbilled.getOutstandingAmount());
-
-        BigDecimal settlementAmountForThisRegistration =
-                reqAmount
-                        .add(tdsAmountForThisRegistration)
+        BigDecimal totalGstAmount =
+                estimate.getTotalGstAmount() != null
+                        ? safe2(
+                        estimate.getTotalGstAmount()
+                )
+                        : safe2(estimate.getGrandTotal())
+                        .subtract(totalTaxableAmount)
+                        .max(BigDecimal.ZERO)
                         .setScale(
                                 2,
                                 RoundingMode.HALF_UP
                         );
 
         /*
-         * When an Advance Tax Invoice already exists, do not allow the
-         * newly registered settlement to exceed its current outstanding.
-         * The PaymentReceipt still remains linked to the UnbilledInvoice.
+         * For SEZ and INTERNATIONAL, GST must be zero.
          */
+        if (paymentGstRegistrationType
+                == GstRegistrationType.SEZ
+                || paymentGstRegistrationType
+                == GstRegistrationType.INTERNATIONAL) {
+
+            totalGstAmount =
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    );
+        }
+
+        BigDecimal totalInvoiceAmount =
+                safe2(
+                        resolvedUnbilled
+                                .getTotalAmount()
+                );
+
+        BigDecimal outstandingBeforePayment =
+                safe2(
+                        resolvedUnbilled.getOutstandingAmount()
+                )
+                        .subtract(
+                                safe2(
+                                        resolvedUnbilled.getCurrentReceivedAmount()
+                                )
+                        )
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+        BigDecimal alreadyUsedTds =
+                getTotalActiveTdsAmount(
+                        resolvedUnbilled
+                );
+
+        BigDecimal tdsPercentage =
+                request.getTds() != null
+                        ? request.getTds()
+                        .getTdsPercentage()
+                        : null;
+
+        // =====================================================
+        // 20. ISOLATED PAYMENT CALCULATION
+        // =====================================================
+
+        /*
+         * IMPORTANT FEATURE ISOLATION
+         * ---------------------------
+         *
+         * Existing Advance Tax Invoice workflow:
+         *     request.amount = actual Bank/Cash/Payment Gateway amount.
+         *     settlement     = bank amount + TDS amount.
+         *
+         * Normal Unbilled payment workflow:
+         *     request.amount = taxable/base amount entered by salesperson.
+         *     actual bank    = taxable + GST - TDS.
+         *     settlement     = taxable + GST.
+         *
+         * Do not run the new taxable-base engine for an existing
+         * Advance Tax Invoice. This keeps the older Advance Invoice
+         * behaviour unchanged.
+         */
+        boolean advanceInvoiceLegacyFlow =
+                existingAdvanceTaxInvoice != null;
+
+        BigDecimal taxableAmountForThisRegistration;
+        BigDecimal gstAmountForThisRegistration;
+        BigDecimal tdsAmountForThisRegistration;
+        BigDecimal actualBankAmountForThisRegistration;
+        BigDecimal settlementAmountForThisRegistration;
+
+        if (advanceInvoiceLegacyFlow) {
+
+            // =====================================================
+            // EXISTING ADVANCE TAX INVOICE — PRESERVE OLD BEHAVIOUR
+            // =====================================================
+
+            /*
+             * The old Advance Invoice flow treats request.amount as
+             * the actual amount received in Bank/Cash/Gateway.
+             */
+            actualBankAmountForThisRegistration =
+                    reqAmount;
+
+            tdsAmountForThisRegistration =
+                    safe2(
+                            calculateTdsAmountIfRequired(
+                                    request,
+                                    estimate,
+                                    resolvedUnbilled,
+                                    paymentType
+                            )
+                    );
+
+            settlementAmountForThisRegistration =
+                    actualBankAmountForThisRegistration
+                            .add(tdsAmountForThisRegistration)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            /*
+             * Preserve the original TDS taxable-value derivation for
+             * the Advance Invoice workflow.
+             */
+            if (Boolean.TRUE.equals(request.getTdsActive())
+                    && tdsPercentage != null
+                    && safe2(tdsPercentage).compareTo(BigDecimal.ZERO) > 0) {
+
+                taxableAmountForThisRegistration =
+                        tdsAmountForThisRegistration
+                                .multiply(BigDecimal.valueOf(100))
+                                .divide(
+                                        safe2(tdsPercentage),
+                                        2,
+                                        RoundingMode.HALF_UP
+                                );
+
+            } else if (totalInvoiceAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+                /*
+                 * Used only for response/logging when TDS is inactive.
+                 * It does not change Advance Invoice settlement logic.
+                 */
+                taxableAmountForThisRegistration =
+                        settlementAmountForThisRegistration
+                                .multiply(totalTaxableAmount)
+                                .divide(
+                                        totalInvoiceAmount,
+                                        2,
+                                        RoundingMode.HALF_UP
+                                );
+
+            } else {
+                taxableAmountForThisRegistration =
+                        BigDecimal.ZERO.setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+            }
+
+            gstAmountForThisRegistration =
+                    settlementAmountForThisRegistration
+                            .subtract(taxableAmountForThisRegistration)
+                            .max(BigDecimal.ZERO)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            /*
+             * Retain the old payment-type validation for Advance Invoice.
+             */
+            validatePaymentRules(
+                    paymentType,
+                    actualBankAmountForThisRegistration,
+                    resolvedUnbilled,
+                    request.getPaymentTermsDays(),
+                    tdsAmountForThisRegistration
+            );
+
+            log.info(
+                    "[ADVANCE-INVOICE-LEGACY-CALCULATION] traceId={} | "
+                            + "estimateId={} | invoiceId={} | invoiceNumber={} | "
+                            + "inputMeaning=ACTUAL_BANK_AMOUNT | paymentType={} | "
+                            + "bankAmount={} | taxableAmount={} | gstAmount={} | "
+                            + "tdsPercentage={} | tdsAmount={} | settlementAmount={} | "
+                            + "outstandingBefore={}",
+                    traceId,
+                    estimate.getId(),
+                    existingAdvanceTaxInvoice.getId(),
+                    existingAdvanceTaxInvoice.getInvoiceNumber(),
+                    paymentTypeCode,
+                    actualBankAmountForThisRegistration,
+                    taxableAmountForThisRegistration,
+                    gstAmountForThisRegistration,
+                    tdsPercentage,
+                    tdsAmountForThisRegistration,
+                    settlementAmountForThisRegistration,
+                    outstandingBeforePayment
+            );
+
+        } else {
+
+            // =====================================================
+            // NORMAL UNBILLED PAYMENT — NEW TAXABLE-BASE ENGINE
+            // =====================================================
+
+            PaymentCalculationEngine.PaymentCalculationResult calculationResult =
+                    paymentCalculationEngine.calculate(
+                            PaymentCalculationEngine
+                                    .PaymentCalculationRequest
+                                    .builder()
+                                    .traceId(traceId)
+
+                                    .estimateId(
+                                            estimate.getId()
+                                    )
+
+                                    .unbilledId(
+                                            resolvedUnbilled.getId()
+                                    )
+
+                                    /*
+                                     * This branch is strictly for normal
+                                     * Unbilled payment registration.
+                                     */
+                                    .invoiceId(null)
+
+                                    .gstRegistrationType(
+                                            paymentGstRegistrationType
+                                    )
+
+                                    .paymentTypeCode(
+                                            paymentTypeCode
+                                    )
+
+                                    /*
+                                     * For normal Unbilled payments,
+                                     * request.amount is the taxable/base value.
+                                     */
+                                    .bankAmount(
+                                            reqAmount
+                                    )
+
+                                    .tdsActive(
+                                            request.getTdsActive()
+                                    )
+
+                                    .tdsPercentage(
+                                            tdsPercentage
+                                    )
+
+                                    .totalTaxableAmount(
+                                            totalTaxableAmount
+                                    )
+
+                                    .totalGstAmount(
+                                            totalGstAmount
+                                    )
+
+                                    .totalInvoiceAmount(
+                                            totalInvoiceAmount
+                                    )
+
+                                    .outstandingAmount(
+                                            outstandingBeforePayment
+                                    )
+
+                                    .alreadyUsedTds(
+                                            alreadyUsedTds
+                                    )
+
+                                    .paymentTermsDays(
+                                            request.getPaymentTermsDays()
+                                    )
+
+                                    .installmentEligibleAmount(null)
+                                    .build()
+                    );
+
+            taxableAmountForThisRegistration =
+                    safe2(
+                            calculationResult
+                                    .getCurrentTaxableAmount()
+                    );
+
+            gstAmountForThisRegistration =
+                    safe2(
+                            calculationResult
+                                    .getCurrentGstAmount()
+                    );
+
+            tdsAmountForThisRegistration =
+                    safe2(
+                            calculationResult
+                                    .getTdsAmount()
+                    );
+
+            actualBankAmountForThisRegistration =
+                    safe2(
+                            calculationResult
+                                    .getActualBankAmount()
+                    );
+
+            settlementAmountForThisRegistration =
+                    safe2(
+                            calculationResult
+                                    .getSettlementAmount()
+                    );
+
+            log.info(
+                    "[PAYMENT-CALCULATION-ACCEPTED] traceId={} | scenario={} | "
+                            + "gstType={} | paymentType={} | "
+                            + "inputMeaning=TAXABLE_BASE_AMOUNT | "
+                            + "enteredTaxableAmount={} | actualBankAmount={} | "
+                            + "gstAmount={} | tdsPercentage={} | "
+                            + "tdsAmount={} | settlementAmount={} | "
+                            + "outstandingBefore={} | outstandingAfter={}",
+                    traceId,
+                    calculationResult.getScenario(),
+                    calculationResult.getGstRegistrationType(),
+                    calculationResult.getPaymentTypeCode(),
+                    taxableAmountForThisRegistration,
+                    actualBankAmountForThisRegistration,
+                    gstAmountForThisRegistration,
+                    calculationResult.getTdsPercentage(),
+                    tdsAmountForThisRegistration,
+                    settlementAmountForThisRegistration,
+                    calculationResult.getOutstandingBefore(),
+                    calculationResult.getOutstandingAfter()
+            );
+        }
+
+        // =====================================================
+        // 21. ADVANCE TAX INVOICE OUTSTANDING CHECK
+        // =====================================================
+
         if (existingAdvanceTaxInvoice != null) {
 
             BigDecimal advanceInvoiceOutstanding =
-                    safe2(existingAdvanceTaxInvoice.getOutstandingAmount());
+                    safe2(
+                            existingAdvanceTaxInvoice
+                                    .getOutstandingAmount()
+                    );
 
             if (settlementAmountForThisRegistration
                     .compareTo(advanceInvoiceOutstanding) > 0) {
 
                 throw new ValidationException(
-                        "Payment settlement exceeds the existing Advance Tax Invoice outstanding amount. "
-                                + "Bank amount: ₹" + reqAmount
-                                + ", TDS amount: ₹" + tdsAmountForThisRegistration
-                                + ", settlement amount: ₹" + settlementAmountForThisRegistration
-                                + ", Advance Tax Invoice outstanding: ₹" + advanceInvoiceOutstanding,
+                        "Payment settlement exceeds the existing Advance Tax Invoice "
+                                + "outstanding amount. Bank amount: ₹"
+                                + actualBankAmountForThisRegistration
+                                + ", TDS amount: ₹"
+                                + tdsAmountForThisRegistration
+                                + ", settlement amount: ₹"
+                                + settlementAmountForThisRegistration
+                                + ", Advance Tax Invoice outstanding: ₹"
+                                + advanceInvoiceOutstanding,
                         "ERR_PAYMENT_EXCEEDS_ADVANCE_INVOICE_OUTSTANDING",
                         "amount"
                 );
             }
         }
 
-        if (settlementAmountForThisRegistration
-                .compareTo(outstandingBeforeThisPayment) > 0) {
+        // =====================================================
+        // 22. FINAL TOTAL-SAFETY VALIDATION
+        // =====================================================
 
-            throw new ValidationException(
-                    "Payment settlement exceeds outstanding amount. "
-                            + "Bank amount: ₹" + reqAmount
-                            + ", TDS amount: ₹"
-                            + tdsAmountForThisRegistration
-                            + ", settlement amount: ₹"
-                            + settlementAmountForThisRegistration
-                            + ", outstanding amount: ₹"
-                            + outstandingBeforeThisPayment
-                            + ". Please reduce bank amount or do not apply TDS.",
-                    "ERR_SETTLEMENT_EXCEEDS_OUTSTANDING",
-                    "amount"
-            );
-        }
-
-        // =====================================================
-        // 13. VALIDATE PAYMENT RULES
-        // =====================================================
-        validatePaymentRules(
-                paymentType,
-                reqAmount,
-                unbilled,
-                request.getPaymentTermsDays(),
-                tdsAmountForThisRegistration
-        );
-
-        // =====================================================
-        // 15. PREVENT PAYMENT FROM EXCEEDING TOTAL AMOUNT
-        // =====================================================
         BigDecimal approvedAmount =
-                safe2(unbilled.getReceivedAmount());
+                safe2(
+                        resolvedUnbilled
+                                .getReceivedAmount()
+                );
 
         BigDecimal pendingAmount =
-                safe2(unbilled.getCurrentReceivedAmount());
+                safe2(
+                        resolvedUnbilled
+                                .getCurrentReceivedAmount()
+                );
 
         BigDecimal totalAmount =
-                safe2(unbilled.getTotalAmount());
+                safe2(
+                        resolvedUnbilled
+                                .getTotalAmount()
+                );
 
-        BigDecimal totalAfterThisRegistration =
+        BigDecimal totalAfterRegistration =
                 approvedAmount
                         .add(pendingAmount)
-                        .add(settlementAmountForThisRegistration)
+                        .add(
+                                settlementAmountForThisRegistration
+                        )
                         .setScale(
                                 2,
                                 RoundingMode.HALF_UP
                         );
 
-        if (totalAfterThisRegistration
+        if (totalAfterRegistration
                 .compareTo(totalAmount) > 0) {
 
             BigDecimal remainingAllowed =
                     totalAmount
                             .subtract(
-                                    approvedAmount.add(pendingAmount)
+                                    approvedAmount
+                                            .add(pendingAmount)
                             )
                             .max(BigDecimal.ZERO)
                             .setScale(
@@ -861,7 +1264,7 @@ public class PaymentServiceImpl implements PaymentService {
                             );
 
             BigDecimal excessAmount =
-                    totalAfterThisRegistration
+                    totalAfterRegistration
                             .subtract(totalAmount)
                             .max(BigDecimal.ZERO)
                             .setScale(
@@ -870,61 +1273,89 @@ public class PaymentServiceImpl implements PaymentService {
                             );
 
             throw new ValidationException(
-                    String.format(
-                            "Payment exceeds allowed amount. "
-                                    + "Approved amount is ₹%s, "
-                                    + "pending approval amount is ₹%s, "
-                                    + "remaining payable amount is ₹%s, "
-                                    + "current settlement amount is ₹%s, "
-                                    + "and it exceeds by ₹%s.",
-                            approvedAmount,
-                            pendingAmount,
-                            remainingAllowed,
-                            settlementAmountForThisRegistration,
-                            excessAmount
-                    ),
+                    "Payment exceeds allowed amount. "
+                            + "Approved amount is ₹"
+                            + approvedAmount
+                            + ", pending amount is ₹"
+                            + pendingAmount
+                            + ", remaining allowed amount is ₹"
+                            + remainingAllowed
+                            + ", current settlement is ₹"
+                            + settlementAmountForThisRegistration
+                            + ", excess amount is ₹"
+                            + excessAmount,
                     "ERR_PAYMENT_EXCEEDS_TOTAL_AMOUNT",
                     "amount"
             );
         }
 
         // =====================================================
-        // 16. CREATE PAYMENT RECEIPT
+        // 23. CREATE PAYMENT RECEIPT
         // =====================================================
 
-        /*
-         * FIX:
-         *
-         * payment_receipt.payment_date is nullable=false.
-         *
-         * For a zero-value initial PURCHASE_ORDER there is no actual
-         * payment date. In that case, the current date is stored as the
-         * PO registration date.
-         *
-         * For every actual payment, the request payment date is used.
-         */
         LocalDate effectivePaymentDate =
                 request.getPaymentDate() != null
                         ? request.getPaymentDate()
                         : LocalDate.now();
 
-        PaymentReceipt receipt = new PaymentReceipt();
+        PaymentReceipt receipt =
+                new PaymentReceipt();
 
-        receipt.setUnbilledInvoice(unbilled);
-        receipt.setPaymentType(paymentType);
-        receipt.setAmount(reqAmount);
-        receipt.setPaymentDate(effectivePaymentDate);
-        receipt.setPaymentMode(request.getPaymentMode());
+        receipt.setUnbilledInvoice(
+                resolvedUnbilled
+        );
+
+        /*
+         * Existing Advance Tax Invoice is settled only after
+         * Accounts approval, so the pending receipt remains linked
+         * primarily to UnbilledInvoice.
+         */
+        receipt.setInvoice(null);
+
+        receipt.setPaymentType(
+                paymentType
+        );
+
+        /*
+         * PaymentReceipt.amount stores the actual amount deposited
+         * in Bank/Cash/Payment Gateway.
+         */
+        receipt.setAmount(
+                actualBankAmountForThisRegistration
+        );
+
+        receipt.setPaymentDate(
+                effectivePaymentDate
+        );
+
+        receipt.setPaymentMode(
+                request.getPaymentMode()
+        );
+
         receipt.setTransactionReference(
                 request.getTransactionReference()
         );
-        receipt.setRemarks(request.getRemarks());
-        receipt.setReceivedBy(salesperson);
-        receipt.setPaymentProof(request.getPaymentProof());
+
+        receipt.setRemarks(
+                request.getRemarks()
+        );
+
+        receipt.setReceivedBy(
+                salesperson
+        );
+
+        receipt.setPaymentProof(
+                request.getPaymentProof()
+        );
+
         receipt.setPaymentTermsDays(
                 request.getPaymentTermsDays()
         );
-        receipt.setPoNumber(request.getPoNumber());
+
+        receipt.setPoNumber(
+                request.getPoNumber()
+        );
+
         receipt.setPoAttachmentUrl(
                 request.getPoAttachmentUrl()
         );
@@ -944,10 +1375,10 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        // Bank ledger is saved for future voucher posting.
-        receipt.setBankLedger(bankLedger);
+        receipt.setBankLedger(
+                bankLedger
+        );
 
-        // EPR fields only for product-related estimates.
         receipt.setEprFinancialYear(
                 request.getEprFinancialYear()
         );
@@ -960,29 +1391,51 @@ public class PaymentServiceImpl implements PaymentService {
                 request.getEprCertificateOrInvoiceNumber()
         );
 
-        receipt.setStatus(PaymentStatus.PENDING);
+        receipt.setStatus(
+                PaymentStatus.PENDING
+        );
 
-        receipt = paymentReceiptRepository.save(receipt);
+        receipt =
+                paymentReceiptRepository.save(
+                        receipt
+                );
 
+        log.info(
+                "[PAYMENT-RECEIPT-CREATED] traceId={} | receiptId={} | "
+                        + "unbilledId={} | bankAmount={} | paymentDate={} | status={}",
+                traceId,
+                receipt.getId(),
+                resolvedUnbilled.getId(),
+                receipt.getAmount(),
+                receipt.getPaymentDate(),
+                receipt.getStatus()
+        );
+
+        // =====================================================
+        // 24. CREATE TDS REGISTRATION
+        // =====================================================
+
+        /*
+         * This calls your currently existing method signature.
+         *
+         * TDSRegistration.taxableAmount is derived inside that method.
+         * For maximum accuracy, you can later add
+         * taxableAmountForThisRegistration as another method argument.
+         */
         createTdsIfRequired(
                 request,
                 estimate,
-                unbilled,
+                resolvedUnbilled,
                 receipt,
                 salesperson,
+                taxableAmountForThisRegistration,
                 tdsAmountForThisRegistration
         );
 
-        log.info(
-                "Created PaymentReceipt {} | amount: {} | paymentDate: {}",
-                receipt.getId(),
-                request.getAmount(),
-                receipt.getPaymentDate()
-        );
+        // =====================================================
+        // 25. CREATE LEGAL VERIFICATION FOR PO
+        // =====================================================
 
-        // =====================================================
-        // 17. CREATE LEGAL VERIFICATION FOR PURCHASE ORDER
-        // =====================================================
         paymentLegalVerificationService
                 .createIfPurchaseOrder(
                         receipt,
@@ -990,102 +1443,191 @@ public class PaymentServiceImpl implements PaymentService {
                 );
 
         // =====================================================
-        // 18. CREATE GOVERNMENT FEE
+        // 26. CREATE GOVERNMENT FEE
         // =====================================================
+
         createGovernmentFeeIfRequired(
                 request,
                 estimate,
-                unbilled,
+                resolvedUnbilled,
                 salesperson
         );
 
         // =====================================================
-        // 19. UPDATE UNBILLED INVOICE TOTALS
+        // 27. UPDATE UNBILLED PENDING TOTAL
         // =====================================================
-        unbilled.applyPayment(
+
+        resolvedUnbilled.applyPayment(
                 settlementAmountForThisRegistration
         );
 
-        unbilled.setStatus(
+        resolvedUnbilled.setStatus(
                 UnbilledStatus.PENDING_APPROVAL
         );
 
-        unbilledInvoiceRepository.save(unbilled);
+        resolvedUnbilled.setUpdatedAt(
+                LocalDateTime.now()
+        );
+
+        unbilledInvoiceRepository.save(
+                resolvedUnbilled
+        );
 
         log.info(
-                "Updated unbilled {} | received: {}, outstanding: {}, status: {}",
-                unbilled.getUnbilledNumber(),
-                unbilled.getReceivedAmount(),
-                unbilled.getOutstandingAmount(),
-                unbilled.getStatus()
+                "[UNBILLED-PAYMENT-APPLIED] traceId={} | unbilledId={} | "
+                        + "unbilledNumber={} | approvedAmount={} | "
+                        + "pendingAmount={} | outstandingAmount={} | status={}",
+                traceId,
+                resolvedUnbilled.getId(),
+                resolvedUnbilled.getUnbilledNumber(),
+                safe2(resolvedUnbilled.getReceivedAmount()),
+                safe2(resolvedUnbilled.getCurrentReceivedAmount()),
+                safe2(resolvedUnbilled.getOutstandingAmount()),
+                resolvedUnbilled.getStatus()
         );
 
         // =====================================================
-        // 20. UPDATE ESTIMATE STATUS
+        // 28. UPDATE ESTIMATE STATUS
         // =====================================================
-        estimate.setStatus(EstimateStatus.INITIATED);
-        estimateRepository.save(estimate);
+
+        estimate.setStatus(
+                EstimateStatus.INITIATED
+        );
+
+        estimateRepository.save(
+                estimate
+        );
 
         // =====================================================
-        // 21. PREPARE RESPONSE MESSAGE
+        // 29. PREPARE RESPONSE MESSAGE
         // =====================================================
-        String message =
-                isFirstPayment
-                        ? "First payment registered. Unbilled created – "
-                        + "awaiting Accounts approval"
-                        : String.format(
-                        "Additional payment of ₹%s registered. "
-                                + "Total received: ₹%s / ₹%s. "
-                                + "Awaiting approval.",
-                        reqAmount,
-                        unbilled.getReceivedAmount(),
-                        unbilled.getTotalAmount()
-                );
+
+        String message;
+
+        if (isZeroAmountPurchaseOrder) {
+
+            message =
+                    "Initial Purchase Order registered successfully. "
+                            + "No payment or TDS has been recorded. "
+                            + "Awaiting Accounts and Legal approval.";
+
+        } else if (isFirstPayment) {
+
+            message =
+                    "First payment registered successfully. "
+                            + "Taxable amount: ₹"
+                            + taxableAmountForThisRegistration
+                            + ", GST amount: ₹"
+                            + gstAmountForThisRegistration
+                            + ", actual bank amount: ₹"
+                            + actualBankAmountForThisRegistration
+                            + ". Unbilled Invoice created and awaiting Accounts approval.";
+
+        } else {
+
+            message =
+                    "Additional payment registered successfully. "
+                            + "Taxable amount: ₹"
+                            + taxableAmountForThisRegistration
+                            + ", GST amount: ₹"
+                            + gstAmountForThisRegistration
+                            + ", actual bank amount: ₹"
+                            + actualBankAmountForThisRegistration
+                            + ", TDS amount: ₹"
+                            + tdsAmountForThisRegistration
+                            + ", settlement amount: ₹"
+                            + settlementAmountForThisRegistration
+                            + ". Total approved amount: ₹"
+                            + safe2(resolvedUnbilled.getReceivedAmount())
+                            + ", pending approval amount: ₹"
+                            + safe2(resolvedUnbilled.getCurrentReceivedAmount())
+                            + ", total amount: ₹"
+                            + safe2(resolvedUnbilled.getTotalAmount())
+                            + ".";
+        }
 
         if (Boolean.TRUE.equals(
                 request.getGovernmentFeeActive()
         )) {
             message +=
-                    " Government fee registered in full "
-                            + "and awaiting Accounts approval.";
+                    " Government fee has been registered in full "
+                            + "and is awaiting Accounts approval.";
         }
 
         if (isPurchaseOrder) {
             message +=
-                    " PO document sent to Legal department "
-                            + "for verification.";
+                    " Purchase Order documents have been sent "
+                            + "for Legal verification.";
+        }
+
+        if (existingAdvanceTaxInvoice != null) {
+            message +=
+                    " After Accounts approval, this payment will settle "
+                            + "Advance Tax Invoice "
+                            + existingAdvanceTaxInvoice
+                            .getInvoiceNumber()
+                            + ". No second Tax Invoice will be generated.";
         }
 
         // =====================================================
-        // 22. BUILD AND RETURN RESPONSE
+        // 30. BUILD RESPONSE
         // =====================================================
+
         PaymentRegistrationResponseDto response =
                 new PaymentRegistrationResponseDto();
 
-        response.setPaymentReceiptId(receipt.getId());
-        response.setUnbilledNumber(
-                unbilled.getUnbilledNumber()
+        response.setPaymentReceiptId(
+                receipt.getId()
         );
-        response.setUnbilledStatus(unbilled.getStatus());
-        response.setMessage(message);
+
+        response.setUnbilledNumber(
+                resolvedUnbilled
+                        .getUnbilledNumber()
+        );
+
+        response.setUnbilledStatus(
+                resolvedUnbilled
+                        .getStatus()
+        );
+
+        response.setMessage(
+                message
+        );
+
+        // =====================================================
+        // 31. SEND NOTIFICATION
+        // =====================================================
 
         pushPaymentRegisteredNotificationToAccountUsers(
-                unbilled,
+                resolvedUnbilled,
                 receipt,
                 estimate,
                 salesperson
         );
 
         log.info(
-                "Payment registration completed | estimateId={} | "
-                        + "unbilledId={} | receiptId={} | firstPayment={} | "
-                        + "settlementAmount={} | status={}",
+                "[PAYMENT-REGISTRATION-SUCCESS] traceId={} | estimateId={} | "
+                        + "unbilledId={} | unbilledNumber={} | receiptId={} | "
+                        + "firstPayment={} | paymentType={} | gstType={} | "
+                        + "enteredTaxableAmount={} | actualBankAmount={} | "
+                        + "gstAmount={} | tdsAmount={} | settlementAmount={} | "
+                        + "pendingAmountAfter={} | outstandingAfter={} | status={}",
+                traceId,
                 estimate.getId(),
-                unbilled.getId(),
+                resolvedUnbilled.getId(),
+                resolvedUnbilled.getUnbilledNumber(),
                 receipt.getId(),
                 isFirstPayment,
+                paymentTypeCode,
+                paymentGstRegistrationType,
+                taxableAmountForThisRegistration,
+                actualBankAmountForThisRegistration,
+                gstAmountForThisRegistration,
+                tdsAmountForThisRegistration,
                 settlementAmountForThisRegistration,
-                unbilled.getStatus()
+                safe2(resolvedUnbilled.getCurrentReceivedAmount()),
+                safe2(resolvedUnbilled.getOutstandingAmount()),
+                resolvedUnbilled.getStatus()
         );
 
         return response;
@@ -2785,7 +3327,8 @@ public class PaymentServiceImpl implements PaymentService {
             UnbilledInvoice unbilled,
             PaymentReceipt receipt,
             User salesperson,
-            BigDecimal tdsAmount
+            BigDecimal calculatedTaxableAmount,
+            BigDecimal calculatedTdsAmount
     ) {
         // =====================================================
         // 1. BASIC VALIDATION
@@ -2938,7 +3481,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal safeTdsAmount =
-                safe2(tdsAmount);
+                safe2(calculatedTdsAmount);
 
         if (safeTdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2968,23 +3511,14 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
 
         /*
-         * Derive the taxable value represented by the TDS amount.
-         *
-         * Example:
-         *
-         * TDS amount = ₹500
-         * TDS rate   = 2%
-         *
-         * Taxable amount = 500 × 100 / 2
-         *                = ₹25,000
+         * Use the exact taxable amount produced by
+         * PaymentCalculationEngine. Do not reverse-calculate it
+         * from the rounded TDS amount.
          */
-        BigDecimal taxableAmount = safeTdsAmount
-                .multiply(BigDecimal.valueOf(100))
-                .divide(
-                        tdsPercentage,
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        BigDecimal taxableAmount =
+                safe2(calculatedTaxableAmount);
+
+
 
         if (taxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(

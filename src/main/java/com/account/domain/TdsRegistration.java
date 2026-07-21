@@ -28,7 +28,11 @@ import java.util.UUID;
                 @Index(name = "idx_tds_registration_company_id", columnList = "company_id"),
                 @Index(name = "idx_tds_registration_unbilled_id", columnList = "unbilled_invoice_id"),
                 @Index(name = "idx_tds_registration_invoice_id", columnList = "invoice_id"),
-                @Index(name = "idx_tds_registration_payment_receipt_id", columnList = "payment_receipt_id"),
+                @Index(
+                        name = "uk_tds_registration_payment_receipt_id",
+                        columnList = "payment_receipt_id",
+                        unique = true
+                ),
                 @Index(name = "idx_tds_registration_status", columnList = "status"),
                 @Index(name = "idx_tds_registration_deleted", columnList = "is_deleted")
         }
@@ -74,8 +78,13 @@ public class TdsRegistration {
     @JoinColumn(name = "invoice_id")
     private Invoice invoice;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "payment_receipt_id", nullable = false)
+
+    @OneToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(
+            name = "payment_receipt_id",
+            nullable = false,
+            unique = true
+    )
     private PaymentReceipt paymentReceipt;
 
     @Column(name = "tds_percentage", precision = 5, scale = 2, nullable = false)
