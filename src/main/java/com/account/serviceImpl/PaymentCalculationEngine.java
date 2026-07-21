@@ -58,10 +58,64 @@ public class PaymentCalculationEngine {
 
         String traceId = resolveTraceId(request.getTraceId());
 
+        log.info(
+                "[PAYMENT-CALC-RAW-REQUEST] traceId={} | "
+                        + "estimateId={} | unbilledId={} | invoiceId={} | "
+                        + "incomingGstRegistrationType={} | "
+                        + "incomingPaymentTypeCode={} | incomingBankAmount={} | "
+                        + "incomingTdsActive={} | incomingTdsPercentage={} | "
+                        + "incomingTotalTaxableAmount={} | incomingTotalGstAmount={} | "
+                        + "incomingTotalInvoiceAmount={} | incomingOutstandingAmount={} | "
+                        + "incomingAlreadyUsedTds={} | incomingPaymentTermsDays={} | "
+                        + "incomingInstallmentEligibleAmount={}",
+                traceId,
+                request.getEstimateId(),
+                request.getUnbilledId(),
+                request.getInvoiceId(),
+                request.getGstRegistrationType(),
+                request.getPaymentTypeCode(),
+                request.getBankAmount(),
+                request.getTdsActive(),
+                request.getTdsPercentage(),
+                request.getTotalTaxableAmount(),
+                request.getTotalGstAmount(),
+                request.getTotalInvoiceAmount(),
+                request.getOutstandingAmount(),
+                request.getAlreadyUsedTds(),
+                request.getPaymentTermsDays(),
+                request.getInstallmentEligibleAmount()
+        );
+
         GstRegistrationType gstRegistrationType =
                 request.getGstRegistrationType() != null
                         ? request.getGstRegistrationType()
                         : GstRegistrationType.REGISTERED;
+
+        if (request.getGstRegistrationType() == null) {
+            log.warn(
+                    "[PAYMENT-GST-TYPE-RESOLVED] traceId={} | "
+                            + "estimateId={} | unbilledId={} | invoiceId={} | "
+                            + "source=DEFAULT | incomingGstType=null | resolvedGstType={} | "
+                            + "defaultReason=request GST registration type was null",
+                    traceId,
+                    request.getEstimateId(),
+                    request.getUnbilledId(),
+                    request.getInvoiceId(),
+                    gstRegistrationType
+            );
+        } else {
+            log.info(
+                    "[PAYMENT-GST-TYPE-RESOLVED] traceId={} | "
+                            + "estimateId={} | unbilledId={} | invoiceId={} | "
+                            + "source=REQUEST | incomingGstType={} | resolvedGstType={}",
+                    traceId,
+                    request.getEstimateId(),
+                    request.getUnbilledId(),
+                    request.getInvoiceId(),
+                    request.getGstRegistrationType(),
+                    gstRegistrationType
+            );
+        }
 
         String paymentTypeCode =
                 normalizePaymentType(request.getPaymentTypeCode());
@@ -92,6 +146,25 @@ public class PaymentCalculationEngine {
 
         boolean tdsActive =
                 Boolean.TRUE.equals(request.getTdsActive());
+
+        log.info(
+                "[PAYMENT-CALC-NORMALIZED-VALUES] traceId={} | "
+                        + "gstType={} | paymentType={} | bankAmount={} | "
+                        + "totalTaxableAmount={} | totalGstAmount={} | "
+                        + "totalInvoiceAmount={} | outstandingAmount={} | "
+                        + "alreadyUsedTds={} | tdsActive={} | tdsPercentage={}",
+                traceId,
+                gstRegistrationType,
+                paymentTypeCode,
+                bankAmount,
+                totalTaxableAmount,
+                totalGstAmount,
+                totalInvoiceAmount,
+                outstandingAmount,
+                alreadyUsedTds,
+                tdsActive,
+                tdsPercentage
+        );
 
         String scenario =
                 buildScenario(
@@ -205,6 +278,15 @@ public class PaymentCalculationEngine {
 
         if (!tdsActive) {
 
+            log.info(
+                    "[PAYMENT-CALC-BRANCH] traceId={} | scenario={} | "
+                            + "selectedBranch=WITHOUT_TDS | gstType={} | paymentType={}",
+                    traceId,
+                    scenario,
+                    gstRegistrationType,
+                    paymentTypeCode
+            );
+
             values = calculateWithoutTds(
                     traceId,
                     scenario,
@@ -215,6 +297,17 @@ public class PaymentCalculationEngine {
             );
 
         } else {
+
+            log.info(
+                    "[PAYMENT-CALC-BRANCH] traceId={} | scenario={} | "
+                            + "selectedBranch=WITH_TDS | gstType={} | paymentType={} | "
+                            + "tdsPercentage={}",
+                    traceId,
+                    scenario,
+                    gstRegistrationType,
+                    paymentTypeCode,
+                    tdsPercentage
+            );
 
             validateTdsPercentage(
                     traceId,
@@ -1231,10 +1324,25 @@ public class PaymentCalculationEngine {
     ) {
 
         if (isZeroRated(gstRegistrationType)) {
-            return BigDecimal.ZERO.setScale(
-                    8,
-                    RoundingMode.HALF_UP
+
+            BigDecimal effectiveGstPercentage =
+                    BigDecimal.ZERO.setScale(
+                            8,
+                            RoundingMode.HALF_UP
+                    );
+
+            log.info(
+                    "[PAYMENT-EFFECTIVE-GST-CALCULATION] traceId={} | "
+                            + "gstType={} | zeroRated=true | totalTaxable={} | "
+                            + "totalGst={} | effectiveGstPercentage={}",
+                    traceId,
+                    gstRegistrationType,
+                    totalTaxableAmount,
+                    totalGstAmount,
+                    effectiveGstPercentage
             );
+
+            return effectiveGstPercentage;
         }
 
         if (totalTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -1247,13 +1355,27 @@ public class PaymentCalculationEngine {
             );
         }
 
-        return totalGstAmount
-                .multiply(HUNDRED)
-                .divide(
-                        totalTaxableAmount,
-                        8,
-                        RoundingMode.HALF_UP
-                );
+        BigDecimal effectiveGstPercentage =
+                totalGstAmount
+                        .multiply(HUNDRED)
+                        .divide(
+                                totalTaxableAmount,
+                                8,
+                                RoundingMode.HALF_UP
+                        );
+
+        log.info(
+                "[PAYMENT-EFFECTIVE-GST-CALCULATION] traceId={} | "
+                        + "gstType={} | zeroRated=false | formula=(totalGst * 100) / totalTaxable | "
+                        + "totalTaxable={} | totalGst={} | effectiveGstPercentage={}",
+                traceId,
+                gstRegistrationType,
+                totalTaxableAmount,
+                totalGstAmount,
+                effectiveGstPercentage
+        );
+
+        return effectiveGstPercentage;
     }
 
     private BigDecimal resolveTotalGstAmount(
@@ -1262,16 +1384,51 @@ public class PaymentCalculationEngine {
     ) {
 
         if (request.getTotalGstAmount() != null) {
-            return money(request.getTotalGstAmount());
+
+            BigDecimal resolvedGstAmount =
+                    money(request.getTotalGstAmount());
+
+            log.info(
+                    "[PAYMENT-GST-AMOUNT-RESOLVED] traceId={} | "
+                            + "estimateId={} | source=REQUEST_TOTAL_GST | "
+                            + "incomingTotalGst={} | totalTaxable={} | "
+                            + "totalInvoice={} | resolvedTotalGst={}",
+                    request.getTraceId(),
+                    request.getEstimateId(),
+                    request.getTotalGstAmount(),
+                    totalTaxableAmount,
+                    money(request.getTotalInvoiceAmount()),
+                    resolvedGstAmount
+            );
+
+            return resolvedGstAmount;
         }
 
         BigDecimal invoiceAmount =
                 money(request.getTotalInvoiceAmount());
 
-        return invoiceAmount
-                .subtract(totalTaxableAmount)
-                .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal resolvedGstAmount =
+                invoiceAmount
+                        .subtract(totalTaxableAmount)
+                        .max(BigDecimal.ZERO)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        log.info(
+                "[PAYMENT-GST-AMOUNT-RESOLVED] traceId={} | "
+                        + "estimateId={} | source=INVOICE_MINUS_TAXABLE | "
+                        + "incomingTotalGst=null | totalTaxable={} | "
+                        + "totalInvoice={} | calculation={} - {} | "
+                        + "resolvedTotalGst={}",
+                request.getTraceId(),
+                request.getEstimateId(),
+                totalTaxableAmount,
+                invoiceAmount,
+                invoiceAmount,
+                totalTaxableAmount,
+                resolvedGstAmount
+        );
+
+        return resolvedGstAmount;
     }
 
     private void validateSupportedPaymentType(

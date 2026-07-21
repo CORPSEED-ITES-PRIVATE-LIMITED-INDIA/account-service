@@ -125,55 +125,5 @@ public class TdsRegistration {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @PrePersist
-    protected void onCreate() {
-        if (publicUuid == null || publicUuid.isBlank()) {
-            publicUuid = UUID.randomUUID().toString();
-        }
-        if (status == null) {
-            status = TdsStatus.PENDING;
-        }
-        normalizeMoneyFields();
-        validateSourceMapping();
-    }
-
-    @PreUpdate
-    protected void onUpdate() {
-        normalizeMoneyFields();
-        validateSourceMapping();
-    }
-
-    private void normalizeMoneyFields() {
-        tdsPercentage = safeMoney(tdsPercentage);
-        taxableAmount = safeMoney(taxableAmount);
-        tdsAmount = safeMoney(tdsAmount);
-    }
-
-    private void validateSourceMapping() {
-        boolean hasUnbilled = unbilledInvoice != null;
-        boolean hasInvoice = invoice != null;
-
-        if (hasUnbilled == hasInvoice) {
-            throw new IllegalStateException(
-                    "TdsRegistration must reference exactly one source: "
-                            + "either UnbilledInvoice or Advance Tax Invoice"
-            );
-        }
-    }
-
-    private static BigDecimal safeMoney(BigDecimal value) {
-        return value == null
-                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-                : value.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    public boolean isAdvanceInvoiceTds() {
-        return invoice != null && unbilledInvoice == null;
-    }
-
-    public boolean isUnbilledTds() {
-        return unbilledInvoice != null && invoice == null;
-    }
-
 
 }
