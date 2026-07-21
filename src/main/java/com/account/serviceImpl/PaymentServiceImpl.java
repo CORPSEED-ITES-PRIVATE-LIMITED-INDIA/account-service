@@ -79,6 +79,8 @@ public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentCalculationEngine paymentCalculationEngine;
 
+    private final RegisteredPaymentCalculator registeredPaymentCalculator;
+
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
             UnbilledInvoiceRepository unbilledInvoiceRepository,
@@ -96,7 +98,8 @@ public class PaymentServiceImpl implements PaymentService {
             AccountingVoucherService accountingVoucherService,
             LedgerGroupRepository ledgerGroupRepository,
             PaymentLegalVerificationService paymentLegalVerificationService,
-            PaymentCalculationEngine paymentCalculationEngine
+            PaymentCalculationEngine paymentCalculationEngine,
+            RegisteredPaymentCalculator registeredPaymentCalculator
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -113,12 +116,10 @@ public class PaymentServiceImpl implements PaymentService {
         this.ledgerMasterRepository = ledgerMasterRepository;
         this.accountingVoucherService = accountingVoucherService;
         this.ledgerGroupRepository = ledgerGroupRepository;
-        this.paymentLegalVerificationService =
-                paymentLegalVerificationService;
-        this.paymentCalculationEngine =
-                paymentCalculationEngine;
+        this.paymentLegalVerificationService = paymentLegalVerificationService;
+        this.paymentCalculationEngine = paymentCalculationEngine;
+        this.registeredPaymentCalculator = registeredPaymentCalculator;
     }
-
 
 
 
@@ -537,6 +538,8 @@ public class PaymentServiceImpl implements PaymentService {
         // 14. ACTUAL PURCHASE ORDER PAYMENT VALIDATION
         // =====================================================
 
+        boolean purchaseOrderProjectCompleted = false;
+
         if (isPurchaseOrder
                 && !isZeroAmountPurchaseOrder) {
 
@@ -552,6 +555,8 @@ public class PaymentServiceImpl implements PaymentService {
             validatePurchaseOrderProjectCompleted(
                     unbilled
             );
+
+            purchaseOrderProjectCompleted = true;
         }
 
         // =====================================================
@@ -906,9 +911,33 @@ public class PaymentServiceImpl implements PaymentService {
 
         BigDecimal tdsPercentage =
                 request.getTds() != null
-                        ? request.getTds()
-                        .getTdsPercentage()
+                        ? request.getTds().getTdsPercentage()
                         : null;
+
+        BigDecimal installmentEligibleAmount =
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+        if ("INSTALLMENT".equals(paymentTypeCode)) {
+
+            /*
+             * TEMPORARY:
+             * Until an InstallmentSchedule table/DTO field is added,
+             * only outstanding validation will be applied.
+             *
+             * Later replace this with the eligible gross milestone amount:
+             *
+             * installmentEligibleAmount =
+             *         installmentSchedule.getOutstandingAmount();
+             */
+            installmentEligibleAmount =
+                    BigDecimal.ZERO.setScale(
+                            2,
+                            RoundingMode.HALF_UP
+                    );
+        }
 
         // =====================================================
         // 20. ISOLATED PAYMENT CALCULATION
@@ -1055,133 +1084,243 @@ public class PaymentServiceImpl implements PaymentService {
         } else {
 
             // =====================================================
-            // NORMAL UNBILLED PAYMENT — NEW TAXABLE-BASE ENGINE
+            // NORMAL UNBILLED PAYMENT
             // =====================================================
 
-            PaymentCalculationEngine.PaymentCalculationResult calculationResult =
-                    paymentCalculationEngine.calculate(
-                            PaymentCalculationEngine
-                                    .PaymentCalculationRequest
-                                    .builder()
-                                    .traceId(traceId)
+            if (paymentGstRegistrationType
+                    == GstRegistrationType.REGISTERED) {
 
-                                    .estimateId(
-                                            estimate.getId()
-                                    )
+                RegisteredPaymentCalculator.Result registeredResult =
+                        registeredPaymentCalculator.calculate(
+                                RegisteredPaymentCalculator.Input
+                                        .builder()
+                                        .estimateId(
+                                                estimate.getId()
+                                        )
+                                        .unbilledId(
+                                                resolvedUnbilled.getId()
+                                        )
+                                        .gstRegistrationType(
+                                                paymentGstRegistrationType
+                                        )
+                                        .paymentTypeCode(
+                                                paymentTypeCode
+                                        )
+                                        /*
+                                         * request.amount always means the actual amount
+                                         * credited to Bank/Cash/Payment Gateway.
+                                         */
+                                        .actualBankAmount(
+                                                reqAmount
+                                        )
+                                        .tdsActive(
+                                                Boolean.TRUE.equals(
+                                                        request.getTdsActive()
+                                                )
+                                        )
+                                        .tdsPercentage(
+                                                tdsPercentage
+                                        )
+                                        .totalTaxableAmount(
+                                                safe2(
+                                                        estimate.getSubTotalExGst()
+                                                )
+                                        )
+                                        .totalGstAmount(
+                                                safe2(
+                                                        estimate.getTotalGstAmount()
+                                                )
+                                        )
+                                        .totalInvoiceAmount(
+                                                totalInvoiceAmount
+                                        )
+                                        .outstandingAmount(
+                                                outstandingBeforePayment
+                                        )
+                                        .approvedAmount(
+                                                safe2(
+                                                        resolvedUnbilled
+                                                                .getReceivedAmount()
+                                                )
+                                        )
+                                        .alreadyUsedTds(
+                                                alreadyUsedTds
+                                        )
+                                        .installmentEligibleAmount(
+                                                installmentEligibleAmount
+                                        )
+                                        .paymentTermsDays(
+                                                request.getPaymentTermsDays()
+                                        )
+                                        .poNumber(
+                                                request.getPoNumber()
+                                        )
+                                        .poAttachmentUrl(
+                                                request.getPoAttachmentUrl()
+                                        )
+                                        .purchaseOrderProjectCompleted(
+                                                purchaseOrderProjectCompleted
+                                        )
+                                        .build()
+                        );
 
-                                    .unbilledId(
-                                            resolvedUnbilled.getId()
-                                    )
+                taxableAmountForThisRegistration =
+                        safe2(
+                                registeredResult
+                                        .getCurrentTaxableAmount()
+                        );
 
-                                    /*
-                                     * This branch is strictly for normal
-                                     * Unbilled payment registration.
-                                     */
-                                    .invoiceId(null)
+                gstAmountForThisRegistration =
+                        safe2(
+                                registeredResult
+                                        .getCurrentGstAmount()
+                        );
 
-                                    .gstRegistrationType(
-                                            paymentGstRegistrationType
-                                    )
+                tdsAmountForThisRegistration =
+                        safe2(
+                                registeredResult
+                                        .getTdsAmount()
+                        );
 
-                                    .paymentTypeCode(
-                                            paymentTypeCode
-                                    )
+                actualBankAmountForThisRegistration =
+                        safe2(
+                                registeredResult
+                                        .getActualBankAmount()
+                        );
 
-                                    /*
-                                     * For normal Unbilled payments,
-                                     * request.amount is the taxable/base value.
-                                     */
-                                    .bankAmount(
-                                            reqAmount
-                                    )
+                settlementAmountForThisRegistration =
+                        safe2(
+                                registeredResult
+                                        .getSettlementAmount()
+                        );
 
-                                    .tdsActive(
-                                            request.getTdsActive()
-                                    )
+                log.info(
+                        "[REGISTERED-PAYMENT-CALCULATION] traceId={} | "
+                                + "estimateId={} | unbilledId={} | "
+                                + "paymentType={} | actualBankAmount={} | "
+                                + "taxableAmount={} | gstAmount={} | "
+                                + "tdsPercentage={} | tdsAmount={} | "
+                                + "settlementAmount={} | outstandingBefore={} | "
+                                + "outstandingAfter={} | initialPO={} | finalSettlement={}",
+                        traceId,
+                        estimate.getId(),
+                        resolvedUnbilled.getId(),
+                        paymentTypeCode,
+                        actualBankAmountForThisRegistration,
+                        taxableAmountForThisRegistration,
+                        gstAmountForThisRegistration,
+                        registeredResult.getTdsPercentage(),
+                        tdsAmountForThisRegistration,
+                        settlementAmountForThisRegistration,
+                        registeredResult.getOutstandingBefore(),
+                        registeredResult.getOutstandingAfter(),
+                        registeredResult.isInitialPurchaseOrder(),
+                        registeredResult.isFinalSettlement()
+                );
 
-                                    .tdsPercentage(
-                                            tdsPercentage
-                                    )
+            } else {
 
-                                    .totalTaxableAmount(
-                                            totalTaxableAmount
-                                    )
+                PaymentCalculationEngine.PaymentCalculationResult calculationResult =
+                        paymentCalculationEngine.calculate(
+                                PaymentCalculationEngine
+                                        .PaymentCalculationRequest
+                                        .builder()
+                                        .traceId(traceId)
+                                        .estimateId(
+                                                estimate.getId()
+                                        )
+                                        .unbilledId(
+                                                resolvedUnbilled.getId()
+                                        )
+                                        .invoiceId(null)
+                                        .gstRegistrationType(
+                                                paymentGstRegistrationType
+                                        )
+                                        .paymentTypeCode(
+                                                paymentTypeCode
+                                        )
+                                        .bankAmount(
+                                                reqAmount
+                                        )
+                                        .tdsActive(
+                                                request.getTdsActive()
+                                        )
+                                        .tdsPercentage(
+                                                tdsPercentage
+                                        )
+                                        .totalTaxableAmount(
+                                                totalTaxableAmount
+                                        )
+                                        .totalGstAmount(
+                                                totalGstAmount
+                                        )
+                                        .totalInvoiceAmount(
+                                                totalInvoiceAmount
+                                        )
+                                        .outstandingAmount(
+                                                outstandingBeforePayment
+                                        )
+                                        .alreadyUsedTds(
+                                                alreadyUsedTds
+                                        )
+                                        .paymentTermsDays(
+                                                request.getPaymentTermsDays()
+                                        )
+                                        .installmentEligibleAmount(
+                                                installmentEligibleAmount
+                                        )
+                                        .build()
+                        );
 
-                                    .totalGstAmount(
-                                            totalGstAmount
-                                    )
+                taxableAmountForThisRegistration =
+                        safe2(
+                                calculationResult
+                                        .getCurrentTaxableAmount()
+                        );
 
-                                    .totalInvoiceAmount(
-                                            totalInvoiceAmount
-                                    )
+                gstAmountForThisRegistration =
+                        safe2(
+                                calculationResult
+                                        .getCurrentGstAmount()
+                        );
 
-                                    .outstandingAmount(
-                                            outstandingBeforePayment
-                                    )
+                tdsAmountForThisRegistration =
+                        safe2(
+                                calculationResult
+                                        .getTdsAmount()
+                        );
 
-                                    .alreadyUsedTds(
-                                            alreadyUsedTds
-                                    )
+                actualBankAmountForThisRegistration =
+                        safe2(
+                                calculationResult
+                                        .getActualBankAmount()
+                        );
 
-                                    .paymentTermsDays(
-                                            request.getPaymentTermsDays()
-                                    )
+                settlementAmountForThisRegistration =
+                        safe2(
+                                calculationResult
+                                        .getSettlementAmount()
+                        );
 
-                                    .installmentEligibleAmount(null)
-                                    .build()
-                    );
-
-            taxableAmountForThisRegistration =
-                    safe2(
-                            calculationResult
-                                    .getCurrentTaxableAmount()
-                    );
-
-            gstAmountForThisRegistration =
-                    safe2(
-                            calculationResult
-                                    .getCurrentGstAmount()
-                    );
-
-            tdsAmountForThisRegistration =
-                    safe2(
-                            calculationResult
-                                    .getTdsAmount()
-                    );
-
-            actualBankAmountForThisRegistration =
-                    safe2(
-                            calculationResult
-                                    .getActualBankAmount()
-                    );
-
-            settlementAmountForThisRegistration =
-                    safe2(
-                            calculationResult
-                                    .getSettlementAmount()
-                    );
-
-            log.info(
-                    "[PAYMENT-CALCULATION-ACCEPTED] traceId={} | scenario={} | "
-                            + "gstType={} | paymentType={} | "
-                            + "inputMeaning=TAXABLE_BASE_AMOUNT | "
-                            + "enteredTaxableAmount={} | actualBankAmount={} | "
-                            + "gstAmount={} | tdsPercentage={} | "
-                            + "tdsAmount={} | settlementAmount={} | "
-                            + "outstandingBefore={} | outstandingAfter={}",
-                    traceId,
-                    calculationResult.getScenario(),
-                    calculationResult.getGstRegistrationType(),
-                    calculationResult.getPaymentTypeCode(),
-                    taxableAmountForThisRegistration,
-                    actualBankAmountForThisRegistration,
-                    gstAmountForThisRegistration,
-                    calculationResult.getTdsPercentage(),
-                    tdsAmountForThisRegistration,
-                    settlementAmountForThisRegistration,
-                    calculationResult.getOutstandingBefore(),
-                    calculationResult.getOutstandingAfter()
-            );
+                log.info(
+                        "[OTHER-GST-PAYMENT-CALCULATION] traceId={} | "
+                                + "scenario={} | gstType={} | paymentType={} | "
+                                + "actualBankAmount={} | taxableAmount={} | "
+                                + "gstAmount={} | tdsAmount={} | settlementAmount={} | "
+                                + "outstandingBefore={} | outstandingAfter={}",
+                        traceId,
+                        calculationResult.getScenario(),
+                        calculationResult.getGstRegistrationType(),
+                        calculationResult.getPaymentTypeCode(),
+                        actualBankAmountForThisRegistration,
+                        taxableAmountForThisRegistration,
+                        gstAmountForThisRegistration,
+                        tdsAmountForThisRegistration,
+                        settlementAmountForThisRegistration,
+                        calculationResult.getOutstandingBefore(),
+                        calculationResult.getOutstandingAfter()
+                );
+            }
         }
 
         // =====================================================
@@ -1324,6 +1463,21 @@ public class PaymentServiceImpl implements PaymentService {
                 actualBankAmountForThisRegistration
         );
 
+        /*
+         * Normal Unbilled flow allocates the complete actual bank amount.
+         * TDS is tracked separately in TdsRegistration.
+         */
+        receipt.setAllocatedAmount(
+                actualBankAmountForThisRegistration
+        );
+
+        receipt.setUnallocatedAmount(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
         receipt.setPaymentDate(
                 effectivePaymentDate
         );
@@ -1456,6 +1610,16 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 27. UPDATE UNBILLED PENDING TOTAL
         // =====================================================
+
+        if (paymentGstRegistrationType
+                == GstRegistrationType.REGISTERED) {
+
+            resolvedUnbilled.setTdsActive(
+                    Boolean.TRUE.equals(
+                            request.getTdsActive()
+                    )
+            );
+        }
 
         resolvedUnbilled.applyPayment(
                 settlementAmountForThisRegistration

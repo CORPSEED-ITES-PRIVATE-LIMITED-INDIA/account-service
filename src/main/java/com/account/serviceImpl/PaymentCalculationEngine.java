@@ -1,4 +1,4 @@
-package com.account.serviceImpl;
+  package com.account.serviceImpl;
 
 import com.account.domain.company.GstRegistrationType;
 import com.account.exception.ValidationException;
@@ -43,6 +43,8 @@ public class PaymentCalculationEngine {
      * Settlement amount:
      *
      * Bank amount + TDS amount
+     *
+     * Example: Bank 900 + TDS 100 = Settlement 1,000
      */
     public PaymentCalculationResult calculate(
             PaymentCalculationRequest request
@@ -525,98 +527,44 @@ public class PaymentCalculationEngine {
             String traceId,
             String scenario,
             GstRegistrationType gstRegistrationType,
-            BigDecimal enteredTaxableAmount,
+            BigDecimal enteredBankAmount,
             BigDecimal totalTaxableAmount,
             BigDecimal totalInvoiceAmount
     ) {
 
-        BigDecimal currentTaxableAmount =
-                money(enteredTaxableAmount);
+        /*
+         * Business rule:
+         * request.bankAmount is always the actual amount received from the customer.
+         * When TDS is inactive, settlement equals the actual bank receipt.
+         */
+        BigDecimal actualBankAmount = money(enteredBankAmount);
 
-        if (currentTaxableAmount.compareTo(
-                BigDecimal.ZERO
-        ) <= 0) {
-
+        if (actualBankAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw validationFailure(
                     traceId,
-                    "CURRENT_TAXABLE_NOT_POSITIVE",
-                    "Entered taxable amount must be greater than zero",
-                    "ERR_TAXABLE_AMOUNT_NOT_POSITIVE",
+                    "BANK_AMOUNT_NOT_POSITIVE",
+                    "Actual received amount must be greater than zero",
+                    "ERR_AMOUNT_NOT_POSITIVE",
                     "amount"
             );
         }
 
-        BigDecimal totalGstAmount =
-                money(totalInvoiceAmount)
-                        .subtract(
-                                money(totalTaxableAmount)
-                        )
-                        .max(BigDecimal.ZERO)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+        BigDecimal settlementAmount = actualBankAmount;
 
-        BigDecimal effectiveGstPercentage =
-                BigDecimal.ZERO.setScale(
-                        8,
-                        RoundingMode.HALF_UP
-                );
-
-        if (!isZeroRated(gstRegistrationType)) {
-
-            effectiveGstPercentage =
-                    totalGstAmount
-                            .multiply(HUNDRED)
-                            .divide(
-                                    money(totalTaxableAmount),
-                                    8,
-                                    RoundingMode.HALF_UP
-                            );
-        }
-
-        BigDecimal currentGstAmount;
-
-        if (isZeroRated(gstRegistrationType)) {
-
-            currentGstAmount =
-                    ZERO;
-
-        } else {
-
-            currentGstAmount =
-                    currentTaxableAmount
-                            .multiply(effectiveGstPercentage)
-                            .divide(
-                                    HUNDRED,
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
-        }
-
-        BigDecimal settlementAmount =
-                currentTaxableAmount
-                        .add(currentGstAmount)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-        BigDecimal actualBankAmount =
-                settlementAmount;
+        /*
+         * These values are informational only in the no-TDS branch.
+         * The payment registration amount is not grossed up and GST is not added again.
+         */
+        BigDecimal currentTaxableAmount = settlementAmount;
+        BigDecimal currentGstAmount = ZERO;
 
         log.info(
                 "[PAYMENT-NO-TDS-CALCULATION] traceId={} | scenario={} | "
-                        + "inputMeaning=TAXABLE_BASE_AMOUNT | "
-                        + "enteredTaxableAmount={} | gstType={} | "
-                        + "effectiveGstPercentage={} | gstAmount={} | "
-                        + "tdsAmount=0.00 | actualBankAmount={} | settlement={}",
+                        + "inputMeaning=ACTUAL_BANK_AMOUNT | gstType={} | "
+                        + "actualBankAmount={} | tdsAmount=0.00 | settlementAmount={}",
                 traceId,
                 scenario,
-                currentTaxableAmount,
                 gstRegistrationType,
-                effectiveGstPercentage,
-                currentGstAmount,
                 actualBankAmount,
                 settlementAmount
         );
@@ -638,7 +586,7 @@ public class PaymentCalculationEngine {
             String scenario,
             String paymentTypeCode,
             GstRegistrationType gstRegistrationType,
-            BigDecimal enteredTaxableAmount,
+            BigDecimal enteredBankAmount,
             BigDecimal tdsPercentage,
             BigDecimal effectiveGstPercentage,
             BigDecimal totalTaxableAmount,
@@ -646,14 +594,11 @@ public class PaymentCalculationEngine {
             BigDecimal alreadyUsedTds
     ) {
 
-        BigDecimal currentTaxableAmount =
-                money(enteredTaxableAmount);
+        BigDecimal actualBankAmount =
+                money(enteredBankAmount);
 
         BigDecimal safeTdsPercentage =
                 rate(tdsPercentage);
-
-        BigDecimal safeGstPercentage =
-                rate(effectiveGstPercentage);
 
         BigDecimal safeTotalTaxableAmount =
                 money(totalTaxableAmount);
@@ -664,57 +609,15 @@ public class PaymentCalculationEngine {
         BigDecimal safeAlreadyUsedTds =
                 money(alreadyUsedTds);
 
-        log.info(
-                "[PAYMENT-TDS-INPUT] traceId={} | scenario={} | "
-                        + "inputMeaning=TAXABLE_BASE_AMOUNT | "
-                        + "enteredTaxableAmount={} | gstType={} | "
-                        + "gstPercentage={} | tdsPercentage={} | "
-                        + "totalTaxable={} | outstanding={} | alreadyUsedTds={}",
-                traceId,
-                scenario,
-                currentTaxableAmount,
-                gstRegistrationType,
-                safeGstPercentage,
-                safeTdsPercentage,
-                safeTotalTaxableAmount,
-                safeOutstandingAmount,
-                safeAlreadyUsedTds
-        );
-
-        // =====================================================
-        // 1. CURRENT TAXABLE AMOUNT VALIDATION
-        // =====================================================
-
-        if (currentTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (actualBankAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw validationFailure(
                     traceId,
-                    "CURRENT_TAXABLE_NOT_POSITIVE",
-                    "Entered taxable amount must be greater than zero",
-                    "ERR_TAXABLE_AMOUNT_NOT_POSITIVE",
+                    "BANK_AMOUNT_NOT_POSITIVE",
+                    "Actual received amount must be greater than zero",
+                    "ERR_AMOUNT_NOT_POSITIVE",
                     "amount"
             );
         }
-
-        if (currentTaxableAmount.compareTo(
-                safeTotalTaxableAmount
-        ) > 0) {
-
-            throw validationFailure(
-                    traceId,
-                    "CURRENT_TAXABLE_EXCEEDS_TOTAL",
-                    "Entered taxable amount cannot exceed total taxable amount. "
-                            + "Entered taxable amount: ₹"
-                            + currentTaxableAmount
-                            + ", total taxable amount: ₹"
-                            + safeTotalTaxableAmount,
-                    "ERR_CURRENT_TAXABLE_EXCEEDS_TOTAL",
-                    "amount"
-            );
-        }
-
-        // =====================================================
-        // 2. CALCULATE COMPLETE TDS LIMIT
-        // =====================================================
 
         BigDecimal totalAllowedTds =
                 safeTotalTaxableAmount
@@ -725,18 +628,11 @@ public class PaymentCalculationEngine {
                                 RoundingMode.HALF_UP
                         );
 
-        if (safeAlreadyUsedTds.compareTo(
-                totalAllowedTds
-        ) > 0) {
-
+        if (safeAlreadyUsedTds.compareTo(totalAllowedTds) > 0) {
             throw validationFailure(
                     traceId,
                     "USED_TDS_EXCEEDS_LIMIT",
-                    "Previously registered TDS exceeds total allowed TDS. "
-                            + "Total allowed TDS: ₹"
-                            + totalAllowedTds
-                            + ", already registered TDS: ₹"
-                            + safeAlreadyUsedTds,
+                    "Previously registered TDS exceeds total allowed TDS",
                     "ERR_USED_TDS_EXCEEDS_ALLOWED_LIMIT",
                     "tds"
             );
@@ -751,10 +647,7 @@ public class PaymentCalculationEngine {
                                 RoundingMode.HALF_UP
                         );
 
-        if (remainingTdsLimit.compareTo(
-                BigDecimal.ZERO
-        ) <= 0) {
-
+        if (remainingTdsLimit.compareTo(BigDecimal.ZERO) <= 0) {
             throw validationFailure(
                     traceId,
                     "TDS_LIMIT_EXHAUSTED",
@@ -764,48 +657,57 @@ public class PaymentCalculationEngine {
             );
         }
 
-        // =====================================================
-        // 3. CALCULATE CURRENT GST
-        // =====================================================
+        /*
+         * Business rule:
+         *
+         * Salesperson enters actual amount credited to Bank.
+         *
+         * Gross settlement = Bank / (1 - TDS rate)
+         *
+         * Example:
+         * Bank = 900
+         * TDS  = 10%
+         *
+         * Settlement = 900 / 0.90 = 1000
+         * TDS        = 1000 - 900 = 100
+         */
+        BigDecimal tdsRateFraction =
+                safeTdsPercentage.divide(
+                        HUNDRED,
+                        8,
+                        RoundingMode.HALF_UP
+                );
 
-        BigDecimal currentGstAmount;
+        BigDecimal netFactor =
+                BigDecimal.ONE.subtract(tdsRateFraction);
 
-        if (gstRegistrationType == GstRegistrationType.SEZ
-                || gstRegistrationType
-                == GstRegistrationType.INTERNATIONAL) {
-
-            currentGstAmount =
-                    ZERO;
-
-        } else {
-
-            currentGstAmount =
-                    currentTaxableAmount
-                            .multiply(safeGstPercentage)
-                            .divide(
-                                    HUNDRED,
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
+        if (netFactor.compareTo(BigDecimal.ZERO) <= 0) {
+            throw validationFailure(
+                    traceId,
+                    "INVALID_TDS_NET_FACTOR",
+                    "Unable to calculate TDS from received amount",
+                    "ERR_INVALID_TDS_CALCULATION",
+                    "tds.tdsPercentage"
+            );
         }
 
-        // =====================================================
-        // 4. CALCULATE CURRENT TDS
-        // =====================================================
-
-        BigDecimal currentTdsAmount =
-                currentTaxableAmount
-                        .multiply(safeTdsPercentage)
+        BigDecimal settlementAmount =
+                actualBankAmount
                         .divide(
-                                HUNDRED,
+                                netFactor,
                                 2,
                                 RoundingMode.HALF_UP
                         );
 
-        if (currentTdsAmount.compareTo(
-                BigDecimal.ZERO
-        ) <= 0) {
+        BigDecimal currentTdsAmount =
+                settlementAmount
+                        .subtract(actualBankAmount)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
 
+        if (currentTdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw validationFailure(
                     traceId,
                     "CURRENT_TDS_INVALID",
@@ -815,189 +717,87 @@ public class PaymentCalculationEngine {
             );
         }
 
-        if (currentTdsAmount.compareTo(
-                remainingTdsLimit
-        ) > 0) {
-
+        if (currentTdsAmount.compareTo(remainingTdsLimit) > 0) {
             throw validationFailure(
                     traceId,
                     "CURRENT_TDS_EXCEEDS_REMAINING_LIMIT",
-                    "Current TDS exceeds remaining TDS limit. "
-                            + "Current TDS: ₹"
-                            + currentTdsAmount
-                            + ", remaining TDS limit: ₹"
-                            + remainingTdsLimit,
+                    "Calculated TDS exceeds remaining TDS limit. "
+                            + "Calculated TDS: ₹" + currentTdsAmount
+                            + ", remaining TDS limit: ₹" + remainingTdsLimit,
                     "ERR_CURRENT_TDS_EXCEEDS_REMAINING_LIMIT",
                     "tds"
             );
         }
 
-        // =====================================================
-        // 5. CALCULATE GROSS SETTLEMENT
-        // =====================================================
-
-        /*
-         * Settlement is the Invoice value cleared by this payment.
-         *
-         * Settlement = Taxable + GST
-         */
-        BigDecimal settlementAmount =
-                currentTaxableAmount
-                        .add(currentGstAmount)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-        // =====================================================
-        // 6. CALCULATE ACTUAL BANK RECEIPT
-        // =====================================================
-
-        /*
-         * Customer deposits Invoice value minus TDS.
-         *
-         * Bank = Taxable + GST - TDS
-         */
-        BigDecimal actualBankAmount =
-                settlementAmount
-                        .subtract(currentTdsAmount)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-        if (actualBankAmount.compareTo(
-                BigDecimal.ZERO
-        ) <= 0) {
-
-            throw validationFailure(
-                    traceId,
-                    "ACTUAL_BANK_AMOUNT_INVALID",
-                    "Actual bank receipt must be greater than zero. "
-                            + "Taxable amount: ₹"
-                            + currentTaxableAmount
-                            + ", GST: ₹"
-                            + currentGstAmount
-                            + ", TDS: ₹"
-                            + currentTdsAmount,
-                    "ERR_ACTUAL_BANK_AMOUNT_INVALID",
-                    "amount"
-            );
-        }
-
-        // =====================================================
-        // 7. SETTLEMENT SAFETY
-        // =====================================================
-
-        if (settlementAmount.compareTo(
-                safeOutstandingAmount
-        ) > 0) {
-
+        if (settlementAmount.compareTo(safeOutstandingAmount) > 0) {
             throw validationFailure(
                     traceId,
                     "SETTLEMENT_EXCEEDS_OUTSTANDING",
-                    "Payment settlement exceeds outstanding amount. "
-                            + "Taxable amount: ₹"
-                            + currentTaxableAmount
-                            + ", GST amount: ₹"
-                            + currentGstAmount
-                            + ", TDS amount: ₹"
-                            + currentTdsAmount
-                            + ", actual bank receipt: ₹"
-                            + actualBankAmount
-                            + ", settlement amount: ₹"
-                            + settlementAmount
-                            + ", outstanding amount: ₹"
-                            + safeOutstandingAmount,
+                    "Bank amount plus TDS exceeds outstanding amount. "
+                            + "Bank amount: ₹" + actualBankAmount
+                            + ", TDS amount: ₹" + currentTdsAmount
+                            + ", settlement amount: ₹" + settlementAmount
+                            + ", outstanding amount: ₹" + safeOutstandingAmount,
                     "ERR_SETTLEMENT_EXCEEDS_OUTSTANDING",
                     "amount"
             );
         }
 
-        // =====================================================
-        // 8. FULL/PARTIAL VALIDATION
-        // =====================================================
-
         if ("FULL".equals(paymentTypeCode)
-                && settlementAmount.compareTo(
-                safeOutstandingAmount
-        ) != 0) {
+                && settlementAmount.compareTo(safeOutstandingAmount) != 0) {
 
             throw validationFailure(
                     traceId,
                     "FULL_SETTLEMENT_MISMATCH",
-                    "For FULL payment, taxable amount plus GST must equal "
-                            + "the complete outstanding amount. "
-                            + "Current settlement: ₹"
-                            + settlementAmount
-                            + ", outstanding amount: ₹"
-                            + safeOutstandingAmount,
+                    "For FULL payment, Bank amount plus TDS must equal outstanding amount. "
+                            + "Settlement: ₹" + settlementAmount
+                            + ", outstanding: ₹" + safeOutstandingAmount,
                     "ERR_FULL_AMOUNT_MISMATCH",
                     "amount"
             );
         }
 
         if ("PARTIAL".equals(paymentTypeCode)
-                && settlementAmount.compareTo(
-                safeOutstandingAmount
-        ) >= 0) {
+                && settlementAmount.compareTo(safeOutstandingAmount) >= 0) {
 
             throw validationFailure(
                     traceId,
                     "PARTIAL_SETTLEMENT_NOT_LESS",
-                    "For PARTIAL payment, taxable amount plus GST must be "
-                            + "less than outstanding amount. "
-                            + "Current settlement: ₹"
-                            + settlementAmount
-                            + ", outstanding amount: ₹"
-                            + safeOutstandingAmount,
+                    "PARTIAL payment settlement must be less than outstanding amount",
                     "ERR_PARTIAL_SETTLEMENT_MUST_BE_LESS_THAN_OUTSTANDING",
                     "amount"
             );
         }
 
-        BigDecimal remainingTaxableAmount =
-                safeTotalTaxableAmount
-                        .subtract(currentTaxableAmount)
-                        .max(BigDecimal.ZERO)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+        BigDecimal currentTaxableAmount =
+                settlementAmount;
+
+        BigDecimal currentGstAmount =
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                );
 
         BigDecimal maximumBankReceivable =
                 safeOutstandingAmount
-                        .subtract(remainingTdsLimit)
-                        .max(BigDecimal.ZERO)
+                        .multiply(netFactor)
                         .setScale(
                                 2,
                                 RoundingMode.HALF_UP
                         );
 
         log.info(
-                "[PAYMENT-TDS-CALCULATION] traceId={} | scenario={} | "
-                        + "gstType={} | paymentType={} | "
-                        + "enteredTaxableAmount={} | gstPercentage={} | "
-                        + "currentGstAmount={} | tdsPercentage={} | "
-                        + "currentTdsAmount={} | actualBankAmount={} | "
-                        + "settlementAmount={} | totalAllowedTds={} | "
-                        + "alreadyUsedTds={} | remainingTdsLimit={} | "
-                        + "remainingTaxableAmount={} | outstanding={}",
+                "[PAYMENT-TDS-CALCULATION] traceId={} | "
+                        + "inputMeaning=ACTUAL_BANK_RECEIVED | "
+                        + "paymentType={} | bankAmount={} | "
+                        + "tdsPercentage={} | tdsAmount={} | "
+                        + "settlementAmount={} | outstanding={}",
                 traceId,
-                scenario,
-                gstRegistrationType,
                 paymentTypeCode,
-                currentTaxableAmount,
-                safeGstPercentage,
-                currentGstAmount,
+                actualBankAmount,
                 safeTdsPercentage,
                 currentTdsAmount,
-                actualBankAmount,
                 settlementAmount,
-                totalAllowedTds,
-                safeAlreadyUsedTds,
-                remainingTdsLimit,
-                remainingTaxableAmount,
                 safeOutstandingAmount
         );
 
@@ -1012,6 +812,10 @@ public class PaymentCalculationEngine {
                 maximumBankReceivable
         );
     }
+
+
+
+
     private void validatePaymentTypeRules(
             String traceId,
             String paymentTypeCode,
@@ -1601,125 +1405,8 @@ public class PaymentCalculationEngine {
         private BigDecimal installmentEligibleAmount;
     }
 
-    private BigDecimal calculateRequiredFullBankAmount(
-            GstRegistrationType gstRegistrationType,
-            BigDecimal outstandingAmount,
-            BigDecimal tdsPercentage,
-            BigDecimal effectiveGstPercentage
-    ) {
 
-        BigDecimal safeOutstanding =
-                money(outstandingAmount);
 
-        BigDecimal safeTdsRate =
-                rate(tdsPercentage);
-
-        /*
-         * SEZ:
-         *
-         * Settlement = Entered amount + TDS
-         * TDS        = Entered amount × TDS%
-         *
-         * Therefore:
-         *
-         * Entered amount =
-         * Outstanding / (1 + TDS%)
-         *
-         * Example:
-         * Outstanding = 50,000
-         * TDS          = 10%
-         *
-         * Entered amount = 50,000 / 1.10
-         *                = 45,454.55
-         *
-         * TDS            = 4,545.45
-         * Settlement     = 50,000
-         */
-        if (gstRegistrationType == GstRegistrationType.SEZ) {
-
-            BigDecimal factor =
-                    BigDecimal.ONE.add(
-                            safeTdsRate.divide(
-                                    HUNDRED,
-                                    8,
-                                    RoundingMode.HALF_UP
-                            )
-                    );
-
-            return safeOutstanding
-                    .divide(
-                            factor,
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-        }
-
-        if (gstRegistrationType
-                == GstRegistrationType.INTERNATIONAL) {
-
-            return safeOutstanding;
-        }
-
-        /*
-         * REGISTERED / UNREGISTERED:
-         *
-         * Entered amount includes GST.
-         *
-         * Taxable = Entered / (1 + GST%)
-         * TDS     = Taxable × TDS%
-         *
-         * Settlement = Entered + TDS
-         */
-        BigDecimal gstFactor =
-                BigDecimal.ONE.add(
-                        rate(effectiveGstPercentage)
-                                .divide(
-                                        HUNDRED,
-                                        8,
-                                        RoundingMode.HALF_UP
-                                )
-                );
-
-        BigDecimal tdsOnEnteredFactor =
-                safeTdsRate
-                        .divide(
-                                HUNDRED,
-                                8,
-                                RoundingMode.HALF_UP
-                        )
-                        .divide(
-                                gstFactor,
-                                8,
-                                RoundingMode.HALF_UP
-                        );
-
-        BigDecimal settlementFactor =
-                BigDecimal.ONE.add(
-                        tdsOnEnteredFactor
-                );
-
-        return safeOutstanding
-                .divide(
-                        settlementFactor,
-                        2,
-                        RoundingMode.HALF_UP
-                );
-    }
-
-    private BigDecimal calculateMaximumBankReceivable(
-            GstRegistrationType gstRegistrationType,
-            BigDecimal outstandingAmount,
-            BigDecimal tdsPercentage,
-            BigDecimal effectiveGstPercentage
-    ) {
-
-        return calculateRequiredFullBankAmount(
-                gstRegistrationType,
-                outstandingAmount,
-                tdsPercentage,
-                effectiveGstPercentage
-        );
-    }
 
     @Getter
     @Builder
