@@ -70,6 +70,7 @@ public class EstimateServiceImpl implements EstimateService {
     private final OrganizationRepository organizationRepository;
     private final OperationFeignClient operationFeignClient;
     private final PaymentReceiptRepository paymentReceiptRepository;
+    private final TdsRegistrationRepository tdsRegistrationRepository;
 
     @Autowired
     private UnbilledInvoiceRepository unbilledRepository;
@@ -2276,6 +2277,11 @@ public class EstimateServiceImpl implements EstimateService {
                                 + estimateId,"UNBILLED_NOT_FOUND"
                 ));
 
+        Optional<TdsRegistration> tdsRegistration = tdsRegistrationRepository.findByEstimateAndIsDeletedFalse(estimate);
+        BigDecimal tdsPercentage = tdsRegistration
+                .map(TdsRegistration::getTdsPercentage)
+                .orElse(null);
+
         List<PaymentReceipt> paymentReceipts =
                 paymentReceiptRepository
                         .findByUnbilledInvoiceIdAndIsCancelledFalseOrderByPaymentDateDescIdDesc(
@@ -2304,6 +2310,7 @@ public class EstimateServiceImpl implements EstimateService {
                         unbilledInvoice.getCurrentReceivedAmount()
                 ))
                 .totalPaymentReceipts(paymentHistory.size())
+                .tdsPercentage(tdsPercentage)
                 .paymentHistory(paymentHistory)
                 .build();
     }

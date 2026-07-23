@@ -24,6 +24,8 @@ public interface TdsRegistrationRepository extends JpaRepository<TdsRegistration
 
     Optional<TdsRegistration> findByPaymentReceiptAndIsDeletedFalse(PaymentReceipt paymentReceipt);
 
+    Optional<TdsRegistration> findByEstimateAndIsDeletedFalse(Estimate estimate);
+
     List<TdsRegistration> findAllByEstimateAndIsDeletedFalse(Estimate estimate);
 
     List<TdsRegistration> findAllByInvoiceAndIsDeletedFalse(

@@ -33,6 +33,9 @@ public class EstimatePaymentResponseDto {
 
     private Integer totalPaymentReceipts;
 
+    private BigDecimal tdsPercentage;
+
+
     @Builder.Default
     private List<EstimatePaymentHistoryDto> paymentHistory =
             new ArrayList<>();
