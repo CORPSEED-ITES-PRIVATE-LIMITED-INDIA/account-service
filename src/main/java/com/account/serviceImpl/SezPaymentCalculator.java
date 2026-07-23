@@ -43,8 +43,6 @@ public class SezPaymentCalculator {
     private static final BigDecimal TEN =
             new BigDecimal("10.00");
 
-    private static final BigDecimal TOTAL_TOLERANCE =
-            new BigDecimal("0.02");
 
     private static final String FULL = "FULL";
     private static final String PARTIAL = "PARTIAL";
@@ -818,9 +816,11 @@ public class SezPaymentCalculator {
             BigDecimal totalGstAmount,
             BigDecimal totalInvoiceAmount
     ) {
+        totalTaxableAmount = money(totalTaxableAmount);
+        totalGstAmount = money(totalGstAmount);
+        totalInvoiceAmount = money(totalInvoiceAmount);
 
         if (totalTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
-
             throw fail(
                     "SEZ taxable amount must be greater than zero",
                     "ERR_SEZ_TAXABLE_AMOUNT_REQUIRED",
@@ -828,8 +828,10 @@ public class SezPaymentCalculator {
             );
         }
 
+        /*
+         * SEZ is zero-rated. GST must always remain zero.
+         */
         if (totalGstAmount.compareTo(BigDecimal.ZERO) != 0) {
-
             throw fail(
                     "SEZ Estimate GST amount must be zero. Found: ₹"
                             + totalGstAmount,
@@ -839,7 +841,6 @@ public class SezPaymentCalculator {
         }
 
         if (totalInvoiceAmount.compareTo(BigDecimal.ZERO) <= 0) {
-
             throw fail(
                     "SEZ Estimate total amount must be greater than zero",
                     "ERR_SEZ_TOTAL_AMOUNT_REQUIRED",
@@ -847,22 +848,36 @@ public class SezPaymentCalculator {
             );
         }
 
-        BigDecimal difference =
-                totalInvoiceAmount
-                        .subtract(totalTaxableAmount)
-                        .abs()
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+        /*
+         * Without header rounding:
+         * total = taxable because GST is zero.
+         */
+        BigDecimal exactTotal = totalTaxableAmount
+                .setScale(2, RoundingMode.HALF_UP);
 
-        if (difference.compareTo(TOTAL_TOLERANCE) > 0) {
+        /*
+         * With Estimate header rounding:
+         * taxable = 49993.40
+         * total   = 49993.00
+         */
+        BigDecimal roundedHeaderTotal = exactTotal
+                .setScale(0, RoundingMode.HALF_UP)
+                .setScale(2, RoundingMode.HALF_UP);
 
+        boolean exactMatch =
+                totalInvoiceAmount.compareTo(exactTotal) == 0;
+
+        boolean roundedHeaderMatch =
+                totalInvoiceAmount.compareTo(roundedHeaderTotal) == 0;
+
+        if (!exactMatch && !roundedHeaderMatch) {
             throw fail(
                     "Invalid SEZ Estimate composition. "
                             + "Taxable: ₹" + totalTaxableAmount
                             + ", GST: ₹" + totalGstAmount
-                            + ", total: ₹" + totalInvoiceAmount,
+                            + ", exact total: ₹" + exactTotal
+                            + ", rounded total: ₹" + roundedHeaderTotal
+                            + ", stored total: ₹" + totalInvoiceAmount,
                     "ERR_SEZ_ESTIMATE_COMPOSITION_MISMATCH",
                     "estimateId"
             );

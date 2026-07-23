@@ -30,7 +30,6 @@ public class UnregisteredPaymentCalculator {
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final BigDecimal TWO = new BigDecimal("2.00");
     private static final BigDecimal TEN = new BigDecimal("10.00");
-    private static final BigDecimal TOTAL_TOLERANCE = new BigDecimal("0.02");
 
     private static final String FULL = "FULL";
     private static final String PARTIAL = "PARTIAL";
@@ -523,9 +522,14 @@ public class UnregisteredPaymentCalculator {
             BigDecimal gst,
             BigDecimal total
     ) {
+        taxable = money(taxable);
+        gst = money(gst);
+        total = money(total);
+
         if (taxable.compareTo(BigDecimal.ZERO) <= 0
                 || gst.compareTo(BigDecimal.ZERO) < 0
                 || total.compareTo(BigDecimal.ZERO) <= 0) {
+
             throw fail(
                     "Estimate taxable/GST/total amounts are invalid",
                     "ERR_ESTIMATE_COMPOSITION_INVALID",
@@ -533,17 +537,35 @@ public class UnregisteredPaymentCalculator {
             );
         }
 
-        BigDecimal expected = taxable
+        BigDecimal exactTotal = taxable
                 .add(gst)
                 .setScale(2, RoundingMode.HALF_UP);
 
-        if (expected.subtract(total).abs()
-                .compareTo(TOTAL_TOLERANCE) > 0) {
+        /*
+         * Supports an Estimate grand total rounded to the nearest rupee.
+         *
+         * Example:
+         * Exact total  = 58991.74
+         * Stored total = 58992.00
+         */
+        BigDecimal roundedTotal = exactTotal
+                .setScale(0, RoundingMode.HALF_UP)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        boolean exactMatch =
+                total.compareTo(exactTotal) == 0;
+
+        boolean roundedMatch =
+                total.compareTo(roundedTotal) == 0;
+
+        if (!exactMatch && !roundedMatch) {
             throw fail(
                     "Estimate taxable amount plus GST does not match total. "
                             + "Taxable: ₹" + taxable
                             + ", GST: ₹" + gst
-                            + ", total: ₹" + total,
+                            + ", exact total: ₹" + exactTotal
+                            + ", rounded total: ₹" + roundedTotal
+                            + ", stored total: ₹" + total,
                     "ERR_ESTIMATE_COMPOSITION_MISMATCH",
                     "estimateId"
             );
