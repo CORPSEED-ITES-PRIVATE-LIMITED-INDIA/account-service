@@ -5,6 +5,7 @@ import com.account.domain.invoice.InvoiceOrigin;
 import com.account.domain.invoice.InvoicePaymentStatus;
 import com.account.domain.status.InvoiceStatus;
 import com.account.domain.PaymentReceipt;
+import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.dto.dashboard.*;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -493,6 +494,7 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             @Param("eInvoiceIrn") String eInvoiceIrn,
             @Param("excludedInvoiceId") Long excludedInvoiceId
     );
+
 
 
 }

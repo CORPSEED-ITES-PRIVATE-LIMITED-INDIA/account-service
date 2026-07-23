@@ -140,8 +140,9 @@ public interface PaymentReceiptRepository extends JpaRepository<PaymentReceipt, 
             @Param("statuses") Collection<PaymentStatus> statuses
     );
 
-
-
-
+    List<PaymentReceipt>
+    findByUnbilledInvoiceIdAndIsCancelledFalseOrderByPaymentDateDescIdDesc(
+            Long unbilledInvoiceId
+    );
 
 }

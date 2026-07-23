@@ -69,7 +69,7 @@ public class EstimateServiceImpl implements EstimateService {
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
     private final OrganizationRepository organizationRepository;
     private final OperationFeignClient operationFeignClient;
-
+    private final PaymentReceiptRepository paymentReceiptRepository;
 
     @Autowired
     private UnbilledInvoiceRepository unbilledRepository;
@@ -2246,6 +2246,131 @@ public class EstimateServiceImpl implements EstimateService {
 
     @Override
     @Transactional(readOnly = true)
+    public EstimatePaymentResponseDto getAllPaymentsEstimate(
+            Long estimateId,
+            Long requestingUserId
+    ) {
+        if (estimateId == null) {
+            throw new IllegalArgumentException("Estimate ID is required");
+        }
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException("Invalid requestingUserId", "ERR_INVALID_REQUESTING_USER", "requestingUserId");
+        }
+
+        // Basic security check
+        if (!userRepository.existsById(requestingUserId)) {
+            log.warn("User not found: with userId={}", requestingUserId);
+            throw new ResourceNotFoundException("User not found", "USER_NOT_FOUND");
+        }
+
+        Estimate estimate = estimateRepository.findById(estimateId).orElseThrow(()-> new ResourceNotFoundException("Estimate Not Found","EST_NOT_FOUND"));
+
+
+        UnbilledInvoice unbilledInvoice = unbilledInvoiceRepository
+                .findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(
+                        estimate
+                )
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "No active unbilled invoice found for estimate ID: "
+                                + estimateId,"UNBILLED_NOT_FOUND"
+                ));
+
+        List<PaymentReceipt> paymentReceipts =
+                paymentReceiptRepository
+                        .findByUnbilledInvoiceIdAndIsCancelledFalseOrderByPaymentDateDescIdDesc(
+                                unbilledInvoice.getId()
+                        );
+
+        List<EstimatePaymentHistoryDto> paymentHistory =
+                paymentReceipts.stream()
+                        .map(this::mapPaymentReceipt)
+                        .toList();
+
+        return EstimatePaymentResponseDto.builder()
+                .estimateId(estimateId)
+                .unbilledInvoiceId(unbilledInvoice.getId())
+                .unbilledNumber(unbilledInvoice.getUnbilledNumber())
+                .totalAmount(zeroIfNull(
+                        unbilledInvoice.getTotalAmount()
+                ))
+                .receivedAmount(zeroIfNull(
+                        unbilledInvoice.getReceivedAmount()
+                ))
+                .outstandingAmount(zeroIfNull(
+                        unbilledInvoice.getOutstandingAmount()
+                ))
+                .currentReceivedAmount(zeroIfNull(
+                        unbilledInvoice.getCurrentReceivedAmount()
+                ))
+                .totalPaymentReceipts(paymentHistory.size())
+                .paymentHistory(paymentHistory)
+                .build();
+    }
+
+    private EstimatePaymentHistoryDto mapPaymentReceipt(
+            PaymentReceipt receipt
+    ) {
+        return EstimatePaymentHistoryDto.builder()
+                .paymentReceiptId(receipt.getId())
+                .amount(zeroIfNull(receipt.getAmount()))
+                .allocatedAmount(zeroIfNull(
+                        receipt.getAllocatedAmount()
+                ))
+                .unallocatedAmount(zeroIfNull(
+                        receipt.getUnallocatedAmount()
+                ))
+                .paymentDate(receipt.getPaymentDate())
+                .paymentMode(
+                        receipt.getPaymentMode() == null
+                                ? null
+                                : receipt.getPaymentMode().toString()
+                )
+                .transactionReference(
+                        receipt.getTransactionReference()
+                )
+                .status(receipt.getStatus())
+                .remarks(receipt.getRemarks())
+
+                .paymentProof(receipt.getPaymentProof())
+                .paymentTerms(receipt.getPaymentTerms())
+                .paymentTermsDays(
+                        receipt.getPaymentTermsDays()
+                )
+                .paymentTypeId(
+                        receipt.getPaymentType() == null
+                                ? null
+                                : receipt.getPaymentType().getId()
+                )
+                .receivedByUserId(
+                        receipt.getReceivedBy() == null
+                                ? null
+                                : receipt.getReceivedBy().getId()
+                )
+                .bankLedgerId(
+                        receipt.getBankLedger() == null
+                                ? null
+                                : receipt.getBankLedger().getId()
+                )
+                .poNumber(receipt.getPoNumber())
+                .poAttachmentUrl(
+                        receipt.getPoAttachmentUrl()
+                )
+                .eprCertificateOrInvoiceNumber(
+                        receipt.getEprCertificateOrInvoiceNumber()
+                )
+                .eprFinancialYear(
+                        receipt.getEprFinancialYear()
+                )
+                .eprPortalRegistrationNumber(
+                        receipt.getEprPortalRegistrationNumber()
+                )
+                .createdAt(receipt.getCreatedAt())
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public CompanyUnitProjectOverviewResponseDto getCompanyUnitProjectOverview(
             CompanyUnitProjectOverviewRequestDto request
     ) {
@@ -2375,6 +2500,27 @@ public class EstimateServiceImpl implements EstimateService {
         log.info("Estimate found | id={} | number={}", estimate.getId(), estimate.getEstimateNumber());
 
         return mapToResponseDto(estimate);
+    }
+
+    private BigDecimal zeroIfNull(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private void validateRequest(
+            Long estimateId,
+            Long requestingUserId
+    ) {
+        if (estimateId == null) {
+            throw new IllegalArgumentException(
+                    "Estimate ID is required"
+            );
+        }
+
+        if (requestingUserId == null) {
+            throw new IllegalArgumentException(
+                    "Requesting user ID is required"
+            );
+        }
     }
 
 }

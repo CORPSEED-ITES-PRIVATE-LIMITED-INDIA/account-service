@@ -5,10 +5,7 @@ import com.account.dto.company.request.CompanyUnitProjectOverviewRequestDto;
 import com.account.dto.company.response.CompanyUnitProjectOverviewResponseDto;
 import com.account.dto.dashboard.EstimateDashboardFilterRequest;
 import com.account.dto.dashboard.EstimateDashboardResponse;
-import com.account.dto.estimate.EstimateCancelRequestDto;
-import com.account.dto.estimate.EstimateResponseDto;
-import com.account.dto.estimate.EstimateSearchRequest;
-import com.account.dto.estimate.EstimateSearchRequestDto;
+import com.account.dto.estimate.*;
 import com.account.dto.estimate.response.EstimateStatusResponseDto;
 import org.springframework.data.domain.Page;
 
@@ -68,7 +65,7 @@ public interface EstimateService {
 
     EstimateStatusResponseDto cancelEstimate(Long estimateId, EstimateCancelRequestDto requestDto);
 
-
+    EstimatePaymentResponseDto getAllPaymentsEstimate(Long estimateId,Long requestingUserId);
 
 }
 

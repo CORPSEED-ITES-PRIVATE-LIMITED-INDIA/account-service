@@ -144,7 +144,21 @@ public class EstimateController {
         return ResponseEntity.ok(estimates);
     }
 
+    @GetMapping("/payment/{estimateId}")
+    @Operation(
+            summary = "Get total amount of payment & payment due against an estimate "
+    )
+    public ResponseEntity<EstimatePaymentResponseDto> getAllPaymentsEstimate(
+            @RequestParam("userId") Long requestingUserId,
+            @PathVariable("estimateId") Long estimateId) {
 
+
+        EstimatePaymentResponseDto res = estimateService.getAllPaymentsEstimate(
+                estimateId,requestingUserId
+        );
+
+        return ResponseEntity.ok(res);
+    }
 
 
     @PostMapping("/count")
