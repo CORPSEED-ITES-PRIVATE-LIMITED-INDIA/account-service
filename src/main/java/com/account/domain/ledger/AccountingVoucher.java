@@ -32,6 +32,7 @@ import java.util.List;
 @Builder
 public class AccountingVoucher {
 
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -115,9 +116,5 @@ public class AccountingVoucher {
         }
     }
 
-    @PrePersist
-    @PreUpdate
-    public void beforeSave() {
-        calculateTotals();
-    }
+
 }

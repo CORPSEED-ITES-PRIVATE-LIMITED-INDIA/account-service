@@ -28,4 +28,13 @@ public interface AccountingVoucherRepository extends JpaRepository<AccountingVou
             Long sourceId,
             VoucherStatus status
     );
+
+    Optional<AccountingVoucher>
+    findFirstBySourceTypeAndSourceIdAndStatusOrderByIdDesc(
+            VoucherSourceType sourceType,
+            Long sourceId,
+            VoucherStatus status
+    );
+
+
 }

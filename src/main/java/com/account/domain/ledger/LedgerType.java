@@ -55,6 +55,8 @@ public enum LedgerType {
     // Adjustments
     SALES_RETURN,
     REFUND_PAYABLE,
-    ROUND_OFF
+    ROUND_OFF,
+    GOVERNMENT_FEE_EXPENSE,
+    GOVERNMENT_FEE_PAYABLE,
 
 }

@@ -194,6 +194,12 @@ public interface LedgerMasterRepository
             @Param("ledgerType") LedgerType ledgerType
     );
 
+    Optional<LedgerMaster> findByLedgerCodeIgnoreCaseAndDeletedFalse(
+            String ledgerCode
+    );
+
+
+
 
 
 }
