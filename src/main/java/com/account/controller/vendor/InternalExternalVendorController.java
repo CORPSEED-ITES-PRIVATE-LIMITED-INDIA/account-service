@@ -1,4 +1,4 @@
-package com.account.controller.internal;
+package com.account.controller.vendor;
 
 import com.account.dto.vendor.AccountVendorSyncRequestDto;
 import com.account.dto.vendor.AccountVendorSyncResponseDto;
@@ -12,7 +12,10 @@ import org.springframework.web.bind.annotation.*;
 
 @Tag(
         name = "Internal External Vendor",
-        description = "Internal APIs for synchronizing Operation Service vendors"
+        description = """
+                Internal APIs for synchronizing Operation Service vendors,
+                vendor ledgers and optional accounting vouchers
+                """
 )
 @RestController
 @RequestMapping(
@@ -25,7 +28,10 @@ public class InternalExternalVendorController {
 
     @PostMapping("/sync")
     @Operation(
-            summary = "Create or update external vendor and vendor ledger"
+            summary = """
+                    Create/update external vendor, vendor ledger
+                    and optional accounting voucher
+                    """
     )
     public ResponseEntity<AccountVendorSyncResponseDto>
     syncVendor(
@@ -34,9 +40,7 @@ public class InternalExternalVendorController {
             AccountVendorSyncRequestDto request
     ) {
         AccountVendorSyncResponseDto response =
-                externalVendorService.syncVendor(
-                        request
-                );
+                externalVendorService.syncVendor(request);
 
         return ResponseEntity.ok(response);
     }

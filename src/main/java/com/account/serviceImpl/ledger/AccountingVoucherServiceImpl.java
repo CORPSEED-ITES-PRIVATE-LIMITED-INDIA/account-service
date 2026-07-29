@@ -519,31 +519,58 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         );
     }
 
-    private String generateVoucherNumber(VoucherType voucherType) {
-
+    private String generateVoucherNumber(
+            VoucherType voucherType
+    ) {
         String prefix = switch (voucherType) {
-            case RECEIPT -> "RCP-VCH-";
-            case SALES_INVOICE -> "INV-VCH-";
-            case ADVANCE_ADJUSTMENT -> "ADJ-VCH-";
-            case CREDIT_NOTE -> "CN-VCH-";
-            case REFUND -> "REF-VCH-";
-            case JOURNAL -> "JRN-VCH-";
-            case CONTRA -> "CON-VCH-";
-            case PAYMENT -> "PAY-VCH-";
+
+            case RECEIPT ->
+                    "RCP-VCH-";
+
+            case SALES_INVOICE ->
+                    "INV-VCH-";
+
+            case PURCHASE_INVOICE ->
+                    "PUR-VCH-";
+
+            case ADVANCE_ADJUSTMENT ->
+                    "ADJ-VCH-";
+
+            case CREDIT_NOTE ->
+                    "CN-VCH-";
+
+            case REFUND ->
+                    "REF-VCH-";
+
+            case JOURNAL ->
+                    "JRN-VCH-";
+
+            case CONTRA ->
+                    "CON-VCH-";
+
+            case PAYMENT ->
+                    "PAY-VCH-";
         };
 
         String voucherNumber;
 
         do {
-            voucherNumber = prefix
-                    + LocalDate.now().getYear()
-                    + "-"
-                    + System.currentTimeMillis();
-        } while (accountingVoucherRepository.existsByVoucherNumberIgnoreCase(voucherNumber));
+            voucherNumber =
+                    prefix
+                            + LocalDate.now().getYear()
+                            + "-"
+                            + System.currentTimeMillis();
 
-        log.debug("Generated accounting voucher number. voucherType={}, voucherNumber={}", voucherType, voucherNumber);
+        } while (
+                accountingVoucherRepository
+                        .existsByVoucherNumberIgnoreCase(
+                                voucherNumber
+                        )
+        );
+
         return voucherNumber;
     }
+
 
     private BigDecimal safeMoney(BigDecimal value) {
         return value == null

@@ -1,18 +1,18 @@
 package com.account.serviceImpl.vendor;
 
 import com.account.domain.company.GstRegistrationType;
-import com.account.domain.ledger.DebitCredit;
-import com.account.domain.ledger.LedgerGroup;
-import com.account.domain.ledger.LedgerGroupType;
-import com.account.domain.ledger.LedgerMaster;
-import com.account.domain.ledger.LedgerType;
+import com.account.domain.ledger.*;
 import com.account.domain.vendor.ExternalVendor;
-import com.account.dto.vendor.AccountVendorSyncRequestDto;
-import com.account.dto.vendor.AccountVendorSyncResponseDto;
+import com.account.dto.ledger.AccountingVoucherEntryRequestDto;
+import com.account.dto.ledger.AccountingVoucherRequestDto;
+import com.account.dto.ledger.AccountingVoucherResponseDto;
+import com.account.dto.vendor.*;
+import com.account.enm.VendorVoucherLedgerSource;
 import com.account.exception.ValidationException;
 import com.account.repository.ledger.LedgerGroupRepository;
 import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.repository.vendor.ExternalVendorRepository;
+import com.account.service.ledger.AccountingVoucherService;
 import com.account.service.vendor.ExternalVendorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -40,6 +42,7 @@ public class ExternalVendorServiceImpl
     private final ExternalVendorRepository externalVendorRepository;
     private final LedgerMasterRepository ledgerMasterRepository;
     private final LedgerGroupRepository ledgerGroupRepository;
+    private final AccountingVoucherService accountingVoucherService;
 
     @Override
     @Transactional
@@ -49,9 +52,11 @@ public class ExternalVendorServiceImpl
         validateRequest(request);
 
         log.info(
-                "Starting external vendor synchronization. operationVendorId={}, vendorName={}",
+                "Starting vendor synchronization. operationVendorId={}, "
+                        + "vendorName={}, voucherRequested={}",
                 request.getOperationVendorId(),
-                request.getVendorName()
+                request.getVendorName(),
+                request.getVoucherDetails() != null
         );
 
         Optional<ExternalVendor> existingVendorOptional =
@@ -60,7 +65,8 @@ public class ExternalVendorServiceImpl
                                 request.getOperationVendorId()
                         );
 
-        boolean newVendor = existingVendorOptional.isEmpty();
+        boolean newVendor =
+                existingVendorOptional.isEmpty();
 
         ExternalVendor externalVendor =
                 existingVendorOptional
@@ -69,67 +75,343 @@ public class ExternalVendorServiceImpl
         LedgerGroup sundryCreditorsGroup =
                 getOrCreateSundryCreditorsGroup();
 
-        LedgerMaster ledger =
+        LedgerMaster vendorLedger =
                 externalVendor.getLedger();
 
-        /*
-         * Create ledger only when:
-         * 1. External vendor is new
-         * 2. Existing external vendor does not have a ledger
-         */
-        if (ledger == null) {
-
-            ledger = createVendorLedger(
+        if (vendorLedger == null) {
+            vendorLedger = createVendorLedger(
                     request,
                     sundryCreditorsGroup
             );
-
         } else {
-
             updateVendorLedger(
-                    ledger,
+                    vendorLedger,
                     request,
                     sundryCreditorsGroup
             );
         }
 
-        LedgerMaster savedLedger =
-                ledgerMasterRepository.save(ledger);
+        /*
+         * Ledger must be saved first because the voucher entry
+         * requires the generated vendor ledger ID.
+         */
+        LedgerMaster savedVendorLedger =
+                ledgerMasterRepository.saveAndFlush(
+                        vendorLedger
+                );
 
         updateExternalVendor(
                 externalVendor,
                 request,
-                savedLedger
+                savedVendorLedger
         );
 
         ExternalVendor savedExternalVendor =
-                externalVendorRepository.save(
+                externalVendorRepository.saveAndFlush(
                         externalVendor
                 );
+
+        AccountingVoucherResponseDto voucherResponse =
+                null;
+
+        if (request.getVoucherDetails() != null) {
+            voucherResponse = createVendorVoucher(
+                    savedExternalVendor,
+                    savedVendorLedger,
+                    request.getVoucherDetails()
+            );
+        }
 
         String action =
                 newVendor ? "CREATED" : "UPDATED";
 
         log.info(
-                "External vendor synchronized successfully. operationVendorId={}, externalVendorId={}, ledgerId={}, action={}",
+                "Vendor synchronization completed. "
+                        + "operationVendorId={}, externalVendorId={}, "
+                        + "ledgerId={}, action={}, voucherId={}",
                 request.getOperationVendorId(),
                 savedExternalVendor.getId(),
-                savedLedger.getId(),
-                action
+                savedVendorLedger.getId(),
+                action,
+                voucherResponse != null
+                        ? voucherResponse.getId()
+                        : null
         );
 
         return buildResponse(
                 savedExternalVendor,
-                savedLedger,
+                savedVendorLedger,
+                voucherResponse,
                 action
         );
+    }
+
+    private AccountingVoucherResponseDto createVendorVoucher(
+            ExternalVendor externalVendor,
+            LedgerMaster vendorLedger,
+            VendorVoucherRequestDto voucherDetails
+    ) {
+        validateVendorVoucherRequest(
+                voucherDetails
+        );
+
+        List<AccountingVoucherEntryRequestDto> resolvedEntries =
+                new ArrayList<>();
+
+        int vendorLedgerEntryCount = 0;
+
+        for (
+                int index = 0;
+                index < voucherDetails.getEntries().size();
+                index++
+        ) {
+            VendorVoucherEntryRequestDto incomingEntry =
+                    voucherDetails.getEntries().get(index);
+
+            if (incomingEntry == null) {
+                throw new ValidationException(
+                        "Voucher entry is required at index " + index,
+                        "ERR_VENDOR_VOUCHER_ENTRY_REQUIRED",
+                        "voucherDetails.entries[" + index + "]"
+                );
+            }
+
+            if (incomingEntry.getLedgerSource() == null) {
+                throw new ValidationException(
+                        "Ledger source is required at entry index "
+                                + index,
+                        "ERR_LEDGER_SOURCE_REQUIRED",
+                        "voucherDetails.entries["
+                                + index
+                                + "].ledgerSource"
+                );
+            }
+
+            BigDecimal debitAmount =
+                    money(incomingEntry.getDebitAmount());
+
+            BigDecimal creditAmount =
+                    money(incomingEntry.getCreditAmount());
+
+            Long resolvedLedgerId;
+
+            if (
+                    incomingEntry.getLedgerSource()
+                            == VendorVoucherLedgerSource
+                            .VENDOR_LEDGER
+            ) {
+                resolvedLedgerId =
+                        vendorLedger.getId();
+
+                vendorLedgerEntryCount++;
+
+                validateVendorLedgerDirection(
+                        voucherDetails.getVoucherType(),
+                        debitAmount,
+                        creditAmount,
+                        index
+                );
+
+            } else {
+                if (
+                        incomingEntry.getLedgerId() == null
+                                || incomingEntry.getLedgerId() <= 0
+                ) {
+                    throw new ValidationException(
+                            "Ledger ID is required for EXISTING_LEDGER "
+                                    + "at entry index "
+                                    + index,
+                            "ERR_EXISTING_LEDGER_ID_REQUIRED",
+                            "voucherDetails.entries["
+                                    + index
+                                    + "].ledgerId"
+                    );
+                }
+
+                resolvedLedgerId =
+                        incomingEntry.getLedgerId();
+            }
+
+            resolvedEntries.add(
+                    AccountingVoucherEntryRequestDto.builder()
+                            .ledgerId(resolvedLedgerId)
+                            .debitAmount(debitAmount)
+                            .creditAmount(creditAmount)
+                            .narration(
+                                    clean(
+                                            incomingEntry
+                                                    .getNarration()
+                                    )
+                            )
+                            .build()
+            );
+        }
+
+        if (vendorLedgerEntryCount == 0) {
+            throw new ValidationException(
+                    "One VENDOR_LEDGER entry is required",
+                    "ERR_VENDOR_LEDGER_ENTRY_REQUIRED",
+                    "voucherDetails.entries"
+            );
+        }
+
+        if (vendorLedgerEntryCount > 1) {
+            throw new ValidationException(
+                    "Only one VENDOR_LEDGER entry is allowed",
+                    "ERR_MULTIPLE_VENDOR_LEDGER_ENTRIES",
+                    "voucherDetails.entries"
+            );
+        }
+
+        AccountingVoucherRequestDto voucherRequest =
+                AccountingVoucherRequestDto.builder()
+                        .voucherType(
+                                voucherDetails.getVoucherType()
+                        )
+                        .voucherDate(
+                                voucherDetails.getVoucherDate()
+                        )
+                        .sourceType(
+                                voucherDetails.getSourceType()
+                        )
+                        .sourceId(
+                                voucherDetails.getSourceId()
+                        )
+                        .narration(
+                                resolveVoucherNarration(
+                                        externalVendor,
+                                        voucherDetails
+                                )
+                        )
+                        .entries(resolvedEntries)
+                        .build();
+
+        /*
+         * Existing AccountingVoucherService performs:
+         *
+         * - ledger validation
+         * - active-ledger validation
+         * - debit/credit validation
+         * - balanced-total validation
+         * - duplicate source validation
+         * - voucher save
+         * - voucher-entry save
+         * - ledger balance update
+         */
+        return accountingVoucherService.createVoucher(
+                voucherRequest
+        );
+    }
+
+    private void validateVendorLedgerDirection(
+            VoucherType voucherType,
+            BigDecimal debitAmount,
+            BigDecimal creditAmount,
+            int index
+    ) {
+        if (voucherType == VoucherType.PAYMENT) {
+            /*
+             * Payment to vendor:
+             *
+             * Vendor Ledger Dr
+             *      To Bank
+             *      To TDS Payable
+             */
+            if (debitAmount.compareTo(BigDecimal.ZERO) <= 0
+                    || creditAmount.compareTo(BigDecimal.ZERO) != 0) {
+
+                throw new ValidationException(
+                        "For PAYMENT voucher, vendor ledger "
+                                + "must contain a debit amount",
+                        "ERR_VENDOR_PAYMENT_DIRECTION_INVALID",
+                        "voucherDetails.entries["
+                                + index
+                                + "]"
+                );
+            }
+        }
+
+        if (voucherType == VoucherType.PURCHASE_INVOICE) {
+            /*
+             * Vendor invoice booking:
+             *
+             * Purchase/Expense Dr
+             * Input GST Dr
+             *      To Vendor Ledger
+             */
+            if (creditAmount.compareTo(BigDecimal.ZERO) <= 0
+                    || debitAmount.compareTo(BigDecimal.ZERO) != 0) {
+
+                throw new ValidationException(
+                        "For PURCHASE_INVOICE voucher, vendor ledger "
+                                + "must contain a credit amount",
+                        "ERR_VENDOR_INVOICE_DIRECTION_INVALID",
+                        "voucherDetails.entries["
+                                + index
+                                + "]"
+                );
+            }
+        }
+    }
+
+    private void validateVendorVoucherRequest(
+            VendorVoucherRequestDto voucherDetails
+    ) {
+        if (voucherDetails == null) {
+            return;
+        }
+
+        if (voucherDetails.getVoucherType() == null) {
+            throw new ValidationException(
+                    "Voucher type is required",
+                    "ERR_VOUCHER_TYPE_REQUIRED",
+                    "voucherDetails.voucherType"
+            );
+        }
+
+        if (voucherDetails.getSourceType() == null) {
+            throw new ValidationException(
+                    "Voucher source type is required",
+                    "ERR_VOUCHER_SOURCE_TYPE_REQUIRED",
+                    "voucherDetails.sourceType"
+            );
+        }
+
+        if (voucherDetails.getSourceId() == null
+                || voucherDetails.getSourceId() <= 0) {
+
+            throw new ValidationException(
+                    "Valid voucher source ID is required",
+                    "ERR_VOUCHER_SOURCE_ID_REQUIRED",
+                    "voucherDetails.sourceId"
+            );
+        }
+
+        if (voucherDetails.getVoucherDate() == null) {
+            throw new ValidationException(
+                    "Voucher date is required",
+                    "ERR_VOUCHER_DATE_REQUIRED",
+                    "voucherDetails.voucherDate"
+            );
+        }
+
+        if (voucherDetails.getEntries() == null
+                || voucherDetails.getEntries().size() < 2) {
+
+            throw new ValidationException(
+                    "At least two voucher entries are required",
+                    "ERR_MIN_TWO_VOUCHER_ENTRIES_REQUIRED",
+                    "voucherDetails.entries"
+            );
+        }
     }
 
     private LedgerMaster createVendorLedger(
             AccountVendorSyncRequestDto request,
             LedgerGroup sundryCreditorsGroup
     ) {
-        LedgerMaster ledger = new LedgerMaster();
+        LedgerMaster ledger =
+                new LedgerMaster();
 
         ledger.setLedgerName(
                 resolveLedgerName(
@@ -153,10 +435,6 @@ public class ExternalVendorServiceImpl
                 sundryCreditorsGroup
         );
 
-        /*
-         * Vendor is a creditor.
-         * Therefore its natural balance is CREDIT.
-         */
         ledger.setOpeningBalance(ZERO);
         ledger.setOpeningBalanceType(
                 DebitCredit.CREDIT
@@ -173,9 +451,13 @@ public class ExternalVendorServiceImpl
         );
 
         ledger.setSystemCreated(true);
+
         ledger.setActive(
-                Boolean.TRUE.equals(request.getActive())
+                Boolean.TRUE.equals(
+                        request.getActive()
+                )
         );
+
         ledger.setDeleted(false);
 
         return ledger;
@@ -207,10 +489,18 @@ public class ExternalVendorServiceImpl
                 request
         );
 
+        /*
+         * Do not reset current balance here because existing
+         * vendor transactions may already exist.
+         */
         ledger.setSystemCreated(true);
+
         ledger.setActive(
-                Boolean.TRUE.equals(request.getActive())
+                Boolean.TRUE.equals(
+                        request.getActive()
+                )
         );
+
         ledger.setDeleted(false);
     }
 
@@ -219,11 +509,15 @@ public class ExternalVendorServiceImpl
             AccountVendorSyncRequestDto request
     ) {
         ledger.setGstNo(
-                clean(request.getGstNumber())
+                cleanUpperCase(
+                        request.getGstNumber()
+                )
         );
 
         ledger.setPanNo(
-                clean(request.getPan())
+                cleanUpperCase(
+                        request.getPan()
+                )
         );
 
         ledger.setBankName(
@@ -239,11 +533,19 @@ public class ExternalVendorServiceImpl
         );
 
         ledger.setIfscCode(
-                clean(request.getIfscCode())
+                cleanUpperCase(
+                        request.getIfscCode()
+                )
         );
 
+        /*
+         * LedgerMaster.branchName has maximum length 100.
+         */
         ledger.setBranchName(
-                clean(request.getBranchAddress())
+                limit(
+                        clean(request.getBranchAddress()),
+                        100
+                )
         );
     }
 
@@ -267,11 +569,15 @@ public class ExternalVendorServiceImpl
         externalVendor.setLedger(ledger);
 
         externalVendor.setVendorName(
-                normalizeName(request.getVendorName())
+                normalizeName(
+                        request.getVendorName()
+                )
         );
 
         externalVendor.setEmail(
-                clean(request.getEmail())
+                cleanLowerCase(
+                        request.getEmail()
+                )
         );
 
         externalVendor.setMobile(
@@ -279,11 +585,15 @@ public class ExternalVendorServiceImpl
         );
 
         externalVendor.setPanNumber(
-                clean(request.getPan())
+                cleanUpperCase(
+                        request.getPan()
+                )
         );
 
         externalVendor.setGstNumber(
-                clean(request.getGstNumber())
+                cleanUpperCase(
+                        request.getGstNumber()
+                )
         );
 
         externalVendor.setGstRegistrationType(
@@ -301,7 +611,9 @@ public class ExternalVendorServiceImpl
         );
 
         externalVendor.setIfscCode(
-                clean(request.getIfscCode())
+                cleanUpperCase(
+                        request.getIfscCode()
+                )
         );
 
         externalVendor.setBankName(
@@ -345,20 +657,20 @@ public class ExternalVendorServiceImpl
         );
 
         externalVendor.setActive(
-                Boolean.TRUE.equals(request.getActive())
+                Boolean.TRUE.equals(
+                        request.getActive()
+                )
         );
 
         externalVendor.setDeleted(false);
     }
 
     private LedgerGroup getOrCreateSundryCreditorsGroup() {
-
         return ledgerGroupRepository
                 .findByGroupTypeAndDeletedFalse(
                         LedgerGroupType.SUNDRY_CREDITORS
                 )
                 .map(existingGroup -> {
-
                     if (!existingGroup.isActive()) {
                         existingGroup.setActive(true);
 
@@ -370,12 +682,12 @@ public class ExternalVendorServiceImpl
                     return existingGroup;
                 })
                 .orElseGet(() -> {
-
                     LedgerGroup ledgerGroup =
                             LedgerGroup.builder()
                                     .name("Sundry Creditors")
                                     .groupType(
-                                            LedgerGroupType.SUNDRY_CREDITORS
+                                            LedgerGroupType
+                                                    .SUNDRY_CREDITORS
                                     )
                                     .description(
                                             "System-created ledger group for external vendors"
@@ -402,15 +714,12 @@ public class ExternalVendorServiceImpl
         boolean duplicateLedgerName;
 
         if (existingLedgerId == null) {
-
             duplicateLedgerName =
                     ledgerMasterRepository
                             .existsByLedgerNameIgnoreCase(
                                     normalizedName
                             );
-
         } else {
-
             duplicateLedgerName =
                     ledgerMasterRepository
                             .existsByLedgerNameIgnoreCaseAndIdNot(
@@ -431,13 +740,15 @@ public class ExternalVendorServiceImpl
     private String generateVendorLedgerCode(
             Long operationVendorId
     ) {
-        String baseCode = String.format(
-                "LED-VEN-%06d",
-                operationVendorId
-        );
+        String baseCode =
+                String.format(
+                        "LED-VEN-%06d",
+                        operationVendorId
+                );
 
         if (!ledgerMasterRepository
                 .existsByLedgerCodeIgnoreCase(baseCode)) {
+
             return baseCode;
         }
 
@@ -461,7 +772,7 @@ public class ExternalVendorServiceImpl
     private GstRegistrationType parseGstRegistrationType(
             String value
     ) {
-        if (value == null || value.trim().isEmpty()) {
+        if (!hasText(value)) {
             return null;
         }
 
@@ -472,9 +783,9 @@ public class ExternalVendorServiceImpl
             );
 
         } catch (IllegalArgumentException exception) {
-
             throw new ValidationException(
-                    "Invalid GST registration type: " + value,
+                    "Invalid GST registration type: "
+                            + value,
                     "ERR_INVALID_GST_REGISTRATION_TYPE",
                     "gstRegistrationType"
             );
@@ -502,9 +813,7 @@ public class ExternalVendorServiceImpl
             );
         }
 
-        if (request.getVendorName() == null
-                || request.getVendorName().trim().isEmpty()) {
-
+        if (!hasText(request.getVendorName())) {
             throw new ValidationException(
                     "Vendor name is required",
                     "ERR_VENDOR_NAME_REQUIRED",
@@ -519,15 +828,41 @@ public class ExternalVendorServiceImpl
                     "active"
             );
         }
+
+        if (hasText(request.getGstNumber())
+                && request.getGstNumber()
+                .trim()
+                .length() != 15) {
+
+            throw new ValidationException(
+                    "GST number must contain exactly 15 characters",
+                    "ERR_INVALID_VENDOR_GST_LENGTH",
+                    "gstNumber"
+            );
+        }
+
+        parseGstRegistrationType(
+                request.getGstRegistrationType()
+        );
+
+        if (request.getVoucherDetails() != null) {
+            validateVendorVoucherRequest(
+                    request.getVoucherDetails()
+            );
+        }
     }
 
     private AccountVendorSyncResponseDto buildResponse(
             ExternalVendor externalVendor,
             LedgerMaster ledger,
+            AccountingVoucherResponseDto voucher,
             String action
     ) {
         LedgerGroup ledgerGroup =
                 ledger.getLedgerGroup();
+
+        boolean voucherCreated =
+                voucher != null;
 
         return AccountVendorSyncResponseDto.builder()
                 .externalVendorId(
@@ -537,66 +872,195 @@ public class ExternalVendorServiceImpl
                         externalVendor.getOperationVendorId()
                 )
                 .vendorAccountsSubmissionId(
-                        externalVendor.getVendorAccountsSubmissionId()
+                        externalVendor
+                                .getVendorAccountsSubmissionId()
                 )
                 .vendorFinalizationId(
                         externalVendor.getVendorFinalizationId()
                 )
+                .vendorName(
+                        externalVendor.getVendorName()
+                )
 
-                .ledgerId(ledger.getId())
-                .ledgerCode(ledger.getLedgerCode())
-                .ledgerName(ledger.getLedgerName())
-
+                .ledgerId(
+                        ledger.getId()
+                )
+                .ledgerCode(
+                        ledger.getLedgerCode()
+                )
+                .ledgerName(
+                        ledger.getLedgerName()
+                )
                 .ledgerType(
                         ledger.getLedgerType() != null
                                 ? ledger.getLedgerType().name()
                                 : null
                 )
-
                 .ledgerGroupId(
                         ledgerGroup != null
                                 ? ledgerGroup.getId()
                                 : null
                 )
-
                 .ledgerGroupName(
                         ledgerGroup != null
                                 ? ledgerGroup.getName()
                                 : null
                 )
-
                 .ledgerGroupType(
                         ledgerGroup != null
                                 && ledgerGroup.getGroupType() != null
-                                ? ledgerGroup.getGroupType().name()
+                                ? ledgerGroup
+                                .getGroupType()
+                                .name()
                                 : null
                 )
 
                 .action(action)
-                .active(externalVendor.isActive())
+                .active(
+                        externalVendor.isActive()
+                )
+
+                .voucherCreated(voucherCreated)
+                .voucherId(
+                        voucherCreated
+                                ? voucher.getId()
+                                : null
+                )
+                .voucherNumber(
+                        voucherCreated
+                                ? voucher.getVoucherNumber()
+                                : null
+                )
+                .voucherType(
+                        voucherCreated
+                                && voucher.getVoucherType() != null
+                                ? voucher.getVoucherType().name()
+                                : null
+                )
+                .voucherSourceType(
+                        voucherCreated
+                                && voucher.getSourceType() != null
+                                ? voucher.getSourceType().name()
+                                : null
+                )
+                .voucherSourceId(
+                        voucherCreated
+                                ? voucher.getSourceId()
+                                : null
+                )
+                .voucherDate(
+                        voucherCreated
+                                ? voucher.getVoucherDate()
+                                : null
+                )
+                .totalDebit(
+                        voucherCreated
+                                ? voucher.getTotalDebit()
+                                : ZERO
+                )
+                .totalCredit(
+                        voucherCreated
+                                ? voucher.getTotalCredit()
+                                : ZERO
+                )
+                .voucherStatus(
+                        voucherCreated
+                                && voucher.getStatus() != null
+                                ? voucher.getStatus().name()
+                                : null
+                )
+
                 .syncStatus("SUCCESS")
                 .syncedAt(
                         externalVendor.getLastSyncedAt()
                 )
                 .message(
-                        "CREATED".equals(action)
-                                ? "External vendor and vendor ledger created successfully"
-                                : "External vendor and vendor ledger updated successfully"
+                        voucherCreated
+                                ? "Vendor, vendor ledger and accounting voucher created successfully"
+                                : "Vendor and vendor ledger synchronized successfully"
                 )
                 .build();
     }
 
-    private String normalizeName(String value) {
+    private String resolveVoucherNarration(
+            ExternalVendor externalVendor,
+            VendorVoucherRequestDto voucherDetails
+    ) {
+        if (hasText(voucherDetails.getNarration())) {
+            return voucherDetails.getNarration().trim();
+        }
+
+        return "Accounting voucher posted for vendor: "
+                + externalVendor.getVendorName();
+    }
+
+    private BigDecimal money(
+            BigDecimal value
+    ) {
+        return value == null
+                ? ZERO
+                : value.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    private String normalizeName(
+            String value
+    ) {
         return value == null
                 ? null
                 : value.trim()
                 .replaceAll("\\s+", " ");
     }
 
-    private String clean(String value) {
-        return value == null
-                || value.trim().isEmpty()
+    private String clean(
+            String value
+    ) {
+        return !hasText(value)
                 ? null
                 : value.trim();
+    }
+
+    private String cleanUpperCase(
+            String value
+    ) {
+        String cleaned =
+                clean(value);
+
+        return cleaned == null
+                ? null
+                : cleaned.toUpperCase(Locale.ROOT);
+    }
+
+    private String cleanLowerCase(
+            String value
+    ) {
+        String cleaned =
+                clean(value);
+
+        return cleaned == null
+                ? null
+                : cleaned.toLowerCase(Locale.ROOT);
+    }
+
+    private String limit(
+            String value,
+            int maximumLength
+    ) {
+        if (value == null) {
+            return null;
+        }
+
+        return value.length() <= maximumLength
+                ? value
+                : value.substring(0, maximumLength);
+    }
+
+    private boolean hasText(
+            String value
+    ) {
+        return value != null
+                && !value.trim().isEmpty();
     }
 }
