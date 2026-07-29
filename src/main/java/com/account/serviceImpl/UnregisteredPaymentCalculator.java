@@ -435,17 +435,30 @@ public class UnregisteredPaymentCalculator {
 
         switch (paymentType) {
             case PARTIAL -> {
-                /*
-                 * First PARTIAL cannot settle the full amount.
-                 * A later PARTIAL can settle the final outstanding, avoiding
-                 * the PARTIAL -> FULL payment-type lock deadlock.
-                 */
-                if (settlement.compareTo(outstanding) == 0
-                        && approved.compareTo(BigDecimal.ZERO) <= 0) {
+
+                BigDecimal totalInvoiceAmount =
+                        money(input.getTotalInvoiceAmount());
+
+                BigDecimal halfAmount = totalInvoiceAmount.divide(
+                        new BigDecimal("2"),
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+                BigDecimal expectedPartialAmount =
+                        halfAmount.min(outstanding);
+
+                if (settlement.compareTo(expectedPartialAmount) != 0) {
                     throw fail(
-                            "First PARTIAL payment must be less than outstanding. "
-                                    + "Use FULL payment.",
-                            "ERR_PARTIAL_SETTLEMENT_MUST_BE_LESS_THAN_OUTSTANDING",
+                            "PARTIAL payment must be exactly ₹"
+                                    + expectedPartialAmount
+                                    + ". Total Estimate amount including GST: ₹"
+                                    + totalInvoiceAmount
+                                    + ", outstanding amount: ₹"
+                                    + outstanding
+                                    + ", current settlement amount: ₹"
+                                    + settlement,
+                            "ERR_PARTIAL_AMOUNT_MISMATCH",
                             "amount"
                     );
                 }

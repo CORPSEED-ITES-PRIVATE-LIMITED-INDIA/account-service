@@ -1,4 +1,4 @@
-  package com.account.serviceImpl;
+package com.account.serviceImpl;
 
 import com.account.domain.company.GstRegistrationType;
 import com.account.exception.ValidationException;
@@ -340,6 +340,7 @@ public class PaymentCalculationEngine {
                 traceId,
                 paymentTypeCode,
                 values.settlementAmount,
+                totalInvoiceAmount,
                 outstandingAmount,
                 request.getPaymentTermsDays(),
                 money(request.getInstallmentEligibleAmount())
@@ -820,6 +821,7 @@ public class PaymentCalculationEngine {
             String traceId,
             String paymentTypeCode,
             BigDecimal settlementAmount,
+            BigDecimal totalInvoiceAmount,
             BigDecimal outstandingAmount,
             Integer paymentTermsDays,
             BigDecimal installmentEligibleAmount
@@ -866,17 +868,33 @@ public class PaymentCalculationEngine {
                     );
                 }
 
-                if (settlementAmount.compareTo(outstandingAmount) >= 0) {
+                BigDecimal halfAmount = totalInvoiceAmount.divide(
+                        new BigDecimal("2"),
+                        2,
+                        RoundingMode.HALF_UP
+                );
+
+                BigDecimal expectedPartialAmount =
+                        halfAmount.min(outstandingAmount);
+
+                if (settlementAmount.compareTo(expectedPartialAmount) != 0) {
                     throw validationFailure(
                             traceId,
-                            "PARTIAL_EQUALS_OUTSTANDING",
-                            "PARTIAL settlement must be less than outstanding. "
-                                    + "Use FULL when settling complete outstanding.",
-                            "ERR_PARTIAL_SETTLEMENT_MUST_BE_LESS_THAN_OUTSTANDING",
+                            "PARTIAL_AMOUNT_MISMATCH",
+                            "PARTIAL payment must be exactly ₹"
+                                    + expectedPartialAmount
+                                    + ". Total amount: ₹"
+                                    + totalInvoiceAmount
+                                    + ", outstanding: ₹"
+                                    + outstandingAmount
+                                    + ", settlement: ₹"
+                                    + settlementAmount,
+                            "ERR_PARTIAL_AMOUNT_MISMATCH",
                             "amount"
                     );
                 }
             }
+
 
             case "INSTALLMENT" -> {
 

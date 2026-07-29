@@ -1,4 +1,3 @@
-
 package com.account.serviceImpl;
 
 import com.account.domain.*;
@@ -5887,13 +5886,7 @@ public class PaymentServiceImpl implements PaymentService {
                         unBilledId
                 ));
 
-        if (unbilledInvoice.getCreatedBy() == null ||
-                !unbilledInvoice.getCreatedBy().getId().equals(requestingUserId)) {
-            throw new AccessDeniedException(
-                    "You are not authorized to view this invoice",
-                    "ACCESS_DENIED_INVOICE"
-            );
-        }
+
 
         log.debug("Unbilled invoice fetched | unbilledId={} | unbilledNumber={}",
                 unbilledInvoice.getId(), unbilledInvoice.getUnbilledNumber());
@@ -5901,21 +5894,6 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
-
-    private boolean hasUnrestrictedUnbilledInvoiceAccess(Long userId) {
-        if (userId == null) {
-            return false;
-        }
-
-        User user = userRepository.findByIdAndNotDeleted(userId)
-                .orElse(null);
-
-        if (user == null || !user.isActive()) {
-            return false;
-        }
-
-        return belongsToAccountsDepartment(user) || hasAdminRole(user);
-    }
 
     private boolean belongsToAccountsDepartment(User user) {
         return user.getDepartment() != null
@@ -8073,4 +8051,3 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 }
-

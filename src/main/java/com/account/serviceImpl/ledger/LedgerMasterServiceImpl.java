@@ -47,6 +47,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     private final InvoiceRepository invoiceRepository;
     private final UserRepository userRepository;
 
+
+
     @Override
     @Transactional
     public LedgerMasterResponseDto createLedger(

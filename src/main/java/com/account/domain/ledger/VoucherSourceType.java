@@ -1,9 +1,11 @@
 package com.account.domain.ledger;
 
-public enum VoucherSourceType {
+    public enum VoucherSourceType {
     PAYMENT_RECEIPT,
     INVOICE,
     CREDIT_NOTE,
     REFUND,
-    MANUAL
+    MANUAL,
+    PROJECT_EXPENSE
+
 }
