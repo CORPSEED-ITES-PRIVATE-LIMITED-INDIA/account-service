@@ -2,6 +2,8 @@ package com.account.dto.vendor;
 
 import lombok.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Data
@@ -10,6 +12,8 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class AccountVendorSyncResponseDto {
 
+    // Vendor
+
     private Long externalVendorId;
 
     private Long operationVendorId;
@@ -17,6 +21,10 @@ public class AccountVendorSyncResponseDto {
     private Long vendorAccountsSubmissionId;
 
     private Long vendorFinalizationId;
+
+    private String vendorName;
+
+    // Ledger
 
     private Long ledgerId;
 
@@ -32,13 +40,33 @@ public class AccountVendorSyncResponseDto {
 
     private String ledgerGroupType;
 
-    /*
-     * CREATED
-     * UPDATED
-     */
     private String action;
 
     private Boolean active;
+
+    // Voucher
+
+    private Boolean voucherCreated;
+
+    private Long voucherId;
+
+    private String voucherNumber;
+
+    private String voucherType;
+
+    private String voucherSourceType;
+
+    private Long voucherSourceId;
+
+    private LocalDate voucherDate;
+
+    private BigDecimal totalDebit;
+
+    private BigDecimal totalCredit;
+
+    private String voucherStatus;
+
+    // Sync result
 
     private String syncStatus;
 
