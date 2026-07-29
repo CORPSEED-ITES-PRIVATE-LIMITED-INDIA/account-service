@@ -1,5 +1,7 @@
 package com.account.repository.vendor;
 
+import com.account.domain.ledger.VoucherSourceType;
+import com.account.domain.ledger.VoucherStatus;
 import com.account.domain.vendor.ExternalVendor;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -19,4 +21,7 @@ public interface ExternalVendorRepository
     findByOperationVendorIdAndDeletedFalse(
             Long operationVendorId
     );
+
+
+
 }
