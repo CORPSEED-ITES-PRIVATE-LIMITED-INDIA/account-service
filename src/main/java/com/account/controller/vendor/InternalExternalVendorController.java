@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.*;
         name = "Internal External Vendor",
         description = """
                 Internal APIs for synchronizing Operation Service vendors,
-                vendor ledgers and optional accounting vouchers
+                vendor ledgers and approved procurement vendor invoices.
                 """
 )
 @RestController
@@ -29,19 +29,18 @@ public class InternalExternalVendorController {
     @PostMapping("/sync")
     @Operation(
             summary = """
-                    Create/update external vendor, vendor ledger
-                    and optional accounting voucher
+                    Create/update external vendor and vendor ledger.
+                    When paymentApproval is present, calculate GST/TDS
+                    and create the purchase accounting voucher.
                     """
     )
-    public ResponseEntity<AccountVendorSyncResponseDto>
-    syncVendor(
+    public ResponseEntity<AccountVendorSyncResponseDto> syncVendor(
             @Valid
             @RequestBody
             AccountVendorSyncRequestDto request
     ) {
-        AccountVendorSyncResponseDto response =
-                externalVendorService.syncVendor(request);
-
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(
+                externalVendorService.syncVendor(request)
+        );
     }
 }
