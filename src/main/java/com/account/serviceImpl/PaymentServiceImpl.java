@@ -626,23 +626,61 @@ public class PaymentServiceImpl implements PaymentService {
                                         .getOutstandingAmount()
                         );
 
-                if (invoiceGrandTotal.compareTo(estimateTotal) != 0) {
+                /*
+                 * Partial Advance Tax Invoice is allowed.
+                 *
+                 * Estimate total = ₹5,000
+                 * ATI total      = ₹2,500
+                 *
+                 * Payment must be restricted to ATI outstanding,
+                 * not to the complete Estimate total.
+                 */
+                if (invoiceGrandTotal.compareTo(BigDecimal.ZERO) <= 0) {
                     throw new ValidationException(
-                            "Existing Advance Tax Invoice amount does not match "
-                                    + "the Estimate amount. Estimate total: ₹"
-                                    + estimateTotal
-                                    + ", Invoice total: ₹"
-                                    + invoiceGrandTotal
-                                    + ". Correct Invoice "
-                                    + existingAdvanceTaxInvoice
-                                    .getInvoiceNumber()
-                                    + " before registering payment.",
-                            "ERR_ADVANCE_INVOICE_ESTIMATE_TOTAL_MISMATCH",
+                            "Existing Advance Tax Invoice total must be greater than zero. "
+                                    + "Invoice: "
+                                    + existingAdvanceTaxInvoice.getInvoiceNumber(),
+                            "ERR_ADVANCE_INVOICE_TOTAL_INVALID",
                             "estimateId"
                     );
                 }
 
+                if (invoiceOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new ValidationException(
+                            "No outstanding amount is available against Advance Tax Invoice "
+                                    + existingAdvanceTaxInvoice.getInvoiceNumber(),
+                            "ERR_ADVANCE_INVOICE_NO_OUTSTANDING",
+                            "amount"
+                    );
+                }
+
+                if (invoiceOutstanding.compareTo(invoiceGrandTotal) > 0) {
+                    throw new ValidationException(
+                            "Advance Tax Invoice outstanding cannot exceed its grand total. "
+                                    + "Invoice total: ₹" + invoiceGrandTotal
+                                    + ", outstanding: ₹" + invoiceOutstanding,
+                            "ERR_ADVANCE_INVOICE_OUTSTANDING_INVALID",
+                            "amount"
+                    );
+                }
+
                 unbilledTotal = invoiceOutstanding;
+
+                log.info(
+                        "[ADVANCE-INVOICE-UNBILLED-TOTAL-RESOLVED] "
+                                + "traceId={} | estimateId={} | estimateTotal={} | "
+                                + "invoiceId={} | invoiceNumber={} | "
+                                + "invoiceGrandTotal={} | invoiceOutstanding={} | "
+                                + "unbilledTotal={}",
+                        traceId,
+                        estimate.getId(),
+                        estimateTotal,
+                        existingAdvanceTaxInvoice.getId(),
+                        existingAdvanceTaxInvoice.getInvoiceNumber(),
+                        invoiceGrandTotal,
+                        invoiceOutstanding,
+                        unbilledTotal
+                );
 
             } else {
                 unbilledTotal = estimateTotal;
@@ -854,14 +892,28 @@ public class PaymentServiceImpl implements PaymentService {
         // 19. PREPARE CENTRAL CALCULATION INPUT
         // =====================================================
 
+        /*
+         * For an existing Advance Tax Invoice, calculations must use
+         * the ATI snapshot amounts instead of the complete Estimate.
+         */
         BigDecimal totalTaxableAmount =
-                calculateTdsTaxableAmount(
+                existingAdvanceTaxInvoice != null
+                        ? safe2(
+                        existingAdvanceTaxInvoice
+                                .getSubTotalExGst()
+                )
+                        : calculateTdsTaxableAmount(
                         estimate,
                         resolvedUnbilled
                 );
 
         BigDecimal totalGstAmount =
-                estimate.getTotalGstAmount() != null
+                existingAdvanceTaxInvoice != null
+                        ? safe2(
+                        existingAdvanceTaxInvoice
+                                .getTotalGstAmount()
+                )
+                        : estimate.getTotalGstAmount() != null
                         ? safe2(
                         estimate.getTotalGstAmount()
                 )
@@ -1004,7 +1056,8 @@ public class PaymentServiceImpl implements PaymentService {
                                     request,
                                     estimate,
                                     resolvedUnbilled,
-                                    paymentType
+                                    paymentType,
+                                    existingAdvanceTaxInvoice
                             )
                     );
 
@@ -3418,7 +3471,11 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 1. BASIC VALIDATION
         // =====================================================
-        if (paymentType == null || paymentType.getCode() == null) {
+
+        if (paymentType == null
+                || paymentType.getCode() == null
+                || paymentType.getCode().trim().isEmpty()) {
+
             throw new ValidationException(
                     "Invalid payment type",
                     "ERR_PAYMENT_TYPE_INVALID",
@@ -3426,122 +3483,167 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal outstanding = safe2(unbilled.getOutstandingAmount());
-        BigDecimal total = safe2(unbilled.getTotalAmount());
-        BigDecimal safeReqAmount = safe2(reqAmount);
-        BigDecimal safeTdsAmount = safe2(tdsAmount);
+        if (unbilled == null) {
+            throw new ValidationException(
+                    "Unbilled Invoice is required for payment validation",
+                    "ERR_UNBILLED_REQUIRED",
+                    "unbilledId"
+            );
+        }
 
-        // =====================================================
-        // 2. CALCULATE SETTLEMENT AMOUNT (Bank + TDS)
-        // =====================================================
-        // This is the most important calculation in the payment flow.
-        // The customer’s total liability is reduced by (Bank Amount + TDS Amount).
-        BigDecimal settlementAmount = safeReqAmount
-                .add(safeTdsAmount)
-                .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal outstanding =
+                safe2(unbilled.getOutstandingAmount());
 
-        String code = paymentType.getCode().trim().toUpperCase();
-        boolean isPurchaseOrder = "PURCHASE_ORDER".equals(code);
+        BigDecimal safeReqAmount =
+                safe2(reqAmount);
 
-        log.debug(
-                "Validating payment rules | paymentType={} | bankAmount={} | tdsAmount={} | settlementAmount={} | outstanding={} | total={}",
+        BigDecimal safeTdsAmount =
+                safe2(tdsAmount);
+
+        BigDecimal settlementAmount =
+                safeReqAmount
+                        .add(safeTdsAmount)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+        String code =
+                paymentType.getCode()
+                        .trim()
+                        .toUpperCase(Locale.ROOT);
+
+        boolean fullPayment =
+                "FULL".equals(code);
+
+        boolean partialPayment =
+                "PARTIAL".equals(code);
+
+        boolean installmentPayment =
+                "INSTALLMENT".equals(code);
+
+        boolean purchaseOrderPayment =
+                "PURCHASE_ORDER".equals(code);
+
+        log.info(
+                "[ADVANCE-INVOICE-PAYMENT-RULE-VALIDATION] "
+                        + "paymentType={} | bankAmount={} | tdsAmount={} | "
+                        + "settlementAmount={} | outstanding={}",
                 code,
                 safeReqAmount,
                 safeTdsAmount,
                 settlementAmount,
-                outstanding,
-                total
+                outstanding
         );
 
         // =====================================================
-        // 3. AMOUNT VALIDATION (Non Purchase Order)
+        // 2. OUTSTANDING VALIDATION
         // =====================================================
-        if (!isPurchaseOrder && safeReqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+
+        if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
-                    "Amount must be positive",
+                    "No outstanding amount is available",
+                    "ERR_NO_OUTSTANDING_AMOUNT",
+                    "amount"
+            );
+        }
+
+        // =====================================================
+        // 3. BANK AMOUNT VALIDATION
+        // =====================================================
+
+        if (safeReqAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Bank/Cash/Payment Gateway amount must be greater than zero",
                     "ERR_AMOUNT_NOT_POSITIVE",
                     "amount"
             );
         }
 
         // =====================================================
-        // 4. PURCHASE ORDER SPECIFIC VALIDATION
+        // 4. PURCHASE ORDER FIELD VALIDATION
         // =====================================================
-        // Purchase Order can have zero amount initially.
-        // Payment terms (Net X Days) are mandatory for PO.
-        if (isPurchaseOrder) {
-            if (paymentTermsDays == null || paymentTermsDays < 0) {
-                throw new ValidationException(
-                        "Payment terms days is required for Purchase Order payment type",
-                        "ERR_PAYMENT_TERMS_DAYS_REQUIRED",
-                        "paymentTermsDays"
-                );
-            }
+
+        if (purchaseOrderPayment
+                && (paymentTermsDays == null
+                || paymentTermsDays < 0)) {
+
+            throw new ValidationException(
+                    "Payment terms days is required for Purchase Order payment type",
+                    "ERR_PAYMENT_TERMS_DAYS_REQUIRED",
+                    "paymentTermsDays"
+            );
         }
 
         // =====================================================
-        // 5. SETTLEMENT AMOUNT CANNOT EXCEED OUTSTANDING
+        // 5. SETTLEMENT CANNOT EXCEED ATI OUTSTANDING
         // =====================================================
+
         if (settlementAmount.compareTo(outstanding) > 0) {
             throw new ValidationException(
-                    "Settlement amount is greater than outstanding amount. Bank amount: "
-                            + safeReqAmount + ", TDS amount: " + safeTdsAmount
-                            + ", Settlement amount: " + settlementAmount
-                            + ", Outstanding: " + outstanding,
+                    "Payment settlement exceeds the Advance Tax Invoice "
+                            + "outstanding amount. Bank amount: ₹"
+                            + safeReqAmount
+                            + ", TDS amount: ₹"
+                            + safeTdsAmount
+                            + ", settlement amount: ₹"
+                            + settlementAmount
+                            + ", outstanding amount: ₹"
+                            + outstanding,
                     "ERR_AMOUNT_EXCEEDS_OUTSTANDING",
                     "amount"
             );
         }
 
         // =====================================================
-        // 6. FULL PAYMENT VALIDATION
+        // 6. FULL AND PURCHASE ORDER
         // =====================================================
-        // For FULL payment, settlement must exactly match the outstanding amount.
-        if ("FULL".equals(code)) {
+
+        /*
+         * FULL and PURCHASE_ORDER must settle the complete
+         * Advance Tax Invoice outstanding.
+         */
+        if (fullPayment || purchaseOrderPayment) {
+
             if (settlementAmount.compareTo(outstanding) != 0) {
                 throw new ValidationException(
-                        "FULL payment settlement must equal outstanding amount. Bank amount: "
-                                + safeReqAmount + ", TDS amount: " + safeTdsAmount
-                                + ", Settlement amount: " + settlementAmount
-                                + ", Outstanding: " + outstanding,
-                        "ERR_FULL_AMOUNT_MISMATCH",
+                        code
+                                + " payment must completely settle the "
+                                + "Advance Tax Invoice outstanding. Bank amount: ₹"
+                                + safeReqAmount
+                                + ", TDS amount: ₹"
+                                + safeTdsAmount
+                                + ", settlement amount: ₹"
+                                + settlementAmount
+                                + ", required settlement: ₹"
+                                + outstanding,
+                        fullPayment
+                                ? "ERR_FULL_AMOUNT_MISMATCH"
+                                : "ERR_PURCHASE_ORDER_AMOUNT_MISMATCH",
                         "amount"
                 );
             }
+
             return;
         }
 
         // =====================================================
-// 7. PARTIAL PAYMENT VALIDATION
-// =====================================================
-        if ("PARTIAL".equals(code)) {
+        // 7. PARTIAL AND INSTALLMENT
+        // =====================================================
 
-            /*
-             * PARTIAL payment can be any positive settlement amount
-             * up to the current outstanding amount.
-             *
-             * Settlement = Bank amount + TDS amount.
-             */
+        /*
+         * PARTIAL and INSTALLMENT may register any positive
+         * settlement up to and including ATI outstanding.
+         */
+        if (partialPayment || installmentPayment) {
+
             if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new ValidationException(
-                        "PARTIAL payment settlement must be greater than zero. "
-                                + "Bank amount: ₹" + safeReqAmount
-                                + ", TDS amount: ₹" + safeTdsAmount
-                                + ", settlement amount: ₹" + settlementAmount,
-                        "ERR_PARTIAL_SETTLEMENT_NOT_POSITIVE",
-                        "amount"
-                );
-            }
-
-            if (settlementAmount.compareTo(outstanding) >= 0) {
-                throw new ValidationException(
-                        "PARTIAL payment settlement must be less than the outstanding amount. "
-                                + "Bank amount: ₹" + safeReqAmount
-                                + ", TDS amount: ₹" + safeTdsAmount
-                                + ", settlement amount: ₹" + settlementAmount
-                                + ", outstanding amount: ₹" + outstanding
-                                + ". Use FULL payment when settling the complete outstanding amount.",
-                        "ERR_PARTIAL_SETTLEMENT_MUST_BE_LESS_THAN_OUTSTANDING",
+                        code
+                                + " payment settlement must be greater than zero",
+                        partialPayment
+                                ? "ERR_PARTIAL_SETTLEMENT_NOT_POSITIVE"
+                                : "ERR_INSTALLMENT_SETTLEMENT_NOT_POSITIVE",
                         "amount"
                 );
             }
@@ -3550,19 +3652,12 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 8. INSTALLMENT & PURCHASE ORDER
+        // 8. UNSUPPORTED PAYMENT TYPE
         // =====================================================
-        // These payment types have flexible rules.
-        // No strict settlement amount validation is applied here.
-        if ("INSTALLMENT".equals(code) || "PURCHASE_ORDER".equals(code)) {
-            return;
-        }
 
-        // =====================================================
-        // 9. UNSUPPORTED PAYMENT TYPE
-        // =====================================================
         throw new ValidationException(
-                "Unsupported payment type: " + paymentType.getCode(),
+                "Unsupported payment type: "
+                        + paymentType.getCode(),
                 "ERR_UNSUPPORTED_PAYMENT_TYPE",
                 "paymentTypeId"
         );
@@ -4074,7 +4169,8 @@ public class PaymentServiceImpl implements PaymentService {
             PaymentRegistrationRequestDto request,
             Estimate estimate,
             UnbilledInvoice unbilled,
-            PaymentType paymentType
+            PaymentType paymentType,
+            Invoice existingAdvanceTaxInvoice
     ) {
 
         final BigDecimal zero =
@@ -4086,6 +4182,7 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 1. BASIC REQUEST VALIDATION
         // =====================================================
+
         if (request == null) {
             throw new ValidationException(
                     "Payment registration request is required",
@@ -4097,11 +4194,15 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 2. INTERNATIONAL TRANSACTION RESTRICTION
         // =====================================================
-        if (isInternationalTransaction(estimate, unbilled)) {
+
+        if (isInternationalTransaction(
+                estimate,
+                unbilled
+        )) {
 
             /*
-             * Domestic TDS is not applicable to an
-             * INTERNATIONAL transaction.
+             * Domestic TDS is not applicable to
+             * INTERNATIONAL transactions.
              */
             if (Boolean.TRUE.equals(request.getTdsActive())
                     || request.getTds() != null) {
@@ -4119,6 +4220,7 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 3. TDS NOT ACTIVE
         // =====================================================
+
         if (!Boolean.TRUE.equals(request.getTdsActive())) {
             return zero;
         }
@@ -4126,6 +4228,7 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 4. VALIDATE TDS DETAILS
         // =====================================================
+
         if (request.getTds() == null) {
             throw new ValidationException(
                     "TDS details are required when TDS is active",
@@ -4173,11 +4276,11 @@ public class PaymentServiceImpl implements PaymentService {
         String paymentTypeCode =
                 paymentType.getCode()
                         .trim()
-                        .toUpperCase();
+                        .toUpperCase(Locale.ROOT);
 
         /*
-         * paymentAmount is the actual amount received in the
-         * selected Bank/Cash/Payment Gateway ledger.
+         * paymentAmount means the actual amount received in
+         * Bank/Cash/Payment Gateway.
          */
         if (paymentAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -4190,8 +4293,13 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 5. VALIDATE TDS PERCENTAGE
         // =====================================================
-        if (tdsPercentage.compareTo(new BigDecimal("2.00")) != 0
-                && tdsPercentage.compareTo(new BigDecimal("10.00")) != 0) {
+
+        if (tdsPercentage.compareTo(
+                new BigDecimal("2.00")
+        ) != 0
+                && tdsPercentage.compareTo(
+                new BigDecimal("10.00")
+        ) != 0) {
 
             throw new ValidationException(
                     "TDS percentage must be either 2 or 10",
@@ -4201,19 +4309,41 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 6. CALCULATE TOTAL TAXABLE AMOUNT
+        // 6. RESOLVE TOTAL TAXABLE AMOUNT
         // =====================================================
 
         /*
-         * TDS limit is calculated on taxable value excluding GST.
+         * For Advance Tax Invoice payment:
+         *
+         * Use the taxable amount of that ATI only.
+         *
+         * Example:
+         * Estimate total = ₹5,000
+         * ATI total      = ₹2,500
+         *
+         * TDS calculation must be limited to the ₹2,500 ATI,
+         * not the complete ₹5,000 Estimate.
          */
-        BigDecimal totalTaxableAmount =
-                safe2(
-                        calculateTdsTaxableAmount(
-                                estimate,
-                                unbilled
-                        )
-                );
+        BigDecimal totalTaxableAmount;
+
+        if (existingAdvanceTaxInvoice != null) {
+
+            totalTaxableAmount =
+                    safe2(
+                            existingAdvanceTaxInvoice
+                                    .getSubTotalExGst()
+                    );
+
+        } else {
+
+            totalTaxableAmount =
+                    safe2(
+                            calculateTdsTaxableAmount(
+                                    estimate,
+                                    unbilled
+                            )
+                    );
+        }
 
         if (totalTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -4226,21 +4356,40 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 7. RESOLVE TOTAL INVOICE AMOUNT
         // =====================================================
+
         BigDecimal totalInvoiceAmount;
 
-        if (estimate != null
-                && estimate.getGrandTotal() != null) {
+        if (existingAdvanceTaxInvoice != null
+                && existingAdvanceTaxInvoice.getGrandTotal() != null) {
 
+            /*
+             * Advance Invoice payment must use the ATI total,
+             * not the complete Estimate total.
+             */
             totalInvoiceAmount =
-                    safe2(estimate.getGrandTotal());
+                    safe2(
+                            existingAdvanceTaxInvoice
+                                    .getGrandTotal()
+                    );
 
         } else if (unbilled != null
                 && unbilled.getTotalAmount() != null) {
 
             totalInvoiceAmount =
-                    safe2(unbilled.getTotalAmount());
+                    safe2(
+                            unbilled.getTotalAmount()
+                    );
+
+        } else if (estimate != null
+                && estimate.getGrandTotal() != null) {
+
+            totalInvoiceAmount =
+                    safe2(
+                            estimate.getGrandTotal()
+                    );
 
         } else {
+
             totalInvoiceAmount = zero;
         }
 
@@ -4252,9 +4401,12 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        if (totalTaxableAmount.compareTo(totalInvoiceAmount) > 0) {
+        if (totalTaxableAmount.compareTo(
+                totalInvoiceAmount
+        ) > 0) {
+
             throw new ValidationException(
-                    "Taxable amount cannot be greater than invoice total amount",
+                    "Taxable amount cannot be greater than Invoice total amount",
                     "ERR_INVALID_TDS_TAXABLE_AMOUNT",
                     "tds"
             );
@@ -4263,11 +4415,36 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 8. RESOLVE OUTSTANDING AMOUNT
         // =====================================================
-        BigDecimal outstandingAmount =
-                unbilled != null
-                        && unbilled.getOutstandingAmount() != null
-                        ? safe2(unbilled.getOutstandingAmount())
-                        : totalInvoiceAmount;
+
+        BigDecimal outstandingAmount;
+
+        if (unbilled != null
+                && unbilled.getOutstandingAmount() != null) {
+
+            /*
+             * Unbilled outstanding should already be based on
+             * ATI outstanding when ATI exists.
+             */
+            outstandingAmount =
+                    safe2(
+                            unbilled.getOutstandingAmount()
+                    );
+
+        } else if (existingAdvanceTaxInvoice != null
+                && existingAdvanceTaxInvoice
+                .getOutstandingAmount() != null) {
+
+            outstandingAmount =
+                    safe2(
+                            existingAdvanceTaxInvoice
+                                    .getOutstandingAmount()
+                    );
+
+        } else {
+
+            outstandingAmount =
+                    totalInvoiceAmount;
+        }
 
         if (outstandingAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -4277,16 +4454,31 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        if (outstandingAmount.compareTo(
+                totalInvoiceAmount
+        ) > 0) {
+
+            throw new ValidationException(
+                    "Outstanding amount cannot exceed the Invoice total. "
+                            + "Invoice total: ₹"
+                            + totalInvoiceAmount
+                            + ", outstanding amount: ₹"
+                            + outstandingAmount,
+                    "ERR_OUTSTANDING_EXCEEDS_INVOICE_TOTAL",
+                    "amount"
+            );
+        }
+
         // =====================================================
         // 9. CALCULATE TOTAL TDS LIMIT
         // =====================================================
 
         /*
-         * Example:
+         * Example for SEZ:
          *
-         * Taxable amount    = ₹20,000
-         * TDS percentage    = 10%
-         * Total allowed TDS = ₹2,000
+         * ATI taxable amount = ₹2,500
+         * TDS percentage     = 10%
+         * Total TDS allowed  = ₹250
          */
         BigDecimal totalAllowedTds =
                 totalTaxableAmount
@@ -4308,16 +4500,26 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 10. CALCULATE USED AND REMAINING TDS
         // =====================================================
-        BigDecimal alreadyUsedTds =
-                safe2(
-                        getTotalActiveTdsAmount(unbilled)
-                );
 
-        if (alreadyUsedTds.compareTo(totalAllowedTds) > 0) {
+        BigDecimal alreadyUsedTds =
+                unbilled != null
+                        ? safe2(
+                        getTotalActiveTdsAmount(
+                                unbilled
+                        )
+                )
+                        : zero;
+
+        if (alreadyUsedTds.compareTo(
+                totalAllowedTds
+        ) > 0) {
+
             throw new ValidationException(
-                    "Previously registered TDS exceeds the total TDS allowed for this estimate. "
-                            + "Total allowed TDS: ₹" + totalAllowedTds
-                            + ", already registered TDS: ₹" + alreadyUsedTds,
+                    "Previously registered TDS exceeds the total TDS allowed. "
+                            + "Total allowed TDS: ₹"
+                            + totalAllowedTds
+                            + ", already registered TDS: ₹"
+                            + alreadyUsedTds,
                     "ERR_USED_TDS_EXCEEDS_ALLOWED_LIMIT",
                     "tds"
             );
@@ -4334,9 +4536,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (remainingTdsLimit.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
-                    "TDS limit is already exhausted for this estimate. "
-                            + "Total allowed TDS is ₹" + totalAllowedTds
-                            + " and already used TDS is ₹" + alreadyUsedTds,
+                    "TDS limit is already exhausted. "
+                            + "Total allowed TDS is ₹"
+                            + totalAllowedTds
+                            + " and already used TDS is ₹"
+                            + alreadyUsedTds,
                     "ERR_TDS_LIMIT_EXHAUSTED",
                     "tds"
             );
@@ -4347,15 +4551,14 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
 
         /*
-         * Outstanding is settled through:
+         * Outstanding is settled using:
          *
          * Bank amount + TDS amount
          *
          * Example:
-         *
-         * Outstanding amount = ₹20,000
-         * Remaining TDS      = ₹2,000
-         * Net bank amount    = ₹18,000
+         * ATI outstanding = ₹2,500
+         * Remaining TDS   = ₹250
+         * Maximum bank    = ₹2,250
          */
         BigDecimal remainingNetBankReceivable =
                 outstandingAmount
@@ -4368,33 +4571,42 @@ public class PaymentServiceImpl implements PaymentService {
         if (remainingNetBankReceivable.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
                     "Remaining net bank receivable is invalid. "
-                            + "Outstanding amount: ₹" + outstandingAmount
-                            + ", remaining TDS limit: ₹" + remainingTdsLimit,
+                            + "Outstanding amount: ₹"
+                            + outstandingAmount
+                            + ", remaining TDS limit: ₹"
+                            + remainingTdsLimit,
                     "ERR_INVALID_NET_BANK_RECEIVABLE",
                     "tds"
             );
         }
 
         /*
-         * Actual bank receipt cannot be higher than the remaining
-         * net bank receivable when TDS is active.
+         * Actual bank receipt cannot exceed the maximum net
+         * bank amount after considering remaining TDS.
          */
-        if (paymentAmount.compareTo(remainingNetBankReceivable) > 0) {
+        if (paymentAmount.compareTo(
+                remainingNetBankReceivable
+        ) > 0) {
+
             throw new ValidationException(
                     "Bank payment amount exceeds the maximum amount receivable after TDS. "
-                            + "Bank amount: ₹" + paymentAmount
+                            + "Bank amount: ₹"
+                            + paymentAmount
                             + ", maximum bank receivable: ₹"
                             + remainingNetBankReceivable
-                            + ", remaining TDS: ₹" + remainingTdsLimit
-                            + ", outstanding amount: ₹" + outstandingAmount,
+                            + ", remaining TDS: ₹"
+                            + remainingTdsLimit
+                            + ", outstanding amount: ₹"
+                            + outstandingAmount,
                     "ERR_BANK_AMOUNT_EXCEEDS_NET_RECEIVABLE",
                     "amount"
             );
         }
 
         // =====================================================
-        // 12. CALCULATE TDS FOR CURRENT PAYMENT
+        // 12. CALCULATE CURRENT PAYMENT TDS
         // =====================================================
+
         GstRegistrationType gstRegistrationType =
                 resolveGstRegistrationType(
                         estimate,
@@ -4403,12 +4615,24 @@ public class PaymentServiceImpl implements PaymentService {
 
         BigDecimal calculatedTds;
 
-        if ("FULL".equals(paymentTypeCode)) {
+        /*
+         * FULL and PURCHASE_ORDER must completely settle the
+         * ATI outstanding.
+         *
+         * PARTIAL and INSTALLMENT calculate TDS according to
+         * the current entered bank amount.
+         */
+        boolean completeSettlementPayment =
+                "FULL".equals(paymentTypeCode)
+                        || (
+                        existingAdvanceTaxInvoice != null
+                                && "PURCHASE_ORDER".equals(
+                                paymentTypeCode
+                        )
+                );
 
-            /*
-             * Preserve the existing FULL payment behaviour.
-             * The complete remaining TDS must settle with the bank amount.
-             */
+        if (completeSettlementPayment) {
+
             calculatedTds =
                     remainingTdsLimit
                             .setScale(
@@ -4418,17 +4642,6 @@ public class PaymentServiceImpl implements PaymentService {
 
         } else {
 
-            /*
-             * No DTO field is added.
-             *
-             * REGISTERED and SEZ are calculated at backend from:
-             * - actual Bank amount
-             * - existing taxable amount
-             * - existing GST amount/rate
-             * - selected TDS percentage
-             *
-             * Other GST types preserve their old calculation.
-             */
             calculatedTds =
                     calculateCurrentPaymentTdsAtBackend(
                             paymentAmount,
@@ -4448,9 +4661,25 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        if (calculatedTds.compareTo(
+                remainingTdsLimit
+        ) > 0) {
+
+            throw new ValidationException(
+                    "Calculated TDS exceeds the remaining TDS limit. "
+                            + "Calculated TDS: ₹"
+                            + calculatedTds
+                            + ", remaining TDS limit: ₹"
+                            + remainingTdsLimit,
+                    "ERR_CURRENT_TDS_EXCEEDS_REMAINING_LIMIT",
+                    "tds"
+            );
+        }
+
         // =====================================================
         // 13. CALCULATE SETTLEMENT AMOUNT
         // =====================================================
+
         BigDecimal settlementAmount =
                 paymentAmount
                         .add(calculatedTds)
@@ -4462,38 +4691,78 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
         // 14. FINAL SETTLEMENT SAFETY CHECK
         // =====================================================
-        if (settlementAmount.compareTo(outstandingAmount) > 0) {
+
+        if (settlementAmount.compareTo(
+                outstandingAmount
+        ) > 0) {
+
             throw new ValidationException(
                     "Payment amount plus TDS amount exceeds the outstanding amount. "
-                            + "Bank amount: ₹" + paymentAmount
-                            + ", TDS amount: ₹" + calculatedTds
-                            + ", settlement amount: ₹" + settlementAmount
-                            + ", outstanding amount: ₹" + outstandingAmount,
+                            + "Bank amount: ₹"
+                            + paymentAmount
+                            + ", TDS amount: ₹"
+                            + calculatedTds
+                            + ", settlement amount: ₹"
+                            + settlementAmount
+                            + ", outstanding amount: ₹"
+                            + outstandingAmount,
                     "ERR_TDS_SETTLEMENT_EXCEEDS_OUTSTANDING",
                     "amount"
             );
         }
 
+        /*
+         * FULL and PURCHASE_ORDER must settle the complete
+         * outstanding amount.
+         */
+        if (completeSettlementPayment
+                && settlementAmount.compareTo(
+                outstandingAmount
+        ) != 0) {
+
+            throw new ValidationException(
+                    paymentTypeCode
+                            + " payment must completely settle the "
+                            + "Advance Tax Invoice outstanding. "
+                            + "Bank amount: ₹"
+                            + paymentAmount
+                            + ", TDS amount: ₹"
+                            + calculatedTds
+                            + ", settlement amount: ₹"
+                            + settlementAmount
+                            + ", required settlement: ₹"
+                            + outstandingAmount,
+                    "FULL".equals(paymentTypeCode)
+                            ? "ERR_FULL_AMOUNT_MISMATCH"
+                            : "ERR_PURCHASE_ORDER_AMOUNT_MISMATCH",
+                    "amount"
+            );
+        }
+
         log.info(
-                "TDS calculated | estimateId={} | unbilledId={} "
-                        + "| paymentType={} | gstRegistrationType={} "
-                        + "| taxableAmount={} | invoiceTotal={} "
-                        + "| outstandingAmount={} | bankAmount={} "
-                        + "| tdsPercentage={} | totalAllowedTds={} "
-                        + "| alreadyUsedTds={} | remainingTdsLimit={} "
-                        + "| remainingNetBankReceivable={} "
-                        + "| calculatedTds={} | settlementAmount={}",
+                "[ATI-TDS-CALCULATED] "
+                        + "estimateId={} | invoiceId={} | invoiceNumber={} | "
+                        + "unbilledId={} | paymentType={} | gstRegistrationType={} | "
+                        + "taxableAmount={} | invoiceTotal={} | "
+                        + "outstandingAmount={} | bankAmount={} | "
+                        + "tdsPercentage={} | totalAllowedTds={} | "
+                        + "alreadyUsedTds={} | remainingTdsLimit={} | "
+                        + "remainingNetBankReceivable={} | calculatedTds={} | "
+                        + "settlementAmount={}",
                 estimate != null
                         ? estimate.getId()
+                        : null,
+                existingAdvanceTaxInvoice != null
+                        ? existingAdvanceTaxInvoice.getId()
+                        : null,
+                existingAdvanceTaxInvoice != null
+                        ? existingAdvanceTaxInvoice.getInvoiceNumber()
                         : null,
                 unbilled != null
                         ? unbilled.getId()
                         : null,
                 paymentTypeCode,
-                resolveGstRegistrationType(
-                        estimate,
-                        unbilled
-                ),
+                gstRegistrationType,
                 totalTaxableAmount,
                 totalInvoiceAmount,
                 outstandingAmount,
