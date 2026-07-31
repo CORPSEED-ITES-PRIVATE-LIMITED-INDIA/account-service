@@ -26,11 +26,14 @@ public interface AdvanceTaxInvoiceService {
             int size
     );
 
-
-
     ConfirmAdvanceInvoiceResponseDto confirmEInvoiceAndCreateProject(
             Long invoiceId,
             ConfirmInvoiceEInvoiceRequestDto request
+    );
+
+    AdvanceTaxInvoiceResponseDto rejectRequest(
+            Long requestId,
+            AdvanceTaxInvoiceRejectionRequestDto requestDto
     );
 
 

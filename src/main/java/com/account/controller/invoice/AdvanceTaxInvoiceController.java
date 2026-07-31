@@ -1,7 +1,12 @@
 package com.account.controller.invoice;
 
 import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
-import com.account.dto.invoice.*;
+import com.account.dto.invoice.AdvanceTaxInvoiceApprovalRequestDto;
+import com.account.dto.invoice.AdvanceTaxInvoiceCreateRequestDto;
+import com.account.dto.invoice.AdvanceTaxInvoiceRejectionRequestDto;
+import com.account.dto.invoice.AdvanceTaxInvoiceResponseDto;
+import com.account.dto.invoice.ConfirmAdvanceInvoiceResponseDto;
+import com.account.dto.invoice.ConfirmInvoiceEInvoiceRequestDto;
 import com.account.service.AdvanceTaxInvoiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -25,13 +30,33 @@ import org.springframework.web.bind.annotation.*;
 )
 public class AdvanceTaxInvoiceController {
 
-    private final AdvanceTaxInvoiceService advanceTaxInvoiceService;
+    private final AdvanceTaxInvoiceService
+            advanceTaxInvoiceService;
+
+    // =====================================================
+    // CREATE REQUEST
+    // =====================================================
 
     @PostMapping
     @Operation(
             summary = "Create Advance Tax Invoice request"
     )
-    public ResponseEntity<AdvanceTaxInvoiceResponseDto> createRequest(
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Advance Tax Invoice request created"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Validation failure"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Estimate or user not found"
+            )
+    })
+    public ResponseEntity<AdvanceTaxInvoiceResponseDto>
+    createRequest(
             @Valid
             @RequestBody
             AdvanceTaxInvoiceCreateRequestDto requestDto
@@ -47,12 +72,40 @@ public class AdvanceTaxInvoiceController {
                 .body(response);
     }
 
+    // =====================================================
+    // APPROVE REQUEST
+    // =====================================================
+
     @PutMapping("/{requestId}/approve")
     @Operation(
-            summary = "Approve Advance Tax Invoice request and generate Invoice"
+            summary = "Approve Advance Tax Invoice request",
+            description = """
+                    Approves a PENDING Advance Tax Invoice request
+                    and generates an Invoice.
+                    """
     )
-    public ResponseEntity<AdvanceTaxInvoiceResponseDto> approveRequest(
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Request approved and Invoice generated"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Validation failure"
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "User not authorized"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Advance Tax Invoice request not found"
+            )
+    })
+    public ResponseEntity<AdvanceTaxInvoiceResponseDto>
+    approveRequest(
             @PathVariable Long requestId,
+
             @Valid
             @RequestBody
             AdvanceTaxInvoiceApprovalRequestDto requestDto
@@ -62,17 +115,70 @@ public class AdvanceTaxInvoiceController {
                 advanceTaxInvoiceService.approveRequest(
                         requestId,
                         requestDto
-                        // i want same invoice feataute i
                 );
 
         return ResponseEntity.ok(response);
     }
 
+    // =====================================================
+    // REJECT REQUEST
+    // =====================================================
+
+    @PutMapping("/{requestId}/reject")
+    @Operation(
+            summary = "Reject Advance Tax Invoice request",
+            description = """
+                    Rejects a PENDING Advance Tax Invoice request.
+                    No Invoice is generated.
+                    Only Accounts or Admin users can reject.
+                    """
+    )
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "200",
+                    description = "Advance Tax Invoice request rejected"
+            ),
+            @ApiResponse(
+                    responseCode = "400",
+                    description = "Validation failure or request is not PENDING"
+            ),
+            @ApiResponse(
+                    responseCode = "403",
+                    description = "User not authorized"
+            ),
+            @ApiResponse(
+                    responseCode = "404",
+                    description = "Advance Tax Invoice request not found"
+            )
+    })
+    public ResponseEntity<AdvanceTaxInvoiceResponseDto>
+    rejectRequest(
+            @PathVariable Long requestId,
+
+            @Valid
+            @RequestBody
+            AdvanceTaxInvoiceRejectionRequestDto requestDto
+    ) {
+
+        AdvanceTaxInvoiceResponseDto response =
+                advanceTaxInvoiceService.rejectRequest(
+                        requestId,
+                        requestDto
+                );
+
+        return ResponseEntity.ok(response);
+    }
+
+    // =====================================================
+    // GET REQUEST BY ID
+    // =====================================================
+
     @GetMapping("/{requestId}")
     @Operation(
             summary = "Get Advance Tax Invoice request by ID"
     )
-    public ResponseEntity<AdvanceTaxInvoiceResponseDto> getRequestById(
+    public ResponseEntity<AdvanceTaxInvoiceResponseDto>
+    getRequestById(
             @PathVariable Long requestId
     ) {
 
@@ -83,15 +189,20 @@ public class AdvanceTaxInvoiceController {
         );
     }
 
+    // =====================================================
+    // LIST REQUESTS
+    // =====================================================
+
     @GetMapping
     @Operation(
             summary = "List Advance Tax Invoice requests",
             description = """
-                Accounts/Admin users can view all requests.
-                Sales users can view only requests raised by themselves.
-                """
+                    Accounts/Admin users can view all requests.
+                    Sales users can view only requests raised by themselves.
+                    """
     )
-    public ResponseEntity<Page<AdvanceTaxInvoiceResponseDto>> getRequests(
+    public ResponseEntity<Page<AdvanceTaxInvoiceResponseDto>>
+    getRequests(
 
             @RequestParam("userId")
             Long requestingUserId,
@@ -116,6 +227,9 @@ public class AdvanceTaxInvoiceController {
         );
     }
 
+    // =====================================================
+    // CONFIRM E-INVOICE
+    // =====================================================
 
     @PutMapping("/{invoiceId}/confirm-e-invoice")
     @Operation(
@@ -142,14 +256,18 @@ public class AdvanceTaxInvoiceController {
     public ResponseEntity<ConfirmAdvanceInvoiceResponseDto>
     confirmEInvoice(
             @PathVariable Long invoiceId,
-            @Valid @RequestBody ConfirmInvoiceEInvoiceRequestDto request
+
+            @Valid
+            @RequestBody
+            ConfirmInvoiceEInvoiceRequestDto request
     ) {
+
         return ResponseEntity.ok(
-                advanceTaxInvoiceService.confirmEInvoiceAndCreateProject(
-                        invoiceId,
-                        request
-                )
+                advanceTaxInvoiceService
+                        .confirmEInvoiceAndCreateProject(
+                                invoiceId,
+                                request
+                        )
         );
     }
-
 }
