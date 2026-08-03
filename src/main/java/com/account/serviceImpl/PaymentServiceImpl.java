@@ -1660,8 +1660,8 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
-        // 21. ADVANCE TAX INVOICE OUTSTANDING CHECK
-        // =====================================================
+// 21. ADVANCE TAX INVOICE FULL SETTLEMENT CHECK
+// =====================================================
 
         if (existingAdvanceTaxInvoice != null) {
 
@@ -1671,20 +1671,45 @@ public class PaymentServiceImpl implements PaymentService {
                                     .getOutstandingAmount()
                     );
 
+            if (advanceInvoiceOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "No outstanding amount is available against Advance Tax Invoice "
+                                + existingAdvanceTaxInvoice.getInvoiceNumber(),
+                        "ERR_ADVANCE_INVOICE_NO_OUTSTANDING",
+                        "amount"
+                );
+            }
+
+            /*
+             * When an Advance Tax Invoice exists, the complete outstanding
+             * amount must be settled.
+             *
+             * Example:
+             * Advance Invoice outstanding = ₹50
+             *
+             * Without TDS:
+             * Bank amount = ₹50
+             *
+             * With TDS:
+             * Bank amount = ₹45
+             * TDS amount  = ₹5
+             * Settlement  = ₹50
+             */
             if (settlementAmountForThisRegistration
-                    .compareTo(advanceInvoiceOutstanding) > 0) {
+                    .compareTo(advanceInvoiceOutstanding) != 0) {
 
                 throw new ValidationException(
-                        "Payment settlement exceeds the existing Advance Tax Invoice "
-                                + "outstanding amount. Bank amount: ₹"
+                        "Payment must completely settle the Advance Tax Invoice "
+                                + existingAdvanceTaxInvoice.getInvoiceNumber()
+                                + ". Bank amount: ₹"
                                 + actualBankAmountForThisRegistration
                                 + ", TDS amount: ₹"
                                 + tdsAmountForThisRegistration
                                 + ", settlement amount: ₹"
                                 + settlementAmountForThisRegistration
-                                + ", Advance Tax Invoice outstanding: ₹"
+                                + ", required settlement amount: ₹"
                                 + advanceInvoiceOutstanding,
-                        "ERR_PAYMENT_EXCEEDS_ADVANCE_INVOICE_OUTSTANDING",
+                        "ERR_ADVANCE_INVOICE_FULL_SETTLEMENT_REQUIRED",
                         "amount"
                 );
             }
