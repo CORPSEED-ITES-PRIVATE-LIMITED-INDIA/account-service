@@ -318,11 +318,21 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             CompanyUnit unit,
             Long existingLedgerId
     ) {
+        /*
+         * Non-customer or manually created customer ledger:
+         * use the entered ledger name.
+         */
+        if (!isCustomerLedgerType(request.getLedgerType())
+                || company == null
+                || unit == null) {
 
-        if (!isCustomerLedgerType(request.getLedgerType())) {
             return normalizeName(request.getLedgerName());
         }
 
+        /*
+         * Linked customer ledger:
+         * generate name from company and unit.
+         */
         String companyName =
                 company.getName() != null
                         && !company.getName().trim().isEmpty()
@@ -335,19 +345,16 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                         ? unit.getUnitName().trim()
                         : "Unit-" + unit.getId();
 
-        String baseName =
-                normalizeName(
-                        companyName + " - " + unitName
-                );
+        String baseName = normalizeName(
+                companyName + " - " + unitName
+        );
 
         boolean duplicateName;
 
         if (existingLedgerId == null) {
             duplicateName =
                     ledgerMasterRepository
-                            .existsByLedgerNameIgnoreCase(
-                                    baseName
-                            );
+                            .existsByLedgerNameIgnoreCase(baseName);
         } else {
             duplicateName =
                     ledgerMasterRepository
@@ -357,10 +364,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                             );
         }
 
-        /*
-         * Another company may have the same company and unit names.
-         * Add the unit ID only when a ledger-name collision exists.
-         */
         if (duplicateName) {
             return normalizeName(
                     baseName + " - Unit-" + unit.getId()
@@ -376,8 +379,13 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             CompanyUnit unit,
             String ledgerName
     ) {
-
-        if (isCustomerLedgerType(request.getLedgerType())) {
+        /*
+         * Company-unit duplicate validation applies only
+         * to linked customer ledgers.
+         */
+        if (isCustomerLedgerType(request.getLedgerType())
+                && company != null
+                && unit != null) {
 
             boolean exists =
                     ledgerMasterRepository
@@ -401,12 +409,14 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             return;
         }
 
+        /*
+         * Manual customer and other ledgers are checked by name.
+         */
         if (ledgerMasterRepository
                 .existsByLedgerNameIgnoreCase(ledgerName)) {
 
             throw new ValidationException(
-                    "Ledger already exists with name: "
-                            + ledgerName,
+                    "Ledger already exists with name: " + ledgerName,
                     "ERR_LEDGER_DUPLICATE",
                     "ledgerName"
             );
@@ -420,8 +430,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             CompanyUnit unit,
             String ledgerName
     ) {
-
-        if (isCustomerLedgerType(request.getLedgerType())) {
+        if (isCustomerLedgerType(request.getLedgerType())
+                && company != null
+                && unit != null) {
 
             boolean exists =
                     ledgerMasterRepository
@@ -453,8 +464,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 )) {
 
             throw new ValidationException(
-                    "Ledger already exists with name: "
-                            + ledgerName,
+                    "Ledger already exists with name: " + ledgerName,
                     "ERR_LEDGER_DUPLICATE",
                     "ledgerName"
             );
@@ -677,7 +687,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             Company company,
             CompanyUnit unit
     ) {
-
         LedgerType ledgerType = request.getLedgerType();
 
         if (ledgerType == LedgerType.BANK
@@ -691,21 +700,24 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             );
         }
 
+        /*
+         * Customer ledger supports two modes:
+         *
+         * 1. Linked customer:
+         *    companyId and unitId must both be provided.
+         *
+         * 2. Manual customer:
+         *    companyId and unitId may both be null.
+         */
         if (isCustomerLedgerType(ledgerType)) {
+            boolean companyProvided = company != null;
+            boolean unitProvided = unit != null;
 
-            if (company == null || company.getId() == null) {
+            if (companyProvided != unitProvided) {
                 throw new ValidationException(
-                        "Company is required for customer ledger",
-                        "ERR_COMPANY_REQUIRED_FOR_CUSTOMER_LEDGER",
-                        "companyId"
-                );
-            }
-
-            if (unit == null || unit.getId() == null) {
-                throw new ValidationException(
-                        "Company unit is required for customer ledger",
-                        "ERR_UNIT_REQUIRED_FOR_CUSTOMER_LEDGER",
-                        "unitId"
+                        "Company and company unit must either both be selected or both be empty",
+                        "ERR_CUSTOMER_COMPANY_UNIT_REQUIRED_TOGETHER",
+                        companyProvided ? "unitId" : "companyId"
                 );
             }
         }
@@ -719,7 +731,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         if (unit != null) {
-
             if (unit.getCompany() == null
                     || unit.getCompany().getId() == null) {
 
@@ -1095,24 +1106,23 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             Company company,
             CompanyUnit unit
     ) {
+        /*
+         * Linked customer ledger:
+         * obtain tax details from company and unit.
+         */
+        if (isCustomerLedgerType(request.getLedgerType())
+                && company != null
+                && unit != null) {
 
-        if (isCustomerLedgerType(request.getLedgerType())) {
-
-            ledger.setGstNo(
-                    unit != null
-                            ? clean(unit.getGstNo())
-                            : null
-            );
-
-            ledger.setPanNo(
-                    company != null
-                            ? clean(company.getPanNo())
-                            : null
-            );
-
+            ledger.setGstNo(clean(unit.getGstNo()));
+            ledger.setPanNo(clean(company.getPanNo()));
             return;
         }
 
+        /*
+         * Manual customer or other ledger:
+         * use manually entered tax details.
+         */
         ledger.setGstNo(clean(request.getGstNo()));
         ledger.setPanNo(clean(request.getPanNo()));
     }
