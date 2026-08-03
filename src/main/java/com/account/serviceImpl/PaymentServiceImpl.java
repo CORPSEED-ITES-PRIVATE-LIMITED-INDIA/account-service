@@ -193,7 +193,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal reqAmount =
-                safe2(request.getAmount());
+                safe3(request.getAmount());
 
         if (reqAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException(
@@ -519,8 +519,8 @@ public class PaymentServiceImpl implements PaymentService {
                         estimate.getId(),
                         existingAdvanceTaxInvoice.getId(),
                         existingAdvanceTaxInvoice.getInvoiceNumber(),
-                        safe2(existingAdvanceTaxInvoice.getGrandTotal()),
-                        safe2(existingAdvanceTaxInvoice.getOutstandingAmount())
+                        wholeAs3(existingAdvanceTaxInvoice.getGrandTotal()),
+                        safe3(existingAdvanceTaxInvoice.getOutstandingAmount())
                 );
             }
         }
@@ -600,7 +600,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (isFirstPayment) {
 
             BigDecimal estimateTotal =
-                    safe2(estimate.getGrandTotal());
+                    wholeAs3(estimate.getGrandTotal());
 
             if (estimateTotal.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new ValidationException(
@@ -615,16 +615,10 @@ public class PaymentServiceImpl implements PaymentService {
             if (existingAdvanceTaxInvoice != null) {
 
                 BigDecimal invoiceGrandTotal =
-                        safe2(
-                                existingAdvanceTaxInvoice
-                                        .getGrandTotal()
-                        );
+                        wholeAs3(existingAdvanceTaxInvoice.getGrandTotal());
 
                 BigDecimal invoiceOutstanding =
-                        safe2(
-                                existingAdvanceTaxInvoice
-                                        .getOutstandingAmount()
-                        );
+                        safe3(existingAdvanceTaxInvoice.getOutstandingAmount());
 
                 /*
                  * Partial Advance Tax Invoice is allowed.
@@ -717,14 +711,14 @@ public class PaymentServiceImpl implements PaymentService {
 
             unbilled.setReceivedAmount(
                     BigDecimal.ZERO.setScale(
-                            2,
+                            3,
                             RoundingMode.HALF_UP
                     )
             );
 
             unbilled.setCurrentReceivedAmount(
                     BigDecimal.ZERO.setScale(
-                            2,
+                            3,
                             RoundingMode.HALF_UP
                     )
             );
@@ -898,73 +892,40 @@ public class PaymentServiceImpl implements PaymentService {
          */
         BigDecimal totalTaxableAmount =
                 existingAdvanceTaxInvoice != null
-                        ? safe2(
-                        existingAdvanceTaxInvoice
-                                .getSubTotalExGst()
-                )
-                        : calculateTdsTaxableAmount(
-                        estimate,
-                        resolvedUnbilled
-                );
+                        ? safe3(existingAdvanceTaxInvoice.getSubTotalExGst())
+                        : safe3(calculateTdsTaxableAmount(estimate, resolvedUnbilled));
 
         BigDecimal totalGstAmount =
                 existingAdvanceTaxInvoice != null
-                        ? safe2(
-                        existingAdvanceTaxInvoice
-                                .getTotalGstAmount()
-                )
+                        ? safe3(existingAdvanceTaxInvoice.getTotalGstAmount())
                         : estimate.getTotalGstAmount() != null
-                        ? safe2(
-                        estimate.getTotalGstAmount()
-                )
-                        : safe2(estimate.getGrandTotal())
+                        ? safe3(estimate.getTotalGstAmount())
+                        : safe3(estimate.getGrandTotal())
                         .subtract(totalTaxableAmount)
                         .max(BigDecimal.ZERO)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+                        .setScale(3, RoundingMode.HALF_UP);
 
         /*
-         * For SEZ and INTERNATIONAL, GST must be zero.
+         * SEZ and INTERNATIONAL are zero-rated.
          */
-        if (paymentGstRegistrationType
-                == GstRegistrationType.SEZ
-                || paymentGstRegistrationType
-                == GstRegistrationType.INTERNATIONAL) {
-
-            totalGstAmount =
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
+        if (paymentGstRegistrationType == GstRegistrationType.SEZ
+                || paymentGstRegistrationType == GstRegistrationType.INTERNATIONAL) {
+            totalGstAmount = BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP);
         }
 
         BigDecimal totalInvoiceAmount =
-                safe2(
-                        resolvedUnbilled
-                                .getTotalAmount()
-                );
+                existingAdvanceTaxInvoice != null
+                        ? wholeAs3(existingAdvanceTaxInvoice.getGrandTotal())
+                        : wholeAs3(resolvedUnbilled.getTotalAmount());
 
         BigDecimal outstandingBeforePayment =
-                safe2(
-                        resolvedUnbilled.getOutstandingAmount()
-                )
-                        .subtract(
-                                safe2(
-                                        resolvedUnbilled.getCurrentReceivedAmount()
-                                )
-                        )
+                safe3(resolvedUnbilled.getOutstandingAmount())
+                        .subtract(safe3(resolvedUnbilled.getCurrentReceivedAmount()))
                         .max(BigDecimal.ZERO)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+                        .setScale(3, RoundingMode.HALF_UP);
 
         BigDecimal alreadyUsedTds =
-                getTotalActiveTdsAmount(
-                        resolvedUnbilled
-                );
+                wholeTds(getTotalActiveTdsAmount(resolvedUnbilled));
 
         BigDecimal tdsPercentage =
                 request.getTds() != null
@@ -972,26 +933,13 @@ public class PaymentServiceImpl implements PaymentService {
                         : null;
 
         BigDecimal installmentEligibleAmount =
-                BigDecimal.ZERO.setScale(
-                        2,
-                        RoundingMode.HALF_UP
-                );
+                BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP);
 
         if ("INSTALLMENT".equals(paymentTypeCode)) {
-
-            /*
-             * TEMPORARY:
-             * Until an InstallmentSchedule table/DTO field is added,
-             * use the currently available outstanding amount as the
-             * installment ceiling.
-             *
-             * Later replace this with:
-             *
-             * installmentEligibleAmount =
-             *         installmentSchedule.getOutstandingAmount();
-             */
-            installmentEligibleAmount =
-                    outstandingBeforePayment;
+            installmentEligibleAmount = resolveInstallmentEligibleAmount(
+                    request,
+                    outstandingBeforePayment
+            );
         }
 
         // =====================================================
@@ -999,677 +947,109 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
 
         /*
-         * IMPORTANT FEATURE ISOLATION
-         * ---------------------------
-         *
-         * Existing Advance Tax Invoice workflow:
-         *     request.amount = actual Bank/Cash/Payment Gateway amount.
-         *     settlement     = bank amount + TDS amount.
-         *
-         * Normal Unbilled payment workflow:
-         *     request.amount = actual Bank/Cash/Payment Gateway amount.
-         *
-         * REGISTERED:
-         *     taxable    = bank / (1 + GST% - TDS%)
-         *     settlement = bank + TDS
-         *
-         * UNREGISTERED:
-         *     Customer GSTIN is not required, but GST is still charged
-         *     according to the Estimate.
-         *     taxable    = bank / (1 + GST% - TDS%)
-         *     settlement = bank + TDS
-         *
-         * SEZ:
-         *     GST       = 0
-         *     taxable   = bank / (1 - TDS%)
-         *     settlement = bank + TDS
-         *
-         * Do not run the new taxable-base engine for an existing
-         * Advance Tax Invoice. This keeps the older Advance Invoice
-         * behaviour unchanged.
+         * request.amount always means the actual amount credited to
+         * Bank/Cash/Payment Gateway. The common calculation engine below
+         * derives the whole-rupee settlement, whole-rupee TDS and the
+         * three-decimal taxable/GST breakup for every customer type.
          */
-        boolean advanceInvoiceLegacyFlow =
-                existingAdvanceTaxInvoice != null;
-
         BigDecimal taxableAmountForThisRegistration;
         BigDecimal gstAmountForThisRegistration;
         BigDecimal tdsAmountForThisRegistration;
         BigDecimal actualBankAmountForThisRegistration;
         BigDecimal settlementAmountForThisRegistration;
 
-        if (advanceInvoiceLegacyFlow) {
+        /*
+         * One calculation engine is used for every GST type and for both
+         * normal Unbilled and Advance Tax Invoice payments.
+         *
+         * Precision rules:
+         * - Taxable/GST/Bank: 3 decimals
+         * - TDS: whole rupee, HALF_UP
+         * - Settlement/Invoice/Unbilled: whole rupee
+         */
+        FinalPaymentMath.Input calculationInput =
+                new FinalPaymentMath.Input();
 
-            // =====================================================
-            // EXISTING ADVANCE TAX INVOICE — PRESERVE OLD BEHAVIOUR
-            // =====================================================
+        calculationInput.gstRegistrationType =
+                paymentGstRegistrationType;
+        calculationInput.paymentTypeCode =
+                paymentTypeCode;
+        calculationInput.bankAmount =
+                reqAmount;
+        calculationInput.tdsActive =
+                Boolean.TRUE.equals(request.getTdsActive());
+        calculationInput.tdsPercentage =
+                tdsPercentage;
+        calculationInput.totalTaxableAmount =
+                totalTaxableAmount;
+        calculationInput.totalGstAmount =
+                totalGstAmount;
+        calculationInput.totalInvoiceAmount =
+                totalInvoiceAmount;
+        calculationInput.outstandingAmount =
+                outstandingBeforePayment;
+        calculationInput.alreadyUsedTds =
+                alreadyUsedTds;
+        calculationInput.installmentEligibleAmount =
+                installmentEligibleAmount;
+        calculationInput.paymentTermsDays =
+                request.getPaymentTermsDays();
+        calculationInput.poNumber =
+                request.getPoNumber();
+        calculationInput.poAttachmentUrl =
+                request.getPoAttachmentUrl();
+        calculationInput.purchaseOrderProjectCompleted =
+                purchaseOrderProjectCompleted;
 
-            /*
-             * The old Advance Invoice flow treats request.amount as
-             * the actual amount received in Bank/Cash/Gateway.
-             */
-            actualBankAmountForThisRegistration =
-                    reqAmount;
+        FinalPaymentMath.Result finalResult =
+                FinalPaymentMath.calculate(calculationInput);
 
-            tdsAmountForThisRegistration =
-                    safe2(
-                            calculateTdsAmountIfRequired(
-                                    request,
-                                    estimate,
-                                    resolvedUnbilled,
-                                    paymentType,
-                                    existingAdvanceTaxInvoice
-                            )
-                    );
+        taxableAmountForThisRegistration =
+                safe3(finalResult.currentTaxableAmount);
+        gstAmountForThisRegistration =
+                safe3(finalResult.currentGstAmount);
+        tdsAmountForThisRegistration =
+                wholeTds(finalResult.tdsAmount);
+        actualBankAmountForThisRegistration =
+                safe3(finalResult.bankAmount);
+        settlementAmountForThisRegistration =
+                safe3(finalResult.settlementAmount);
 
-            settlementAmountForThisRegistration =
-                    actualBankAmountForThisRegistration
-                            .add(tdsAmountForThisRegistration)
-                            .setScale(
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
-
-            /*
-             * Preserve the original TDS taxable-value derivation for
-             * the Advance Invoice workflow.
-             */
-            if (Boolean.TRUE.equals(request.getTdsActive())
-                    && tdsPercentage != null
-                    && safe2(tdsPercentage).compareTo(BigDecimal.ZERO) > 0) {
-
-                taxableAmountForThisRegistration =
-                        tdsAmountForThisRegistration
-                                .multiply(BigDecimal.valueOf(100))
-                                .divide(
-                                        safe2(tdsPercentage),
-                                        2,
-                                        RoundingMode.HALF_UP
-                                );
-
-            } else if (totalInvoiceAmount.compareTo(BigDecimal.ZERO) > 0) {
-
-                /*
-                 * Used only for response/logging when TDS is inactive.
-                 * It does not change Advance Invoice settlement logic.
-                 */
-                taxableAmountForThisRegistration =
-                        settlementAmountForThisRegistration
-                                .multiply(totalTaxableAmount)
-                                .divide(
-                                        totalInvoiceAmount,
-                                        2,
-                                        RoundingMode.HALF_UP
-                                );
-
-            } else {
-                taxableAmountForThisRegistration =
-                        BigDecimal.ZERO.setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-            }
-
-            gstAmountForThisRegistration =
-                    settlementAmountForThisRegistration
-                            .subtract(taxableAmountForThisRegistration)
-                            .max(BigDecimal.ZERO)
-                            .setScale(
-                                    2,
-                                    RoundingMode.HALF_UP
-                            );
-
-            /*
-             * Retain the old payment-type validation for Advance Invoice.
-             */
-            validatePaymentRules(
-                    paymentType,
-                    actualBankAmountForThisRegistration,
-                    resolvedUnbilled,
-                    request.getPaymentTermsDays(),
-                    tdsAmountForThisRegistration
-            );
-
-            log.info(
-                    "[ADVANCE-INVOICE-LEGACY-CALCULATION] traceId={} | "
-                            + "estimateId={} | invoiceId={} | invoiceNumber={} | "
-                            + "inputMeaning=ACTUAL_BANK_AMOUNT | paymentType={} | "
-                            + "bankAmount={} | taxableAmount={} | gstAmount={} | "
-                            + "tdsPercentage={} | tdsAmount={} | settlementAmount={} | "
-                            + "outstandingBefore={}",
-                    traceId,
-                    estimate.getId(),
-                    existingAdvanceTaxInvoice.getId(),
-                    existingAdvanceTaxInvoice.getInvoiceNumber(),
-                    paymentTypeCode,
-                    actualBankAmountForThisRegistration,
-                    taxableAmountForThisRegistration,
-                    gstAmountForThisRegistration,
-                    tdsPercentage,
-                    tdsAmountForThisRegistration,
-                    settlementAmountForThisRegistration,
-                    outstandingBeforePayment
-            );
-
-        } else {
-
-            // =====================================================
-            // NORMAL UNBILLED PAYMENT
-            // =====================================================
-
-            if (paymentGstRegistrationType
-                    == GstRegistrationType.REGISTERED) {
-
-                RegisteredPaymentCalculator.Result registeredResult =
-                        registeredPaymentCalculator.calculate(
-                                RegisteredPaymentCalculator.Input
-                                        .builder()
-                                        .estimateId(
-                                                estimate.getId()
-                                        )
-                                        .unbilledId(
-                                                resolvedUnbilled.getId()
-                                        )
-                                        .gstRegistrationType(
-                                                paymentGstRegistrationType
-                                        )
-                                        .paymentTypeCode(
-                                                paymentTypeCode
-                                        )
-                                        /*
-                                         * request.amount always means the actual amount
-                                         * credited to Bank/Cash/Payment Gateway.
-                                         */
-                                        .actualBankAmount(
-                                                reqAmount
-                                        )
-                                        .tdsActive(
-                                                Boolean.TRUE.equals(
-                                                        request.getTdsActive()
-                                                )
-                                        )
-                                        .tdsPercentage(
-                                                tdsPercentage
-                                        )
-                                        .totalTaxableAmount(
-                                                totalTaxableAmount
-                                        )
-                                        .totalGstAmount(
-                                                safe2(
-                                                        estimate.getTotalGstAmount()
-                                                )
-                                        )
-                                        .totalInvoiceAmount(
-                                                totalInvoiceAmount
-                                        )
-                                        .outstandingAmount(
-                                                outstandingBeforePayment
-                                        )
-                                        .approvedAmount(
-                                                safe2(
-                                                        resolvedUnbilled
-                                                                .getReceivedAmount()
-                                                )
-                                        )
-                                        .alreadyUsedTds(
-                                                alreadyUsedTds
-                                        )
-                                        .installmentEligibleAmount(
-                                                installmentEligibleAmount
-                                        )
-                                        .paymentTermsDays(
-                                                request.getPaymentTermsDays()
-                                        )
-                                        .poNumber(
-                                                request.getPoNumber()
-                                        )
-                                        .poAttachmentUrl(
-                                                request.getPoAttachmentUrl()
-                                        )
-                                        .purchaseOrderProjectCompleted(
-                                                purchaseOrderProjectCompleted
-                                        )
-                                        .build()
-                        );
-
-                taxableAmountForThisRegistration =
-                        safe2(
-                                registeredResult
-                                        .getCurrentTaxableAmount()
-                        );
-
-                gstAmountForThisRegistration =
-                        safe2(
-                                registeredResult
-                                        .getCurrentGstAmount()
-                        );
-
-                tdsAmountForThisRegistration =
-                        safe2(
-                                registeredResult
-                                        .getTdsAmount()
-                        );
-
-                actualBankAmountForThisRegistration =
-                        safe2(
-                                registeredResult
-                                        .getActualBankAmount()
-                        );
-
-                settlementAmountForThisRegistration =
-                        safe2(
-                                registeredResult
-                                        .getSettlementAmount()
-                        );
-
-                log.info(
-                        "[REGISTERED-PAYMENT-CALCULATION] traceId={} | "
-                                + "estimateId={} | unbilledId={} | "
-                                + "paymentType={} | actualBankAmount={} | "
-                                + "taxableAmount={} | gstAmount={} | "
-                                + "tdsPercentage={} | tdsAmount={} | "
-                                + "settlementAmount={} | outstandingBefore={} | "
-                                + "outstandingAfter={} | initialPO={} | finalSettlement={}",
-                        traceId,
-                        estimate.getId(),
-                        resolvedUnbilled.getId(),
-                        paymentTypeCode,
-                        actualBankAmountForThisRegistration,
-                        taxableAmountForThisRegistration,
-                        gstAmountForThisRegistration,
-                        registeredResult.getTdsPercentage(),
-                        tdsAmountForThisRegistration,
-                        settlementAmountForThisRegistration,
-                        registeredResult.getOutstandingBefore(),
-                        registeredResult.getOutstandingAfter(),
-                        registeredResult.isInitialPurchaseOrder(),
-                        registeredResult.isFinalSettlement()
-                );
-
-            } else if (paymentGstRegistrationType
-                    == GstRegistrationType.UNREGISTERED) {
-
-                UnregisteredPaymentCalculator.Result unregisteredResult =
-                        unregisteredPaymentCalculator.calculate(
-                                UnregisteredPaymentCalculator.Input
-                                        .builder()
-                                        .estimateId(
-                                                estimate.getId()
-                                        )
-                                        .unbilledId(
-                                                resolvedUnbilled.getId()
-                                        )
-                                        .gstRegistrationType(
-                                                paymentGstRegistrationType
-                                        )
-                                        .paymentTypeCode(
-                                                paymentTypeCode
-                                        )
-
-                                        /*
-                                         * The salesperson enters only the amount
-                                         * actually credited to Bank/Cash/Gateway.
-                                         *
-                                         * The fact that the customer is
-                                         * UNREGISTERED does not remove GST from
-                                         * Corpseed's taxable supply.
-                                         */
-                                        .actualBankAmount(
-                                                reqAmount
-                                        )
-                                        .tdsActive(
-                                                Boolean.TRUE.equals(
-                                                        request.getTdsActive()
-                                                )
-                                        )
-                                        .tdsPercentage(
-                                                tdsPercentage
-                                        )
-                                        .totalTaxableAmount(
-                                                totalTaxableAmount
-                                        )
-                                        .totalGstAmount(
-                                                totalGstAmount
-                                        )
-                                        .totalInvoiceAmount(
-                                                totalInvoiceAmount
-                                        )
-                                        .outstandingAmount(
-                                                outstandingBeforePayment
-                                        )
-                                        .approvedAmount(
-                                                safe2(
-                                                        resolvedUnbilled
-                                                                .getReceivedAmount()
-                                                )
-                                        )
-                                        .alreadyUsedTds(
-                                                alreadyUsedTds
-                                        )
-                                        .installmentEligibleAmount(
-                                                installmentEligibleAmount
-                                        )
-                                        .paymentTermsDays(
-                                                request.getPaymentTermsDays()
-                                        )
-                                        .poNumber(
-                                                request.getPoNumber()
-                                        )
-                                        .poAttachmentUrl(
-                                                request.getPoAttachmentUrl()
-                                        )
-                                        .purchaseOrderProjectCompleted(
-                                                purchaseOrderProjectCompleted
-                                        )
-                                        .build()
-                        );
-
-                taxableAmountForThisRegistration =
-                        safe2(
-                                unregisteredResult
-                                        .getCurrentTaxableAmount()
-                        );
-
-                gstAmountForThisRegistration =
-                        safe2(
-                                unregisteredResult
-                                        .getCurrentGstAmount()
-                        );
-
-                tdsAmountForThisRegistration =
-                        safe2(
-                                unregisteredResult
-                                        .getTdsAmount()
-                        );
-
-                actualBankAmountForThisRegistration =
-                        safe2(
-                                unregisteredResult
-                                        .getActualBankAmount()
-                        );
-
-                settlementAmountForThisRegistration =
-                        safe2(
-                                unregisteredResult
-                                        .getSettlementAmount()
-                        );
-
-                log.info(
-                        "[UNREGISTERED-PAYMENT-CALCULATION] traceId={} | "
-                                + "estimateId={} | unbilledId={} | "
-                                + "paymentType={} | actualBankAmount={} | "
-                                + "taxableAmount={} | gstAmount={} | "
-                                + "tdsPercentage={} | tdsAmount={} | "
-                                + "settlementAmount={} | outstandingBefore={} | "
-                                + "outstandingAfter={} | initialPO={} | finalSettlement={}",
-                        traceId,
-                        estimate.getId(),
-                        resolvedUnbilled.getId(),
-                        paymentTypeCode,
-                        actualBankAmountForThisRegistration,
-                        taxableAmountForThisRegistration,
-                        gstAmountForThisRegistration,
-                        unregisteredResult.getTdsPercentage(),
-                        tdsAmountForThisRegistration,
-                        settlementAmountForThisRegistration,
-                        unregisteredResult.getOutstandingBefore(),
-                        unregisteredResult.getOutstandingAfter(),
-                        unregisteredResult.isInitialPurchaseOrder(),
-                        unregisteredResult.isFinalSettlement()
-                );
-
-            } else if (paymentGstRegistrationType
-                    == GstRegistrationType.SEZ) {
-
-                SezPaymentCalculator.Result sezResult =
-                        sezPaymentCalculator.calculate(
-                                SezPaymentCalculator.Input
-                                        .builder()
-                                        .estimateId(
-                                                estimate.getId()
-                                        )
-                                        .unbilledId(
-                                                resolvedUnbilled.getId()
-                                        )
-                                        .gstRegistrationType(
-                                                paymentGstRegistrationType
-                                        )
-                                        .paymentTypeCode(
-                                                paymentTypeCode
-                                        )
-                                        /*
-                                         * The salesperson enters only the amount
-                                         * actually credited to Bank/Cash/Gateway.
-                                         */
-                                        .actualBankAmount(
-                                                reqAmount
-                                        )
-                                        .tdsActive(
-                                                Boolean.TRUE.equals(
-                                                        request.getTdsActive()
-                                                )
-                                        )
-                                        .tdsPercentage(
-                                                tdsPercentage
-                                        )
-                                        /*
-                                         * SEZ is zero-rated, therefore Estimate GST
-                                         * must be zero and taxable must equal total.
-                                         */
-                                        .totalTaxableAmount(
-                                                safe2(
-                                                        estimate.getSubTotalExGst()
-                                                )
-                                        )
-                                        .totalGstAmount(
-                                                safe2(
-                                                        estimate.getTotalGstAmount()
-                                                )
-                                        )
-                                        .totalInvoiceAmount(
-                                                totalInvoiceAmount
-                                        )
-                                        .outstandingAmount(
-                                                outstandingBeforePayment
-                                        )
-                                        .approvedAmount(
-                                                safe2(
-                                                        resolvedUnbilled
-                                                                .getReceivedAmount()
-                                                )
-                                        )
-                                        .alreadyUsedTds(
-                                                alreadyUsedTds
-                                        )
-                                        .installmentEligibleAmount(
-                                                installmentEligibleAmount
-                                        )
-                                        .paymentTermsDays(
-                                                request.getPaymentTermsDays()
-                                        )
-                                        .poNumber(
-                                                request.getPoNumber()
-                                        )
-                                        .poAttachmentUrl(
-                                                request.getPoAttachmentUrl()
-                                        )
-                                        .purchaseOrderProjectCompleted(
-                                                purchaseOrderProjectCompleted
-                                        )
-                                        .build()
-                        );
-
-                taxableAmountForThisRegistration =
-                        safe2(
-                                sezResult.getCurrentTaxableAmount()
-                        );
-
-                /*
-                 * Always zero for the SEZ zero-rated flow.
-                 */
-                gstAmountForThisRegistration =
-                        safe2(
-                                sezResult.getCurrentGstAmount()
-                        );
-
-                tdsAmountForThisRegistration =
-                        safe2(
-                                sezResult.getTdsAmount()
-                        );
-
-                actualBankAmountForThisRegistration =
-                        safe2(
-                                sezResult.getActualBankAmount()
-                        );
-
-                /*
-                 * For SEZ:
-                 * settlement = bank + TDS = taxable.
-                 */
-                settlementAmountForThisRegistration =
-                        safe2(
-                                sezResult.getSettlementAmount()
-                        );
-
-                log.info(
-                        "[SEZ-PAYMENT-CALCULATION] traceId={} | "
-                                + "estimateId={} | unbilledId={} | "
-                                + "paymentType={} | actualBankAmount={} | "
-                                + "taxableAmount={} | gstAmount={} | "
-                                + "tdsPercentage={} | tdsAmount={} | "
-                                + "settlementAmount={} | outstandingBefore={} | "
-                                + "outstandingAfter={} | initialPO={} | finalSettlement={}",
-                        traceId,
-                        estimate.getId(),
-                        resolvedUnbilled.getId(),
-                        paymentTypeCode,
-                        actualBankAmountForThisRegistration,
-                        taxableAmountForThisRegistration,
-                        gstAmountForThisRegistration,
-                        sezResult.getTdsPercentage(),
-                        tdsAmountForThisRegistration,
-                        settlementAmountForThisRegistration,
-                        sezResult.getOutstandingBefore(),
-                        sezResult.getOutstandingAfter(),
-                        sezResult.isInitialPurchaseOrder(),
-                        sezResult.isFinalSettlement()
-                );
-
-            } else {
-
-                PaymentCalculationEngine.PaymentCalculationResult calculationResult =
-                        paymentCalculationEngine.calculate(
-                                PaymentCalculationEngine
-                                        .PaymentCalculationRequest
-                                        .builder()
-                                        .traceId(traceId)
-                                        .estimateId(
-                                                estimate.getId()
-                                        )
-                                        .unbilledId(
-                                                resolvedUnbilled.getId()
-                                        )
-                                        .invoiceId(null)
-                                        .gstRegistrationType(
-                                                paymentGstRegistrationType
-                                        )
-                                        .paymentTypeCode(
-                                                paymentTypeCode
-                                        )
-                                        .bankAmount(
-                                                reqAmount
-                                        )
-                                        .tdsActive(
-                                                request.getTdsActive()
-                                        )
-                                        .tdsPercentage(
-                                                tdsPercentage
-                                        )
-                                        .totalTaxableAmount(
-                                                totalTaxableAmount
-                                        )
-                                        .totalGstAmount(
-                                                totalGstAmount
-                                        )
-                                        .totalInvoiceAmount(
-                                                totalInvoiceAmount
-                                        )
-                                        .outstandingAmount(
-                                                outstandingBeforePayment
-                                        )
-                                        .alreadyUsedTds(
-                                                alreadyUsedTds
-                                        )
-                                        .paymentTermsDays(
-                                                request.getPaymentTermsDays()
-                                        )
-                                        .installmentEligibleAmount(
-                                                installmentEligibleAmount
-                                        )
-                                        .build()
-                        );
-
-                taxableAmountForThisRegistration =
-                        safe2(
-                                calculationResult
-                                        .getCurrentTaxableAmount()
-                        );
-
-                gstAmountForThisRegistration =
-                        safe2(
-                                calculationResult
-                                        .getCurrentGstAmount()
-                        );
-
-                tdsAmountForThisRegistration =
-                        safe2(
-                                calculationResult
-                                        .getTdsAmount()
-                        );
-
-                actualBankAmountForThisRegistration =
-                        safe2(
-                                calculationResult
-                                        .getActualBankAmount()
-                        );
-
-                settlementAmountForThisRegistration =
-                        safe2(
-                                calculationResult
-                                        .getSettlementAmount()
-                        );
-
-                log.info(
-                        "[OTHER-GST-PAYMENT-CALCULATION] traceId={} | "
-                                + "scenario={} | gstType={} | paymentType={} | "
-                                + "actualBankAmount={} | taxableAmount={} | "
-                                + "gstAmount={} | tdsAmount={} | settlementAmount={} | "
-                                + "outstandingBefore={} | outstandingAfter={}",
-                        traceId,
-                        calculationResult.getScenario(),
-                        calculationResult.getGstRegistrationType(),
-                        calculationResult.getPaymentTypeCode(),
-                        actualBankAmountForThisRegistration,
-                        taxableAmountForThisRegistration,
-                        gstAmountForThisRegistration,
-                        tdsAmountForThisRegistration,
-                        settlementAmountForThisRegistration,
-                        calculationResult.getOutstandingBefore(),
-                        calculationResult.getOutstandingAfter()
-                );
-            }
-        }
+        log.info(
+                "[FINAL-PAYMENT-CALCULATION] traceId={} | estimateId={} | "
+                        + "invoiceId={} | invoiceNumber={} | gstType={} | "
+                        + "paymentType={} | bankAmount={} | taxableAmount={} | "
+                        + "gstAmount={} | tdsAmount={} | settlementAmount={} | "
+                        + "outstandingBefore={} | outstandingAfter={} | "
+                        + "initialPO={} | finalSettlement={}",
+                traceId,
+                estimate.getId(),
+                existingAdvanceTaxInvoice != null
+                        ? existingAdvanceTaxInvoice.getId()
+                        : null,
+                existingAdvanceTaxInvoice != null
+                        ? existingAdvanceTaxInvoice.getInvoiceNumber()
+                        : null,
+                paymentGstRegistrationType,
+                paymentTypeCode,
+                actualBankAmountForThisRegistration,
+                taxableAmountForThisRegistration,
+                gstAmountForThisRegistration,
+                tdsAmountForThisRegistration,
+                settlementAmountForThisRegistration,
+                finalResult.outstandingBefore,
+                finalResult.outstandingAfter,
+                finalResult.initialPurchaseOrder,
+                finalResult.finalSettlement
+        );
 
         // =====================================================
-// 21. ADVANCE TAX INVOICE FULL SETTLEMENT CHECK
-// =====================================================
+        // 21. ADVANCE TAX INVOICE SAFETY CHECK
+        // =====================================================
 
         if (existingAdvanceTaxInvoice != null) {
-
             BigDecimal advanceInvoiceOutstanding =
-                    safe2(
-                            existingAdvanceTaxInvoice
-                                    .getOutstandingAmount()
-                    );
+                    safe3(existingAdvanceTaxInvoice.getOutstandingAmount());
 
             if (advanceInvoiceOutstanding.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new ValidationException(
@@ -1680,36 +1060,12 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
 
-            /*
-             * When an Advance Tax Invoice exists, the complete outstanding
-             * amount must be settled.
-             *
-             * Example:
-             * Advance Invoice outstanding = ₹50
-             *
-             * Without TDS:
-             * Bank amount = ₹50
-             *
-             * With TDS:
-             * Bank amount = ₹45
-             * TDS amount  = ₹5
-             * Settlement  = ₹50
-             */
-            if (settlementAmountForThisRegistration
-                    .compareTo(advanceInvoiceOutstanding) != 0) {
-
+            if (settlementAmountForThisRegistration.compareTo(advanceInvoiceOutstanding) > 0) {
                 throw new ValidationException(
-                        "Payment must completely settle the Advance Tax Invoice "
-                                + existingAdvanceTaxInvoice.getInvoiceNumber()
-                                + ". Bank amount: ₹"
-                                + actualBankAmountForThisRegistration
-                                + ", TDS amount: ₹"
-                                + tdsAmountForThisRegistration
-                                + ", settlement amount: ₹"
-                                + settlementAmountForThisRegistration
-                                + ", required settlement amount: ₹"
-                                + advanceInvoiceOutstanding,
-                        "ERR_ADVANCE_INVOICE_FULL_SETTLEMENT_REQUIRED",
+                        "Payment settlement exceeds Advance Tax Invoice outstanding. "
+                                + "Settlement: Rs. " + settlementAmountForThisRegistration
+                                + ", outstanding: Rs. " + advanceInvoiceOutstanding,
+                        "ERR_ADVANCE_INVOICE_SETTLEMENT_EXCEEDS_OUTSTANDING",
                         "amount"
                 );
             }
@@ -1720,22 +1076,13 @@ public class PaymentServiceImpl implements PaymentService {
         // =====================================================
 
         BigDecimal approvedAmount =
-                safe2(
-                        resolvedUnbilled
-                                .getReceivedAmount()
-                );
+                safe3(resolvedUnbilled.getReceivedAmount());
 
         BigDecimal pendingAmount =
-                safe2(
-                        resolvedUnbilled
-                                .getCurrentReceivedAmount()
-                );
+                safe3(resolvedUnbilled.getCurrentReceivedAmount());
 
         BigDecimal totalAmount =
-                safe2(
-                        resolvedUnbilled
-                                .getTotalAmount()
-                );
+                wholeAs3(resolvedUnbilled.getTotalAmount());
 
         BigDecimal totalAfterRegistration =
                 approvedAmount
@@ -1744,7 +1091,7 @@ public class PaymentServiceImpl implements PaymentService {
                                 settlementAmountForThisRegistration
                         )
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -1759,7 +1106,7 @@ public class PaymentServiceImpl implements PaymentService {
                             )
                             .max(BigDecimal.ZERO)
                             .setScale(
-                                    2,
+                                    3,
                                     RoundingMode.HALF_UP
                             );
 
@@ -1768,7 +1115,7 @@ public class PaymentServiceImpl implements PaymentService {
                             .subtract(totalAmount)
                             .max(BigDecimal.ZERO)
                             .setScale(
-                                    2,
+                                    3,
                                     RoundingMode.HALF_UP
                             );
 
@@ -1834,7 +1181,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         receipt.setUnallocatedAmount(
                 BigDecimal.ZERO.setScale(
-                        2,
+                        3,
                         RoundingMode.HALF_UP
                 )
         );
@@ -2011,9 +1358,9 @@ public class PaymentServiceImpl implements PaymentService {
                 traceId,
                 resolvedUnbilled.getId(),
                 resolvedUnbilled.getUnbilledNumber(),
-                safe2(resolvedUnbilled.getReceivedAmount()),
-                safe2(resolvedUnbilled.getCurrentReceivedAmount()),
-                safe2(resolvedUnbilled.getOutstandingAmount()),
+                safe3(resolvedUnbilled.getReceivedAmount()),
+                safe3(resolvedUnbilled.getCurrentReceivedAmount()),
+                safe3(resolvedUnbilled.getOutstandingAmount()),
                 resolvedUnbilled.getStatus()
         );
 
@@ -2069,11 +1416,11 @@ public class PaymentServiceImpl implements PaymentService {
                             + ", settlement amount: ₹"
                             + settlementAmountForThisRegistration
                             + ". Total approved amount: ₹"
-                            + safe2(resolvedUnbilled.getReceivedAmount())
+                            + safe3(resolvedUnbilled.getReceivedAmount())
                             + ", pending approval amount: ₹"
-                            + safe2(resolvedUnbilled.getCurrentReceivedAmount())
+                            + safe3(resolvedUnbilled.getCurrentReceivedAmount())
                             + ", total amount: ₹"
-                            + safe2(resolvedUnbilled.getTotalAmount())
+                            + wholeAs3(resolvedUnbilled.getTotalAmount())
                             + ".";
         }
 
@@ -2156,8 +1503,8 @@ public class PaymentServiceImpl implements PaymentService {
                 gstAmountForThisRegistration,
                 tdsAmountForThisRegistration,
                 settlementAmountForThisRegistration,
-                safe2(resolvedUnbilled.getCurrentReceivedAmount()),
-                safe2(resolvedUnbilled.getOutstandingAmount()),
+                safe3(resolvedUnbilled.getCurrentReceivedAmount()),
+                safe3(resolvedUnbilled.getOutstandingAmount()),
                 resolvedUnbilled.getStatus()
         );
 
@@ -2253,15 +1600,6 @@ public class PaymentServiceImpl implements PaymentService {
          * Purchase Order is currently an UnbilledInvoice-based flow.
          * Only actual customer receipts can be registered here.
          */
-        if (isPurchaseOrder) {
-            throw new ValidationException(
-                    "PURCHASE_ORDER payment type cannot be used against an already-generated Advance Tax Invoice. "
-                            + "Register the actual customer receipt using FULL, PARTIAL, or INSTALLMENT.",
-                    "ERR_PO_NOT_ALLOWED_FOR_ADVANCE_INVOICE_PAYMENT",
-                    "paymentTypeId"
-            );
-        }
-
         if (Boolean.TRUE.equals(request.getGovernmentFeeActive())
                 || request.getGovernmentFee() != null) {
 
@@ -2272,7 +1610,7 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal bankAmount = safe2(requestBankAmount);
+        BigDecimal bankAmount = safe3(requestBankAmount);
 
         if (bankAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2333,7 +1671,7 @@ public class PaymentServiceImpl implements PaymentService {
         /*
          * TDS is calculated against the Advance Invoice.
          */
-        BigDecimal tdsAmount = safe2(
+        BigDecimal tdsAmount = wholeTds(
                 calculateAdvanceInvoiceTdsAmountIfRequired(
                         request,
                         invoice
@@ -2342,7 +1680,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         BigDecimal settlementAmount = bankAmount
                 .add(tdsAmount)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
 
         /*
          * ------------------------------------------------------------
@@ -2365,7 +1703,7 @@ public class PaymentServiceImpl implements PaymentService {
                 invoiceOutstanding
                         .subtract(invoicePendingReceived)
                         .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
         if (invoiceAvailableAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2424,7 +1762,7 @@ public class PaymentServiceImpl implements PaymentService {
         validateAdvanceInvoiceReceiptPaymentType(
                 paymentType,
                 settlementAmount,
-                estimateAvailableAmount
+                invoiceAvailableAmount
         );
 
         /*
@@ -2444,15 +1782,10 @@ public class PaymentServiceImpl implements PaymentService {
          * Unallocated advance      = 2,500
          */
         BigDecimal allocatedAmount =
-                settlementAmount
-                        .min(invoiceAvailableAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                settlementAmount.setScale(3, RoundingMode.HALF_UP);
 
         BigDecimal unallocatedAmount =
-                settlementAmount
-                        .subtract(allocatedAmount)
-                        .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP);
+                BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP);
 
         /*
          * TDS must be associated with an Invoice settlement.
@@ -2481,13 +1814,13 @@ public class PaymentServiceImpl implements PaymentService {
                 allocatedAmount
                         .subtract(tdsAmount)
                         .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
         BigDecimal unallocatedBankAmount =
                 bankAmount
                         .subtract(allocatedBankAmount)
                         .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
         /*
          * Defensive validation:
@@ -2595,7 +1928,7 @@ public class PaymentServiceImpl implements PaymentService {
         invoice.setPendingReceivedAmount(
                 invoicePendingReceived
                         .add(allocatedAmount)
-                        .setScale(2, RoundingMode.HALF_UP)
+                        .setScale(3, RoundingMode.HALF_UP)
         );
 
         /*
@@ -2678,9 +2011,8 @@ public class PaymentServiceImpl implements PaymentService {
     private void validateAdvanceInvoiceReceiptPaymentType(
             PaymentType paymentType,
             BigDecimal settlementAmount,
-            BigDecimal estimateAvailableAmount
+            BigDecimal availableOutstanding
     ) {
-
         if (paymentType == null || paymentType.getCode() == null) {
             throw new ValidationException(
                     "Payment type is required",
@@ -2689,58 +2021,37 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
+        String code = paymentType.getCode().trim().toUpperCase(Locale.ROOT);
+        BigDecimal settlement = safe3(settlementAmount);
+        BigDecimal outstanding = safe3(availableOutstanding);
 
-        String paymentTypeCode =
-                paymentType.getCode()
-                        .trim()
-                        .toUpperCase();
-
-        if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (settlement.compareTo(BigDecimal.ZERO) <= 0
+                || settlement.compareTo(outstanding) > 0) {
             throw new ValidationException(
-                    "Settlement amount must be greater than zero",
-                    "ERR_SETTLEMENT_AMOUNT_INVALID",
+                    "Settlement must be positive and cannot exceed available outstanding",
+                    "ERR_ADVANCE_INVOICE_SETTLEMENT_INVALID",
                     "amount"
             );
         }
 
-        if (settlementAmount.compareTo(estimateAvailableAmount) > 0) {
-            throw new ValidationException(
-                    "Settlement amount exceeds the available Estimate balance",
-                    "ERR_PAYMENT_EXCEEDS_ESTIMATE_AVAILABLE_BALANCE",
-                    "amount"
-            );
-        }
-
-        switch (paymentTypeCode) {
-
-            case "FULL" -> {
-
-                if (settlementAmount.compareTo(
-                        estimateAvailableAmount
-                ) != 0) {
-
+        switch (code) {
+            case "FULL", "PURCHASE_ORDER" -> {
+                if (settlement.compareTo(outstanding) != 0) {
                     throw new ValidationException(
-                            "For FULL payment, settlement amount must equal the available Estimate balance of ₹"
-                                    + estimateAvailableAmount,
-                            "ERR_FULL_PAYMENT_AMOUNT_MISMATCH",
+                            code + " payment must fully settle available outstanding Rs. "
+                                    + outstanding,
+                            "FULL".equals(code)
+                                    ? "ERR_FULL_PAYMENT_AMOUNT_MISMATCH"
+                                    : "ERR_PURCHASE_ORDER_AMOUNT_MISMATCH",
                             "amount"
                     );
                 }
             }
-
             case "PARTIAL", "INSTALLMENT" -> {
-                // Any positive amount up to Estimate availability is allowed.
+                // Any positive whole-rupee settlement up to outstanding is allowed.
             }
-
-            case "PURCHASE_ORDER" -> throw new ValidationException(
-                    "PURCHASE_ORDER cannot be registered against an Advance Tax Invoice",
-                    "ERR_PO_NOT_ALLOWED_FOR_ADVANCE_INVOICE_PAYMENT",
-                    "paymentTypeId"
-            );
-
             default -> throw new ValidationException(
-                    "Unsupported payment type for Advance Tax Invoice payment: "
-                            + paymentTypeCode,
+                    "Unsupported payment type for Advance Tax Invoice payment: " + code,
                     "ERR_UNSUPPORTED_ADVANCE_INVOICE_PAYMENT_TYPE",
                     "paymentTypeId"
             );
@@ -3317,7 +2628,6 @@ public class PaymentServiceImpl implements PaymentService {
             Invoice invoice,
             BigDecimal availableOutstanding
     ) {
-
         if (paymentType == null || paymentType.getCode() == null) {
             throw new ValidationException(
                     "Invalid payment type",
@@ -3326,89 +2636,47 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        String code = paymentType.getCode().trim().toUpperCase();
+        String code = paymentType.getCode().trim().toUpperCase(Locale.ROOT);
+        BigDecimal bank = safe3(bankAmount);
+        BigDecimal tds = wholeTds(tdsAmount);
+        BigDecimal settlement = safe3(bank.add(tds));
+        BigDecimal available = safe3(availableOutstanding);
 
-        BigDecimal safeBankAmount = safe2(bankAmount);
-        BigDecimal safeTdsAmount = safe2(tdsAmount);
-        BigDecimal settlementAmount = safeBankAmount
-                .add(safeTdsAmount)
-                .setScale(2, RoundingMode.HALF_UP);
-
-        BigDecimal invoiceTotal = safe2(invoice.getGrandTotal());
-        BigDecimal available = safe2(availableOutstanding);
-
-        if (safeBankAmount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (bank.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
                     "Bank/Cash/Payment Gateway amount must be greater than zero",
                     "ERR_AMOUNT_NOT_POSITIVE",
                     "amount"
             );
         }
-
-        if (settlementAmount.compareTo(available) > 0) {
+        if (settlement.compareTo(available) > 0) {
             throw new ValidationException(
                     "Settlement amount exceeds available Invoice outstanding",
                     "ERR_ADVANCE_INVOICE_SETTLEMENT_EXCEEDS_AVAILABLE",
                     "amount"
             );
         }
-
-        if ("FULL".equals(code)) {
-            if (settlementAmount.compareTo(available) != 0) {
-                throw new ValidationException(
-                        "FULL payment settlement must equal available outstanding amount ₹"
-                                + available
-                                + ". Current settlement is ₹" + settlementAmount,
-                        "ERR_FULL_AMOUNT_MISMATCH",
-                        "amount"
-                );
-            }
-            return;
-        }
-
-        if ("PARTIAL".equals(code)) {
-
-            BigDecimal halfInvoice = invoiceTotal
-                    .multiply(new BigDecimal("0.50"))
-                    .setScale(2, RoundingMode.HALF_UP);
-
-            BigDecimal expected = available.compareTo(halfInvoice) < 0
-                    ? available
-                    : halfInvoice;
-
-            if (settlementAmount.compareTo(expected) != 0) {
-                throw new ValidationException(
-                        "PARTIAL payment settlement must be ₹" + expected
-                                + ". Bank amount: ₹" + safeBankAmount
-                                + ", TDS amount: ₹" + safeTdsAmount
-                                + ", settlement: ₹" + settlementAmount,
-                        "ERR_PARTIAL_AMOUNT_MISMATCH",
-                        "amount"
-                );
-            }
-            return;
-        }
-
-        if ("INSTALLMENT".equals(code)) {
-            return;
-        }
-
-        if ("PURCHASE_ORDER".equals(code)) {
+        if (("FULL".equals(code) || "PURCHASE_ORDER".equals(code))
+                && settlement.compareTo(available) != 0) {
             throw new ValidationException(
-                    "PURCHASE_ORDER is not allowed against an already-generated Advance Tax Invoice",
-                    "ERR_PO_NOT_ALLOWED_FOR_ADVANCE_INVOICE_PAYMENT",
+                    code + " payment must fully settle available outstanding Rs. " + available,
+                    "FULL".equals(code)
+                            ? "ERR_FULL_AMOUNT_MISMATCH"
+                            : "ERR_PURCHASE_ORDER_AMOUNT_MISMATCH",
+                    "amount"
+            );
+        }
+        if (!"FULL".equals(code)
+                && !"PARTIAL".equals(code)
+                && !"INSTALLMENT".equals(code)
+                && !"PURCHASE_ORDER".equals(code)) {
+            throw new ValidationException(
+                    "Unsupported payment type: " + code,
+                    "ERR_UNSUPPORTED_PAYMENT_TYPE",
                     "paymentTypeId"
             );
         }
-
-        throw new ValidationException(
-                "Unsupported payment type: " + paymentType.getCode(),
-                "ERR_UNSUPPORTED_PAYMENT_TYPE",
-                "paymentTypeId"
-        );
     }
-
-
 
 
     private LedgerMaster validateAndGetBankLedger(
@@ -4054,7 +3322,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal safeTdsAmount =
-                safe2(calculatedTdsAmount);
+                wholeTds(calculatedTdsAmount);
 
         if (safeTdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -4089,7 +3357,7 @@ public class PaymentServiceImpl implements PaymentService {
          * from the rounded TDS amount.
          */
         BigDecimal taxableAmount =
-                safe2(calculatedTaxableAmount);
+                safe3(calculatedTaxableAmount);
 
 
 
@@ -4834,24 +4102,24 @@ public class PaymentServiceImpl implements PaymentService {
 
         final BigDecimal zero =
                 BigDecimal.ZERO.setScale(
-                        2,
+                        0,
                         RoundingMode.HALF_UP
                 );
 
         BigDecimal safeBankAmount =
-                safe2(bankAmount);
+                safe3(bankAmount);
 
         BigDecimal safeTdsPercentage =
                 safe2(tdsPercentage);
 
         BigDecimal safeTotalTaxableAmount =
-                safe2(totalTaxableAmount);
+                safe3(totalTaxableAmount);
 
         BigDecimal safeTotalInvoiceAmount =
-                safe2(totalInvoiceAmount);
+                wholeAs3(totalInvoiceAmount);
 
         BigDecimal safeRemainingTdsLimit =
-                safe2(remainingTdsLimit);
+                wholeTds(remainingTdsLimit);
 
         if (safeBankAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return zero;
@@ -4940,7 +4208,7 @@ public class PaymentServiceImpl implements PaymentService {
                             .multiply(safeTdsPercentage)
                             .divide(
                                     BigDecimal.valueOf(100),
-                                    2,
+                                    12,
                                     RoundingMode.HALF_UP
                             );
 
@@ -4957,7 +4225,7 @@ public class PaymentServiceImpl implements PaymentService {
                     effectiveGstPercentage,
                     safeTdsPercentage,
                     currentTaxableAmount.setScale(
-                            2,
+                            3,
                             RoundingMode.HALF_UP
                     ),
                     calculatedTds
@@ -4974,19 +4242,98 @@ public class PaymentServiceImpl implements PaymentService {
                             .multiply(safeTdsPercentage)
                             .divide(
                                     BigDecimal.valueOf(100),
-                                    2,
+                                    12,
                                     RoundingMode.HALF_UP
                             );
         }
 
-        return calculatedTds
-                .min(safeRemainingTdsLimit)
-                .setScale(
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        return wholeTds(
+                calculatedTds.min(safeRemainingTdsLimit)
+        );
     }
 
+
+    private BigDecimal safe3(BigDecimal val) {
+        return (val == null ? BigDecimal.ZERO : val)
+                .setScale(3, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal wholeTds(BigDecimal val) {
+        return (val == null ? BigDecimal.ZERO : val)
+                .setScale(0, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal wholeAs3(BigDecimal val) {
+        return (val == null ? BigDecimal.ZERO : val)
+                .setScale(0, RoundingMode.HALF_UP)
+                .setScale(3, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Reads the selected milestone amount without forcing the complete
+     * outstanding to behave as an installment. Add one of these getters to
+     * PaymentRegistrationRequestDto: getInstallmentEligibleAmount(),
+     * getMilestoneAmount(), or getInstallmentAmount().
+     */
+    private BigDecimal resolveInstallmentEligibleAmount(
+            PaymentRegistrationRequestDto request,
+            BigDecimal outstanding
+    ) {
+        if (request == null) {
+            throw new ValidationException(
+                    "Payment request is required for installment validation",
+                    "ERR_PAYMENT_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        BigDecimal selectedAmount = null;
+        String[] getters = {
+                "getInstallmentEligibleAmount",
+                "getMilestoneAmount",
+                "getInstallmentAmount"
+        };
+
+        for (String getter : getters) {
+            try {
+                Object value = request.getClass().getMethod(getter).invoke(request);
+                if (value instanceof BigDecimal amount) {
+                    selectedAmount = amount;
+                    break;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Try the next supported getter name.
+            }
+        }
+
+        BigDecimal eligible = safe3(selectedAmount);
+        if (eligible.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Selected milestone/installment amount is required for INSTALLMENT payment",
+                    "ERR_INSTALLMENT_ELIGIBLE_AMOUNT_REQUIRED",
+                    "installmentAmount"
+            );
+        }
+
+        BigDecimal safeOutstanding = safe3(outstanding);
+        if (eligible.compareTo(safeOutstanding) > 0) {
+            throw new ValidationException(
+                    "Installment eligible amount cannot exceed current outstanding",
+                    "ERR_INSTALLMENT_ELIGIBLE_EXCEEDS_OUTSTANDING",
+                    "installmentAmount"
+            );
+        }
+
+        if (eligible.remainder(BigDecimal.ONE).compareTo(BigDecimal.ZERO) != 0) {
+            throw new ValidationException(
+                    "Installment eligible amount must be a whole-rupee settlement",
+                    "ERR_INSTALLMENT_AMOUNT_MUST_BE_WHOLE_RUPEE",
+                    "installmentAmount"
+            );
+        }
+
+        return eligible.setScale(3, RoundingMode.HALF_UP);
+    }
 
     private BigDecimal safe2(BigDecimal val) {
         return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
@@ -5137,7 +4484,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             paymentsToApprove.forEach(payment -> payment.setStatus(PaymentStatus.REJECTED));
 
-            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+            unbilled.setCurrentReceivedAmount(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
 
             governmentFeeRepository.findByUnbilledInvoice(unbilled).ifPresent(gf -> {
                 if (gf.getStatus() == GovernmentFeeStatus.PENDING) {
@@ -5270,8 +4617,8 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal newlyApprovedBankAmount = paymentsToApprove.stream()
                 .map(PaymentReceipt::getAmount)
                 .filter(Objects::nonNull)
-                .map(this::safe2)
-                .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add);
+                .map(this::safe3)
+                .reduce(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP), BigDecimal::add);
 
         boolean internationalTransaction =
                 isInternationalTransaction(
@@ -5282,14 +4629,15 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal newlyApprovedTdsAmount =
                 internationalTransaction
                         ? BigDecimal.ZERO.setScale(
-                        2,
+                        0,
                         RoundingMode.HALF_UP
                 )
                         : paymentsToApprove.stream()
                         .map(this::getPendingTdsAmountForPayment)
+                        .map(this::wholeTds)
                         .reduce(
                                 BigDecimal.ZERO.setScale(
-                                        2,
+                                        0,
                                         RoundingMode.HALF_UP
                                 ),
                                 BigDecimal::add
@@ -5302,7 +4650,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         BigDecimal newlyApprovedAmount = newlyApprovedBankAmount
                 .add(newlyApprovedTdsAmount)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
 
         log.info(
                 "Approving payments | unbilledId={} | bankAmount={} | tdsAmount={} | settlementAmount={}",
@@ -5312,17 +4660,17 @@ public class PaymentServiceImpl implements PaymentService {
                 newlyApprovedAmount
         );
 
-        BigDecimal updatedReceived = safe2(unbilled.getReceivedAmount())
+        BigDecimal updatedReceived = safe3(unbilled.getReceivedAmount())
                 .add(newlyApprovedAmount)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
 
         unbilled.setReceivedAmount(updatedReceived);
-        unbilled.setCurrentReceivedAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        unbilled.setCurrentReceivedAmount(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
         unbilled.setOutstandingAmount(
-                safe2(unbilled.getTotalAmount())
+                wholeAs3(unbilled.getTotalAmount())
                         .subtract(updatedReceived)
                         .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP)
+                        .setScale(3, RoundingMode.HALF_UP)
         );
 
         /*
@@ -5337,7 +4685,7 @@ public class PaymentServiceImpl implements PaymentService {
          */
         for (PaymentReceipt payment : paymentsToApprove) {
 
-            if (safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) <= 0) {
+            if (safe3(payment.getAmount()).compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
 
@@ -5578,7 +4926,7 @@ public class PaymentServiceImpl implements PaymentService {
     ) {
         if (paymentReceipt == null) {
             return BigDecimal.ZERO.setScale(
-                    2,
+                    0,
                     RoundingMode.HALF_UP
             );
         }
@@ -5591,13 +4939,9 @@ public class PaymentServiceImpl implements PaymentService {
                         ? unbilled.getEstimate()
                         : null;
 
-        /*
-         * Ignore old/invalid TDS rows linked with an
-         * INTERNATIONAL payment.
-         */
         if (isInternationalTransaction(estimate, unbilled)) {
             return BigDecimal.ZERO.setScale(
-                    2,
+                    0,
                     RoundingMode.HALF_UP
             );
         }
@@ -5608,15 +4952,14 @@ public class PaymentServiceImpl implements PaymentService {
                         tds.getStatus() == TdsStatus.PENDING
                 )
                 .map(TdsRegistration::getTdsAmount)
-                .map(this::safe2)
+                .map(this::wholeTds)
                 .orElse(
                         BigDecimal.ZERO.setScale(
-                                2,
+                                0,
                                 RoundingMode.HALF_UP
                         )
                 );
     }
-
 
 
 
@@ -5625,7 +4968,7 @@ public class PaymentServiceImpl implements PaymentService {
     ) {
         if (paymentReceipt == null) {
             return BigDecimal.ZERO.setScale(
-                    2,
+                    0,
                     RoundingMode.HALF_UP
             );
         }
@@ -5640,7 +4983,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (isInternationalTransaction(estimate, unbilled)) {
             return BigDecimal.ZERO.setScale(
-                    2,
+                    0,
                     RoundingMode.HALF_UP
             );
         }
@@ -5652,14 +4995,15 @@ public class PaymentServiceImpl implements PaymentService {
                                 || tds.getStatus() == TdsStatus.APPROVED
                 )
                 .map(TdsRegistration::getTdsAmount)
-                .map(this::safe2)
+                .map(this::wholeTds)
                 .orElse(
                         BigDecimal.ZERO.setScale(
-                                2,
+                                0,
                                 RoundingMode.HALF_UP
                         )
                 );
     }
+
 
     private String getUserDisplayName(User user) {
         if (user == null) return null;
@@ -6860,7 +6204,7 @@ public class PaymentServiceImpl implements PaymentService {
                 );
 
         BigDecimal bankAmount =
-                safe2(paymentReceipt.getAmount());
+                safe3(paymentReceipt.getAmount());
 
         /*
          * Critical rule:
@@ -6873,10 +6217,10 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal safeTdsAmount =
                 internationalTransaction
                         ? BigDecimal.ZERO.setScale(
-                        2,
+                        3,
                         RoundingMode.HALF_UP
                 )
-                        : safe2(tdsAmount);
+                        : wholeTds(tdsAmount);
 
         if (internationalTransaction) {
             unbilled.setTdsActive(false);
@@ -6886,14 +6230,14 @@ public class PaymentServiceImpl implements PaymentService {
                             + "unbilledId={} | paymentReceiptId={} | incomingTdsAmount={}",
                     unbilled.getId(),
                     paymentReceipt.getId(),
-                    safe2(tdsAmount)
+                    wholeTds(tdsAmount)
             );
         }
 
         BigDecimal customerCreditAmount = bankAmount
                 .add(safeTdsAmount)
                 .setScale(
-                        2,
+                        3,
                         RoundingMode.HALF_UP
                 );
 
@@ -6910,7 +6254,7 @@ public class PaymentServiceImpl implements PaymentService {
                         .debitAmount(bankAmount)
                         .creditAmount(
                                 BigDecimal.ZERO.setScale(
-                                        2,
+                                        3,
                                         RoundingMode.HALF_UP
                                 )
                         )
@@ -6943,7 +6287,7 @@ public class PaymentServiceImpl implements PaymentService {
                             .debitAmount(safeTdsAmount)
                             .creditAmount(
                                     BigDecimal.ZERO.setScale(
-                                            2,
+                                            3,
                                             RoundingMode.HALF_UP
                                     )
                             )
@@ -6964,7 +6308,7 @@ public class PaymentServiceImpl implements PaymentService {
                         .ledgerId(customerLedger.getId())
                         .debitAmount(
                                 BigDecimal.ZERO.setScale(
-                                        2,
+                                        3,
                                         RoundingMode.HALF_UP
                                 )
                         )
@@ -7367,79 +6711,82 @@ public class PaymentServiceImpl implements PaymentService {
         return code;
     }
 
-    private BigDecimal calculateTdsTaxableAmount(Estimate estimate, UnbilledInvoice unbilled) {
-
-        log.debug("Calculating TDS taxable amount | estimateId={} | unbilledId={}",
+    private BigDecimal calculateTdsTaxableAmount(
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        log.debug(
+                "Calculating TDS taxable amount | estimateId={} | unbilledId={}",
                 estimate != null ? estimate.getId() : null,
-                unbilled != null ? unbilled.getId() : null);
-
-        /*
-         * TDS must be calculated on taxable value excluding GST.
-         *
-         * Example:
-         * Service value = 25,000
-         * GST           = 4,500
-         * Grand total   = 29,500
-         *
-         * TDS base      = 25,000
-         */
+                unbilled != null ? unbilled.getId() : null
+        );
 
         if (estimate != null
                 && estimate.getSubTotalExGst() != null
-                && safe2(estimate.getSubTotalExGst()).compareTo(BigDecimal.ZERO) > 0) {
-            return safe2(estimate.getSubTotalExGst());
+                && safe3(estimate.getSubTotalExGst())
+                .compareTo(BigDecimal.ZERO) > 0) {
+            return safe3(estimate.getSubTotalExGst());
         }
 
         if (estimate != null
                 && estimate.getLineItems() != null
                 && !estimate.getLineItems().isEmpty()) {
 
-            BigDecimal taxableFromLines = estimate.getLineItems()
-                    .stream()
-                    .filter(Objects::nonNull)
-                    .map(item -> item.getLineTotalExGst())
-                    .filter(Objects::nonNull)
-                    .map(this::safe2)
-                    .reduce(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP), BigDecimal::add)
-                    .setScale(2, RoundingMode.HALF_UP);
+            BigDecimal taxableFromLines =
+                    estimate.getLineItems()
+                            .stream()
+                            .filter(Objects::nonNull)
+                            .map(item -> item.getLineTotalExGst())
+                            .filter(Objects::nonNull)
+                            .map(this::safe3)
+                            .reduce(
+                                    BigDecimal.ZERO.setScale(
+                                            3,
+                                            RoundingMode.HALF_UP
+                                    ),
+                                    BigDecimal::add
+                            )
+                            .setScale(3, RoundingMode.HALF_UP);
 
             if (taxableFromLines.compareTo(BigDecimal.ZERO) > 0) {
                 return taxableFromLines;
             }
         }
 
-        BigDecimal totalAmount = unbilled != null
-                ? safe2(unbilled.getTotalAmount())
-                : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalAmount =
+                unbilled != null
+                        ? wholeAs3(unbilled.getTotalAmount())
+                        : BigDecimal.ZERO.setScale(
+                        3,
+                        RoundingMode.HALF_UP
+                );
 
-        BigDecimal gstAmount = estimate != null && estimate.getTotalGstAmount() != null
-                ? safe2(estimate.getTotalGstAmount())
-                : BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal gstAmount =
+                estimate != null
+                        && estimate.getTotalGstAmount() != null
+                        ? safe3(estimate.getTotalGstAmount())
+                        : BigDecimal.ZERO.setScale(
+                        3,
+                        RoundingMode.HALF_UP
+                );
 
         return totalAmount
                 .subtract(gstAmount)
                 .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
     }
-
 
 
     private BigDecimal getTotalActiveTdsAmount(
             UnbilledInvoice unbilled
     ) {
-        if (unbilled == null) {
-            return BigDecimal.ZERO.setScale(
-                    2,
-                    RoundingMode.HALF_UP
-            );
-        }
-
-        if (isInternationalTransaction(
+        if (unbilled == null
+                || isInternationalTransaction(
                 unbilled.getEstimate(),
                 unbilled
         )) {
             return BigDecimal.ZERO.setScale(
-                    2,
+                    0,
                     RoundingMode.HALF_UP
             );
         }
@@ -7447,26 +6794,23 @@ public class PaymentServiceImpl implements PaymentService {
         return tdsRegistrationRepository
                 .findAllByUnbilledInvoiceAndIsDeletedFalse(unbilled)
                 .stream()
+                .filter(Objects::nonNull)
                 .filter(tds ->
                         tds.getStatus() == TdsStatus.PENDING
                                 || tds.getStatus() == TdsStatus.APPROVED
                 )
                 .map(TdsRegistration::getTdsAmount)
                 .filter(Objects::nonNull)
-                .map(this::safe2)
+                .map(this::wholeTds)
                 .reduce(
                         BigDecimal.ZERO.setScale(
-                                2,
+                                0,
                                 RoundingMode.HALF_UP
                         ),
                         BigDecimal::add
                 )
-                .setScale(
-                        2,
-                        RoundingMode.HALF_UP
-                );
+                .setScale(0, RoundingMode.HALF_UP);
     }
-
 
 
     private void approveTdsForPaymentAfterInvoiceCreated(
@@ -7718,19 +7062,19 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal bankAmount = safe2(payment.getAmount());
-        BigDecimal safeTdsAmount = safe2(tdsAmount);
+        BigDecimal bankAmount = safe3(payment.getAmount());
+        BigDecimal safeTdsAmount = wholeTds(tdsAmount);
 
         BigDecimal settlementAmount = bankAmount
                 .add(safeTdsAmount)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
 
         if (settlementAmount.compareTo(BigDecimal.ZERO) <= 0) {
             return;
         }
 
         BigDecimal currentOutstanding =
-                safe2(invoice.getOutstandingAmount());
+                safe3(invoice.getOutstandingAmount());
 
         if (settlementAmount.compareTo(currentOutstanding) > 0) {
             throw new ValidationException(
@@ -7746,15 +7090,15 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal updatedReceived =
-                safe2(invoice.getReceivedAmount())
+                safe3(invoice.getReceivedAmount())
                         .add(settlementAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
         BigDecimal updatedOutstanding =
                 currentOutstanding
                         .subtract(settlementAmount)
                         .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
         invoice.setReceivedAmount(updatedReceived);
         invoice.setOutstandingAmount(updatedOutstanding);
@@ -8341,6 +7685,584 @@ public class PaymentServiceImpl implements PaymentService {
                     "ERR_PO_PROJECT_STATUS_VERIFICATION_FAILED",
                     "unbilledNumber"
             );
+        }
+    }
+
+
+    /**
+     * Single source of truth for payment calculations.
+     *
+     * Final accounting precision:
+     * - taxable and GST: 3 decimals
+     * - bank/cash/gateway: 3 decimals
+     * - invoice/settlement: whole rupee
+     * - TDS: whole rupee
+     * - rates: 2 decimals
+     */
+    private static final class FinalPaymentMath {
+
+        static final int DETAIL_SCALE = 3;
+        static final int RATE_SCALE = 2;
+        static final int INTERNAL_SCALE = 12;
+
+        private static final BigDecimal HUNDRED = new BigDecimal("100");
+        private static final BigDecimal ZERO3 = BigDecimal.ZERO.setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+        private static final BigDecimal ZERO0 = BigDecimal.ZERO.setScale(0, RoundingMode.HALF_UP);
+
+        private FinalPaymentMath() {
+        }
+
+        static Result calculate(Input input) {
+            if (input == null) {
+                throw fail("Payment calculation input is required", "ERR_PAYMENT_CALCULATION_INPUT_REQUIRED", "calculationInput");
+            }
+
+            String paymentType = normalizePaymentType(input.paymentTypeCode);
+            GstRegistrationType gstType = input.gstRegistrationType != null
+                    ? input.gstRegistrationType
+                    : GstRegistrationType.REGISTERED;
+
+            BigDecimal bank = detail(input.bankAmount);
+            BigDecimal totalTaxable = detail(input.totalTaxableAmount);
+            BigDecimal totalGst = isZeroRated(gstType) ? ZERO3 : detail(input.totalGstAmount);
+            BigDecimal totalInvoice = wholeAs3(input.totalInvoiceAmount);
+            BigDecimal outstanding = wholeAs3(input.outstandingAmount);
+            BigDecimal alreadyUsedTds = whole(input.alreadyUsedTds);
+            BigDecimal installmentEligible = wholeAs3(input.installmentEligibleAmount);
+            BigDecimal tdsPercentage = rate(input.tdsPercentage);
+            boolean tdsActive = input.tdsActive;
+
+            validateComposition(gstType, totalTaxable, totalGst, totalInvoice);
+
+            boolean initialPo = "PURCHASE_ORDER".equals(paymentType)
+                    && bank.compareTo(BigDecimal.ZERO) == 0;
+
+            if (initialPo) {
+                if (tdsActive || (input.tdsPercentage != null && rate(input.tdsPercentage).compareTo(BigDecimal.ZERO) > 0)) {
+                    throw fail(
+                            "TDS cannot be applied during initial zero-value Purchase Order registration",
+                            "ERR_TDS_NOT_ALLOWED_ON_INITIAL_PO",
+                            "tdsActive"
+                    );
+                }
+
+                validatePoFields(input);
+                return new Result(
+                        paymentType,
+                        gstType,
+                        false,
+                        ZERO3,
+                        ZERO3,
+                        ZERO3,
+                        ZERO0,
+                        ZERO3,
+                        effectiveGstPercentage(totalTaxable, totalGst),
+                        ZERO0,
+                        alreadyUsedTds,
+                        ZERO0,
+                        ZERO0,
+                        outstanding,
+                        outstanding,
+                        true,
+                        false
+                );
+            }
+
+            if (bank.compareTo(BigDecimal.ZERO) <= 0) {
+                throw fail("Actual bank amount must be greater than zero", "ERR_AMOUNT_NOT_POSITIVE", "amount");
+            }
+
+            if (outstanding.compareTo(BigDecimal.ZERO) <= 0) {
+                throw fail("No outstanding amount is available", "ERR_NO_OUTSTANDING_AMOUNT", "amount");
+            }
+
+            if ("PURCHASE_ORDER".equals(paymentType)) {
+                validatePoFields(input);
+                if (!input.purchaseOrderProjectCompleted) {
+                    throw fail(
+                            "Purchase Order payment cannot be registered until the Operation project is COMPLETED",
+                            "ERR_PO_PROJECT_NOT_COMPLETED",
+                            "paymentTypeId"
+                    );
+                }
+            }
+
+            if (gstType == GstRegistrationType.INTERNATIONAL) {
+                if (tdsActive || (input.tdsPercentage != null && rate(input.tdsPercentage).compareTo(BigDecimal.ZERO) > 0)) {
+                    throw fail(
+                            "TDS is not applicable for INTERNATIONAL transactions",
+                            "ERR_TDS_NOT_ALLOWED_FOR_INTERNATIONAL",
+                            "tdsActive"
+                    );
+                }
+                tdsActive = false;
+                tdsPercentage = BigDecimal.ZERO.setScale(RATE_SCALE, RoundingMode.HALF_UP);
+            }
+
+            if (tdsActive) {
+                validateTdsPercentage(tdsPercentage);
+            } else if (input.tdsPercentage != null && rate(input.tdsPercentage).compareTo(BigDecimal.ZERO) > 0) {
+                throw fail(
+                        "TDS percentage must not be supplied when TDS is inactive",
+                        "ERR_TDS_NOT_ALLOWED",
+                        "tdsPercentage"
+                );
+            }
+
+            BigDecimal totalAllowedTds = tdsActive
+                    ? tds(totalTaxable.multiply(tdsPercentage).divide(HUNDRED, INTERNAL_SCALE, RoundingMode.HALF_UP))
+                    : ZERO0;
+
+            if (alreadyUsedTds.compareTo(totalAllowedTds) > 0) {
+                throw fail(
+                        "Previously registered TDS exceeds total allowed TDS",
+                        "ERR_USED_TDS_EXCEEDS_ALLOWED_LIMIT",
+                        "tds"
+                );
+            }
+
+            BigDecimal remainingTds = totalAllowedTds
+                    .subtract(alreadyUsedTds)
+                    .max(BigDecimal.ZERO)
+                    .setScale(0, RoundingMode.HALF_UP);
+
+            boolean finalSettlementType = "FULL".equals(paymentType) || "PURCHASE_ORDER".equals(paymentType);
+
+            BigDecimal settlement;
+            BigDecimal currentTds;
+            BigDecimal currentTaxable;
+            BigDecimal currentGst;
+
+            if (finalSettlementType) {
+                settlement = outstanding;
+                currentTaxable = proportional(totalTaxable, settlement, totalInvoice);
+                currentGst = isZeroRated(gstType)
+                        ? ZERO3
+                        : proportional(totalGst, settlement, totalInvoice);
+
+                currentTds = tdsActive
+                        ? tds(currentTaxable.multiply(tdsPercentage).divide(HUNDRED, INTERNAL_SCALE, RoundingMode.HALF_UP))
+                        .min(remainingTds)
+                        : ZERO0;
+
+                BigDecimal expectedBank = detail(settlement.subtract(currentTds));
+                if (bank.compareTo(expectedBank) != 0) {
+                    throw fail(
+                            paymentType + " payment bank amount is invalid. Expected: Rs. "
+                                    + expectedBank.toPlainString()
+                                    + ", entered: Rs. " + bank.toPlainString()
+                                    + ", TDS: Rs. " + currentTds.toPlainString()
+                                    + ", outstanding: Rs. " + outstanding.toPlainString(),
+                            "FULL".equals(paymentType)
+                                    ? "ERR_FULL_BANK_AMOUNT_MISMATCH"
+                                    : "ERR_PURCHASE_ORDER_AMOUNT_MISMATCH",
+                            "amount"
+                    );
+                }
+            } else {
+                if (tdsActive) {
+                    DerivedSettlement derived = deriveSettlementFromBank(
+                            bank,
+                            totalTaxable,
+                            totalGst,
+                            totalInvoice,
+                            tdsPercentage,
+                            remainingTds,
+                            gstType
+                    );
+                    settlement = derived.settlement;
+                    currentTaxable = derived.taxable;
+                    currentGst = derived.gst;
+                    currentTds = derived.tds;
+                } else {
+                    settlement = requireWholeSettlement(bank);
+                    currentTaxable = proportional(totalTaxable, settlement, totalInvoice);
+                    currentGst = isZeroRated(gstType)
+                            ? ZERO3
+                            : proportional(totalGst, settlement, totalInvoice);
+                    currentTds = ZERO0;
+                }
+            }
+
+            validatePaymentType(
+                    paymentType,
+                    settlement,
+                    outstanding,
+                    installmentEligible,
+                    input.purchaseOrderProjectCompleted
+            );
+
+            if (settlement.compareTo(outstanding) > 0) {
+                throw fail(
+                        "Settlement exceeds outstanding amount",
+                        "ERR_SETTLEMENT_EXCEEDS_OUTSTANDING",
+                        "amount"
+                );
+            }
+
+            BigDecimal outstandingAfter = detail(outstanding.subtract(settlement).max(BigDecimal.ZERO));
+            BigDecimal remainingTdsAfter = remainingTds
+                    .subtract(currentTds)
+                    .max(BigDecimal.ZERO)
+                    .setScale(0, RoundingMode.HALF_UP);
+
+            return new Result(
+                    paymentType,
+                    gstType,
+                    tdsActive,
+                    bank,
+                    currentTaxable,
+                    currentGst,
+                    currentTds,
+                    settlement,
+                    effectiveGstPercentage(totalTaxable, totalGst),
+                    totalAllowedTds,
+                    alreadyUsedTds,
+                    remainingTds,
+                    remainingTdsAfter,
+                    outstanding,
+                    outstandingAfter,
+                    false,
+                    outstandingAfter.compareTo(BigDecimal.ZERO) == 0
+            );
+        }
+
+        private static DerivedSettlement deriveSettlementFromBank(
+                BigDecimal bank,
+                BigDecimal totalTaxable,
+                BigDecimal totalGst,
+                BigDecimal totalInvoice,
+                BigDecimal tdsPercentage,
+                BigDecimal remainingTds,
+                GstRegistrationType gstType
+        ) {
+            BigDecimal taxableShare = totalTaxable
+                    .divide(totalInvoice, INTERNAL_SCALE, RoundingMode.HALF_UP);
+            BigDecimal effectiveTdsOnGross = taxableShare
+                    .multiply(tdsPercentage)
+                    .divide(HUNDRED, INTERNAL_SCALE, RoundingMode.HALF_UP);
+            BigDecimal netFactor = BigDecimal.ONE.subtract(effectiveTdsOnGross);
+
+            if (netFactor.compareTo(BigDecimal.ZERO) <= 0) {
+                throw fail("Invalid GST/TDS calculation factor", "ERR_INVALID_TDS_CALCULATION", "tds");
+            }
+
+            BigDecimal settlement = bank
+                    .divide(netFactor, INTERNAL_SCALE, RoundingMode.HALF_UP)
+                    .setScale(0, RoundingMode.HALF_UP)
+                    .setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+
+            for (int i = 0; i < 12; i++) {
+                BigDecimal taxable = proportional(totalTaxable, settlement, totalInvoice);
+                BigDecimal gst = isZeroRated(gstType)
+                        ? ZERO3
+                        : proportional(totalGst, settlement, totalInvoice);
+                BigDecimal currentTds = tds(
+                        taxable.multiply(tdsPercentage)
+                                .divide(HUNDRED, INTERNAL_SCALE, RoundingMode.HALF_UP)
+                ).min(remainingTds);
+
+                BigDecimal candidate = bank.add(currentTds);
+                BigDecimal candidateWhole = requireWholeSettlement(candidate);
+
+                if (candidateWhole.compareTo(settlement) == 0) {
+                    return new DerivedSettlement(candidateWhole, taxable, gst, currentTds);
+                }
+                settlement = candidateWhole;
+            }
+
+            BigDecimal taxable = proportional(totalTaxable, settlement, totalInvoice);
+            BigDecimal gst = isZeroRated(gstType) ? ZERO3 : proportional(totalGst, settlement, totalInvoice);
+            BigDecimal currentTds = tds(
+                    taxable.multiply(tdsPercentage)
+                            .divide(HUNDRED, INTERNAL_SCALE, RoundingMode.HALF_UP)
+            ).min(remainingTds);
+
+            if (bank.add(currentTds).compareTo(settlement) != 0) {
+                throw fail(
+                        "Bank amount does not produce a whole-rupee settlement after rounded TDS. "
+                                + "Bank: Rs. " + bank.toPlainString()
+                                + ", TDS: Rs. " + currentTds.toPlainString(),
+                        "ERR_BANK_TDS_WHOLE_SETTLEMENT_MISMATCH",
+                        "amount"
+                );
+            }
+
+            return new DerivedSettlement(settlement, taxable, gst, currentTds);
+        }
+
+        private static void validateComposition(
+                GstRegistrationType gstType,
+                BigDecimal taxable,
+                BigDecimal gst,
+                BigDecimal invoice
+        ) {
+            if (taxable.compareTo(BigDecimal.ZERO) <= 0 || invoice.compareTo(BigDecimal.ZERO) <= 0) {
+                throw fail("Taxable and Invoice amounts must be greater than zero", "ERR_ESTIMATE_COMPOSITION_INVALID", "estimateId");
+            }
+
+            if (isZeroRated(gstType) && gst.compareTo(BigDecimal.ZERO) != 0) {
+                throw fail("GST must be zero for SEZ/INTERNATIONAL", "ERR_ZERO_RATED_GST_NOT_ZERO", "gstAmount");
+            }
+
+            BigDecimal rawTotal = taxable.add(gst).setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+            BigDecimal roundedTotal = rawTotal.setScale(0, RoundingMode.HALF_UP).setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+            if (invoice.compareTo(roundedTotal) != 0) {
+                throw fail(
+                        "Taxable plus GST does not match the rounded Invoice total. Taxable: Rs. "
+                                + taxable.toPlainString()
+                                + ", GST: Rs. " + gst.toPlainString()
+                                + ", rounded Invoice: Rs. " + roundedTotal.toPlainString()
+                                + ", stored Invoice: Rs. " + invoice.toPlainString(),
+                        "ERR_ESTIMATE_COMPOSITION_MISMATCH",
+                        "estimateId"
+                );
+            }
+        }
+
+        private static void validatePaymentType(
+                String paymentType,
+                BigDecimal settlement,
+                BigDecimal outstanding,
+                BigDecimal installmentEligible,
+                boolean poCompleted
+        ) {
+            switch (paymentType) {
+                case "FULL" -> {
+                    if (settlement.compareTo(outstanding) != 0) {
+                        throw fail("FULL settlement must equal outstanding", "ERR_FULL_AMOUNT_MISMATCH", "amount");
+                    }
+                }
+                case "PARTIAL" -> {
+                    if (settlement.compareTo(BigDecimal.ZERO) <= 0
+                            || settlement.compareTo(outstanding) > 0) {
+                        throw fail(
+                                "PARTIAL settlement must be greater than zero and cannot exceed outstanding",
+                                "ERR_PARTIAL_AMOUNT_INVALID",
+                                "amount"
+                        );
+                    }
+                }
+                case "INSTALLMENT" -> {
+                    if (installmentEligible.compareTo(BigDecimal.ZERO) <= 0) {
+                        throw fail(
+                                "Installment eligible amount is required",
+                                "ERR_INSTALLMENT_ELIGIBLE_AMOUNT_REQUIRED",
+                                "installmentId"
+                        );
+                    }
+                    if (settlement.compareTo(BigDecimal.ZERO) <= 0
+                            || settlement.compareTo(installmentEligible) > 0
+                            || settlement.compareTo(outstanding) > 0) {
+                        throw fail(
+                                "INSTALLMENT settlement must be positive and cannot exceed milestone or outstanding",
+                                "ERR_INSTALLMENT_EXCEEDS_MILESTONE_AMOUNT",
+                                "amount"
+                        );
+                    }
+                }
+                case "PURCHASE_ORDER" -> {
+                    if (!poCompleted) {
+                        throw fail("Purchase Order project is not completed", "ERR_PO_PROJECT_NOT_COMPLETED", "paymentTypeId");
+                    }
+                    if (settlement.compareTo(outstanding) != 0) {
+                        throw fail(
+                                "Actual Purchase Order payment must fully settle outstanding",
+                                "ERR_PURCHASE_ORDER_AMOUNT_MISMATCH",
+                                "amount"
+                        );
+                    }
+                }
+                default -> throw fail("Unsupported payment type: " + paymentType, "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
+            }
+        }
+
+        private static void validatePoFields(Input input) {
+            if (blank(input.poNumber)) {
+                throw fail("PO number is required", "ERR_PO_NUMBER_REQUIRED", "poNumber");
+            }
+            if (blank(input.poAttachmentUrl)) {
+                throw fail("PO attachment is required", "ERR_PO_ATTACHMENT_REQUIRED", "poAttachmentUrl");
+            }
+            if (input.paymentTermsDays == null || input.paymentTermsDays < 0) {
+                throw fail("Payment terms days is required for Purchase Order", "ERR_PAYMENT_TERMS_DAYS_REQUIRED", "paymentTermsDays");
+            }
+        }
+
+        private static void validateTdsPercentage(BigDecimal percentage) {
+            if (percentage.compareTo(new BigDecimal("2.00")) != 0
+                    && percentage.compareTo(new BigDecimal("10.00")) != 0) {
+                throw fail("TDS percentage must be 2.00 or 10.00", "ERR_INVALID_TDS_PERCENTAGE", "tdsPercentage");
+            }
+        }
+
+        private static BigDecimal proportional(BigDecimal component, BigDecimal settlement, BigDecimal totalInvoice) {
+            if (totalInvoice.compareTo(BigDecimal.ZERO) <= 0) {
+                return ZERO3;
+            }
+            return component
+                    .multiply(settlement)
+                    .divide(totalInvoice, INTERNAL_SCALE, RoundingMode.HALF_UP)
+                    .setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+        }
+
+        private static BigDecimal effectiveGstPercentage(BigDecimal taxable, BigDecimal gst) {
+            if (taxable.compareTo(BigDecimal.ZERO) <= 0) {
+                return BigDecimal.ZERO.setScale(RATE_SCALE, RoundingMode.HALF_UP);
+            }
+            return gst.multiply(HUNDRED)
+                    .divide(taxable, 8, RoundingMode.HALF_UP);
+        }
+
+        private static BigDecimal requireWholeSettlement(BigDecimal value) {
+            BigDecimal safe = detail(value);
+            if (safe.remainder(BigDecimal.ONE).compareTo(BigDecimal.ZERO) != 0) {
+                throw fail(
+                        "Bank amount plus rounded TDS must produce a whole-rupee settlement. Current settlement: Rs. "
+                                + safe.toPlainString(),
+                        "ERR_SETTLEMENT_MUST_BE_WHOLE_RUPEE",
+                        "amount"
+                );
+            }
+            return safe.setScale(0, RoundingMode.UNNECESSARY).setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+        }
+
+        static BigDecimal detail(BigDecimal value) {
+            return value == null ? ZERO3 : value.setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+        }
+
+        static BigDecimal whole(BigDecimal value) {
+            return value == null ? ZERO0 : value.setScale(0, RoundingMode.HALF_UP);
+        }
+
+        static BigDecimal wholeAs3(BigDecimal value) {
+            return whole(value).setScale(DETAIL_SCALE, RoundingMode.HALF_UP);
+        }
+
+        static BigDecimal tds(BigDecimal value) {
+            return whole(value);
+        }
+
+        static BigDecimal rate(BigDecimal value) {
+            return value == null
+                    ? BigDecimal.ZERO.setScale(RATE_SCALE, RoundingMode.HALF_UP)
+                    : value.setScale(RATE_SCALE, RoundingMode.HALF_UP);
+        }
+
+        private static boolean isZeroRated(GstRegistrationType type) {
+            return type == GstRegistrationType.SEZ || type == GstRegistrationType.INTERNATIONAL;
+        }
+
+        private static String normalizePaymentType(String value) {
+            if (blank(value)) {
+                throw fail("Payment type code is required", "ERR_PAYMENT_TYPE_CODE_REQUIRED", "paymentTypeId");
+            }
+            String normalized = value.trim().toUpperCase(Locale.ROOT);
+            if (!"FULL".equals(normalized)
+                    && !"PARTIAL".equals(normalized)
+                    && !"INSTALLMENT".equals(normalized)
+                    && !"PURCHASE_ORDER".equals(normalized)) {
+                throw fail("Unsupported payment type: " + normalized, "ERR_UNSUPPORTED_PAYMENT_TYPE", "paymentTypeId");
+            }
+            return normalized;
+        }
+
+        private static boolean blank(String value) {
+            return value == null || value.trim().isEmpty();
+        }
+
+        private static ValidationException fail(String message, String code, String field) {
+            return new ValidationException(message, code, field);
+        }
+
+        static final class Input {
+            GstRegistrationType gstRegistrationType;
+            String paymentTypeCode;
+            BigDecimal bankAmount;
+            boolean tdsActive;
+            BigDecimal tdsPercentage;
+            BigDecimal totalTaxableAmount;
+            BigDecimal totalGstAmount;
+            BigDecimal totalInvoiceAmount;
+            BigDecimal outstandingAmount;
+            BigDecimal alreadyUsedTds;
+            BigDecimal installmentEligibleAmount;
+            Integer paymentTermsDays;
+            String poNumber;
+            String poAttachmentUrl;
+            boolean purchaseOrderProjectCompleted;
+        }
+
+        static final class Result {
+            final String paymentTypeCode;
+            final GstRegistrationType gstRegistrationType;
+            final boolean tdsActive;
+            final BigDecimal bankAmount;
+            final BigDecimal currentTaxableAmount;
+            final BigDecimal currentGstAmount;
+            final BigDecimal tdsAmount;
+            final BigDecimal settlementAmount;
+            final BigDecimal effectiveGstPercentage;
+            final BigDecimal totalAllowedTds;
+            final BigDecimal alreadyUsedTds;
+            final BigDecimal remainingTdsBefore;
+            final BigDecimal remainingTdsAfter;
+            final BigDecimal outstandingBefore;
+            final BigDecimal outstandingAfter;
+            final boolean initialPurchaseOrder;
+            final boolean finalSettlement;
+
+            Result(
+                    String paymentTypeCode,
+                    GstRegistrationType gstRegistrationType,
+                    boolean tdsActive,
+                    BigDecimal bankAmount,
+                    BigDecimal currentTaxableAmount,
+                    BigDecimal currentGstAmount,
+                    BigDecimal tdsAmount,
+                    BigDecimal settlementAmount,
+                    BigDecimal effectiveGstPercentage,
+                    BigDecimal totalAllowedTds,
+                    BigDecimal alreadyUsedTds,
+                    BigDecimal remainingTdsBefore,
+                    BigDecimal remainingTdsAfter,
+                    BigDecimal outstandingBefore,
+                    BigDecimal outstandingAfter,
+                    boolean initialPurchaseOrder,
+                    boolean finalSettlement
+            ) {
+                this.paymentTypeCode = paymentTypeCode;
+                this.gstRegistrationType = gstRegistrationType;
+                this.tdsActive = tdsActive;
+                this.bankAmount = detail(bankAmount);
+                this.currentTaxableAmount = detail(currentTaxableAmount);
+                this.currentGstAmount = detail(currentGstAmount);
+                this.tdsAmount = tds(tdsAmount);
+                this.settlementAmount = detail(settlementAmount);
+                this.effectiveGstPercentage = effectiveGstPercentage;
+                this.totalAllowedTds = tds(totalAllowedTds);
+                this.alreadyUsedTds = tds(alreadyUsedTds);
+                this.remainingTdsBefore = tds(remainingTdsBefore);
+                this.remainingTdsAfter = tds(remainingTdsAfter);
+                this.outstandingBefore = detail(outstandingBefore);
+                this.outstandingAfter = detail(outstandingAfter);
+                this.initialPurchaseOrder = initialPurchaseOrder;
+                this.finalSettlement = finalSettlement;
+            }
+        }
+
+        private static final class DerivedSettlement {
+            final BigDecimal settlement;
+            final BigDecimal taxable;
+            final BigDecimal gst;
+            final BigDecimal tds;
+
+            private DerivedSettlement(BigDecimal settlement, BigDecimal taxable, BigDecimal gst, BigDecimal tds) {
+                this.settlement = settlement;
+                this.taxable = taxable;
+                this.gst = gst;
+                this.tds = tds;
+            }
         }
     }
 

@@ -62,6 +62,10 @@ import java.util.UUID;
 })
 public class Invoice {
 
+    private static final int MONEY_SCALE = 3;
+    private static final int DOCUMENT_SCALE = 0;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -114,35 +118,39 @@ public class Invoice {
 
     // ==================== FINANCIALS ====================
 
-    @Column(name = "sub_total_ex_gst", precision = 15, scale = 2, nullable = false)
+    @Column(name = "sub_total_ex_gst", precision = 19, scale = 3, nullable = false)
     private BigDecimal subTotalExGst = zeroMoney();
 
-    @Column(name = "total_gst_amount", precision = 15, scale = 2, nullable = false)
+    @Column(name = "total_gst_amount", precision = 19, scale = 3, nullable = false)
     private BigDecimal totalGstAmount = zeroMoney();
 
-    @Column(name = "cgst_amount", precision = 15, scale = 2, nullable = false)
+    @Column(name = "cgst_amount", precision = 19, scale = 3, nullable = false)
     private BigDecimal cgstAmount = zeroMoney();
 
-    @Column(name = "sgst_amount", precision = 15, scale = 2, nullable = false)
+    @Column(name = "sgst_amount", precision = 19, scale = 3, nullable = false)
     private BigDecimal sgstAmount = zeroMoney();
 
-    @Column(name = "igst_amount", precision = 15, scale = 2, nullable = false)
+    @Column(name = "igst_amount", precision = 19, scale = 3, nullable = false)
     private BigDecimal igstAmount = zeroMoney();
 
-    @Column(name = "grand_total", precision = 15, scale = 2, nullable = false)
-    private BigDecimal grandTotal = zeroMoney();
+    @Column(name = "grand_total", precision = 19, scale = 3, nullable = false)
+    private BigDecimal grandTotal = zeroDocumentTotal();
+
+    /** Final Invoice total minus raw taxable plus GST total. */
+    @Column(name = "round_off_amount", precision = 19, scale = 3, nullable = false)
+    private BigDecimal roundOffAmount = zeroMoney();
 
     // ==================== PAYMENT SETTLEMENT ====================
 
     /** Accounts-approved settlement: bank amount + approved TDS amount. */
-    @Column(name = "received_amount", precision = 15, scale = 2, nullable = false)
+    @Column(name = "received_amount", precision = 19, scale = 3, nullable = false)
     private BigDecimal receivedAmount = zeroMoney();
 
     /** Settlement reserved by PENDING PaymentReceipts. */
-    @Column(name = "pending_received_amount", precision = 15, scale = 2, nullable = false)
+    @Column(name = "pending_received_amount", precision = 19, scale = 3, nullable = false)
     private BigDecimal pendingReceivedAmount = zeroMoney();
 
-    @Column(name = "outstanding_amount", precision = 15, scale = 2, nullable = false)
+    @Column(name = "outstanding_amount", precision = 19, scale = 3, nullable = false)
     private BigDecimal outstandingAmount = zeroMoney();
 
     @Enumerated(EnumType.STRING)
@@ -357,20 +365,38 @@ public class Invoice {
         cgstAmount = safeMoney(cgstAmount);
         sgstAmount = safeMoney(sgstAmount);
         igstAmount = safeMoney(igstAmount);
-        grandTotal = safeMoney(grandTotal);
+        grandTotal = safeDocumentTotal(grandTotal);
         receivedAmount = safeMoney(receivedAmount);
         pendingReceivedAmount = safeMoney(pendingReceivedAmount);
         outstandingAmount = safeMoney(outstandingAmount);
+
+        BigDecimal rawTotal = subTotalExGst
+                .add(totalGstAmount)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        roundOffAmount = grandTotal
+                .subtract(rawTotal)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     private static BigDecimal zeroMoney() {
-        return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        return BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private static BigDecimal zeroDocumentTotal() {
+        return BigDecimal.ZERO.setScale(DOCUMENT_SCALE, ROUNDING_MODE);
     }
 
     private static BigDecimal safeMoney(BigDecimal value) {
         return value == null
                 ? zeroMoney()
-                : value.setScale(2, RoundingMode.HALF_UP);
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private static BigDecimal safeDocumentTotal(BigDecimal value) {
+        return value == null
+                ? zeroDocumentTotal()
+                : value.setScale(DOCUMENT_SCALE, ROUNDING_MODE);
     }
 
     // ==================== RELATIONSHIP HELPERS ====================
@@ -413,7 +439,7 @@ public class Invoice {
         return safeMoney(outstandingAmount)
                 .subtract(safeMoney(pendingReceivedAmount))
                 .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     public boolean isAdvanceTaxInvoice() {

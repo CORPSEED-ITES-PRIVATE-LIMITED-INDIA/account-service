@@ -31,6 +31,9 @@ import java.util.List;
 @Slf4j
 public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
+    private static final int MONEY_SCALE = 3;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+
     private final AccountingVoucherRepository accountingVoucherRepository;
     private final LedgerMasterRepository ledgerMasterRepository;
 
@@ -326,8 +329,8 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             );
         }
 
-        BigDecimal totalDebit = BigDecimal.ZERO;
-        BigDecimal totalCredit = BigDecimal.ZERO;
+        BigDecimal totalDebit = zeroMoney();
+        BigDecimal totalCredit = zeroMoney();
 
         for (int i = 0; i < request.getEntries().size(); i++) {
 
@@ -372,8 +375,8 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 );
             }
 
-            totalDebit = totalDebit.add(debit);
-            totalCredit = totalCredit.add(credit);
+            totalDebit = totalDebit.add(debit).setScale(MONEY_SCALE, ROUNDING_MODE);
+            totalCredit = totalCredit.add(credit).setScale(MONEY_SCALE, ROUNDING_MODE);
         }
 
         if (totalDebit.compareTo(totalCredit) != 0) {
@@ -502,7 +505,7 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         BigDecimal newSignedBalance = signedBalance
                 .add(safeMoney(debitAmount))
                 .subtract(safeMoney(creditAmount))
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
 
         if (newSignedBalance.compareTo(BigDecimal.ZERO) >= 0) {
             ledger.setCurrentBalance(newSignedBalance);
@@ -574,8 +577,12 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
     private BigDecimal safeMoney(BigDecimal value) {
         return value == null
-                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-                : value.setScale(2, RoundingMode.HALF_UP);
+                ? zeroMoney()
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private static BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     private String clean(String value) {

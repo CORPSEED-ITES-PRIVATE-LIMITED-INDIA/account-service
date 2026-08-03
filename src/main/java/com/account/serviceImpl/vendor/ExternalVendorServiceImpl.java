@@ -38,8 +38,16 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ExternalVendorServiceImpl implements ExternalVendorService {
 
+    private static final int MONEY_SCALE = 3;
+    private static final int RATE_SCALE = 3;
+    private static final int INTERNAL_SCALE = 12;
+    private static final int WHOLE_SCALE = 0;
+
+    private static final RoundingMode ROUNDING_MODE =
+            RoundingMode.HALF_UP;
+
     private static final BigDecimal ZERO =
-            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
 
     private static final BigDecimal HUNDRED =
             new BigDecimal("100");
@@ -58,6 +66,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
 
     private static final String TDS_PAYABLE_LEDGER_CODE =
             "LED-TDS-PAYABLE";
+
+    private static final String ROUND_OFF_LEDGER_CODE =
+            "LED-ROUND-OFF";
 
     private final ExternalVendorRepository externalVendorRepository;
     private final LedgerMasterRepository ledgerMasterRepository;
@@ -208,6 +219,7 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             LedgerMaster inputSgstLedger = null;
             LedgerMaster inputIgstLedger = null;
             LedgerMaster tdsPayableLedger = null;
+            LedgerMaster roundOffLedger = null;
 
             List<AccountingVoucherEntryRequestDto> invoiceEntries =
                     new ArrayList<>();
@@ -279,6 +291,43 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                                         + resolveInvoiceReference(request)
                         )
                 );
+            }
+
+            if (amounts.roundOffAmount().compareTo(BigDecimal.ZERO) != 0) {
+                roundOffLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.ROUND_OFF,
+                                LedgerGroupType.INDIRECT_EXPENSES,
+                                "Round Off",
+                                ROUND_OFF_LEDGER_CODE,
+                                DebitCredit.DEBIT
+                        );
+
+                /*
+                 * Purchase voucher balancing:
+                 *
+                 * raw > final  -> Credit Round-Off
+                 * raw < final  -> Debit Round-Off
+                 */
+                if (amounts.roundOffAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    invoiceEntries.add(
+                            debitEntry(
+                                    roundOffLedger,
+                                    amounts.roundOffAmount(),
+                                    "Purchase invoice round-off for "
+                                            + resolveInvoiceReference(request)
+                            )
+                    );
+                } else {
+                    invoiceEntries.add(
+                            creditEntry(
+                                    roundOffLedger,
+                                    amounts.roundOffAmount().abs(),
+                                    "Purchase invoice round-off for "
+                                            + resolveInvoiceReference(request)
+                            )
+                    );
+                }
             }
 
             invoiceEntries.add(
@@ -451,7 +500,6 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             VendorPaymentApprovalRequestDto request
     ) {
         BigDecimal price = money(request.getPrice());
-
         BigDecimal gstPercentage = rate(request.getGstPercentage());
 
         /*
@@ -494,8 +542,7 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             if (registrationType.isZeroRated()) {
                 if (gstPercentage.compareTo(BigDecimal.ZERO) != 0) {
                     throw new ValidationException(
-                            "GST percentage must be zero for "
-                                    + registrationType,
+                            "GST percentage must be zero for " + registrationType,
                             "ERR_ZERO_RATED_GST_PERCENTAGE_NOT_ALLOWED",
                             "paymentApproval.gstPercentage"
                     );
@@ -510,23 +557,21 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                     );
                 }
 
-                totalGstAmount =
-                        percentageAmount(price, gstPercentage);
+                totalGstAmount = percentageAmount(price, gstPercentage);
 
                 if ("INTRA_STATE".equals(supplyType)) {
                     cgstAmount =
                             totalGstAmount.divide(
                                     new BigDecimal("2"),
-                                    2,
-                                    RoundingMode.HALF_UP
+                                    MONEY_SCALE,
+                                    ROUNDING_MODE
                             );
 
                     sgstAmount =
-                            totalGstAmount.subtract(cgstAmount)
-                                    .setScale(
-                                            2,
-                                            RoundingMode.HALF_UP
-                                    );
+                            totalGstAmount
+                                    .subtract(cgstAmount)
+                                    .setScale(MONEY_SCALE, ROUNDING_MODE);
+
                 } else if ("INTER_STATE".equals(supplyType)) {
                     igstAmount = totalGstAmount;
                 } else {
@@ -546,9 +591,24 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             }
         }
 
-        BigDecimal grossInvoiceAmount =
+        /*
+         * Raw purchase invoice value remains at three decimals.
+         */
+        BigDecimal rawGrossInvoiceAmount =
                 price.add(totalGstAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        /*
+         * Final purchase invoice value is rounded to a whole rupee
+         * and stored using scale 3.
+         */
+        BigDecimal grossInvoiceAmount =
+                wholeMoney(rawGrossInvoiceAmount);
+
+        BigDecimal roundOffAmount =
+                grossInvoiceAmount
+                        .subtract(rawGrossInvoiceAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
 
         boolean tdsActive = Boolean.TRUE.equals(request.getTdsActive());
         BigDecimal tdsPercentage = rate(request.getTdsPercentage());
@@ -563,7 +623,11 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 );
             }
 
-            tdsAmount = percentageAmount(price, tdsPercentage);
+            BigDecimal rawTdsAmount =
+                    percentageAmountInternal(price, tdsPercentage);
+
+            tdsAmount = wholeMoney(rawTdsAmount);
+
         } else if (tdsPercentage.compareTo(BigDecimal.ZERO) != 0) {
             throw new ValidationException(
                     "TDS percentage must be zero when TDS is inactive",
@@ -573,8 +637,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
         }
 
         BigDecimal vendorNetPayableAmount =
-                grossInvoiceAmount.subtract(tdsAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                grossInvoiceAmount
+                        .subtract(tdsAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
 
         if (vendorNetPayableAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException(
@@ -590,7 +655,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 sgstAmount,
                 igstAmount,
                 totalGstAmount,
+                rawGrossInvoiceAmount,
                 grossInvoiceAmount,
+                roundOffAmount,
                 tdsAmount,
                 vendorNetPayableAmount
         );
@@ -1255,7 +1322,7 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                     .subtract(amounts.tdsAmount())
                     .abs();
 
-            if (difference.compareTo(new BigDecimal("0.01")) > 0) {
+            if (difference.compareTo(ZERO) > 0) {
                 throw new ValidationException(
                         "Supplied TDS amount does not match Account Service calculation. "
                                 + "Supplied: " + suppliedTdsAmount
@@ -1409,8 +1476,12 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 + vendor.getVendorName()
                 + ", invoice "
                 + resolveInvoiceReference(request)
-                + ", gross invoice amount "
+                + ", raw gross amount "
+                + amounts.rawGrossInvoiceAmount()
+                + ", final gross amount "
                 + amounts.grossInvoiceAmount()
+                + ", round-off "
+                + amounts.roundOffAmount()
                 + ", TDS "
                 + amounts.tdsAmount()
                 + ", vendor net payable "
@@ -1543,11 +1614,20 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             BigDecimal amount,
             BigDecimal percentage
     ) {
-        return amount.multiply(percentage)
+        return percentageAmountInternal(amount, percentage)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private BigDecimal percentageAmountInternal(
+            BigDecimal amount,
+            BigDecimal percentage
+    ) {
+        return money(amount)
+                .multiply(rate(percentage))
                 .divide(
                         HUNDRED,
-                        2,
-                        RoundingMode.HALF_UP
+                        INTERNAL_SCALE,
+                        ROUNDING_MODE
                 );
     }
 
@@ -1556,24 +1636,27 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
     ) {
         return value == null
                 ? ZERO
-                : value.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private BigDecimal wholeMoney(
+            BigDecimal value
+    ) {
+        if (value == null) {
+            return ZERO;
+        }
+
+        return value
+                .setScale(WHOLE_SCALE, ROUNDING_MODE)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     private BigDecimal rate(
             BigDecimal value
     ) {
         return value == null
-                ? BigDecimal.ZERO.setScale(
-                4,
-                RoundingMode.HALF_UP
-        )
-                : value.setScale(
-                4,
-                RoundingMode.HALF_UP
-        );
+                ? BigDecimal.ZERO.setScale(RATE_SCALE, ROUNDING_MODE)
+                : value.setScale(RATE_SCALE, ROUNDING_MODE);
     }
 
     private String normalizeEnum(
@@ -1678,7 +1761,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             BigDecimal sgstAmount,
             BigDecimal igstAmount,
             BigDecimal totalGstAmount,
+            BigDecimal rawGrossInvoiceAmount,
             BigDecimal grossInvoiceAmount,
+            BigDecimal roundOffAmount,
             BigDecimal tdsAmount,
             BigDecimal vendorNetPayableAmount
     ) {

@@ -75,6 +75,10 @@ import java.util.UUID;
 })
 public class Estimate {
 
+    private static final int MONEY_SCALE = 3;
+    private static final int DOCUMENT_SCALE = 0;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -185,43 +189,43 @@ public class Estimate {
 
     @Column(
             name = "sub_total_ex_gst",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
-    private BigDecimal subTotalExGst = BigDecimal.ZERO;
+    private BigDecimal subTotalExGst = zeroMoney();
 
     @Column(
             name = "total_gst_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
-    private BigDecimal totalGstAmount = BigDecimal.ZERO;
+    private BigDecimal totalGstAmount = zeroMoney();
 
     @Column(
             name = "cgst_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
-    private BigDecimal cgstAmount = BigDecimal.ZERO;
+    private BigDecimal cgstAmount = zeroMoney();
 
     @Column(
             name = "sgst_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
-    private BigDecimal sgstAmount = BigDecimal.ZERO;
+    private BigDecimal sgstAmount = zeroMoney();
 
     @Column(
             name = "igst_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
-    private BigDecimal igstAmount = BigDecimal.ZERO;
+    private BigDecimal igstAmount = zeroMoney();
 
     @Column(
             name = "place_of_supply_state_code",
@@ -231,11 +235,20 @@ public class Estimate {
 
     @Column(
             name = "grand_total",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
-    private BigDecimal grandTotal = BigDecimal.ZERO;
+    private BigDecimal grandTotal = zeroDocumentTotal();
+
+    /** Final document total minus raw total (taxable + GST). */
+    @Column(
+            name = "round_off_amount",
+            precision = 19,
+            scale = 3,
+            nullable = false
+    )
+    private BigDecimal roundOffAmount = zeroMoney();
 
     // =====================================================
     // STATUS AND GENERAL DETAILS
@@ -367,6 +380,12 @@ public class Estimate {
         }
 
         isDeleted = false;
+        normalizeFinancialFields();
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        normalizeFinancialFields();
     }
 
     // =====================================================
@@ -441,17 +460,9 @@ public class Estimate {
             return;
         }
 
-        boolean zeroRatedSupply =
-                isZeroRatedSupply();
+        boolean zeroRatedSupply = isZeroRatedSupply();
 
-        /*
-         * Recalculate every line before calculating header totals.
-         *
-         * This also defensively forces GST to zero for SEZ and
-         * INTERNATIONAL estimates.
-         */
         for (EstimateLineItem lineItem : lineItems) {
-
             if (lineItem == null) {
                 continue;
             }
@@ -459,18 +470,8 @@ public class Estimate {
             lineItem.setEstimate(this);
 
             if (zeroRatedSupply) {
-                lineItem.setGstRate(
-                        BigDecimal.ZERO.setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        )
-                );
-
-                /*
-                 * Zero-rated supply remains interstate classified,
-                 * but the tax rate and tax amount remain zero.
-                 */
-                lineItem.setIgstFlag(true);
+                lineItem.setGstRate(zeroMoney());
+                lineItem.setIgstFlag(Boolean.TRUE);
             }
 
             lineItem.calculateLineTotals();
@@ -481,31 +482,14 @@ public class Estimate {
                 .map(EstimateLineItem::getLineTotalExGst)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-        /*
-         * Defensive zero-rated enforcement.
-         */
         if (zeroRatedSupply) {
-
-            this.totalGstAmount =
-                    zeroMoney();
-
-            this.cgstAmount =
-                    zeroMoney();
-
-            this.sgstAmount =
-                    zeroMoney();
-
-            this.igstAmount =
-                    zeroMoney();
-
-            this.grandTotal =
-                    this.subTotalExGst.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
-
+            this.totalGstAmount = zeroMoney();
+            this.cgstAmount = zeroMoney();
+            this.sgstAmount = zeroMoney();
+            this.igstAmount = zeroMoney();
+            finalizeDocumentTotal();
             return;
         }
 
@@ -514,89 +498,74 @@ public class Estimate {
                 .map(EstimateLineItem::getGstAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-        this.cgstAmount =
-                zeroMoney();
-
-        this.sgstAmount =
-                zeroMoney();
-
-        this.igstAmount =
-                zeroMoney();
+        this.cgstAmount = zeroMoney();
+        this.sgstAmount = zeroMoney();
+        this.igstAmount = zeroMoney();
 
         for (EstimateLineItem item : lineItems) {
-
-            if (item == null
-                    || item.getGstAmount() == null
-                    || item.getGstAmount()
-                    .compareTo(BigDecimal.ZERO) == 0) {
+            if (item == null || item.getGstAmount() == null
+                    || item.getGstAmount().compareTo(BigDecimal.ZERO) == 0) {
                 continue;
             }
 
-            BigDecimal itemGstAmount =
-                    item.getGstAmount().setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    );
+            BigDecimal itemGstAmount = safeMoney(item.getGstAmount());
 
             if (Boolean.TRUE.equals(item.getIgstFlag())) {
-
-                this.igstAmount =
-                        this.igstAmount
-                                .add(itemGstAmount)
-                                .setScale(
-                                        2,
-                                        RoundingMode.HALF_UP
-                                );
-
+                this.igstAmount = this.igstAmount
+                        .add(itemGstAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
             } else {
+                BigDecimal itemCgstAmount = itemGstAmount.divide(
+                        BigDecimal.valueOf(2),
+                        MONEY_SCALE,
+                        ROUNDING_MODE
+                );
 
-                BigDecimal itemCgstAmount =
-                        itemGstAmount.divide(
-                                BigDecimal.valueOf(2),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+                BigDecimal itemSgstAmount = itemGstAmount
+                        .subtract(itemCgstAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-                /*
-                 * Remaining amount goes to SGST so:
-                 *
-                 * CGST + SGST = exact GST amount.
-                 */
-                BigDecimal itemSgstAmount =
-                        itemGstAmount
-                                .subtract(itemCgstAmount)
-                                .setScale(
-                                        2,
-                                        RoundingMode.HALF_UP
-                                );
+                this.cgstAmount = this.cgstAmount
+                        .add(itemCgstAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-                this.cgstAmount =
-                        this.cgstAmount
-                                .add(itemCgstAmount)
-                                .setScale(
-                                        2,
-                                        RoundingMode.HALF_UP
-                                );
-
-                this.sgstAmount =
-                        this.sgstAmount
-                                .add(itemSgstAmount)
-                                .setScale(
-                                        2,
-                                        RoundingMode.HALF_UP
-                                );
+                this.sgstAmount = this.sgstAmount
+                        .add(itemSgstAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
             }
         }
 
-        this.grandTotal =
-                this.subTotalExGst
-                        .add(this.totalGstAmount)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+        finalizeDocumentTotal();
+    }
+
+    private void finalizeDocumentTotal() {
+        BigDecimal rawTotal = safeMoney(this.subTotalExGst)
+                .add(safeMoney(this.totalGstAmount))
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        this.grandTotal = rawTotal.setScale(DOCUMENT_SCALE, ROUNDING_MODE);
+        this.roundOffAmount = this.grandTotal
+                .subtract(rawTotal)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private void normalizeFinancialFields() {
+        this.subTotalExGst = safeMoney(this.subTotalExGst);
+        this.totalGstAmount = safeMoney(this.totalGstAmount);
+        this.cgstAmount = safeMoney(this.cgstAmount);
+        this.sgstAmount = safeMoney(this.sgstAmount);
+        this.igstAmount = safeMoney(this.igstAmount);
+        this.grandTotal = safeDocumentTotal(this.grandTotal);
+
+        BigDecimal rawTotal = this.subTotalExGst
+                .add(this.totalGstAmount)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        this.roundOffAmount = this.grandTotal
+                .subtract(rawTotal)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     private void resetAllTotals() {
@@ -605,13 +574,28 @@ public class Estimate {
         this.cgstAmount = zeroMoney();
         this.sgstAmount = zeroMoney();
         this.igstAmount = zeroMoney();
-        this.grandTotal = zeroMoney();
+        this.grandTotal = zeroDocumentTotal();
+        this.roundOffAmount = zeroMoney();
     }
 
-    private BigDecimal zeroMoney() {
-        return BigDecimal.ZERO.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
+    private static BigDecimal safeMoney(BigDecimal value) {
+        return value == null
+                ? zeroMoney()
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
     }
+
+    private static BigDecimal safeDocumentTotal(BigDecimal value) {
+        return value == null
+                ? zeroDocumentTotal()
+                : value.setScale(DOCUMENT_SCALE, ROUNDING_MODE);
+    }
+
+    private static BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private static BigDecimal zeroDocumentTotal() {
+        return BigDecimal.ZERO.setScale(DOCUMENT_SCALE, ROUNDING_MODE);
+    }
+
 }
