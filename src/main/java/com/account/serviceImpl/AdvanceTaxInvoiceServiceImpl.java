@@ -1744,7 +1744,8 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                         .orElse(null);
 
         /*
-         * Priority:
+         * GST registration type priority:
+         *
          * 1. Generated Invoice snapshot
          * 2. Estimate GST snapshot
          * 3. Current Company Unit value
@@ -1754,13 +1755,16 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 invoice != null
                         && invoice.getGstRegistrationType() != null
                         ? invoice.getGstRegistrationType()
+
                         : estimate != null
                         && estimate.getGstRegistrationType() != null
                         ? estimate.getGstRegistrationType()
+
                         : estimate != null
                         && estimate.getUnit() != null
                         && estimate.getUnit().getGstRegistrationType() != null
                         ? estimate.getUnit().getGstRegistrationType()
+
                         : GstRegistrationType.REGISTERED;
 
         List<InvoiceDetailDto.LineItemDto> responseLineItems =
@@ -1921,6 +1925,49 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? estimate.getUnit().getUnitName()
                                 : null
                 )
+                .unitGstNo(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getGstNo()
+                                : null
+                )
+
+                .unitAddressLine1(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getAddressLine1()
+                                : null
+                )
+                .unitAddressLine2(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getAddressLine2()
+                                : null
+                )
+                .unitCity(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getCity()
+                                : null
+                )
+                .unitState(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getState()
+                                : null
+                )
+                .unitCountry(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getCountry()
+                                : null
+                )
+                .unitPinCode(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getPinCode()
+                                : null
+                )
 
                 .contactId(
                         estimate != null
@@ -1959,7 +2006,8 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 .unbilledNumber(
                         invoice != null
                                 && invoice.getUnbilledInvoice() != null
-                                ? invoice.getUnbilledInvoice().getUnbilledNumber()
+                                ? invoice.getUnbilledInvoice()
+                                .getUnbilledNumber()
                                 : null
                 )
                 .invoiceOrigin(
@@ -1991,6 +2039,16 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? estimate.getPlaceOfSupplyStateCode()
                                 : null
                 )
+
+                /*
+                 * buyerGstin represents the GST number used by the Invoice.
+                 *
+                 * Before Invoice generation:
+                 * Current Company Unit GST number is returned.
+                 *
+                 * After Invoice generation:
+                 * Persisted Invoice GST snapshot is returned.
+                 */
                 .buyerGstin(
                         invoice != null
                                 ? invoice.getBuyerGstin()
@@ -2008,17 +2066,22 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 )
                 .cancelled(
                         invoice != null
-                                ? invoice.isCancelled()
-                                : false
+                                && invoice.isCancelled()
                 )
 
                 // =====================================================
                 // GST
                 // =====================================================
 
-                .gstRegistrationType(gstRegistrationType.name())
-                .gstApplicable(gstRegistrationType.isGstApplicable())
-                .zeroRatedSupply(gstRegistrationType.isZeroRated())
+                .gstRegistrationType(
+                        gstRegistrationType.name()
+                )
+                .gstApplicable(
+                        gstRegistrationType.isGstApplicable()
+                )
+                .zeroRatedSupply(
+                        gstRegistrationType.isZeroRated()
+                )
 
                 // =====================================================
                 // INVOICE / ESTIMATE FINANCIALS
@@ -2026,9 +2089,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
                 .subTotalExGst(responseSubTotalExGst)
                 .totalGstAmount(responseTotalGstAmount)
+
                 .cgstAmount(responseCgstAmount)
                 .sgstAmount(responseSgstAmount)
                 .igstAmount(responseIgstAmount)
+
                 .invoiceGrandTotal(responseGrandTotal)
 
                 // =====================================================
@@ -2109,8 +2174,6 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
                 // =====================================================
                 // ORGANIZATION GENERAL DETAILS
-                // Prefer Invoice snapshot after Invoice generation.
-                // Otherwise use current Organization configuration.
                 // =====================================================
 
                 .organizationName(

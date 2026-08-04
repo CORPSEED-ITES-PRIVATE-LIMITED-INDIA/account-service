@@ -65,6 +65,20 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private Long unitId;
     private String unitName;
+    /**
+     * GST number registered against the selected Company Unit.
+     */
+    private String unitGstNo;
+    /**
+     * Company Unit address details.
+     */
+    private String unitAddressLine1;
+    private String unitAddressLine2;
+    private String unitCity;
+    private String unitState;
+    private String unitCountry;
+    private String unitPinCode;
+
 
     private Long contactId;
     private String contactName;
