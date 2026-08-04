@@ -1,5 +1,7 @@
 package com.account.controller.ledger;
 
+import com.account.dto.GovernmentFeeFundTransferPostingRequestDto;
+import com.account.dto.GovernmentFeeFundTransferPostingResponseDto;
 import com.account.dto.operationService.GovernmentFeePostingRequestDto;
 import com.account.dto.operationService.GovernmentFeePostingResponseDto;
 import com.account.service.ledger.ProjectExpenseAccountingService;
@@ -59,4 +61,32 @@ public class ProjectExpenseAccountingController {
                 .status(responseStatus)
                 .body(response);
     }
+
+
+    @PostMapping("/government-fee/fund-transfer")
+    public ResponseEntity<GovernmentFeeFundTransferPostingResponseDto>
+    postGovernmentFeeFundTransfer(
+            @Valid
+            @RequestBody
+            GovernmentFeeFundTransferPostingRequestDto request
+    ) {
+
+        GovernmentFeeFundTransferPostingResponseDto response =
+                projectExpenseAccountingService
+                        .postGovernmentFeeFundTransfer(request);
+
+        HttpStatus status =
+                "POSTED".equalsIgnoreCase(
+                        response.getPostingStatus()
+                )
+                        ? HttpStatus.CREATED
+                        : HttpStatus.OK;
+
+        return ResponseEntity
+                .status(status)
+                .body(response);
+    }
+
+
+
 }

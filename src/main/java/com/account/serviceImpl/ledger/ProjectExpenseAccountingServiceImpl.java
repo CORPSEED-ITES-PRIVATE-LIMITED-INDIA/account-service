@@ -12,6 +12,8 @@ import com.account.domain.ledger.LedgerType;
 import com.account.domain.ledger.VoucherSourceType;
 import com.account.domain.ledger.VoucherStatus;
 import com.account.domain.ledger.VoucherType;
+import com.account.dto.GovernmentFeeFundTransferPostingRequestDto;
+import com.account.dto.GovernmentFeeFundTransferPostingResponseDto;
 import com.account.dto.ledger.AccountingVoucherEntryRequestDto;
 import com.account.dto.ledger.AccountingVoucherRequestDto;
 import com.account.dto.ledger.AccountingVoucherResponseDto;
@@ -998,5 +1000,254 @@ public class ProjectExpenseAccountingServiceImpl
             return value;
         }
         return value.substring(0, maxLength);
+    }
+
+
+    @Override
+    @Transactional
+    public GovernmentFeeFundTransferPostingResponseDto
+    postGovernmentFeeFundTransfer(
+            GovernmentFeeFundTransferPostingRequestDto request
+    ) {
+
+        validateFundTransferRequest(request);
+
+        Optional<AccountingVoucher> existingVoucher =
+                accountingVoucherRepository
+                        .findFirstBySourceTypeAndSourceIdAndStatusOrderByIdDesc(
+                                VoucherSourceType
+                                        .PROJECT_EXPENSE_FUND_TRANSFER,
+                                request.getOperationExpenseId(),
+                                VoucherStatus.POSTED
+                        );
+
+        if (existingVoucher.isPresent()) {
+
+            AccountingVoucher voucher =
+                    existingVoucher.get();
+
+            return GovernmentFeeFundTransferPostingResponseDto
+                    .builder()
+                    .postingStatus("ALREADY_POSTED")
+                    .message("Fund transfer was already posted")
+                    .operationExpenseId(
+                            request.getOperationExpenseId()
+                    )
+                    .contraVoucherId(voucher.getId())
+                    .contraVoucherNumber(
+                            voucher.getVoucherNumber()
+                    )
+                    .fromBankLedgerId(
+                            request.getFromBankLedgerId()
+                    )
+                    .toBankLedgerId(
+                            request.getToBankLedgerId()
+                    )
+                    .postedAt(
+                            voucher.getCreatedAt() != null
+                                    ? voucher.getCreatedAt()
+                                    : LocalDateTime.now()
+                    )
+                    .build();
+        }
+
+        LedgerMaster fromBank =
+                validateActiveBankLedger(
+                        request.getFromBankLedgerId(),
+                        "fromBankLedgerId"
+                );
+
+        LedgerMaster toBank =
+                validateActiveBankLedger(
+                        request.getToBankLedgerId(),
+                        "toBankLedgerId"
+                );
+
+        BigDecimal amount =
+                request.getAmount()
+                        .setScale(
+                                3,
+                                RoundingMode.HALF_UP
+                        );
+
+        AccountingVoucherEntryRequestDto debitAxis =
+                AccountingVoucherEntryRequestDto
+                        .builder()
+                        .ledgerId(toBank.getId())
+                        .debitAmount(amount)
+                        .creditAmount(zero())
+                        .narration(
+                                "Government-fee funds received from "
+                                        + fromBank.getLedgerName()
+                        )
+                        .build();
+
+        AccountingVoucherEntryRequestDto creditHdfc =
+                AccountingVoucherEntryRequestDto
+                        .builder()
+                        .ledgerId(fromBank.getId())
+                        .debitAmount(zero())
+                        .creditAmount(amount)
+                        .narration(
+                                "Government-fee funds transferred to "
+                                        + toBank.getLedgerName()
+                        )
+                        .build();
+
+        AccountingVoucherRequestDto voucherRequest =
+                AccountingVoucherRequestDto
+                        .builder()
+                        .voucherType(VoucherType.CONTRA)
+                        .voucherDate(
+                                request.getTransferDate()
+                        )
+                        .sourceType(
+                                VoucherSourceType
+                                        .PROJECT_EXPENSE_FUND_TRANSFER
+                        )
+                        .sourceId(
+                                request.getOperationExpenseId()
+                        )
+                        .narration(
+                                request.getNarration()
+                        )
+                        .entries(
+                                List.of(
+                                        debitAxis,
+                                        creditHdfc
+                                )
+                        )
+                        .build();
+
+        AccountingVoucherResponseDto voucher =
+                accountingVoucherService
+                        .createVoucher(voucherRequest);
+
+        return GovernmentFeeFundTransferPostingResponseDto
+                .builder()
+                .postingStatus("POSTED")
+                .message(
+                        "Government-fee fund transfer posted successfully"
+                )
+                .operationExpenseId(
+                        request.getOperationExpenseId()
+                )
+                .contraVoucherId(voucher.getId())
+                .contraVoucherNumber(
+                        voucher.getVoucherNumber()
+                )
+                .fromBankLedgerId(fromBank.getId())
+                .toBankLedgerId(toBank.getId())
+                .postedAt(LocalDateTime.now())
+                .build();
+    }
+
+    private LedgerMaster validateActiveBankLedger(
+            Long ledgerId,
+            String field
+    ) {
+
+        LedgerMaster ledger =
+                ledgerMasterRepository
+                        .findByIdAndDeletedFalse(ledgerId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Bank ledger not found with ID: "
+                                                + ledgerId,
+                                        "LEDGER_NOT_FOUND"
+                                )
+                        );
+
+        if (!ledger.isActive()) {
+            throw new ValidationException(
+                    "Bank ledger is inactive: "
+                            + ledger.getLedgerName(),
+                    "ERR_BANK_LEDGER_INACTIVE",
+                    field
+            );
+        }
+
+        if (ledger.getLedgerType() != LedgerType.BANK) {
+            throw new ValidationException(
+                    "Ledger is not a bank ledger: "
+                            + ledger.getLedgerName(),
+                    "ERR_INVALID_BANK_LEDGER",
+                    field
+            );
+        }
+
+        return ledger;
+    }
+
+    private void validateFundTransferRequest(
+            GovernmentFeeFundTransferPostingRequestDto request
+    ) {
+
+        if (request == null) {
+            throw new ValidationException(
+                    "Fund-transfer request is required",
+                    "ERR_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (request.getOperationExpenseId() == null) {
+            throw new ValidationException(
+                    "Operation expense ID is required",
+                    "ERR_OPERATION_EXPENSE_ID_REQUIRED",
+                    "operationExpenseId"
+            );
+        }
+
+        if (request.getFromBankLedgerId() == null
+                || request.getToBankLedgerId() == null) {
+
+            throw new ValidationException(
+                    "Both bank ledger IDs are required",
+                    "ERR_BANK_LEDGERS_REQUIRED",
+                    "bankLedgerId"
+            );
+        }
+
+        if (request.getFromBankLedgerId().equals(
+                request.getToBankLedgerId()
+        )) {
+
+            throw new ValidationException(
+                    "From bank and To bank cannot be the same",
+                    "ERR_SAME_BANK_TRANSFER",
+                    "toBankLedgerId"
+            );
+        }
+
+        if (request.getAmount() == null
+                || request.getAmount()
+                .compareTo(BigDecimal.ZERO) <= 0) {
+
+            throw new ValidationException(
+                    "Transfer amount must be greater than zero",
+                    "ERR_INVALID_TRANSFER_AMOUNT",
+                    "amount"
+            );
+        }
+
+        if (request.getTransferDate() == null) {
+            throw new ValidationException(
+                    "Transfer date is required",
+                    "ERR_TRANSFER_DATE_REQUIRED",
+                    "transferDate"
+            );
+        }
+
+        if (request.getTransferDate().isAfter(
+                LocalDate.now()
+        )) {
+
+            throw new ValidationException(
+                    "Transfer date cannot be in the future",
+                    "ERR_FUTURE_TRANSFER_DATE",
+                    "transferDate"
+            );
+        }
     }
 }
