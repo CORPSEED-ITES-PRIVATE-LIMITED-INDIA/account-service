@@ -54,6 +54,9 @@ public enum LedgerType {
     SALES_RETURN,
     REFUND_PAYABLE,
     ROUND_OFF,
+
+    // Government-fee flow
+    GOVERNMENT_FEE_CLIENT_ADVANCE,
     GOVERNMENT_FEE_EXPENSE,
     GOVERNMENT_FEE_PAYABLE
 }

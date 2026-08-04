@@ -4370,6 +4370,11 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
+    private BigDecimal zeroWhole() {
+        return BigDecimal.ZERO.setScale(0, RoundingMode.HALF_UP);
+    }
+
+
     private BigDecimal safe3(BigDecimal val) {
         return (val == null ? BigDecimal.ZERO : val)
                 .setScale(3, RoundingMode.HALF_UP);
@@ -5046,41 +5051,55 @@ public class PaymentServiceImpl implements PaymentService {
     private BigDecimal getPendingTdsAmountForPayment(
             PaymentReceipt paymentReceipt
     ) {
-        if (paymentReceipt == null) {
-            return BigDecimal.ZERO.setScale(
-                    0,
-                    RoundingMode.HALF_UP
-            );
+        if (paymentReceipt == null || paymentReceipt.getId() == null) {
+            log.warn("[TDS-VOUCHER-LOOKUP] Payment receipt is null or unsaved");
+            return zeroWhole();
         }
 
-        UnbilledInvoice unbilled =
-                paymentReceipt.getUnbilledInvoice();
-
-        Estimate estimate =
-                unbilled != null
-                        ? unbilled.getEstimate()
-                        : null;
+        UnbilledInvoice unbilled = paymentReceipt.getUnbilledInvoice();
+        Estimate estimate = unbilled != null ? unbilled.getEstimate() : null;
 
         if (isInternationalTransaction(estimate, unbilled)) {
-            return BigDecimal.ZERO.setScale(
-                    0,
-                    RoundingMode.HALF_UP
+            log.info(
+                    "[TDS-VOUCHER-LOOKUP] TDS disabled for INTERNATIONAL payment | receiptId={}",
+                    paymentReceipt.getId()
             );
+            return zeroWhole();
         }
 
-        return tdsRegistrationRepository
-                .findByPaymentReceiptAndIsDeletedFalse(paymentReceipt)
-                .filter(tds ->
-                        tds.getStatus() == TdsStatus.PENDING
-                )
-                .map(TdsRegistration::getTdsAmount)
-                .map(this::wholeTds)
-                .orElse(
-                        BigDecimal.ZERO.setScale(
-                                0,
-                                RoundingMode.HALF_UP
-                        )
-                );
+        Optional<TdsRegistration> registration =
+                tdsRegistrationRepository
+                        .findFirstByPaymentReceiptAndIsDeletedFalseAndStatusInOrderByIdDesc(
+                                paymentReceipt,
+                                List.of(TdsStatus.PENDING, TdsStatus.APPROVED)
+                        );
+
+        if (registration.isEmpty()) {
+            log.warn(
+                    "[TDS-VOUCHER-LOOKUP] No active PENDING/APPROVED TDS found | "
+                            + "receiptId={} | unbilledId={} | estimateId={}",
+                    paymentReceipt.getId(),
+                    unbilled != null ? unbilled.getId() : null,
+                    estimate != null ? estimate.getId() : null
+            );
+            return zeroWhole();
+        }
+
+        TdsRegistration tds = registration.get();
+        BigDecimal amount = wholeTds(tds.getTdsAmount());
+
+        log.info(
+                "[TDS-VOUCHER-LOOKUP] TDS resolved | receiptId={} | tdsId={} | "
+                        + "status={} | taxable={} | percentage={} | amount={}",
+                paymentReceipt.getId(),
+                tds.getId(),
+                tds.getStatus(),
+                safe3(tds.getTaxableAmount()),
+                tds.getTdsPercentage(),
+                amount
+        );
+
+        return amount;
     }
 
 
@@ -5111,19 +5130,13 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return tdsRegistrationRepository
-                .findByPaymentReceiptAndIsDeletedFalse(paymentReceipt)
-                .filter(tds ->
-                        tds.getStatus() == TdsStatus.PENDING
-                                || tds.getStatus() == TdsStatus.APPROVED
+                .findFirstByPaymentReceiptAndIsDeletedFalseAndStatusInOrderByIdDesc(
+                        paymentReceipt,
+                        List.of(TdsStatus.PENDING, TdsStatus.APPROVED)
                 )
                 .map(TdsRegistration::getTdsAmount)
                 .map(this::wholeTds)
-                .orElse(
-                        BigDecimal.ZERO.setScale(
-                                0,
-                                RoundingMode.HALF_UP
-                        )
-                );
+                .orElseGet(this::zeroWhole);
     }
 
 
@@ -6363,6 +6376,22 @@ public class PaymentServiceImpl implements PaymentService {
                         RoundingMode.HALF_UP
                 );
 
+        log.info(
+                "[RECEIPT-VOUCHER-CALCULATION] receiptId={} | unbilledId={} | "
+                        + "companyId={} | unitId={} | bankLedgerId={} | customerLedgerId={} | "
+                        + "international={} | bank={} | tds={} | customerCredit={}",
+                paymentReceipt.getId(),
+                unbilled.getId(),
+                unbilled.getCompany() != null ? unbilled.getCompany().getId() : null,
+                unbilled.getUnit() != null ? unbilled.getUnit().getId() : null,
+                bankLedger.getId(),
+                customerLedger.getId(),
+                internationalTransaction,
+                bankAmount,
+                safeTdsAmount,
+                customerCreditAmount
+        );
+
         List<AccountingVoucherEntryRequestDto> entries =
                 new ArrayList<>();
 
@@ -6504,184 +6533,100 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        /*
-         * Unit is mandatory because customer ledgers are maintained
-         * separately for every company unit.
-         */
-        if (unit == null || unit.getId() == null) {
-            throw new ValidationException(
-                    "Company unit is required to create customer ledger",
-                    "ERR_COMPANY_UNIT_REQUIRED_FOR_LEDGER",
-                    "unitId"
-            );
-        }
-
         Long companyId = company.getId();
-        Long unitId = unit.getId();
+        String companyName = company.getName() != null && !company.getName().trim().isEmpty()
+                ? company.getName().trim()
+                : "Company-" + companyId;
+
+        LedgerGroup sundryDebtorsGroup = getOrCreateLedgerGroupByType(
+                LedgerGroupType.SUNDRY_DEBTORS
+        );
 
         /*
-         * First search for the exact CUSTOMER ledger belonging to
-         * this company and this unit.
+         * One client/company must use the same ledger for both Sales Invoice
+         * and Receipt/TDS vouchers. Unit, GSTIN and contact are refreshed as
+         * transaction metadata, but they do not create another party ledger.
          */
-        Optional<LedgerMaster> existingCustomerLedger =
-                findExistingUnitLedger(
+        List<LedgerMaster> existingLedgers =
+                ledgerMasterRepository.findByCompanyIdAndLedgerTypeInAndDeletedFalse(
                         companyId,
-                        unitId,
-                        LedgerType.CUSTOMER
+                        List.of(LedgerType.CUSTOMER, LedgerType.CUSTOMER_ADVANCE)
                 );
 
-        if (existingCustomerLedger.isPresent()) {
+        LedgerMaster ledger;
 
-            LedgerMaster ledger = existingCustomerLedger.get();
+        if (existingLedgers != null && !existingLedgers.isEmpty()) {
+            ledger = existingLedgers.stream()
+                    .filter(Objects::nonNull)
+                    .filter(item -> item.getLedgerName() != null
+                            && item.getLedgerName().trim().equalsIgnoreCase(companyName))
+                    .findFirst()
+                    .orElseGet(() -> existingLedgers.stream()
+                            .filter(Objects::nonNull)
+                            .min(Comparator.comparing(LedgerMaster::getId))
+                            .orElse(existingLedgers.get(0)));
 
-            refreshCustomerLedgerDetails(
-                    ledger,
-                    company,
-                    unit,
-                    contact,
-                    createdBy
+            log.info(
+                    "[CUSTOMER-LEDGER-RESOLVED] Reusing company ledger | companyId={} | "
+                            + "unitId={} | ledgerId={} | previousType={} | ledgerName={} | candidateCount={}",
+                    companyId,
+                    unit != null ? unit.getId() : null,
+                    ledger.getId(),
+                    ledger.getLedgerType(),
+                    ledger.getLedgerName(),
+                    existingLedgers.size()
             );
-
-            return ledgerMasterRepository.save(ledger);
-        }
-
-        /*
-         * Convert an old CUSTOMER_ADVANCE ledger only when it belongs
-         * to the same company and unit.
-         */
-        Optional<LedgerMaster> existingAdvanceLedger =
-                findExistingUnitLedger(
-                        companyId,
-                        unitId,
-                        LedgerType.CUSTOMER_ADVANCE
-                );
-
-        LedgerMaster ledger =
-                existingAdvanceLedger.orElseGet(LedgerMaster::new);
-
-        LedgerGroup sundryDebtorsGroup =
-                getOrCreateLedgerGroupByType(
-                        LedgerGroupType.SUNDRY_DEBTORS
-                );
-
-        String companyName =
-                company.getName() != null
-                        && !company.getName().trim().isEmpty()
-                        ? company.getName().trim()
-                        : "Company-" + companyId;
-
-        String unitName =
-                unit.getUnitName() != null
-                        && !unit.getUnitName().trim().isEmpty()
-                        ? unit.getUnitName().trim()
-                        : "Unit-" + unitId;
-
-        String ledgerName =
-                companyName + " - " + unitName;
-
-        /*
-         * Protect against another unrelated ledger having the same name.
-         */
-        boolean duplicateName;
-
-        if (ledger.getId() == null) {
-            duplicateName =
-                    ledgerMasterRepository
-                            .existsByLedgerNameIgnoreCase(ledgerName);
         } else {
-            duplicateName =
-                    ledgerMasterRepository
-                            .existsByLedgerNameIgnoreCaseAndIdNot(
-                                    ledgerName,
-                                    ledger.getId()
-                            );
+            ledger = new LedgerMaster();
+            ledger.setLedgerCode(generateLedgerCode("CUST"));
+            ledger.setOpeningBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
+            ledger.setOpeningBalanceType(DebitCredit.DEBIT);
+            ledger.setCurrentBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
+            ledger.setCurrentBalanceType(DebitCredit.DEBIT);
+
+            if (createdBy != null) {
+                ledger.setCreatedBy(createdBy);
+            }
         }
 
-        if (duplicateName) {
-            ledgerName =
-                    companyName
-                            + " - "
-                            + unitName
-                            + " ["
-                            + unitId
-                            + "]";
-        }
-
-        ledger.setLedgerName(ledgerName);
-
-        if (ledger.getLedgerCode() == null
-                || ledger.getLedgerCode().trim().isEmpty()) {
-            ledger.setLedgerCode(
-                    generateLedgerCode("CUST")
-            );
+        if (ledger.getId() == null
+                || !ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(
+                companyName,
+                ledger.getId()
+        )) {
+            ledger.setLedgerName(companyName);
         }
 
         ledger.setLedgerType(LedgerType.CUSTOMER);
         ledger.setLedgerGroup(sundryDebtorsGroup);
-
         ledger.setCompany(company);
         ledger.setUnit(unit);
         ledger.setContact(contact);
-
-        ledger.setGstNo(unit.getGstNo());
+        ledger.setGstNo(unit != null ? unit.getGstNo() : null);
         ledger.setPanNo(company.getPanNo());
-
-        if (ledger.getOpeningBalance() == null) {
-            ledger.setOpeningBalance(
-                    BigDecimal.ZERO.setScale(
-                            3,
-                            RoundingMode.HALF_UP
-                    )
-            );
-        }
-
-        if (ledger.getOpeningBalanceType() == null) {
-            ledger.setOpeningBalanceType(
-                    DebitCredit.DEBIT
-            );
-        }
-
-        if (ledger.getCurrentBalance() == null) {
-            ledger.setCurrentBalance(
-                    BigDecimal.ZERO.setScale(
-                            3,
-                            RoundingMode.HALF_UP
-                    )
-            );
-        }
-
-        if (ledger.getCurrentBalanceType() == null) {
-            ledger.setCurrentBalanceType(
-                    DebitCredit.DEBIT
-            );
-        }
-
         ledger.setSystemCreated(true);
         ledger.setActive(true);
         ledger.setDeleted(false);
-
-        if (ledger.getId() == null && createdBy != null) {
-            ledger.setCreatedBy(createdBy);
-        }
 
         if (createdBy != null) {
             ledger.setUpdatedBy(createdBy);
         }
 
-        LedgerMaster savedLedger =
-                ledgerMasterRepository.save(ledger);
+        LedgerMaster saved = ledgerMasterRepository.save(ledger);
 
         log.info(
-                "Unit-wise customer ledger resolved | companyId={} | unitId={} "
-                        + "| ledgerId={} | ledgerName={}",
+                "[CUSTOMER-LEDGER-RESOLVED] Customer ledger ready | companyId={} | "
+                        + "unitId={} | ledgerId={} | ledgerName={} | ledgerType={}",
                 companyId,
-                unitId,
-                savedLedger.getId(),
-                savedLedger.getLedgerName()
+                unit != null ? unit.getId() : null,
+                saved.getId(),
+                saved.getLedgerName(),
+                saved.getLedgerType()
         );
 
-        return savedLedger;
+        return saved;
     }
+
 
     private void refreshCustomerLedgerDetails(
             LedgerMaster ledger,

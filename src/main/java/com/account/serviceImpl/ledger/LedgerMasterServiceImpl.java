@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 public class LedgerMasterServiceImpl implements LedgerMasterService {
 
     private static final String LEDGER_STATEMENT_VERSION =
-            "2026-08-04-ONE-ROW-PER-VOUCHER-3DP-V2";
+            "2026-08-04-CUSTOMER-TDS-SPLIT-3DP-V3";
 
     private static final int MONEY_SCALE = 3;
     private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;
@@ -1388,18 +1388,46 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     accountingCredit
             );
 
+            boolean customerReceiptCreditRowWithTdsSplit = false;
+
             /*
-             * One row is returned for the selected ledger entry.
+             * The accounting voucher contains one customer credit equal to
+             * Bank + TDS. For the customer-ledger UI, split that credit into:
              *
-             * For a customer Receipt voucher, the selected customer entry
-             * already contains the complete settlement credit:
+             * 1. Bank/Cash/Payment Gateway row
+             * 2. TDS Receivable row
              *
-             * Bank + whole-rupee TDS = Customer credit.
-             *
-             * Counter-ledger names are combined in Particulars instead of
-             * creating artificial Bank and TDS rows for the customer ledger.
+             * This is display-only. The posted voucher remains unchanged.
              */
+            if (isCustomerReceiptCreditRow(
+                    ledger,
+                    voucher,
+                    accountingDebit,
+                    accountingCredit
+            )) {
+                BigDecimal bankAmount = getReceiptBankAmountForCustomerLedger(
+                        ledger,
+                        voucher,
+                        otherEntriesCache
+                );
+
+                if (bankAmount.compareTo(BigDecimal.ZERO) > 0
+                        && bankAmount.compareTo(accountingCredit) < 0) {
+                    displayDebit = zeroMoneyForStatement();
+                    displayCredit = bankAmount;
+                    particulars = receiptBankName;
+                    customerReceiptCreditRowWithTdsSplit = true;
+                }
+            }
+
             BigDecimal rowDisplaySignedBalance = runningSignedBalance;
+
+            if (customerReceiptCreditRowWithTdsSplit) {
+                rowDisplaySignedBalance = previousRunningSignedBalance
+                        .add(displayDebit)
+                        .subtract(displayCredit)
+                        .setScale(MONEY_SCALE, MONEY_ROUNDING);
+            }
 
             BigDecimal displayRunningSignedBalance =
                     displaySignedBalanceForLedger(ledger, rowDisplaySignedBalance);
@@ -1457,6 +1485,17 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     .build();
 
             allRows.add(mainRow);
+
+            if (customerReceiptCreditRowWithTdsSplit) {
+                allRows.addAll(
+                        buildAdditionalReceiptRows(
+                                ledger,
+                                voucher,
+                                otherEntriesCache,
+                                rowDisplaySignedBalance
+                        )
+                );
+            }
         }
 
         List<LedgerTransactionResponseDto> filteredRows = allRows.stream()
@@ -1470,8 +1509,8 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .collect(Collectors.toList());
 
         /*
-         * One response row represents one selected-ledger voucher entry.
-         * No artificial counter-ledger rows are added.
+         * Customer Receipt vouchers may produce a display-only Bank row and
+         * TDS row. Their sum equals the actual customer credit entry.
          */
         BigDecimal totalDebit = filteredRows.stream()
                 .map(LedgerTransactionResponseDto::getDebitAmount)
@@ -2122,6 +2161,152 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .stream()
                 .map(this::mapToResponse)
                 .toList();
+    }
+
+
+    private boolean isCustomerLedgerForStatement(LedgerMaster ledger) {
+        return ledger != null
+                && ledger.getLedgerType() != null
+                && (ledger.getLedgerType() == LedgerType.CUSTOMER
+                || ledger.getLedgerType() == LedgerType.CUSTOMER_ADVANCE);
+    }
+
+    private boolean isCustomerReceiptCreditRow(
+            LedgerMaster ledger,
+            AccountingVoucher voucher,
+            BigDecimal debit,
+            BigDecimal credit
+    ) {
+        return isCustomerLedgerForStatement(ledger)
+                && isReceiptVoucher(voucher)
+                && moneyForStatement(debit).compareTo(BigDecimal.ZERO) == 0
+                && moneyForStatement(credit).compareTo(BigDecimal.ZERO) > 0;
+    }
+
+    private BigDecimal getReceiptBankAmountForCustomerLedger(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger.getId(),
+                otherEntriesCache
+        );
+
+        BigDecimal bankAmount = otherEntries.stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> isBankOrCashLedger(entry.getLedger()))
+                .map(AccountingVoucherEntry::getDebitAmount)
+                .filter(Objects::nonNull)
+                .map(this::moneyForStatement)
+                .reduce(zeroMoneyForStatement(), BigDecimal::add)
+                .setScale(MONEY_SCALE, MONEY_ROUNDING);
+
+        log.info(
+                "[CUSTOMER-RECEIPT-BANK-SPLIT] voucherId={} | customerLedgerId={} | bankAmount={}",
+                voucher != null ? voucher.getId() : null,
+                currentLedger != null ? currentLedger.getId() : null,
+                bankAmount
+        );
+
+        return bankAmount;
+    }
+
+    private List<LedgerTransactionResponseDto> buildAdditionalReceiptRows(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache,
+            BigDecimal baseRunningSignedBalanceAfterMainRow
+    ) {
+        if (!isCustomerLedgerForStatement(currentLedger) || !isReceiptVoucher(voucher)) {
+            return new ArrayList<>();
+        }
+
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger.getId(),
+                otherEntriesCache
+        );
+
+        BigDecimal runningAfterMainRow = baseRunningSignedBalanceAfterMainRow == null
+                ? zeroMoneyForStatement()
+                : moneyForStatement(baseRunningSignedBalanceAfterMainRow);
+
+        List<LedgerTransactionResponseDto> rows = new ArrayList<>();
+
+        for (AccountingVoucherEntry counterEntry : otherEntries) {
+            if (counterEntry == null || counterEntry.getLedger() == null) {
+                continue;
+            }
+
+            LedgerMaster tdsLedger = counterEntry.getLedger();
+
+            if (tdsLedger.getLedgerType() != LedgerType.TDS_RECEIVABLE) {
+                continue;
+            }
+
+            BigDecimal tdsAmount = moneyForStatement(counterEntry.getDebitAmount());
+
+            if (tdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            runningAfterMainRow = runningAfterMainRow
+                    .subtract(tdsAmount)
+                    .setScale(MONEY_SCALE, MONEY_ROUNDING);
+
+            BigDecimal displayRunningSignedBalance =
+                    displaySignedBalanceForLedger(currentLedger, runningAfterMainRow);
+
+            log.info(
+                    "[CUSTOMER-RECEIPT-TDS-SPLIT] voucherId={} | voucherNumber={} | "
+                            + "customerLedgerId={} | tdsLedgerId={} | tdsAmount={} | runningBalance={} {}",
+                    voucher.getId(),
+                    voucher.getVoucherNumber(),
+                    currentLedger.getId(),
+                    tdsLedger.getId(),
+                    tdsAmount,
+                    absAmountForStatement(displayRunningSignedBalance),
+                    balanceTypeForStatement(displayRunningSignedBalance)
+            );
+
+            rows.add(
+                    LedgerTransactionResponseDto.builder()
+                            .entryId(counterEntry.getId())
+                            .voucherId(voucher.getId())
+                            .voucherNumber(voucher.getVoucherNumber())
+                            .voucherType(voucher.getVoucherType())
+                            .voucherDate(voucher.getVoucherDate())
+                            .sourceType(voucher.getSourceType())
+                            .sourceId(voucher.getSourceId())
+                            .status(voucher.getStatus())
+                            .ledgerId(currentLedger.getId())
+                            .ledgerName(currentLedger.getLedgerName())
+                            .ledgerCode(currentLedger.getLedgerCode())
+                            .debitAmount(zeroMoneyForStatement())
+                            .creditAmount(tdsAmount)
+                            .runningBalanceAmount(absAmountForStatement(displayRunningSignedBalance))
+                            .runningBalanceType(balanceTypeForStatement(displayRunningSignedBalance))
+                            .particulars(tdsLedger.getLedgerName())
+                            .serviceName(null)
+                            .bankName(null)
+                            .narration(
+                                    counterEntry.getNarration() != null
+                                            && !counterEntry.getNarration().trim().isEmpty()
+                                            ? counterEntry.getNarration()
+                                            : "TDS deducted by customer"
+                            )
+                            .gstDetails(null)
+                            .build()
+            );
+        }
+
+        return rows;
+    }
+
+    private BigDecimal zeroMoneyForStatement() {
+        return BigDecimal.ZERO.setScale(MONEY_SCALE, MONEY_ROUNDING);
     }
 
 

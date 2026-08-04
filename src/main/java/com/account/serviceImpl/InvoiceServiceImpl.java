@@ -3076,6 +3076,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		}
 
 		Long companyId = company.getId();
+		String companyName = company.getName() != null && !company.getName().trim().isEmpty()
+				? company.getName().trim()
+				: "Company-" + companyId;
 
 		LedgerGroup sundryDebtorsGroup = ledgerGroupRepository
 				.findByGroupTypeAndDeletedFalse(LedgerGroupType.SUNDRY_DEBTORS)
@@ -3084,107 +3087,92 @@ public class InvoiceServiceImpl implements InvoiceService {
 						"SUNDRY_DEBTORS_GROUP_NOT_FOUND"
 				));
 
-		String companyName = company.getName() != null && !company.getName().trim().isEmpty()
-				? company.getName().trim()
-				: "Company-" + companyId;
-
 		/*
-		 * Only ONE ledger per company.
-		 *
-		 * If old CUSTOMER_ADVANCE ledger already exists,
-		 * reuse it and convert it to CUSTOMER / SUNDRY_DEBTORS.
+		 * One client/company must use the same ledger for both Sales Invoice
+		 * and Receipt/TDS vouchers. Unit, GSTIN and contact are refreshed as
+		 * transaction metadata, but they do not create another party ledger.
 		 */
 		List<LedgerMaster> existingLedgers =
 				ledgerMasterRepository.findByCompanyIdAndLedgerTypeInAndDeletedFalse(
 						companyId,
-						List.of(
-								LedgerType.CUSTOMER,
-								LedgerType.CUSTOMER_ADVANCE
-						)
+						List.of(LedgerType.CUSTOMER, LedgerType.CUSTOMER_ADVANCE)
 				);
 
+		LedgerMaster ledger;
+
 		if (existingLedgers != null && !existingLedgers.isEmpty()) {
-			LedgerMaster ledger = existingLedgers.get(0);
+			ledger = existingLedgers.stream()
+					.filter(Objects::nonNull)
+					.filter(item -> item.getLedgerName() != null
+							&& item.getLedgerName().trim().equalsIgnoreCase(companyName))
+					.findFirst()
+					.orElseGet(() -> existingLedgers.stream()
+							.filter(Objects::nonNull)
+							.min(Comparator.comparing(LedgerMaster::getId))
+							.orElse(existingLedgers.get(0)));
 
-			ledger.setLedgerType(LedgerType.CUSTOMER);
-			ledger.setLedgerGroup(sundryDebtorsGroup);
+			log.info(
+					"[CUSTOMER-LEDGER-RESOLVED] Reusing company ledger | companyId={} | "
+							+ "unitId={} | ledgerId={} | previousType={} | ledgerName={} | candidateCount={}",
+					companyId,
+					unit != null ? unit.getId() : null,
+					ledger.getId(),
+					ledger.getLedgerType(),
+					ledger.getLedgerName(),
+					existingLedgers.size()
+			);
+		} else {
+			ledger = new LedgerMaster();
+			ledger.setLedgerCode(generateLedgerCode("CUST"));
+			ledger.setOpeningBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
+			ledger.setOpeningBalanceType(DebitCredit.DEBIT);
+			ledger.setCurrentBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
+			ledger.setCurrentBalanceType(DebitCredit.DEBIT);
 
-			/*
-			 * Ledger name should be company name only.
-			 * Example: Nestle
-			 */
-			if (!ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(
-					companyName,
-					ledger.getId()
-			)) {
-				ledger.setLedgerName(companyName);
+			if (createdBy != null) {
+				ledger.setCreatedBy(createdBy);
 			}
-
-			ledger.setCompany(company);
-
-			if (unit != null && unit.getId() != null) {
-				ledger.setUnit(unit);
-				ledger.setGstNo(unit.getGstNo());
-			}
-
-			if (contact != null && contact.getId() != null) {
-				ledger.setContact(contact);
-			}
-
-			ledger.setPanNo(company.getPanNo());
-			ledger.setSystemCreated(true);
-			ledger.setActive(true);
-			ledger.setDeleted(false);
-
-			if (createdBy != null && createdBy.getId() != null) {
-				ledger.setUpdatedBy(createdBy);
-			}
-
-			return ledgerMasterRepository.save(ledger);
 		}
 
-		/*
-		 * No existing CUSTOMER / CUSTOMER_ADVANCE ledger found,
-		 * so create only one company ledger.
-		 */
-		LedgerMaster ledger = new LedgerMaster();
-
-		ledger.setLedgerName(companyName);
-		ledger.setLedgerCode(generateLedgerCode("CUST"));
+		if (ledger.getId() == null
+				|| !ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(
+				companyName,
+				ledger.getId()
+		)) {
+			ledger.setLedgerName(companyName);
+		}
 
 		ledger.setLedgerType(LedgerType.CUSTOMER);
 		ledger.setLedgerGroup(sundryDebtorsGroup);
-
 		ledger.setCompany(company);
-
-		if (unit != null && unit.getId() != null) {
-			ledger.setUnit(unit);
-			ledger.setGstNo(unit.getGstNo());
-		}
-
-		if (contact != null && contact.getId() != null) {
-			ledger.setContact(contact);
-		}
-
+		ledger.setUnit(unit);
+		ledger.setContact(contact);
+		ledger.setGstNo(unit != null ? unit.getGstNo() : null);
 		ledger.setPanNo(company.getPanNo());
-
-		ledger.setOpeningBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
-		ledger.setOpeningBalanceType(DebitCredit.DEBIT);
-
-		ledger.setCurrentBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
-		ledger.setCurrentBalanceType(DebitCredit.DEBIT);
-
 		ledger.setSystemCreated(true);
 		ledger.setActive(true);
 		ledger.setDeleted(false);
 
-		if (createdBy != null && createdBy.getId() != null) {
-			ledger.setCreatedBy(createdBy);
+		if (createdBy != null) {
 			ledger.setUpdatedBy(createdBy);
 		}
 
-		return ledgerMasterRepository.save(ledger);
+		LedgerMaster saved = ledgerMasterRepository.save(ledger);
+
+		log.info(
+				"[CUSTOMER-LEDGER-RESOLVED] Customer ledger ready | companyId={} | "
+						+ "unitId={} | ledgerId={} | ledgerName={} | ledgerType={}",
+				companyId,
+				unit != null ? unit.getId() : null,
+				saved.getId(),
+				saved.getLedgerName(),
+				saved.getLedgerType()
+		);
+
+		return saved;
 	}
+
+
 
 
 

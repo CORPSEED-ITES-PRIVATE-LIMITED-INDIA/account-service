@@ -104,16 +104,44 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                     .build();
 
             voucher.addEntry(entry);
-            log.debug("Voucher entry added. ledgerId={}, debitAmount={}, creditAmount={}, displayOrder={}",
+
+            log.info(
+                    "[VOUCHER-ENTRY-RESOLVED] voucherNumber={} | sourceType={} | sourceId={} | "
+                            + "displayOrder={} | ledgerId={} | ledgerCode={} | ledgerName={} | "
+                            + "ledgerType={} | debit={} | credit={}",
+                    voucher.getVoucherNumber(),
+                    sourceType,
+                    request.getSourceId(),
+                    entry.getDisplayOrder(),
                     ledger.getId(),
+                    ledger.getLedgerCode(),
+                    ledger.getLedgerName(),
+                    ledger.getLedgerType(),
                     debit,
-                    credit,
-                    entry.getDisplayOrder()
+                    credit
             );
         }
 
         voucher.calculateTotals();
-        log.debug("Voucher totals calculated. totalDebit={}, totalCredit={}", voucher.getTotalDebit(), voucher.getTotalCredit());
+
+        BigDecimal calculatedDebit = safeMoney(voucher.getTotalDebit());
+        BigDecimal calculatedCredit = safeMoney(voucher.getTotalCredit());
+        BigDecimal voucherDifference = calculatedDebit
+                .subtract(calculatedCredit)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        log.info(
+                "[VOUCHER-BALANCE-CHECK] voucherNumber={} | voucherType={} | sourceType={} | "
+                        + "sourceId={} | totalDebit={} | totalCredit={} | difference={} | balanced={}",
+                voucher.getVoucherNumber(),
+                voucher.getVoucherType(),
+                sourceType,
+                request.getSourceId(),
+                calculatedDebit,
+                calculatedCredit,
+                voucherDifference,
+                voucherDifference.compareTo(BigDecimal.ZERO) == 0
+        );
 
         AccountingVoucher saved = accountingVoucherRepository.save(voucher);
         log.info("Accounting voucher saved. voucherId={}, voucherNumber={}, voucherType={}",
@@ -506,6 +534,18 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 .add(safeMoney(debitAmount))
                 .subtract(safeMoney(creditAmount))
                 .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        log.info(
+                "[LEDGER-BALANCE-CALCULATION] ledgerId={} | ledgerName={} | ledgerType={} | "
+                        + "signedBefore={} | debit={} | credit={} | signedAfter={}",
+                ledger.getId(),
+                ledger.getLedgerName(),
+                ledger.getLedgerType(),
+                signedBalance,
+                safeMoney(debitAmount),
+                safeMoney(creditAmount),
+                newSignedBalance
+        );
 
         if (newSignedBalance.compareTo(BigDecimal.ZERO) >= 0) {
             ledger.setCurrentBalance(newSignedBalance);
