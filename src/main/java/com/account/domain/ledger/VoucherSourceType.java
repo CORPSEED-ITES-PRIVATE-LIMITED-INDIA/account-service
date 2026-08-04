@@ -20,13 +20,13 @@ public enum VoucherSourceType {
      */
     PROJECT_EXPENSE_GOVT_FEE_ACCRUAL,
 
-    PROCUREMENT_VENDOR_INVOICE,
-    PROCUREMENT_VENDOR_PAYMENT,
-    VENDOR_OPENING_BALANCE,
-
+    /** Entry C: Dr destination bank, Cr source bank. */
     PROJECT_EXPENSE_FUND_TRANSFER,
 
+    /** Entry D: Dr government-fee payable, Cr payment bank. */
+    PROJECT_EXPENSE_GOVT_FEE_PAYMENT,
 
-
-
+    PROCUREMENT_VENDOR_INVOICE,
+    PROCUREMENT_VENDOR_PAYMENT,
+    VENDOR_OPENING_BALANCE
 }

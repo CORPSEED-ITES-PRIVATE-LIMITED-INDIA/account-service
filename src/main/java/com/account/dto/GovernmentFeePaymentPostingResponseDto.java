@@ -11,13 +11,13 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class GovernmentFeeFundTransferPostingResponseDto {
+public class GovernmentFeePaymentPostingResponseDto {
     private String postingStatus;
     private String message;
     private Long operationExpenseId;
-    private Long contraVoucherId;
-    private String contraVoucherNumber;
-    private Long fromBankLedgerId;
-    private Long toBankLedgerId;
+    private Long paymentVoucherId;
+    private String paymentVoucherNumber;
+    private Long governmentFeePayableLedgerId;
+    private Long paymentBankLedgerId;
     private LocalDateTime postedAt;
 }
