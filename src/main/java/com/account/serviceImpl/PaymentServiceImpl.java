@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import jakarta.annotation.PostConstruct;
 import com.account.domain.*;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
@@ -59,6 +60,13 @@ public class PaymentServiceImpl implements PaymentService {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentServiceImpl.class);
 
+    private static final String PAYMENT_CALCULATION_VERSION =
+            "2026-08-04-HALF-UP-3DP-TDS-WHOLE-V3";
+
+    private static final int MONEY_SCALE = 3;
+    private static final int RATE_SCALE = 2;
+    private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;
+
     private final EstimateRepository estimateRepository;
     private final UnbilledInvoiceRepository unbilledInvoiceRepository;
     private final PaymentReceiptRepository paymentReceiptRepository;
@@ -76,12 +84,6 @@ public class PaymentServiceImpl implements PaymentService {
     private final LedgerGroupRepository ledgerGroupRepository;
     private final PaymentLegalVerificationService paymentLegalVerificationService;
 
-    private final PaymentCalculationEngine paymentCalculationEngine;
-
-    private final RegisteredPaymentCalculator registeredPaymentCalculator;
-    private final UnregisteredPaymentCalculator unregisteredPaymentCalculator;
-    private final SezPaymentCalculator sezPaymentCalculator;
-
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
             UnbilledInvoiceRepository unbilledInvoiceRepository,
@@ -98,11 +100,7 @@ public class PaymentServiceImpl implements PaymentService {
             LedgerMasterRepository ledgerMasterRepository,
             AccountingVoucherService accountingVoucherService,
             LedgerGroupRepository ledgerGroupRepository,
-            PaymentLegalVerificationService paymentLegalVerificationService,
-            PaymentCalculationEngine paymentCalculationEngine,
-            RegisteredPaymentCalculator registeredPaymentCalculator,
-            UnregisteredPaymentCalculator unregisteredPaymentCalculator,
-            SezPaymentCalculator sezPaymentCalculator
+            PaymentLegalVerificationService paymentLegalVerificationService
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -120,13 +118,18 @@ public class PaymentServiceImpl implements PaymentService {
         this.accountingVoucherService = accountingVoucherService;
         this.ledgerGroupRepository = ledgerGroupRepository;
         this.paymentLegalVerificationService = paymentLegalVerificationService;
-        this.paymentCalculationEngine = paymentCalculationEngine;
-        this.registeredPaymentCalculator = registeredPaymentCalculator;
-        this.unregisteredPaymentCalculator = unregisteredPaymentCalculator;
-        this.sezPaymentCalculator = sezPaymentCalculator;
     }
 
-
+    @PostConstruct
+    public void logPaymentCalculationVersion() {
+        log.info(
+                "[PAYMENT-SERVICE-READY] calculationVersion={} | moneyScale={} | "
+                        + "tdsScale=0 | roundingMode={}",
+                PAYMENT_CALCULATION_VERSION,
+                MONEY_SCALE,
+                MONEY_ROUNDING
+        );
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -139,9 +142,10 @@ public class PaymentServiceImpl implements PaymentService {
                 "PAYMENT-REGISTRATION-" + UUID.randomUUID();
 
         log.info(
-                "[PAYMENT-REGISTRATION-START] traceId={} | estimateId={} | "
-                        + "paymentTypeId={} | bankAmount={} | salespersonId={}",
+                "[PAYMENT-REGISTRATION-START] traceId={} | calculationVersion={} | "
+                        + "estimateId={} | paymentTypeId={} | bankAmount={} | salespersonId={}",
                 traceId,
+                PAYMENT_CALCULATION_VERSION,
                 request != null ? request.getEstimateId() : null,
                 request != null ? request.getPaymentTypeId() : null,
                 request != null ? request.getAmount() : null,
@@ -1001,8 +1005,73 @@ public class PaymentServiceImpl implements PaymentService {
         calculationInput.purchaseOrderProjectCompleted =
                 purchaseOrderProjectCompleted;
 
-        FinalPaymentMath.Result finalResult =
-                FinalPaymentMath.calculate(calculationInput);
+        BigDecimal rawDocumentTotal =
+                safe3(totalTaxableAmount.add(totalGstAmount));
+
+        BigDecimal documentRoundOff =
+                safe3(totalInvoiceAmount.subtract(rawDocumentTotal));
+
+        log.info(
+                "[FINAL-PAYMENT-INPUT] traceId={} | calculationVersion={} | "
+                        + "estimateId={} | unbilledId={} | invoiceId={} | gstType={} | "
+                        + "paymentType={} | bankEntered={} | tdsActive={} | tdsPercentage={} | "
+                        + "documentTaxable={} | documentGst={} | rawDocumentTotal={} | "
+                        + "finalDocumentTotal={} | documentRoundOff={} | "
+                        + "approvedSettlement={} | pendingSettlement={} | "
+                        + "outstandingAvailable={} | alreadyUsedTds={} | installmentEligible={}",
+                traceId,
+                PAYMENT_CALCULATION_VERSION,
+                estimate.getId(),
+                resolvedUnbilled.getId(),
+                existingAdvanceTaxInvoice != null ? existingAdvanceTaxInvoice.getId() : null,
+                paymentGstRegistrationType,
+                paymentTypeCode,
+                reqAmount,
+                Boolean.TRUE.equals(request.getTdsActive()),
+                tdsPercentage != null ? safeRate(tdsPercentage) : null,
+                totalTaxableAmount,
+                totalGstAmount,
+                rawDocumentTotal,
+                totalInvoiceAmount,
+                documentRoundOff,
+                safe3(resolvedUnbilled.getReceivedAmount()),
+                safe3(resolvedUnbilled.getCurrentReceivedAmount()),
+                outstandingBeforePayment,
+                alreadyUsedTds,
+                installmentEligibleAmount
+        );
+
+        FinalPaymentMath.Result finalResult;
+
+        try {
+            finalResult = FinalPaymentMath.calculate(calculationInput);
+        } catch (ValidationException exception) {
+            log.error(
+                    "[FINAL-PAYMENT-CALCULATION-FAILED] traceId={} | calculationVersion={} | "
+                            + "estimateId={} | unbilledId={} | invoiceId={} | paymentType={} | "
+                            + "gstType={} | bankEntered={} | tdsActive={} | tdsPercentage={} | "
+                            + "documentTaxable={} | documentGst={} | finalDocumentTotal={} | "
+                            + "outstandingAvailable={} | alreadyUsedTds={} | error={}",
+                    traceId,
+                    PAYMENT_CALCULATION_VERSION,
+                    estimate.getId(),
+                    resolvedUnbilled.getId(),
+                    existingAdvanceTaxInvoice != null ? existingAdvanceTaxInvoice.getId() : null,
+                    paymentTypeCode,
+                    paymentGstRegistrationType,
+                    reqAmount,
+                    Boolean.TRUE.equals(request.getTdsActive()),
+                    tdsPercentage != null ? safeRate(tdsPercentage) : null,
+                    totalTaxableAmount,
+                    totalGstAmount,
+                    totalInvoiceAmount,
+                    outstandingBeforePayment,
+                    alreadyUsedTds,
+                    exception.getMessage(),
+                    exception
+            );
+            throw exception;
+        }
 
         taxableAmountForThisRegistration =
                 safe3(finalResult.currentTaxableAmount);
@@ -1016,13 +1085,16 @@ public class PaymentServiceImpl implements PaymentService {
                 safe3(finalResult.settlementAmount);
 
         log.info(
-                "[FINAL-PAYMENT-CALCULATION] traceId={} | estimateId={} | "
+                "[FINAL-PAYMENT-CALCULATION] traceId={} | calculationVersion={} | estimateId={} | "
                         + "invoiceId={} | invoiceNumber={} | gstType={} | "
                         + "paymentType={} | bankAmount={} | taxableAmount={} | "
                         + "gstAmount={} | tdsAmount={} | settlementAmount={} | "
+                        + "effectiveGstPercentage={} | totalAllowedTds={} | alreadyUsedTds={} | "
+                        + "remainingTdsBefore={} | remainingTdsAfter={} | "
                         + "outstandingBefore={} | outstandingAfter={} | "
                         + "initialPO={} | finalSettlement={}",
                 traceId,
+                PAYMENT_CALCULATION_VERSION,
                 estimate.getId(),
                 existingAdvanceTaxInvoice != null
                         ? existingAdvanceTaxInvoice.getId()
@@ -1037,6 +1109,11 @@ public class PaymentServiceImpl implements PaymentService {
                 gstAmountForThisRegistration,
                 tdsAmountForThisRegistration,
                 settlementAmountForThisRegistration,
+                finalResult.effectiveGstPercentage,
+                finalResult.totalAllowedTds,
+                finalResult.alreadyUsedTds,
+                finalResult.remainingTdsBefore,
+                finalResult.remainingTdsAfter,
                 finalResult.outstandingBefore,
                 finalResult.outstandingAfter,
                 finalResult.initialPurchaseOrder,
@@ -1285,6 +1362,7 @@ public class PaymentServiceImpl implements PaymentService {
          * taxableAmountForThisRegistration as another method argument.
          */
         createTdsIfRequired(
+                traceId,
                 request,
                 estimate,
                 resolvedUnbilled,
@@ -1694,10 +1772,10 @@ public class PaymentServiceImpl implements PaymentService {
          * Available Invoice amount     = 2,500
          */
         BigDecimal invoiceOutstanding =
-                safe2(invoice.getOutstandingAmount());
+                safe3(invoice.getOutstandingAmount());
 
         BigDecimal invoicePendingReceived =
-                safe2(invoice.getPendingReceivedAmount());
+                safe3(invoice.getPendingReceivedAmount());
 
         BigDecimal invoiceAvailableAmount =
                 invoiceOutstanding
@@ -2073,10 +2151,10 @@ public class PaymentServiceImpl implements PaymentService {
 
 
         BigDecimal estimateGrandTotal =
-                safe2(estimate.getGrandTotal());
+                wholeAs3(estimate.getGrandTotal());
 
         BigDecimal registeredBankAmount =
-                safe2(
+                safe3(
                         paymentReceiptRepository
                                 .sumRegisteredBankAmountForEstimate(
                                         estimate.getId(),
@@ -2088,7 +2166,7 @@ public class PaymentServiceImpl implements PaymentService {
                 );
 
         BigDecimal registeredTdsAmount =
-                safe2(
+                wholeTds(
                         tdsRegistrationRepository
                                 .sumRegisteredTdsAmountForEstimate(
                                         estimate.getId(),
@@ -2102,12 +2180,12 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal registeredSettlement =
                 registeredBankAmount
                         .add(registeredTdsAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
         return estimateGrandTotal
                 .subtract(registeredSettlement)
                 .max(BigDecimal.ZERO)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(3, RoundingMode.HALF_UP);
     }
 
 
@@ -2115,7 +2193,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         if (invoice == null || invoice.getId() == null) {
             return BigDecimal.ZERO.setScale(
-                    2,
+                    0,
                     RoundingMode.HALF_UP
             );
         }
@@ -2124,7 +2202,7 @@ public class PaymentServiceImpl implements PaymentService {
                 == GstRegistrationType.INTERNATIONAL) {
 
             return BigDecimal.ZERO.setScale(
-                    2,
+                    0,
                     RoundingMode.HALF_UP
             );
         }
@@ -2139,15 +2217,15 @@ public class PaymentServiceImpl implements PaymentService {
                 )
                 .map(TdsRegistration::getTdsAmount)
                 .filter(Objects::nonNull)
-                .map(this::safe2)
+                .map(this::wholeTds)
                 .reduce(
                         BigDecimal.ZERO.setScale(
-                                2,
+                                0,
                                 RoundingMode.HALF_UP
                         ),
                         BigDecimal::add
                 )
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(0, RoundingMode.HALF_UP);
     }
 
     private void createAdvanceInvoiceTdsIfRequired(
@@ -2183,7 +2261,7 @@ public class PaymentServiceImpl implements PaymentService {
             );
         }
 
-        BigDecimal tdsAmount = safe2(calculatedTdsAmount);
+        BigDecimal tdsAmount = wholeTds(calculatedTdsAmount);
         BigDecimal tdsPercentage = safe2(
                 request.getTds().getTdsPercentage()
         );
@@ -2215,7 +2293,7 @@ public class PaymentServiceImpl implements PaymentService {
                         RoundingMode.HALF_UP
                 );
 
-        BigDecimal invoiceTaxableAmount = safe2(
+        BigDecimal invoiceTaxableAmount = safe3(
                 invoice.getSubTotalExGst()
         );
 
@@ -2289,8 +2367,8 @@ public class PaymentServiceImpl implements PaymentService {
                 ? estimate.getCompany().getName()
                 : "company";
 
-        String bankAmount = safe2(receipt.getAmount()).toPlainString();
-        String settlement = safe2(settlementAmount).toPlainString();
+        String bankAmount = safe3(receipt.getAmount()).toPlainString();
+        String settlement = safe3(settlementAmount).toPlainString();
 
         for (User accountUser : accountUsers) {
             if (accountUser == null || accountUser.getId() == null) {
@@ -2345,7 +2423,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         final BigDecimal zero =
                 BigDecimal.ZERO.setScale(
-                        2,
+                        0,
                         RoundingMode.HALF_UP
                 );
 
@@ -2398,7 +2476,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal bankAmount =
-                safe2(request.getAmount());
+                safe3(request.getAmount());
 
         BigDecimal tdsPercentage =
                 safe2(
@@ -2425,10 +2503,10 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal totalTaxableAmount =
-                safe2(invoice.getSubTotalExGst());
+                safe3(invoice.getSubTotalExGst());
 
         BigDecimal totalInvoiceAmount =
-                safe2(invoice.getGrandTotal());
+                wholeAs3(invoice.getGrandTotal());
 
         if (totalTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -2459,12 +2537,13 @@ public class PaymentServiceImpl implements PaymentService {
                         .multiply(tdsPercentage)
                         .divide(
                                 BigDecimal.valueOf(100),
-                                2,
+                                FinalPaymentMath.INTERNAL_SCALE,
                                 RoundingMode.HALF_UP
-                        );
+                        )
+                        .setScale(0, RoundingMode.HALF_UP);
 
         BigDecimal alreadyUsedTds =
-                safe2(
+                wholeTds(
                         getTotalActiveTdsAmountForInvoice(
                                 invoice
                         )
@@ -2475,7 +2554,7 @@ public class PaymentServiceImpl implements PaymentService {
                         .subtract(alreadyUsedTds)
                         .max(BigDecimal.ZERO)
                         .setScale(
-                                2,
+                                0,
                                 RoundingMode.HALF_UP
                         );
 
@@ -2489,15 +2568,15 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal availableOutstanding =
-                safe2(invoice.getOutstandingAmount())
+                safe3(invoice.getOutstandingAmount())
                         .subtract(
-                                safe2(
+                                safe3(
                                         invoice.getPendingReceivedAmount()
                                 )
                         )
                         .max(BigDecimal.ZERO)
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -2513,7 +2592,7 @@ public class PaymentServiceImpl implements PaymentService {
                 remainingTdsLimit
                         .min(availableOutstanding)
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -2521,7 +2600,7 @@ public class PaymentServiceImpl implements PaymentService {
                 availableOutstanding
                         .subtract(remainingTdsLimit)
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -2580,7 +2659,7 @@ public class PaymentServiceImpl implements PaymentService {
                 bankAmount
                         .add(calculatedTds)
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -2785,19 +2864,19 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal outstanding =
-                safe2(unbilled.getOutstandingAmount());
+                safe3(unbilled.getOutstandingAmount());
 
         BigDecimal safeReqAmount =
-                safe2(reqAmount);
+                safe3(reqAmount);
 
         BigDecimal safeTdsAmount =
-                safe2(tdsAmount);
+                wholeTds(tdsAmount);
 
         BigDecimal settlementAmount =
                 safeReqAmount
                         .add(safeTdsAmount)
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -2970,8 +3049,8 @@ public class PaymentServiceImpl implements PaymentService {
                 );
             }
 
-            BigDecimal total = safe2(request.getGovernmentFee().getTotalAmount());
-            BigDecimal received = safe2(request.getGovernmentFee().getReceivedAmount());
+            BigDecimal total = safe3(request.getGovernmentFee().getTotalAmount());
+            BigDecimal received = safe3(request.getGovernmentFee().getReceivedAmount());
 
             if (total.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new ValidationException(
@@ -3068,9 +3147,9 @@ public class PaymentServiceImpl implements PaymentService {
         governmentFee.setDepartmentName(govReq.getDepartmentName());
         governmentFee.setFeeType(govReq.getFeeType());
 
-        governmentFee.setTotalAmount(safe2(govReq.getTotalAmount()));
-        governmentFee.setReceivedAmount(safe2(govReq.getReceivedAmount()));
-        governmentFee.setOutstandingAmount(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        governmentFee.setTotalAmount(safe3(govReq.getTotalAmount()));
+        governmentFee.setReceivedAmount(safe3(govReq.getReceivedAmount()));
+        governmentFee.setOutstandingAmount(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
 
         governmentFee.setPaymentDate(govReq.getPaymentDate());
         governmentFee.setRemarks(govReq.getRemarks());
@@ -3163,6 +3242,7 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     private void createTdsIfRequired(
+            String traceId,
             PaymentRegistrationRequestDto request,
             Estimate estimate,
             UnbilledInvoice unbilled,
@@ -3374,10 +3454,27 @@ public class PaymentServiceImpl implements PaymentService {
          * taxable amount.
          */
         BigDecimal totalEstimateTaxableAmount =
-                calculateTdsTaxableAmount(
-                        estimate,
-                        unbilled
+                safe3(
+                        calculateTdsTaxableAmount(
+                                estimate,
+                                unbilled
+                        )
                 );
+
+        log.info(
+                "[TDS-CALCULATION-VALIDATION] traceId={} | estimateId={} | unbilledId={} | "
+                        + "receiptId={} | tdsPercentage={} | currentTaxable={} | "
+                        + "estimateTaxable={} | calculatedWholeTds={} | bankAmount={}",
+                traceId,
+                estimate.getId(),
+                unbilled.getId(),
+                receipt.getId(),
+                tdsPercentage,
+                taxableAmount,
+                totalEstimateTaxableAmount,
+                safeTdsAmount,
+                safe3(receipt.getAmount())
+        );
 
         if (totalEstimateTaxableAmount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new ValidationException(
@@ -3388,8 +3485,27 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         if (taxableAmount.compareTo(totalEstimateTaxableAmount) > 0) {
+            BigDecimal excessTaxable =
+                    safe3(taxableAmount.subtract(totalEstimateTaxableAmount));
+
+            log.error(
+                    "[TDS-TAXABLE-VALIDATION-FAILED] traceId={} | estimateId={} | "
+                            + "currentTaxable={} | estimateTaxable={} | excessTaxable={} | "
+                            + "calculatedTds={} | bankAmount={}",
+                    traceId,
+                    estimate.getId(),
+                    taxableAmount,
+                    totalEstimateTaxableAmount,
+                    excessTaxable,
+                    safeTdsAmount,
+                    safe3(receipt.getAmount())
+            );
+
             throw new ValidationException(
-                    "Current payment taxable amount cannot exceed the estimate taxable amount",
+                    "Current payment taxable amount cannot exceed the estimate taxable amount. "
+                            + "Current taxable: Rs. " + taxableAmount.toPlainString()
+                            + ", Estimate taxable: Rs. " + totalEstimateTaxableAmount.toPlainString()
+                            + ", Excess: Rs. " + excessTaxable.toPlainString(),
                     "ERR_TDS_TAXABLE_AMOUNT_EXCEEDS_ESTIMATE",
                     "tds"
             );
@@ -3443,9 +3559,10 @@ public class PaymentServiceImpl implements PaymentService {
         unbilledInvoiceRepository.save(unbilled);
 
         log.info(
-                "TDS registered successfully | tdsId={} | estimateId={} | unbilledId={} "
+                "[TDS-REGISTERED] traceId={} | tdsId={} | estimateId={} | unbilledId={} "
                         + "| paymentReceiptId={} | gstRegistrationType={} | taxableAmount={} "
                         + "| percentage={} | tdsAmount={} | status={}",
+                traceId,
                 savedTds.getId(),
                 estimate.getId(),
                 unbilled.getId(),
@@ -3468,7 +3585,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         final BigDecimal zero =
                 BigDecimal.ZERO.setScale(
-                        2,
+                        3,
                         RoundingMode.HALF_UP
                 );
 
@@ -3558,7 +3675,7 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal paymentAmount =
-                safe2(request.getAmount());
+                safe3(request.getAmount());
 
         BigDecimal tdsPercentage =
                 safe2(
@@ -3622,7 +3739,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (existingAdvanceTaxInvoice != null) {
 
             totalTaxableAmount =
-                    safe2(
+                    safe3(
                             existingAdvanceTaxInvoice
                                     .getSubTotalExGst()
                     );
@@ -3630,7 +3747,7 @@ public class PaymentServiceImpl implements PaymentService {
         } else {
 
             totalTaxableAmount =
-                    safe2(
+                    safe3(
                             calculateTdsTaxableAmount(
                                     estimate,
                                     unbilled
@@ -3660,7 +3777,7 @@ public class PaymentServiceImpl implements PaymentService {
              * not the complete Estimate total.
              */
             totalInvoiceAmount =
-                    safe2(
+                    wholeAs3(
                             existingAdvanceTaxInvoice
                                     .getGrandTotal()
                     );
@@ -3669,7 +3786,7 @@ public class PaymentServiceImpl implements PaymentService {
                 && unbilled.getTotalAmount() != null) {
 
             totalInvoiceAmount =
-                    safe2(
+                    wholeAs3(
                             unbilled.getTotalAmount()
                     );
 
@@ -3677,7 +3794,7 @@ public class PaymentServiceImpl implements PaymentService {
                 && estimate.getGrandTotal() != null) {
 
             totalInvoiceAmount =
-                    safe2(
+                    wholeAs3(
                             estimate.getGrandTotal()
                     );
 
@@ -3719,7 +3836,7 @@ public class PaymentServiceImpl implements PaymentService {
              * ATI outstanding when ATI exists.
              */
             outstandingAmount =
-                    safe2(
+                    safe3(
                             unbilled.getOutstandingAmount()
                     );
 
@@ -3728,7 +3845,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .getOutstandingAmount() != null) {
 
             outstandingAmount =
-                    safe2(
+                    safe3(
                             existingAdvanceTaxInvoice
                                     .getOutstandingAmount()
                     );
@@ -3796,7 +3913,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         BigDecimal alreadyUsedTds =
                 unbilled != null
-                        ? safe2(
+                        ? wholeTds(
                         getTotalActiveTdsAmount(
                                 unbilled
                         )
@@ -3823,7 +3940,7 @@ public class PaymentServiceImpl implements PaymentService {
                         .subtract(alreadyUsedTds)
                         .max(BigDecimal.ZERO)
                         .setScale(
-                                2,
+                                0,
                                 RoundingMode.HALF_UP
                         );
 
@@ -3857,7 +3974,7 @@ public class PaymentServiceImpl implements PaymentService {
                 outstandingAmount
                         .subtract(remainingTdsLimit)
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -3929,7 +4046,7 @@ public class PaymentServiceImpl implements PaymentService {
             calculatedTds =
                     remainingTdsLimit
                             .setScale(
-                                    2,
+                                    0,
                                     RoundingMode.HALF_UP
                             );
 
@@ -3977,7 +4094,7 @@ public class PaymentServiceImpl implements PaymentService {
                 paymentAmount
                         .add(calculatedTds)
                         .setScale(
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -4159,7 +4276,7 @@ public class PaymentServiceImpl implements PaymentService {
                                 .subtract(safeTotalTaxableAmount)
                                 .max(BigDecimal.ZERO)
                                 .setScale(
-                                        2,
+                                        3,
                                         RoundingMode.HALF_UP
                                 );
 
@@ -4335,8 +4452,13 @@ public class PaymentServiceImpl implements PaymentService {
         return eligible.setScale(3, RoundingMode.HALF_UP);
     }
 
+    private BigDecimal safeRate(BigDecimal val) {
+        return (val == null ? BigDecimal.ZERO : val)
+                .setScale(RATE_SCALE, MONEY_ROUNDING);
+    }
+
     private BigDecimal safe2(BigDecimal val) {
-        return (val == null ? BigDecimal.ZERO : val).setScale(2, RoundingMode.HALF_UP);
+        return safeRate(val);
     }
 
     @Override
@@ -4474,7 +4596,7 @@ public class PaymentServiceImpl implements PaymentService {
         boolean initialPurchaseOrderApproval = paymentsToApprove.stream()
                 .anyMatch(payment ->
                         isPurchaseOrderPayment(payment)
-                                && safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) == 0
+                                && safe3(payment.getAmount()).compareTo(BigDecimal.ZERO) == 0
                 );
 
         // ==================== REJECTED FLOW ====================
@@ -4692,7 +4814,7 @@ public class PaymentServiceImpl implements PaymentService {
             BigDecimal tdsForVoucher =
                     internationalTransaction
                             ? BigDecimal.ZERO.setScale(
-                            2,
+                            0,
                             RoundingMode.HALF_UP
                     )
                             : getPendingTdsAmountForPayment(payment);
@@ -4722,7 +4844,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             boolean skipInvoiceForInitialPurchaseOrder =
                     isPurchaseOrderPayment(payment)
-                            && safe2(payment.getAmount()).compareTo(BigDecimal.ZERO) == 0;
+                            && safe3(payment.getAmount()).compareTo(BigDecimal.ZERO) == 0;
 
             if (skipInvoiceForInitialPurchaseOrder) {
                 log.info(
@@ -6507,7 +6629,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (ledger.getOpeningBalance() == null) {
             ledger.setOpeningBalance(
                     BigDecimal.ZERO.setScale(
-                            2,
+                            3,
                             RoundingMode.HALF_UP
                     )
             );
@@ -6522,7 +6644,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (ledger.getCurrentBalance() == null) {
             ledger.setCurrentBalance(
                     BigDecimal.ZERO.setScale(
-                            2,
+                            3,
                             RoundingMode.HALF_UP
                     )
             );
@@ -6671,10 +6793,10 @@ public class PaymentServiceImpl implements PaymentService {
         ledger.setLedgerType(ledgerType);
         ledger.setLedgerGroup(ledgerGroup);
 
-        ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        ledger.setOpeningBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
         ledger.setOpeningBalanceType(balanceType);
 
-        ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+        ledger.setCurrentBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
         ledger.setCurrentBalanceType(balanceType);
 
         ledger.setSystemCreated(true);
@@ -7023,8 +7145,8 @@ public class PaymentServiceImpl implements PaymentService {
                     estimate.getId(),
                     invoice.getId(),
                     invoice.getInvoiceNumber(),
-                    safe2(invoice.getReceivedAmount()),
-                    safe2(invoice.getOutstandingAmount()),
+                    safe3(invoice.getReceivedAmount()),
+                    safe3(invoice.getOutstandingAmount()),
                     invoice.getPaymentStatus()
             );
         }
