@@ -54,6 +54,7 @@ public class UnbilledServiceImpl implements UnbilledService {
     private final UserRepository userRepository;
     private final OperationFeignClient operationFeignClient;
     private final InvoiceRepository invoiceRepository;
+    private final OrganizationRepository organizationRepository;
 
     private final TdsRegistrationRepository tdsRegistrationRepository;
 
@@ -332,6 +333,49 @@ public class UnbilledServiceImpl implements UnbilledService {
                 .collect(Collectors.toList());
     }
 
+    private void applyOrganizationSnapshot(
+            UnbilledInvoiceSummaryDto dto,
+            Organization org
+    ) {
+        if (org == null) {
+            dto.setOrganizationBankAccountPresent(false);
+            return;
+        }
+
+        // ----- Seller snapshot -----
+        dto.setOrganizationName(org.getName());
+        dto.setOrganizationAddressLine1(org.getAddressLine1());
+        dto.setOrganizationAddressLine2(org.getAddressLine2());
+        dto.setOrganizationCity(org.getCity());
+        dto.setOrganizationState(org.getState());
+        dto.setOrganizationCountry(org.getCountry());
+        dto.setOrganizationPinCode(org.getPinCode());
+
+        dto.setOrganizationGstNo(org.getGstNo());
+        dto.setOrganizationPanNo(org.getPanNo());
+        dto.setOrganizationCinNumber(org.getCinNumber());
+
+        dto.setOrganizationEmail(org.getEmail());
+        dto.setOrganizationPhone(org.getPhone());
+        dto.setOrganizationWebsite(org.getWebsite());
+        dto.setOrganizationLogoUrl(org.getLogoUrl());
+
+        // ----- Bank details -----
+        dto.setOrganizationAccountHolderName(org.getAccountHolderName());
+        dto.setOrganizationAccountNumber(org.getAccountNo());
+        dto.setOrganizationIfscCode(org.getIfscCode());
+        dto.setOrganizationSwiftCode(org.getSwiftCode());
+        dto.setOrganizationBankName(org.getBankName());
+        dto.setOrganizationBankBranch(org.getBranch());
+        dto.setOrganizationUpiId(org.getUpiId());
+        dto.setOrganizationPaymentPageLink(org.getPaymentPageLink());
+
+        // Present only if there's an actual account to show
+        boolean bankPresent =
+                org.getAccountNo() != null && !org.getAccountNo().isBlank();
+        dto.setOrganizationBankAccountPresent(bankPresent);
+    }
+
     private UnbilledInvoiceSummaryDto mapToSummaryDto(UnbilledInvoice unbilled) {
         UnbilledInvoiceSummaryDto dto = new UnbilledInvoiceSummaryDto();
 
@@ -467,6 +511,34 @@ public class UnbilledServiceImpl implements UnbilledService {
         dto.setStatus(unbilled.getStatus());
         dto.setCreatedAt(unbilled.getCreatedAt());
         dto.setApprovedAt(unbilled.getApprovedAt());
+        // ORGANIZATION SNAPSHOT — read straight from the frozen entity fields
+        dto.setOrganizationName(unbilled.getOrganizationName());
+        dto.setOrganizationAddressLine1(unbilled.getOrganizationAddressLine1());
+        dto.setOrganizationAddressLine2(unbilled.getOrganizationAddressLine2());
+        dto.setOrganizationCity(unbilled.getOrganizationCity());
+        dto.setOrganizationState(unbilled.getOrganizationState());
+        dto.setOrganizationCountry(unbilled.getOrganizationCountry());
+        dto.setOrganizationPinCode(unbilled.getOrganizationPinCode());
+
+        dto.setOrganizationGstNo(unbilled.getOrganizationGstNo());
+        dto.setOrganizationPanNo(unbilled.getOrganizationPanNo());
+        dto.setOrganizationCinNumber(unbilled.getOrganizationCinNumber());
+
+        dto.setOrganizationEmail(unbilled.getOrganizationEmail());
+        dto.setOrganizationPhone(unbilled.getOrganizationPhone());
+        dto.setOrganizationWebsite(unbilled.getOrganizationWebsite());
+        dto.setOrganizationLogoUrl(unbilled.getOrganizationLogoUrl());
+
+// Bank block — requires the bank columns on the entity (see note below)
+        dto.setOrganizationAccountHolderName(unbilled.getOrganizationAccountHolderName());
+        dto.setOrganizationAccountNumber(unbilled.getOrganizationAccountNumber());
+        dto.setOrganizationIfscCode(unbilled.getOrganizationIfscCode());
+        dto.setOrganizationSwiftCode(unbilled.getOrganizationSwiftCode());
+        dto.setOrganizationBankName(unbilled.getOrganizationBankName());
+        dto.setOrganizationBankBranch(unbilled.getOrganizationBankBranch());
+        dto.setOrganizationUpiId(unbilled.getOrganizationUpiId());
+        dto.setOrganizationPaymentPageLink(unbilled.getOrganizationPaymentPageLink());
+        dto.setOrganizationBankAccountPresent(unbilled.getOrganizationBankAccountPresent());
 
         User createdBy = unbilled.getCreatedBy();
         dto.setCreatedByName(getUserDisplayName(createdBy));

@@ -186,6 +186,78 @@ public class UnbilledInvoice {
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
+    @Column(name = "organization_name", length = 255)
+    private String organizationName;
+
+    @Column(name = "organization_address_line1", length = 255)
+    private String organizationAddressLine1;
+
+    @Column(name = "organization_address_line2", length = 255)
+    private String organizationAddressLine2;
+
+    @Column(name = "organization_city", length = 100)
+    private String organizationCity;
+
+    @Column(name = "organization_state", length = 100)
+    private String organizationState;
+
+    @Column(name = "organization_country", length = 100)
+    private String organizationCountry;
+
+    @Column(name = "organization_pin_code", length = 20)
+    private String organizationPinCode;
+
+    @Column(name = "organization_gst_no", length = 50)
+    private String organizationGstNo;
+
+    @Column(name = "organization_pan_no", length = 50)
+    private String organizationPanNo;
+
+    @Column(name = "organization_cin_number", length = 21)
+    private String organizationCinNumber;
+
+    @Column(name = "organization_email", length = 100)
+    private String organizationEmail;
+
+    @Column(name = "organization_phone", length = 50)
+    private String organizationPhone;
+
+    @Column(name = "organization_website", length = 500)
+    private String organizationWebsite;
+
+    @Column(name = "organization_logo_url", length = 255)
+    private String organizationLogoUrl;
+
+    // =====================================================
+// ORGANIZATION BANK SNAPSHOT
+// =====================================================
+
+    @Column(name = "organization_bank_account_present")
+    private Boolean organizationBankAccountPresent;
+
+    @Column(name = "organization_account_holder_name", length = 255)
+    private String organizationAccountHolderName;
+
+    @Column(name = "organization_account_number", length = 50)
+    private String organizationAccountNumber;
+
+    @Column(name = "organization_ifsc_code", length = 20)
+    private String organizationIfscCode;
+
+    @Column(name = "organization_swift_code", length = 20)
+    private String organizationSwiftCode;
+
+    @Column(name = "organization_bank_name", length = 255)
+    private String organizationBankName;
+
+    @Column(name = "organization_bank_branch", length = 255)
+    private String organizationBankBranch;
+
+    @Column(name = "organization_upi_id", length = 100)
+    private String organizationUpiId;
+
+    @Column(name = "organization_payment_page_link", length = 500)
+    private String organizationPaymentPageLink;
     @Column(
             name = "total_amount",
             precision = 19,

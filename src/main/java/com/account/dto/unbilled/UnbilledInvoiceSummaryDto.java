@@ -75,5 +75,44 @@ public class UnbilledInvoiceSummaryDto {
     private Boolean zeroRatedSupply;
 
 
+    // =====================================================
+    // ORGANIZATION / SELLER SNAPSHOT
+    // =====================================================
+
+    private String organizationName;
+    private String organizationAddressLine1;
+    private String organizationAddressLine2;
+
+    private String organizationCity;
+    private String organizationState;
+    private String organizationCountry;
+    private String organizationPinCode;
+
+    private String organizationGstNo;
+    private String organizationPanNo;
+    private String organizationCinNumber;
+
+    private String organizationEmail;
+    private String organizationPhone;
+    private String organizationWebsite;
+    private String organizationLogoUrl;
+
+    // =====================================================
+    // ORGANIZATION BANK DETAILS
+    // =====================================================
+
+    private Boolean organizationBankAccountPresent;
+
+    private String organizationAccountHolderName;
+    private String organizationAccountNumber;
+
+    private String organizationIfscCode;
+    private String organizationSwiftCode;
+
+    private String organizationBankName;
+    private String organizationBankBranch;
+
+    private String organizationUpiId;
+    private String organizationPaymentPageLink;
 
 }

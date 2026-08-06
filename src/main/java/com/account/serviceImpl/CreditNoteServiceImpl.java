@@ -132,7 +132,7 @@
             Estimate estimate = unbilled.getEstimate();
             Company company = unbilled.getCompany();
             Contact contact = unbilled.getContact();
-    
+
             CreditNote creditNote = CreditNote.builder()
                     .creditNoteNumber(generateCreditNoteNumber())
                     .unbilledInvoice(unbilled)
@@ -158,6 +158,38 @@
                     .createdBy(createdBy)
                     .createdAt(LocalDateTime.now())
                     .updatedAt(LocalDateTime.now())
+
+                    // =====================================================
+                    // ORGANIZATION / SELLER SNAPSHOT (copied from unbilled)
+                    // =====================================================
+                    .organizationName(unbilled.getOrganizationName())
+                    .organizationAddressLine1(unbilled.getOrganizationAddressLine1())
+                    .organizationAddressLine2(unbilled.getOrganizationAddressLine2())
+                    .organizationCity(unbilled.getOrganizationCity())
+                    .organizationState(unbilled.getOrganizationState())
+                    .organizationCountry(unbilled.getOrganizationCountry())
+                    .organizationPinCode(unbilled.getOrganizationPinCode())
+                    .organizationGstNo(unbilled.getOrganizationGstNo())
+                    .organizationPanNo(unbilled.getOrganizationPanNo())
+                    .organizationCinNumber(unbilled.getOrganizationCinNumber())
+                    .organizationEmail(unbilled.getOrganizationEmail())
+                    .organizationPhone(unbilled.getOrganizationPhone())
+                    .organizationWebsite(unbilled.getOrganizationWebsite())
+                    .organizationLogoUrl(unbilled.getOrganizationLogoUrl())
+
+                    // =====================================================
+                    // ORGANIZATION BANK SNAPSHOT (copied from unbilled)
+                    // =====================================================
+                    .organizationBankAccountPresent(unbilled.getOrganizationBankAccountPresent())
+                    .organizationAccountHolderName(unbilled.getOrganizationAccountHolderName())
+                    .organizationAccountNumber(unbilled.getOrganizationAccountNumber())
+                    .organizationIfscCode(unbilled.getOrganizationIfscCode())
+                    .organizationSwiftCode(unbilled.getOrganizationSwiftCode())
+                    .organizationBankName(unbilled.getOrganizationBankName())
+                    .organizationBankBranch(unbilled.getOrganizationBankBranch())
+                    .organizationUpiId(unbilled.getOrganizationUpiId())
+                    .organizationPaymentPageLink(unbilled.getOrganizationPaymentPageLink())
+
                     .build();
     
             List<Invoice> invoices = fetchInvoicesForCreditNote(unbilled, request.getInvoiceIds());
@@ -669,28 +701,28 @@
                                     .invoiceStatus(detail.getInvoiceStatus())
                                     .build())
                             .toList();
-    
+
             return CreditNoteResponseDto.builder()
                     .id(creditNote.getId())
                     .creditNoteNumber(creditNote.getCreditNoteNumber())
-    
+
                     .proposalId(estimate != null ? estimate.getProposalId() : null)
-    
+
                     .unbilledId(unbilled != null ? unbilled.getId() : null)
                     .unbilledNumber(creditNote.getUnbilledNumber())
-    
+
                     .estimateId(estimate != null ? estimate.getId() : null)
                     .estimateNumber(creditNote.getEstimateNumber())
-    
+
                     .companyId(company != null ? company.getId() : null)
                     .companyName(creditNote.getCompanyName())
-    
+
                     .contactId(contact != null ? contact.getId() : null)
                     .contactName(creditNote.getContactName())
-    
+
                     .attachment(creditNote.getAttachment())
                     .gstPortalAttachment(creditNote.getGstPortalAttachment())
-    
+
                     .totalAmount(creditNote.getTotalAmount())
                     .receivedAmount(creditNote.getReceivedAmount())
                     .currentReceivedAmount(creditNote.getCurrentReceivedAmount())
@@ -699,14 +731,13 @@
                     .creditAmount(creditNote.getCreditAmount())
                     .utilizedCreditAmount(creditNote.getUtilizedCreditAmount())
                     .remainingCreditAmount(creditNote.getRemainingCreditAmount())
-    
-    
+
                     .status(creditNote.getStatus())
                     .reason(creditNote.getReason())
-    
+
                     .createdById(creditNote.getCreatedBy() != null ? creditNote.getCreatedBy().getId() : null)
                     .createdAt(creditNote.getCreatedAt())
-    
+
                     .accountApprovedById(
                             creditNote.getAccountApprovedBy() != null
                                     ? creditNote.getAccountApprovedBy().getId()
@@ -714,17 +745,44 @@
                     )
                     .accountApprovedAt(creditNote.getAccountApprovedAt())
                     .accountApprovalRemarks(creditNote.getAccountApprovalRemarks())
-    
+
                     .approvedById(creditNote.getApprovedBy() != null ? creditNote.getApprovedBy().getId() : null)
                     .approvedAt(creditNote.getApprovedAt())
                     .approvalRemarks(creditNote.getApprovalRemarks())
-    
+
                     .rejectionReason(creditNote.getRejectionReason())
                     .rejectedById(creditNote.getRejectedBy() != null ? creditNote.getRejectedBy().getId() : null)
                     .rejectedAt(creditNote.getRejectedAt())
-    
+
                     .updatedAt(creditNote.getUpdatedAt())
                     .invoices(invoiceDtos)
+
+                    .organizationName(creditNote.getOrganizationName())
+                    .organizationAddressLine1(creditNote.getOrganizationAddressLine1())
+                    .organizationAddressLine2(creditNote.getOrganizationAddressLine2())
+                    .organizationCity(creditNote.getOrganizationCity())
+                    .organizationState(creditNote.getOrganizationState())
+                    .organizationCountry(creditNote.getOrganizationCountry())
+                    .organizationPinCode(creditNote.getOrganizationPinCode())
+                    .organizationGstNo(creditNote.getOrganizationGstNo())
+                    .organizationPanNo(creditNote.getOrganizationPanNo())
+                    .organizationCinNumber(creditNote.getOrganizationCinNumber())
+                    .organizationEmail(creditNote.getOrganizationEmail())
+                    .organizationPhone(creditNote.getOrganizationPhone())
+                    .organizationWebsite(creditNote.getOrganizationWebsite())
+                    .organizationLogoUrl(creditNote.getOrganizationLogoUrl())
+
+                    // ===== ORGANIZATION BANK SNAPSHOT =====
+                    .organizationBankAccountPresent(creditNote.getOrganizationBankAccountPresent())
+                    .organizationAccountHolderName(creditNote.getOrganizationAccountHolderName())
+                    .organizationAccountNumber(creditNote.getOrganizationAccountNumber())
+                    .organizationIfscCode(creditNote.getOrganizationIfscCode())
+                    .organizationSwiftCode(creditNote.getOrganizationSwiftCode())
+                    .organizationBankName(creditNote.getOrganizationBankName())
+                    .organizationBankBranch(creditNote.getOrganizationBankBranch())
+                    .organizationUpiId(creditNote.getOrganizationUpiId())
+                    .organizationPaymentPageLink(creditNote.getOrganizationPaymentPageLink())
+
                     .build();
         }
     
