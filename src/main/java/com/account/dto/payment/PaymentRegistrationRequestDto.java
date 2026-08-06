@@ -160,24 +160,6 @@ public class PaymentRegistrationRequestDto {
     )
     private String poAttachmentUrl;
 
-    /*
-     * Selected installment or milestone amount.
-     *
-     * Required only when payment type is INSTALLMENT.
-     *
-     * Settlement must satisfy:
-     *
-     * settlement > 0
-     * settlement <= installmentEligibleAmount
-     * settlement <= current outstanding
-     */
-    @Positive(
-            message = "Installment eligible amount must be greater than zero"
-    )
-    @Digits(
-            integer = 16,
-            fraction = 3,
-            message = "Installment eligible amount can have a maximum of 3 decimal places"
-    )
-    private BigDecimal installmentEligibleAmount;
+
+
 }

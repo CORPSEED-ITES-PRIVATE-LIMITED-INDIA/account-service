@@ -16,7 +16,8 @@ import java.math.BigDecimal;
 import java.util.Optional;
 
 @Repository
-public interface AdvanceTaxInvoiceRequestRepository extends JpaRepository<AdvanceTaxInvoiceRequest, Long> {
+public interface AdvanceTaxInvoiceRequestRepository
+        extends JpaRepository<AdvanceTaxInvoiceRequest, Long> {
 
     boolean existsByEstimateAndStatus(
             Estimate estimate,
@@ -36,7 +37,6 @@ public interface AdvanceTaxInvoiceRequestRepository extends JpaRepository<Advanc
             @Param("requestId") Long requestId
     );
 
-
     @Query("""
             select coalesce(sum(request.requestedAmount), 0)
             from AdvanceTaxInvoiceRequest request
@@ -48,26 +48,38 @@ public interface AdvanceTaxInvoiceRequestRepository extends JpaRepository<Advanc
             @Param("status") AdvanceTaxInvoiceRequestStatus status
     );
 
-
     @Query("""
-            SELECT request
-            FROM AdvanceTaxInvoiceRequest request
-            WHERE (
-                :requestedByUserId IS NULL
-                OR request.requestedBy.id = :requestedByUserId
+            select request
+            from AdvanceTaxInvoiceRequest request
+            where (
+                :requestedByUserId is null
+                or request.requestedBy.id = :requestedByUserId
             )
-            AND (
-                :status IS NULL
-                OR request.status = :status
+            and (
+                :status is null
+                or request.status = :status
             )
             """)
     Page<AdvanceTaxInvoiceRequest> findVisibleRequests(
-            @Param("requestedByUserId")
-            Long requestedByUserId,
-
-            @Param("status")
-            AdvanceTaxInvoiceRequestStatus status,
-
+            @Param("requestedByUserId") Long requestedByUserId,
+            @Param("status") AdvanceTaxInvoiceRequestStatus status,
             Pageable pageable
     );
+
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            select request
+            from AdvanceTaxInvoiceRequest request
+            left join fetch request.invoice invoice
+            where request.id = (
+                select max(latestRequest.id)
+                from AdvanceTaxInvoiceRequest latestRequest
+                where latestRequest.estimate.id = :estimateId
+            )
+            """)
+    Optional<AdvanceTaxInvoiceRequest>
+    findLatestByEstimateForPaymentValidation(
+            @Param("estimateId") Long estimateId
+    );
+
 }
