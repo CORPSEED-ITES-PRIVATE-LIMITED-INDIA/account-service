@@ -83,6 +83,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final AccountingVoucherService accountingVoucherService;
     private final LedgerGroupRepository ledgerGroupRepository;
     private final PaymentLegalVerificationService paymentLegalVerificationService;
+    private final OrganizationRepository organizationRepository;
 
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
@@ -100,7 +101,8 @@ public class PaymentServiceImpl implements PaymentService {
             LedgerMasterRepository ledgerMasterRepository,
             AccountingVoucherService accountingVoucherService,
             LedgerGroupRepository ledgerGroupRepository,
-            PaymentLegalVerificationService paymentLegalVerificationService
+            PaymentLegalVerificationService paymentLegalVerificationService,
+            OrganizationRepository  organizationRepository
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -118,6 +120,7 @@ public class PaymentServiceImpl implements PaymentService {
         this.accountingVoucherService = accountingVoucherService;
         this.ledgerGroupRepository = ledgerGroupRepository;
         this.paymentLegalVerificationService = paymentLegalVerificationService;
+        this.organizationRepository =  organizationRepository;
     }
 
     @PostConstruct
@@ -764,6 +767,8 @@ public class PaymentServiceImpl implements PaymentService {
             unbilled.setUpdatedAt(
                     LocalDateTime.now()
             );
+
+            applyOrganizationSnapshot(unbilled);
 
             unbilled =
                     unbilledInvoiceRepository.save(
@@ -1587,6 +1592,45 @@ public class PaymentServiceImpl implements PaymentService {
         );
 
         return response;
+    }
+
+    private void applyOrganizationSnapshot(UnbilledInvoice unbilled) {
+
+        Organization org =
+                organizationRepository.findTopOrganization().orElse(null);
+
+        if (org == null) {
+            log.warn(
+                    "[ORG-SNAPSHOT] No organization row found. "
+                            + "Unbilled seller snapshot will be empty | unbilledNumber={}",
+                    unbilled.getUnbilledNumber()
+            );
+            return;
+        }
+
+        // ----- Seller snapshot (fields already on the entity) -----
+        unbilled.setOrganizationName(org.getName());
+        unbilled.setOrganizationAddressLine1(org.getAddressLine1());
+        unbilled.setOrganizationAddressLine2(org.getAddressLine2());
+        unbilled.setOrganizationCity(org.getCity());
+        unbilled.setOrganizationState(org.getState());
+        unbilled.setOrganizationCountry(org.getCountry());
+        unbilled.setOrganizationPinCode(org.getPinCode());
+
+        unbilled.setOrganizationGstNo(org.getGstNo());
+        unbilled.setOrganizationPanNo(org.getPanNo());
+        unbilled.setOrganizationCinNumber(org.getCinNumber());
+
+        unbilled.setOrganizationEmail(org.getEmail());
+        unbilled.setOrganizationPhone(org.getPhone());
+        unbilled.setOrganizationWebsite(org.getWebsite());
+        unbilled.setOrganizationLogoUrl(org.getLogoUrl());
+
+        log.info(
+                "[ORG-SNAPSHOT] Seller snapshot applied | unbilledNumber={} | organizationName={}",
+                unbilled.getUnbilledNumber(),
+                org.getName()
+        );
     }
 
 
