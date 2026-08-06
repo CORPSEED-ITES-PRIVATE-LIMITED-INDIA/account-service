@@ -1,8 +1,6 @@
 package com.account.serviceImpl.ledger;
 
 import com.account.domain.User;
-import com.account.domain.company.Company;
-import com.account.domain.company.CompanyUnit;
 import com.account.domain.ledger.AccountingVoucher;
 import com.account.domain.ledger.DebitCredit;
 import com.account.domain.ledger.LedgerGroup;
@@ -22,8 +20,6 @@ import com.account.dto.operationService.GovernmentFeePaymentPostingRequestDto;
 import com.account.dto.operationService.GovernmentFeePaymentPostingResponseDto;
 import com.account.exception.ResourceNotFoundException;
 import com.account.exception.ValidationException;
-import com.account.repository.CompanyRepository;
-import com.account.repository.CompanyUnitRepository;
 import com.account.repository.UserRepository;
 import com.account.repository.ledger.AccountingVoucherRepository;
 import com.account.repository.ledger.LedgerGroupRepository;
@@ -109,8 +105,6 @@ public class ProjectExpenseAccountingServiceImpl
     private final AccountingVoucherRepository accountingVoucherRepository;
     private final LedgerMasterRepository ledgerMasterRepository;
     private final LedgerGroupRepository ledgerGroupRepository;
-    private final CompanyRepository companyRepository;
-    private final CompanyUnitRepository companyUnitRepository;
     private final UserRepository userRepository;
     private final AccountingVoucherService accountingVoucherService;
 
@@ -392,11 +386,12 @@ public class ProjectExpenseAccountingServiceImpl
                 approver
         );
 
-        LedgerMaster clientAdvanceLedger =
-                getOrCreateClientGovernmentFeeAdvanceLedger(
-                        request,
-                        approver
-                );
+        /*
+         * Use the existing company-unit customer ledger. This makes both
+         * Entry A (credit) and Entry B (debit) visible in the client's normal
+         * ledger statement while leaving its final balance unchanged.
+         */
+        LedgerMaster clientLedger = resolveExistingClientLedger(request);
 
         LedgerMaster payableLedger = getOrCreateSystemLedger(
                 LedgerType.GOVERNMENT_FEE_PAYABLE,
@@ -413,7 +408,7 @@ public class ProjectExpenseAccountingServiceImpl
                 createClientReceiptVoucher(
                         request,
                         receivingLedger,
-                        clientAdvanceLedger,
+                        clientLedger,
                         amount
                 )
         );
@@ -421,7 +416,7 @@ public class ProjectExpenseAccountingServiceImpl
         AccountingVoucher journalVoucher = existingJournal.orElseGet(() ->
                 createClientAccrualJournal(
                         request,
-                        clientAdvanceLedger,
+                        clientLedger,
                         payableLedger,
                         amount
                 )
@@ -443,7 +438,7 @@ public class ProjectExpenseAccountingServiceImpl
                 receiptVoucher,
                 journalVoucher,
                 receivingLedger,
-                clientAdvanceLedger,
+                clientLedger,
                 payableLedger
         );
     }
@@ -525,7 +520,7 @@ public class ProjectExpenseAccountingServiceImpl
     private AccountingVoucher createClientReceiptVoucher(
             GovernmentFeePostingRequestDto request,
             LedgerMaster receivingLedger,
-            LedgerMaster clientAdvanceLedger,
+            LedgerMaster clientLedger,
             BigDecimal amount
     ) {
 
@@ -550,9 +545,9 @@ public class ProjectExpenseAccountingServiceImpl
                                         "Client government-fee funding received"
                                 ),
                                 creditEntry(
-                                        clientAdvanceLedger.getId(),
+                                        clientLedger.getId(),
                                         amount,
-                                        "Client government-fee advance recognised"
+                                        "Client government-fee funding received"
                                 )
                         ))
                         .build();
@@ -565,7 +560,7 @@ public class ProjectExpenseAccountingServiceImpl
 
     private AccountingVoucher createClientAccrualJournal(
             GovernmentFeePostingRequestDto request,
-            LedgerMaster clientAdvanceLedger,
+            LedgerMaster clientLedger,
             LedgerMaster payableLedger,
             BigDecimal amount
     ) {
@@ -581,9 +576,9 @@ public class ProjectExpenseAccountingServiceImpl
                         .narration(buildNarration(request))
                         .entries(List.of(
                                 debitEntry(
-                                        clientAdvanceLedger.getId(),
+                                        clientLedger.getId(),
                                         amount,
-                                        "Client advance earmarked for government fee"
+                                        "Client funding earmarked for government fee"
                                 ),
                                 creditEntry(
                                         payableLedger.getId(),
@@ -768,97 +763,46 @@ public class ProjectExpenseAccountingServiceImpl
         return ledger;
     }
 
-    private LedgerMaster getOrCreateClientGovernmentFeeAdvanceLedger(
-            GovernmentFeePostingRequestDto request,
-            User approver
+    /**
+     * Resolves the normal customer ledger already maintained for the project's
+     * company and unit. Government-fee posting must not create another party
+     * ledger because doing so splits the client's statement across ledgers.
+     */
+    private LedgerMaster resolveExistingClientLedger(
+            GovernmentFeePostingRequestDto request
     ) {
-
         Long companyId = request.getClientCompanyId();
         Long unitId = request.getClientUnitId();
 
-        String ledgerCode = "LED-GOV-ADV-C" + companyId + "-U" + unitId;
-
-        Optional<LedgerMaster> existing = ledgerMasterRepository
-                .findByLedgerCodeIgnoreCaseAndDeletedFalse(ledgerCode);
-
-        if (existing.isPresent()) {
-            return activateIfRequired(existing.get(), approver);
-        }
-
-        Company company = companyRepository.findById(companyId)
+        LedgerMaster ledger = ledgerMasterRepository
+                .findFirstByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
+                        companyId,
+                        unitId,
+                        List.of(
+                                LedgerType.CUSTOMER,
+                                LedgerType.CUSTOMER_ADVANCE
+                        )
+                )
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Client company not found with ID: " + companyId,
-                        "COMPANY_NOT_FOUND"
+                        "Customer ledger not found for company ID "
+                                + companyId
+                                + " and unit ID "
+                                + unitId,
+                        "CLIENT_LEDGER_NOT_FOUND"
                 ));
 
-        CompanyUnit unit = companyUnitRepository.findById(unitId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Client unit not found with ID: " + unitId,
-                        "COMPANY_UNIT_NOT_FOUND"
-                ));
-
-        if (unit.getCompany() == null
-                || unit.getCompany().getId() == null
-                || !companyId.equals(unit.getCompany().getId())) {
-
+        if (!ledger.isActive()) {
             throw new ValidationException(
-                    "Selected client unit does not belong to selected company",
-                    "ERR_UNIT_COMPANY_MISMATCH",
-                    "clientUnitId"
+                    "Customer ledger is inactive for company ID "
+                            + companyId
+                            + " and unit ID "
+                            + unitId,
+                    "ERR_CLIENT_LEDGER_INACTIVE",
+                    "clientCompanyId"
             );
         }
 
-        LedgerGroup group = getLedgerGroup(
-                LedgerGroupType.CURRENT_LIABILITIES
-        );
-
-        String companyName = firstNonBlank(
-                request.getClientCompanyName(),
-                company.getName(),
-                "Company-" + companyId
-        );
-
-        String unitName = firstNonBlank(
-                request.getClientUnitName(),
-                unit.getUnitName(),
-                "Unit-" + unitId
-        );
-
-        LedgerMaster ledger = new LedgerMaster();
-        ledger.setLedgerName(
-                truncate(
-                        companyName + " - " + unitName + " (Govt Fee Advance)",
-                        255
-                )
-        );
-        ledger.setLedgerCode(ledgerCode);
-        ledger.setLedgerType(
-                LedgerType.GOVERNMENT_FEE_CLIENT_ADVANCE
-        );
-        ledger.setLedgerGroup(group);
-        ledger.setCompany(company);
-        ledger.setUnit(unit);
-        ledger.setOpeningBalance(zero());
-        ledger.setOpeningBalanceType(DebitCredit.CREDIT);
-        ledger.setCurrentBalance(zero());
-        ledger.setCurrentBalanceType(DebitCredit.CREDIT);
-        ledger.setSystemCreated(true);
-        ledger.setActive(true);
-        ledger.setDeleted(false);
-
-        if (approver != null) {
-            ledger.setCreatedBy(approver);
-            ledger.setUpdatedBy(approver);
-        }
-
-        try {
-            return ledgerMasterRepository.saveAndFlush(ledger);
-        } catch (DataIntegrityViolationException exception) {
-            return ledgerMasterRepository
-                    .findByLedgerCodeIgnoreCaseAndDeletedFalse(ledgerCode)
-                    .map(value -> activateIfRequired(value, approver))
-                    .orElseThrow(() -> exception);
-        }
+        return ledger;
     }
 
     private LedgerMaster getOrCreateSystemLedger(
@@ -956,7 +900,7 @@ public class ProjectExpenseAccountingServiceImpl
             AccountingVoucher receipt,
             AccountingVoucher journal,
             LedgerMaster receivingLedger,
-            LedgerMaster clientAdvanceLedger,
+            LedgerMaster clientLedger,
             LedgerMaster payableLedger
     ) {
         return GovernmentFeePostingResponseDto.builder()
@@ -972,9 +916,13 @@ public class ProjectExpenseAccountingServiceImpl
                                 ? receivingLedger.getId()
                                 : request.getClientPaymentBankLedgerId()
                 )
+                /*
+                 * Field name is retained for API backward compatibility. It
+                 * now contains the existing CUSTOMER/CUSTOMER_ADVANCE ledger.
+                 */
                 .clientAdvanceLedgerId(
-                        clientAdvanceLedger != null
-                                ? clientAdvanceLedger.getId()
+                        clientLedger != null
+                                ? clientLedger.getId()
                                 : null
                 )
                 .governmentFeePayableLedgerId(

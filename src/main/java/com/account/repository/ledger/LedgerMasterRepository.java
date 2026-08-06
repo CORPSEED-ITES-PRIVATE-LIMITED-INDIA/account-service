@@ -51,12 +51,6 @@ public interface LedgerMasterRepository
     // COMPANY + UNIT + LEDGER TYPE
     // =====================================================
 
-    /*
-     * This method returns all matching ledgers.
-     *
-     * It is required because old database records may contain
-     * multiple ledgers for the same company, unit and ledger type.
-     */
     List<LedgerMaster>
     findAllByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
             Long companyId,
@@ -64,20 +58,12 @@ public interface LedgerMasterRepository
             LedgerType ledgerType
     );
 
-    /*
-     * Keep the existing method name so PaymentServiceImpl does not
-     * require any code changes.
-     *
-     * Active ledger is preferred. If duplicates exist, the oldest
-     * matching ledger is returned.
-     */
     default Optional<LedgerMaster>
     findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
             Long companyId,
             Long unitId,
             LedgerType ledgerType
     ) {
-
         return findAllByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
                 companyId,
                 unitId,
@@ -86,25 +72,46 @@ public interface LedgerMasterRepository
     }
 
     // =====================================================
-    // LEDGER TYPE LOOKUP
+    // COMPANY + UNIT + MULTIPLE LEDGER TYPES
     // =====================================================
 
     /*
-     * Multiple ledgers can have the same ledger type, so first
-     * retrieve a list instead of directly returning Optional.
+     * Used by project-expense accounting to locate the existing party ledger.
+     * Active ledgers are preferred; the oldest matching row is selected when
+     * legacy duplicate data exists.
      */
+    List<LedgerMaster>
+    findAllByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalseOrderByActiveDescIdAsc(
+            Long companyId,
+            Long unitId,
+            Collection<LedgerType> ledgerTypes
+    );
+
+    default Optional<LedgerMaster>
+    findFirstByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
+            Long companyId,
+            Long unitId,
+            Collection<LedgerType> ledgerTypes
+    ) {
+        return findAllByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalseOrderByActiveDescIdAsc(
+                companyId,
+                unitId,
+                ledgerTypes
+        ).stream().findFirst();
+    }
+
+    // =====================================================
+    // LEDGER TYPE LOOKUP
+    // =====================================================
+
     List<LedgerMaster>
     findAllByLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
             LedgerType ledgerType
     );
 
-    /*
-     * Existing method retained for backward compatibility.
-     */
     default Optional<LedgerMaster> findByLedgerTypeAndDeletedFalse(
             LedgerType ledgerType
     ) {
-
         return findAllByLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
                 ledgerType
         ).stream().findFirst();
@@ -120,18 +127,11 @@ public interface LedgerMasterRepository
             LedgerType ledgerType
     );
 
-    /*
-     * Existing method retained for backward compatibility.
-     *
-     * Prevents IncorrectResultSizeDataAccessException when old
-     * duplicate ledgers exist.
-     */
     default Optional<LedgerMaster>
     findByCompanyIdAndLedgerTypeAndDeletedFalse(
             Long companyId,
             LedgerType ledgerType
     ) {
-
         return findAllByCompanyIdAndLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
                 companyId,
                 ledgerType
@@ -174,10 +174,6 @@ public interface LedgerMasterRepository
             Long id
     );
 
-    /*
-     * Return a list because old/incorrect data can contain duplicate
-     * ledgers for the same company, unit and ledger type.
-     */
     @Query("""
             SELECT lm
             FROM LedgerMaster lm
@@ -197,10 +193,4 @@ public interface LedgerMasterRepository
     Optional<LedgerMaster> findByLedgerCodeIgnoreCaseAndDeletedFalse(
             String ledgerCode
     );
-
-
-
-
-
-
 }
