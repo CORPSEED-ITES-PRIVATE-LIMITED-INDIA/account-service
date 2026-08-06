@@ -10,6 +10,7 @@ import lombok.Getter;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 
 @Getter
@@ -64,6 +65,20 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private Long unitId;
     private String unitName;
+    /**
+     * GST number registered against the selected Company Unit.
+     */
+    private String unitGstNo;
+    /**
+     * Company Unit address details.
+     */
+    private String unitAddressLine1;
+    private String unitAddressLine2;
+    private String unitCity;
+    private String unitState;
+    private String unitCountry;
+    private String unitPinCode;
+
 
     private Long contactId;
     private String contactName;
@@ -153,10 +168,9 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private String eInvoiceRemarks;
 
-
-// =====================================================
-// ORGANIZATION / SELLER SNAPSHOT
-// =====================================================
+    // =====================================================
+    // ORGANIZATION / SELLER SNAPSHOT
+    // =====================================================
 
     private String organizationName;
     private String organizationAddressLine1;
@@ -176,9 +190,9 @@ public class AdvanceTaxInvoiceResponseDto {
     private String organizationWebsite;
     private String organizationLogoUrl;
 
-// =====================================================
-// ORGANIZATION BANK DETAILS
-// =====================================================
+    // =====================================================
+    // ORGANIZATION BANK DETAILS
+    // =====================================================
 
     private Boolean organizationBankAccountPresent;
 
@@ -208,7 +222,18 @@ public class AdvanceTaxInvoiceResponseDto {
     // INVOICE LINE ITEMS
     // =====================================================
 
-    private List<InvoiceDetailDto.LineItemDto> lineItems;
+    /**
+     * PENDING request:
+     * mapped from EstimateLineItem.
+     *
+     * APPROVED/generated request:
+     * mapped from InvoiceLineItem.
+     *
+     * Never null.
+     */
+    @Builder.Default
+    private List<InvoiceDetailDto.LineItemDto> lineItems =
+            Collections.emptyList();
 
     private String message;
 }

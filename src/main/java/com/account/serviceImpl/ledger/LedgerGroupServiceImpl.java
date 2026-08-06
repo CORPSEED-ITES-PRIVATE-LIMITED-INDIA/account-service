@@ -19,7 +19,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -254,4 +256,56 @@ public class LedgerGroupServiceImpl implements LedgerGroupService {
                 .updatedAt(ledgerGroup.getUpdatedAt())
                 .build();
     }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getLedgerGroupTypeByGroupId(Long groupId) {
+
+        if (groupId == null || groupId <= 0) {
+            throw new ValidationException(
+                    "Valid ledger group ID is required",
+                    "ERR_LEDGER_GROUP_ID_REQUIRED",
+                    "groupId"
+            );
+        }
+
+        LedgerGroup ledgerGroup = ledgerGroupRepository
+                .findByIdAndDeletedFalse(groupId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Ledger group not found with ID: " + groupId,
+                        "LEDGER_GROUP_NOT_FOUND"
+                ));
+
+        LedgerGroupType groupType = ledgerGroup.getGroupType();
+
+        return Map.of(
+                "groupId", ledgerGroup.getId(),
+                "groupName", ledgerGroup.getName(),
+                "groupType", groupType.name(),
+                "groupTypeLabel", formatGroupTypeLabel(groupType)
+        );
+    }
+
+    private String formatGroupTypeLabel(LedgerGroupType groupType) {
+
+        if (groupType == null) {
+            return null;
+        }
+
+        return Arrays.stream(
+                        groupType.name()
+                                .toLowerCase()
+                                .split("_")
+                )
+                .map(word ->
+                        word.substring(0, 1).toUpperCase()
+                                + word.substring(1)
+                )
+                .reduce((first, second) -> first + " " + second)
+                .orElse(groupType.name());
+    }
+
+
+
 }

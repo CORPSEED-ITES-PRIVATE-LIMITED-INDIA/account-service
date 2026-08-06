@@ -75,9 +75,13 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 
 	/**
-	 * Generates a Tax Invoice for a specific payment receipt.
-	 * The invoice grand total will be EXACTLY equal to receipt.getAmount()
-	 * Line items are prorated, and any minor rounding difference is adjusted on the last line.
+	 * Generates a Tax Invoice for a specific approved payment receipt.
+	 *
+	 * Final precision policy:
+	 * - taxable/GST/bank/voucher amounts: 3 decimals
+	 * - Invoice grand total: whole rupee using HALF_UP
+	 * - TDS: whole rupee using HALF_UP
+	 * - document round-off: posted separately in the Sales Invoice voucher
 	 */
 	@Override
 	@Transactional
@@ -150,13 +154,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		// BANK + TDS SETTLEMENT
 		// =====================================================
 
-		BigDecimal bankAmount = receipt.getAmount() == null
-				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-				: receipt.getAmount().setScale(2, RoundingMode.HALF_UP);
+		BigDecimal bankAmount = safeMoney(receipt.getAmount());
 
-		BigDecimal requestedTdsAmount = tdsAmount == null
-				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-				: tdsAmount.setScale(2, RoundingMode.HALF_UP);
+		BigDecimal requestedTdsAmount = wholeTds(tdsAmount);
 
 		/*
 		 * INTERNATIONAL transactions must never include domestic TDS,
@@ -164,7 +164,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		 */
 		BigDecimal safeTdsAmount =
 				internationalTransaction
-						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						? BigDecimal.ZERO.setScale(0, RoundingMode.HALF_UP)
 						: requestedTdsAmount;
 
 		/*
@@ -173,9 +173,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 		 * Domestic/SEZ = Bank received + applicable TDS
 		 * International = Bank received only
 		 */
-		BigDecimal exactGrandTotal = bankAmount
+		BigDecimal exactSettlement = bankAmount
 				.add(safeTdsAmount)
-				.setScale(2, RoundingMode.HALF_UP);
+				.setScale(3, RoundingMode.HALF_UP);
+
+		BigDecimal finalGrandTotal = wholeMoney(exactSettlement);
 
 		if (internationalTransaction
 				&& requestedTdsAmount.compareTo(BigDecimal.ZERO) > 0) {
@@ -195,7 +197,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				internationalTransaction,
 				bankAmount,
 				safeTdsAmount,
-				exactGrandTotal,
+				finalGrandTotal,
 				unbilled.getUnbilledNumber()
 		);
 
@@ -288,14 +290,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 		// CALCULATE PAYMENT RATIO
 		// =====================================================
 
-		BigDecimal totalUnbilled = unbilled.getTotalAmount() == null
-				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-				: unbilled.getTotalAmount()
-				.setScale(2, RoundingMode.HALF_UP);
+		BigDecimal totalUnbilled = wholeMoney(unbilled.getTotalAmount());
 
 		BigDecimal ratio =
 				totalUnbilled.compareTo(BigDecimal.ZERO) > 0
-						? exactGrandTotal.divide(
+						? finalGrandTotal.divide(
 						totalUnbilled,
 						10,
 						RoundingMode.HALF_UP
@@ -317,7 +316,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		BigDecimal accumulatedWithGst =
 				BigDecimal.ZERO.setScale(
-						2,
+						3,
 						RoundingMode.HALF_UP
 				);
 
@@ -365,7 +364,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					estimateUnitPrice
 							.multiply(ratio)
 							.setScale(
-									2,
+									3,
 									RoundingMode.HALF_UP
 							);
 
@@ -412,7 +411,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					estimateLine.getFeeType()
 			);
 
-			invoiceLine.calculateLineTotals();
+			calculateInvoiceLineTotals(invoiceLine);
 
 			invoiceLines.add(invoiceLine);
 
@@ -420,102 +419,16 @@ public class InvoiceServiceImpl implements InvoiceService {
 					accumulatedWithGst
 							.add(invoiceLine.getLineTotalWithGst())
 							.setScale(
-									2,
+									3,
 									RoundingMode.HALF_UP
 							);
 		}
 
-		// =====================================================
-		// ROUNDING ADJUSTMENT
-		// =====================================================
-
-		BigDecimal difference =
-				exactGrandTotal
-						.subtract(accumulatedWithGst)
-						.setScale(
-								2,
-								RoundingMode.HALF_UP
-						);
-
-		if (difference.abs().compareTo(
-				new BigDecimal("1.00")
-		) > 0) {
-
-			log.warn(
-					"Large invoice proration difference | difference={} | receiptId={}",
-					difference,
-					receipt.getId()
-			);
-		}
-
-		if (difference.compareTo(BigDecimal.ZERO) != 0
-				&& !invoiceLines.isEmpty()) {
-
-			InvoiceLineItem lastLine =
-					invoiceLines.get(
-							invoiceLines.size() - 1
-					);
-
-			BigDecimal currentLineTotalWithGst =
-					lastLine.getLineTotalWithGst() != null
-							? lastLine.getLineTotalWithGst()
-							.setScale(
-									2,
-									RoundingMode.HALF_UP
-							)
-							: BigDecimal.ZERO.setScale(
-							2,
-							RoundingMode.HALF_UP
-					);
-
-			BigDecimal targetLineTotalWithGst =
-					currentLineTotalWithGst
-							.add(difference)
-							.setScale(
-									2,
-									RoundingMode.HALF_UP
-							);
-
-			BigDecimal lastLineGstRate =
-					lastLine.getGstRate() != null
-							? lastLine.getGstRate()
-							: BigDecimal.ZERO;
-
-			BigDecimal divisor =
-					BigDecimal.ONE.add(
-							lastLineGstRate.divide(
-									BigDecimal.valueOf(100),
-									6,
-									RoundingMode.HALF_UP
-							)
-					);
-
-			BigDecimal targetLineTotalExGst =
-					targetLineTotalWithGst.divide(
-							divisor,
-							2,
-							RoundingMode.HALF_UP
-					);
-
-			Integer quantity =
-					lastLine.getQuantity() != null
-							&& lastLine.getQuantity() > 0
-							? lastLine.getQuantity()
-							: 1;
-
-			BigDecimal adjustedUnitPrice =
-					targetLineTotalExGst.divide(
-							BigDecimal.valueOf(quantity),
-							2,
-							RoundingMode.HALF_UP
-					);
-
-			lastLine.setUnitPriceExGst(
-					adjustedUnitPrice
-			);
-
-			lastLine.calculateLineTotals();
-		}
+		/*
+		 * Do not alter the final line to absorb rounding. Taxable and GST
+		 * remain at three decimals; the difference is posted separately
+		 * in the Sales Invoice voucher.
+		 */
 
 		invoice.setLineItems(invoiceLines);
 
@@ -532,7 +445,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 								BigDecimal::add
 						)
 						.setScale(
-								2,
+								3,
 								RoundingMode.HALF_UP
 						);
 
@@ -545,7 +458,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 								BigDecimal::add
 						)
 						.setScale(
-								2,
+								3,
 								RoundingMode.HALF_UP
 						);
 
@@ -569,28 +482,28 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 			invoice.setTotalGstAmount(
 					BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 			);
 
 			invoice.setCgstAmount(
 					BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 			);
 
 			invoice.setSgstAmount(
 					BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 			);
 
 			invoice.setIgstAmount(
 					BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 			);
@@ -601,14 +514,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 			invoice.setCgstAmount(
 					BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 			);
 
 			invoice.setSgstAmount(
 					BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 			);
@@ -618,7 +531,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			BigDecimal cgstAmount =
 					totalGst.divide(
 							BigDecimal.valueOf(2),
-							2,
+							3,
 							RoundingMode.HALF_UP
 					);
 
@@ -626,7 +539,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					totalGst
 							.subtract(cgstAmount)
 							.setScale(
-									2,
+									3,
 									RoundingMode.HALF_UP
 							);
 
@@ -635,7 +548,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 			invoice.setIgstAmount(
 					BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 			);
@@ -647,7 +560,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		 * Bank amount + TDS amount.
 		 */
 		invoice.setGrandTotal(
-				exactGrandTotal
+				finalGrandTotal
 		);
 
 		Invoice savedInvoice =
@@ -829,8 +742,90 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 	private BigDecimal safeMoney(BigDecimal value) {
 		return value == null
+				? BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP)
+				: value.setScale(3, RoundingMode.HALF_UP);
+	}
+
+	private BigDecimal wholeMoney(BigDecimal value) {
+		return (value == null ? BigDecimal.ZERO : value)
+				.setScale(0, RoundingMode.HALF_UP);
+	}
+
+	private BigDecimal wholeTds(BigDecimal value) {
+		return (value == null ? BigDecimal.ZERO : value)
+				.setScale(0, RoundingMode.HALF_UP);
+	}
+
+
+	private BigDecimal safeRate(BigDecimal value) {
+		return value == null
 				? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
 				: value.setScale(2, RoundingMode.HALF_UP);
+	}
+
+	/**
+	 * Calculates every Invoice line at three-decimal precision, independently
+	 * of any older two-decimal implementation inside InvoiceLineItem.
+	 */
+	private void calculateInvoiceLineTotals(InvoiceLineItem line) {
+		if (line == null) {
+			throw new ValidationException(
+					"Invoice line item is required",
+					"ERR_INVOICE_LINE_REQUIRED",
+					"lineItem"
+			);
+		}
+
+		int quantity = line.getQuantity() != null && line.getQuantity() > 0
+				? line.getQuantity()
+				: 1;
+
+		BigDecimal unitPrice = safeMoney(line.getUnitPriceExGst());
+		BigDecimal gstRate = safeRate(line.getGstRate());
+
+		BigDecimal taxable = unitPrice
+				.multiply(BigDecimal.valueOf(quantity))
+				.setScale(3, RoundingMode.HALF_UP);
+
+		BigDecimal gst = taxable
+				.multiply(gstRate)
+				.divide(BigDecimal.valueOf(100), 3, RoundingMode.HALF_UP);
+
+		BigDecimal total = taxable
+				.add(gst)
+				.setScale(3, RoundingMode.HALF_UP);
+
+		line.setLineTotalExGst(taxable);
+		line.setGstAmount(gst);
+		line.setLineTotalWithGst(total);
+
+		if (gst.compareTo(BigDecimal.ZERO) == 0) {
+			line.setCgstAmount(safeMoney(BigDecimal.ZERO));
+			line.setSgstAmount(safeMoney(BigDecimal.ZERO));
+			line.setIgstAmount(safeMoney(BigDecimal.ZERO));
+			return;
+		}
+
+		if (line.isIgstFlag()) {
+			line.setIgstAmount(gst);
+			line.setCgstAmount(safeMoney(BigDecimal.ZERO));
+			line.setSgstAmount(safeMoney(BigDecimal.ZERO));
+			return;
+		}
+
+		BigDecimal cgst = gst.divide(
+				BigDecimal.valueOf(2),
+				3,
+				RoundingMode.HALF_UP
+		);
+
+		BigDecimal sgst = gst
+				.subtract(cgst)
+				.setScale(3, RoundingMode.HALF_UP);
+
+		line.setCgstAmount(cgst);
+		line.setSgstAmount(sgst);
+		line.setIgstAmount(safeMoney(BigDecimal.ZERO));
 	}
 
 
@@ -1694,19 +1689,19 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		BigDecimal averageGstPerInvoice =
 				totalInvoices == null || totalInvoices == 0
-						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						? BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP)
 						: totalGstCollected.divide(
 						BigDecimal.valueOf(totalInvoices),
-						2,
+						3,
 						RoundingMode.HALF_UP
 				);
 
 		BigDecimal averageInvoiceValue =
 				totalInvoices == null || totalInvoices == 0
-						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						? BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP)
 						: totalInvoiceAmount.divide(
 						BigDecimal.valueOf(totalInvoices),
-						2,
+						3,
 						RoundingMode.HALF_UP
 				);
 
@@ -1823,10 +1818,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		BigDecimal averageTdsAmount =
 				totalTdsRegistrations == null || totalTdsRegistrations == 0
-						? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+						? BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP)
 						: totalTdsAmount.divide(
 						BigDecimal.valueOf(totalTdsRegistrations),
-						2,
+						3,
 						RoundingMode.HALF_UP
 				);
 
@@ -2801,7 +2796,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 			return;
 		}
-		BigDecimal grandTotal = safeMoney(invoice.getGrandTotal());
+		BigDecimal grandTotal = wholeMoney(invoice.getGrandTotal());
 
 		if (grandTotal.compareTo(BigDecimal.ZERO) <= 0) {
 			log.info("Skipping sales invoice voucher for zero amount invoice: {}", invoice.getInvoiceNumber());
@@ -2816,6 +2811,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 				LedgerGroupType.SALES_ACCOUNTS,
 				"Service Income",
 				DebitCredit.CREDIT,
+				approver
+		);
+
+		LedgerMaster roundOffLedger = getOrCreateSystemLedger(
+				LedgerType.ROUND_OFF,
+				LedgerGroupType.INDIRECT_EXPENSES,
+				"Round Off",
+				DebitCredit.DEBIT,
 				approver
 		);
 
@@ -2847,19 +2850,18 @@ public class InvoiceServiceImpl implements InvoiceService {
 		BigDecimal sgstAmount = safeMoney(invoice.getSgstAmount());
 		BigDecimal igstAmount = safeMoney(invoice.getIgstAmount());
 
-		/*
-		 * Keep voucher balanced.
-		 * Sales amount = grand total - GST ledgers.
-		 */
 		BigDecimal totalTaxAmount = cgstAmount
 				.add(sgstAmount)
 				.add(igstAmount)
-				.setScale(2, RoundingMode.HALF_UP);
+				.setScale(3, RoundingMode.HALF_UP);
 
-		BigDecimal serviceIncomeAmount = grandTotal
+		BigDecimal serviceIncomeAmount =
+				safeMoney(invoice.getSubTotalExGst());
+
+		BigDecimal roundOffAmount = grandTotal
+				.subtract(serviceIncomeAmount)
 				.subtract(totalTaxAmount)
-				.max(BigDecimal.ZERO)
-				.setScale(2, RoundingMode.HALF_UP);
+				.setScale(3, RoundingMode.HALF_UP);
 
 		List<AccountingVoucherEntryRequestDto> entries = new ArrayList<>();
 
@@ -2921,6 +2923,27 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
+		// Post document rounding separately. Do not alter taxable or GST lines.
+		if (roundOffAmount.compareTo(BigDecimal.ZERO) > 0) {
+			entries.add(
+					buildVoucherEntry(
+							roundOffLedger.getId(),
+							BigDecimal.ZERO,
+							roundOffAmount,
+							"Invoice round-off credit for " + invoice.getInvoiceNumber()
+					)
+			);
+		} else if (roundOffAmount.compareTo(BigDecimal.ZERO) < 0) {
+			entries.add(
+					buildVoucherEntry(
+							roundOffLedger.getId(),
+							roundOffAmount.abs(),
+							BigDecimal.ZERO,
+							"Invoice round-off debit for " + invoice.getInvoiceNumber()
+					)
+			);
+		}
+
 		AccountingVoucherRequestDto voucherRequest =
 				AccountingVoucherRequestDto.builder()
 						.voucherType(VoucherType.SALES_INVOICE)
@@ -2941,13 +2964,14 @@ public class InvoiceServiceImpl implements InvoiceService {
 		accountingVoucherService.createVoucher(voucherRequest);
 
 		log.info(
-				"Sales invoice voucher posted | invoice={} | Dr Customer Advance={} | Cr Service Income={} | CGST={} | SGST={} | IGST={}",
+				"Sales invoice voucher posted | invoice={} | Dr Customer Advance={} | Cr Service Income={} | CGST={} | SGST={} | IGST={} | RoundOff={}",
 				invoice.getInvoiceNumber(),
 				grandTotal,
 				serviceIncomeAmount,
 				cgstAmount,
 				sgstAmount,
-				igstAmount
+				igstAmount,
+				roundOffAmount
 		);
 	}
 
@@ -2994,10 +3018,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 		ledger.setLedgerType(ledgerType);
 		ledger.setLedgerGroup(ledgerGroup);
 
-		ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+		ledger.setOpeningBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
 		ledger.setOpeningBalanceType(balanceType);
 
-		ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+		ledger.setCurrentBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
 		ledger.setCurrentBalanceType(balanceType);
 
 		ledger.setSystemCreated(true);
@@ -3052,6 +3076,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		}
 
 		Long companyId = company.getId();
+		String companyName = company.getName() != null && !company.getName().trim().isEmpty()
+				? company.getName().trim()
+				: "Company-" + companyId;
 
 		LedgerGroup sundryDebtorsGroup = ledgerGroupRepository
 				.findByGroupTypeAndDeletedFalse(LedgerGroupType.SUNDRY_DEBTORS)
@@ -3060,107 +3087,92 @@ public class InvoiceServiceImpl implements InvoiceService {
 						"SUNDRY_DEBTORS_GROUP_NOT_FOUND"
 				));
 
-		String companyName = company.getName() != null && !company.getName().trim().isEmpty()
-				? company.getName().trim()
-				: "Company-" + companyId;
-
 		/*
-		 * Only ONE ledger per company.
-		 *
-		 * If old CUSTOMER_ADVANCE ledger already exists,
-		 * reuse it and convert it to CUSTOMER / SUNDRY_DEBTORS.
+		 * One client/company must use the same ledger for both Sales Invoice
+		 * and Receipt/TDS vouchers. Unit, GSTIN and contact are refreshed as
+		 * transaction metadata, but they do not create another party ledger.
 		 */
 		List<LedgerMaster> existingLedgers =
 				ledgerMasterRepository.findByCompanyIdAndLedgerTypeInAndDeletedFalse(
 						companyId,
-						List.of(
-								LedgerType.CUSTOMER,
-								LedgerType.CUSTOMER_ADVANCE
-						)
+						List.of(LedgerType.CUSTOMER, LedgerType.CUSTOMER_ADVANCE)
 				);
 
+		LedgerMaster ledger;
+
 		if (existingLedgers != null && !existingLedgers.isEmpty()) {
-			LedgerMaster ledger = existingLedgers.get(0);
+			ledger = existingLedgers.stream()
+					.filter(Objects::nonNull)
+					.filter(item -> item.getLedgerName() != null
+							&& item.getLedgerName().trim().equalsIgnoreCase(companyName))
+					.findFirst()
+					.orElseGet(() -> existingLedgers.stream()
+							.filter(Objects::nonNull)
+							.min(Comparator.comparing(LedgerMaster::getId))
+							.orElse(existingLedgers.get(0)));
 
-			ledger.setLedgerType(LedgerType.CUSTOMER);
-			ledger.setLedgerGroup(sundryDebtorsGroup);
+			log.info(
+					"[CUSTOMER-LEDGER-RESOLVED] Reusing company ledger | companyId={} | "
+							+ "unitId={} | ledgerId={} | previousType={} | ledgerName={} | candidateCount={}",
+					companyId,
+					unit != null ? unit.getId() : null,
+					ledger.getId(),
+					ledger.getLedgerType(),
+					ledger.getLedgerName(),
+					existingLedgers.size()
+			);
+		} else {
+			ledger = new LedgerMaster();
+			ledger.setLedgerCode(generateLedgerCode("CUST"));
+			ledger.setOpeningBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
+			ledger.setOpeningBalanceType(DebitCredit.DEBIT);
+			ledger.setCurrentBalance(BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP));
+			ledger.setCurrentBalanceType(DebitCredit.DEBIT);
 
-			/*
-			 * Ledger name should be company name only.
-			 * Example: Nestle
-			 */
-			if (!ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(
-					companyName,
-					ledger.getId()
-			)) {
-				ledger.setLedgerName(companyName);
+			if (createdBy != null) {
+				ledger.setCreatedBy(createdBy);
 			}
-
-			ledger.setCompany(company);
-
-			if (unit != null && unit.getId() != null) {
-				ledger.setUnit(unit);
-				ledger.setGstNo(unit.getGstNo());
-			}
-
-			if (contact != null && contact.getId() != null) {
-				ledger.setContact(contact);
-			}
-
-			ledger.setPanNo(company.getPanNo());
-			ledger.setSystemCreated(true);
-			ledger.setActive(true);
-			ledger.setDeleted(false);
-
-			if (createdBy != null && createdBy.getId() != null) {
-				ledger.setUpdatedBy(createdBy);
-			}
-
-			return ledgerMasterRepository.save(ledger);
 		}
 
-		/*
-		 * No existing CUSTOMER / CUSTOMER_ADVANCE ledger found,
-		 * so create only one company ledger.
-		 */
-		LedgerMaster ledger = new LedgerMaster();
-
-		ledger.setLedgerName(companyName);
-		ledger.setLedgerCode(generateLedgerCode("CUST"));
+		if (ledger.getId() == null
+				|| !ledgerMasterRepository.existsByLedgerNameIgnoreCaseAndIdNot(
+				companyName,
+				ledger.getId()
+		)) {
+			ledger.setLedgerName(companyName);
+		}
 
 		ledger.setLedgerType(LedgerType.CUSTOMER);
 		ledger.setLedgerGroup(sundryDebtorsGroup);
-
 		ledger.setCompany(company);
-
-		if (unit != null && unit.getId() != null) {
-			ledger.setUnit(unit);
-			ledger.setGstNo(unit.getGstNo());
-		}
-
-		if (contact != null && contact.getId() != null) {
-			ledger.setContact(contact);
-		}
-
+		ledger.setUnit(unit);
+		ledger.setContact(contact);
+		ledger.setGstNo(unit != null ? unit.getGstNo() : null);
 		ledger.setPanNo(company.getPanNo());
-
-		ledger.setOpeningBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-		ledger.setOpeningBalanceType(DebitCredit.DEBIT);
-
-		ledger.setCurrentBalance(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
-		ledger.setCurrentBalanceType(DebitCredit.DEBIT);
-
 		ledger.setSystemCreated(true);
 		ledger.setActive(true);
 		ledger.setDeleted(false);
 
-		if (createdBy != null && createdBy.getId() != null) {
-			ledger.setCreatedBy(createdBy);
+		if (createdBy != null) {
 			ledger.setUpdatedBy(createdBy);
 		}
 
-		return ledgerMasterRepository.save(ledger);
+		LedgerMaster saved = ledgerMasterRepository.save(ledger);
+
+		log.info(
+				"[CUSTOMER-LEDGER-RESOLVED] Customer ledger ready | companyId={} | "
+						+ "unitId={} | ledgerId={} | ledgerName={} | ledgerType={}",
+				companyId,
+				unit != null ? unit.getId() : null,
+				saved.getId(),
+				saved.getLedgerName(),
+				saved.getLedgerType()
+		);
+
+		return saved;
 	}
+
+
 
 
 
@@ -3241,7 +3253,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		}
 
 		BigDecimal approvedAmount =
-				safeMoney(request.getApprovedAmount());
+				wholeMoney(request.getApprovedAmount());
 
 		if (approvedAmount.compareTo(BigDecimal.ZERO) <= 0) {
 			throw new ValidationException(
@@ -3252,7 +3264,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		}
 
 		BigDecimal estimateGrandTotal =
-				safeMoney(estimate.getGrandTotal());
+				wholeMoney(estimate.getGrandTotal());
 
 		if (estimateGrandTotal.compareTo(BigDecimal.ZERO) <= 0) {
 			throw new ValidationException(
@@ -3408,7 +3420,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 		BigDecimal accumulatedWithGst =
 				BigDecimal.ZERO.setScale(
-						2,
+						3,
 						RoundingMode.HALF_UP
 				);
 
@@ -3457,7 +3469,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					estimateUnitPrice
 							.multiply(ratio)
 							.setScale(
-									2,
+									3,
 									RoundingMode.HALF_UP
 							);
 
@@ -3468,7 +3480,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			BigDecimal effectiveGstRate =
 					zeroRatedSupply
 							? BigDecimal.ZERO.setScale(
-							2,
+							3,
 							RoundingMode.HALF_UP
 					)
 							: safeMoney(
@@ -3495,7 +3507,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					estimateLine.getFeeType()
 			);
 
-			invoiceLine.calculateLineTotals();
+			calculateInvoiceLineTotals(invoiceLine);
 
 			invoiceLines.add(invoiceLine);
 
@@ -3508,7 +3520,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 									)
 							)
 							.setScale(
-									2,
+									3,
 									RoundingMode.HALF_UP
 							);
 		}
@@ -3522,16 +3534,8 @@ public class InvoiceServiceImpl implements InvoiceService {
 			);
 		}
 
-		/*
-		 * Preserve the same exact-total adjustment used in the
-		 * current payment-generated Invoice method.
-		 */
-		adjustAdvanceInvoiceLastLine(
-				invoiceLines,
-				approvedAmount,
-				accumulatedWithGst,
-				request.getId()
-		);
+		/* Keep original Taxable and GST values. Round-off is not absorbed
+		 * into the last line item. */
 
 
 		invoice.setLineItems(invoiceLines);
@@ -3547,7 +3551,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 								BigDecimal::add
 						)
 						.setScale(
-								2,
+								3,
 								RoundingMode.HALF_UP
 						);
 
@@ -3562,7 +3566,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 								BigDecimal::add
 						)
 						.setScale(
-								2,
+								3,
 								RoundingMode.HALF_UP
 						);
 
@@ -3615,7 +3619,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 			BigDecimal cgstAmount =
 					totalGst.divide(
 							BigDecimal.valueOf(2),
-							2,
+							3,
 							RoundingMode.HALF_UP
 					);
 
@@ -3623,7 +3627,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 					totalGst
 							.subtract(cgstAmount)
 							.setScale(
-									2,
+									3,
 									RoundingMode.HALF_UP
 							);
 
@@ -3777,119 +3781,10 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 
 
-	private void adjustAdvanceInvoiceLastLine(
-			List<InvoiceLineItem> invoiceLines,
-			BigDecimal exactGrandTotal,
-			BigDecimal accumulatedWithGst,
-			Long requestId
-	) {
-
-		BigDecimal difference =
-				safeMoney(exactGrandTotal)
-						.subtract(
-								safeMoney(
-										accumulatedWithGst
-								)
-						)
-						.setScale(
-								2,
-								RoundingMode.HALF_UP
-						);
-
-		if (difference.abs().compareTo(
-				new BigDecimal("1.00")
-		) > 0) {
-
-			log.warn(
-					"Large Advance Invoice proration difference "
-							+ "| requestId={} | difference={}",
-					requestId,
-					difference
-			);
-		}
-
-		if (difference.compareTo(
-				BigDecimal.ZERO
-		) == 0 || invoiceLines.isEmpty()) {
-
-			return;
-		}
-
-		InvoiceLineItem lastLine =
-				invoiceLines.get(
-						invoiceLines.size() - 1
-				);
-
-		BigDecimal currentLineTotalWithGst =
-				safeMoney(
-						lastLine.getLineTotalWithGst()
-				);
-
-		BigDecimal targetLineTotalWithGst =
-				currentLineTotalWithGst
-						.add(difference)
-						.setScale(
-								2,
-								RoundingMode.HALF_UP
-						);
-
-		if (targetLineTotalWithGst.compareTo(
-				BigDecimal.ZERO
-		) < 0) {
-
-			throw new ValidationException(
-					"Advance Invoice rounding adjustment produced "
-							+ "a negative final line amount",
-					"ERR_ADVANCE_INVOICE_ROUNDING_INVALID",
-					"approvedAmount"
-			);
-		}
-
-		BigDecimal lastLineGstRate =
-				safeMoney(
-						lastLine.getGstRate()
-				);
-
-		BigDecimal divisor =
-				BigDecimal.ONE.add(
-						lastLineGstRate.divide(
-								BigDecimal.valueOf(100),
-								6,
-								RoundingMode.HALF_UP
-						)
-				);
-
-		BigDecimal targetLineTotalExGst =
-				targetLineTotalWithGst.divide(
-						divisor,
-						2,
-						RoundingMode.HALF_UP
-				);
-
-		Integer quantity =
-				lastLine.getQuantity() != null
-						&& lastLine.getQuantity() > 0
-						? lastLine.getQuantity()
-						: 1;
-
-		BigDecimal adjustedUnitPrice =
-				targetLineTotalExGst.divide(
-						BigDecimal.valueOf(quantity),
-						2,
-						RoundingMode.HALF_UP
-				);
-
-		lastLine.setUnitPriceExGst(
-				adjustedUnitPrice
-		);
-
-		lastLine.calculateLineTotals();
-	}
-
 
 	private BigDecimal zeroMoneyForAdvanceInvoice() {
 		return BigDecimal.ZERO.setScale(
-				2,
+				3,
 				RoundingMode.HALF_UP
 		);
 	}

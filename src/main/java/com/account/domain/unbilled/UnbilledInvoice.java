@@ -79,6 +79,10 @@ import java.util.UUID;
 })
 public class UnbilledInvoice {
 
+    private static final int MONEY_SCALE = 3;
+    private static final int DOCUMENT_SCALE = 0;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -182,10 +186,82 @@ public class UnbilledInvoice {
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
+    @Column(name = "organization_name", length = 255)
+    private String organizationName;
+
+    @Column(name = "organization_address_line1", length = 255)
+    private String organizationAddressLine1;
+
+    @Column(name = "organization_address_line2", length = 255)
+    private String organizationAddressLine2;
+
+    @Column(name = "organization_city", length = 100)
+    private String organizationCity;
+
+    @Column(name = "organization_state", length = 100)
+    private String organizationState;
+
+    @Column(name = "organization_country", length = 100)
+    private String organizationCountry;
+
+    @Column(name = "organization_pin_code", length = 20)
+    private String organizationPinCode;
+
+    @Column(name = "organization_gst_no", length = 50)
+    private String organizationGstNo;
+
+    @Column(name = "organization_pan_no", length = 50)
+    private String organizationPanNo;
+
+    @Column(name = "organization_cin_number", length = 21)
+    private String organizationCinNumber;
+
+    @Column(name = "organization_email", length = 100)
+    private String organizationEmail;
+
+    @Column(name = "organization_phone", length = 50)
+    private String organizationPhone;
+
+    @Column(name = "organization_website", length = 500)
+    private String organizationWebsite;
+
+    @Column(name = "organization_logo_url", length = 255)
+    private String organizationLogoUrl;
+
+    // =====================================================
+// ORGANIZATION BANK SNAPSHOT
+// =====================================================
+
+    @Column(name = "organization_bank_account_present")
+    private Boolean organizationBankAccountPresent;
+
+    @Column(name = "organization_account_holder_name", length = 255)
+    private String organizationAccountHolderName;
+
+    @Column(name = "organization_account_number", length = 50)
+    private String organizationAccountNumber;
+
+    @Column(name = "organization_ifsc_code", length = 20)
+    private String organizationIfscCode;
+
+    @Column(name = "organization_swift_code", length = 20)
+    private String organizationSwiftCode;
+
+    @Column(name = "organization_bank_name", length = 255)
+    private String organizationBankName;
+
+    @Column(name = "organization_bank_branch", length = 255)
+    private String organizationBankBranch;
+
+    @Column(name = "organization_upi_id", length = 100)
+    private String organizationUpiId;
+
+    @Column(name = "organization_payment_page_link", length = 500)
+    private String organizationPaymentPageLink;
     @Column(
             name = "total_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
     private BigDecimal totalAmount = zeroMoney();
@@ -195,8 +271,8 @@ public class UnbilledInvoice {
      */
     @Column(
             name = "received_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
     private BigDecimal receivedAmount = zeroMoney();
@@ -206,16 +282,16 @@ public class UnbilledInvoice {
      */
     @Column(
             name = "current_received_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
     private BigDecimal currentReceivedAmount = zeroMoney();
 
     @Column(
             name = "outstanding_amount",
-            precision = 15,
-            scale = 2,
+            precision = 19,
+            scale = 3,
             nullable = false
     )
     private BigDecimal outstandingAmount = zeroMoney();
@@ -339,23 +415,16 @@ public class UnbilledInvoice {
     }
 
     private void normalizeMoneyFields() {
-
-        totalAmount =
-                safeMoney(totalAmount);
-
-        receivedAmount =
-                safeMoney(receivedAmount);
-
-        currentReceivedAmount =
-                safeMoney(currentReceivedAmount);
-
-        outstandingAmount =
-                safeMoney(outstandingAmount);
+        totalAmount = safeDocumentMoney(totalAmount);
+        receivedAmount = safeMoney(receivedAmount);
+        currentReceivedAmount = safeMoney(currentReceivedAmount);
+        outstandingAmount = totalAmount
+                .subtract(receivedAmount)
+                .max(BigDecimal.ZERO)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
-    public GstRegistrationType
-    getEffectiveGstRegistrationType() {
-
+    public GstRegistrationType getEffectiveGstRegistrationType() {
         return gstRegistrationType != null
                 ? gstRegistrationType
                 : GstRegistrationType.REGISTERED;
@@ -363,72 +432,63 @@ public class UnbilledInvoice {
 
     /**
      * Reserves a pending settlement amount.
-     *
-     * Status remains controlled by the Accounts
-     * approval workflow.
+     * The amount is Bank plus rounded TDS for domestic/SEZ payments,
+     * and Bank only for International payments.
      */
-    public void applyPayment(
-            BigDecimal amount
-    ) {
-
+    public void applyPayment(BigDecimal amount) {
         if (amount == null) {
+            throw new IllegalArgumentException("Payment amount cannot be null");
+        }
+
+        BigDecimal safeAmount = safeMoney(amount);
+
+        if (safeAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Payment amount cannot be negative");
+        }
+
+        BigDecimal availableOutstanding = getAvailableOutstandingAmount();
+        if (safeAmount.compareTo(availableOutstanding) > 0) {
             throw new IllegalArgumentException(
-                    "Payment amount cannot be null"
+                    "Payment settlement cannot exceed available outstanding amount"
             );
         }
 
-        BigDecimal safeAmount =
-                amount.setScale(
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        currentReceivedAmount = safeMoney(currentReceivedAmount)
+                .add(safeAmount)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-        if (safeAmount.compareTo(
-                BigDecimal.ZERO
-        ) < 0) {
-
-            throw new IllegalArgumentException(
-                    "Payment amount cannot be negative"
-            );
-        }
-
-        currentReceivedAmount =
-                safeMoney(currentReceivedAmount)
-                        .add(safeAmount)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
-
-        outstandingAmount =
-                safeMoney(totalAmount)
-                        .subtract(
-                                safeMoney(receivedAmount)
-                        )
-                        .max(BigDecimal.ZERO)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+        outstandingAmount = safeDocumentMoney(totalAmount)
+                .subtract(safeMoney(receivedAmount))
+                .max(BigDecimal.ZERO)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
-    private static BigDecimal safeMoney(
-            BigDecimal value
-    ) {
+    /** Outstanding still available after pending payment reservations. */
+    public BigDecimal getAvailableOutstandingAmount() {
+        return safeMoney(outstandingAmount)
+                .subtract(safeMoney(currentReceivedAmount))
+                .max(BigDecimal.ZERO)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
 
+    private static BigDecimal safeMoney(BigDecimal value) {
         return value == null
                 ? zeroMoney()
-                : value.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    /** Final Unbilled total is rounded to a whole rupee and stored as x.000. */
+    private static BigDecimal safeDocumentMoney(BigDecimal value) {
+        if (value == null) {
+            return zeroMoney();
+        }
+        return value
+                .setScale(DOCUMENT_SCALE, ROUNDING_MODE)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     private static BigDecimal zeroMoney() {
-
-        return BigDecimal.ZERO.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
+        return BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
     }
+
 }

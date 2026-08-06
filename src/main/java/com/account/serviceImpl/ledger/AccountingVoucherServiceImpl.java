@@ -31,6 +31,9 @@ import java.util.List;
 @Slf4j
 public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
+    private static final int MONEY_SCALE = 3;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+
     private final AccountingVoucherRepository accountingVoucherRepository;
     private final LedgerMasterRepository ledgerMasterRepository;
 
@@ -101,16 +104,44 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                     .build();
 
             voucher.addEntry(entry);
-            log.debug("Voucher entry added. ledgerId={}, debitAmount={}, creditAmount={}, displayOrder={}",
+
+            log.info(
+                    "[VOUCHER-ENTRY-RESOLVED] voucherNumber={} | sourceType={} | sourceId={} | "
+                            + "displayOrder={} | ledgerId={} | ledgerCode={} | ledgerName={} | "
+                            + "ledgerType={} | debit={} | credit={}",
+                    voucher.getVoucherNumber(),
+                    sourceType,
+                    request.getSourceId(),
+                    entry.getDisplayOrder(),
                     ledger.getId(),
+                    ledger.getLedgerCode(),
+                    ledger.getLedgerName(),
+                    ledger.getLedgerType(),
                     debit,
-                    credit,
-                    entry.getDisplayOrder()
+                    credit
             );
         }
 
         voucher.calculateTotals();
-        log.debug("Voucher totals calculated. totalDebit={}, totalCredit={}", voucher.getTotalDebit(), voucher.getTotalCredit());
+
+        BigDecimal calculatedDebit = safeMoney(voucher.getTotalDebit());
+        BigDecimal calculatedCredit = safeMoney(voucher.getTotalCredit());
+        BigDecimal voucherDifference = calculatedDebit
+                .subtract(calculatedCredit)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        log.info(
+                "[VOUCHER-BALANCE-CHECK] voucherNumber={} | voucherType={} | sourceType={} | "
+                        + "sourceId={} | totalDebit={} | totalCredit={} | difference={} | balanced={}",
+                voucher.getVoucherNumber(),
+                voucher.getVoucherType(),
+                sourceType,
+                request.getSourceId(),
+                calculatedDebit,
+                calculatedCredit,
+                voucherDifference,
+                voucherDifference.compareTo(BigDecimal.ZERO) == 0
+        );
 
         AccountingVoucher saved = accountingVoucherRepository.save(voucher);
         log.info("Accounting voucher saved. voucherId={}, voucherNumber={}, voucherType={}",
@@ -326,8 +357,8 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             );
         }
 
-        BigDecimal totalDebit = BigDecimal.ZERO;
-        BigDecimal totalCredit = BigDecimal.ZERO;
+        BigDecimal totalDebit = zeroMoney();
+        BigDecimal totalCredit = zeroMoney();
 
         for (int i = 0; i < request.getEntries().size(); i++) {
 
@@ -372,8 +403,8 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 );
             }
 
-            totalDebit = totalDebit.add(debit);
-            totalCredit = totalCredit.add(credit);
+            totalDebit = totalDebit.add(debit).setScale(MONEY_SCALE, ROUNDING_MODE);
+            totalCredit = totalCredit.add(credit).setScale(MONEY_SCALE, ROUNDING_MODE);
         }
 
         if (totalDebit.compareTo(totalCredit) != 0) {
@@ -502,7 +533,19 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         BigDecimal newSignedBalance = signedBalance
                 .add(safeMoney(debitAmount))
                 .subtract(safeMoney(creditAmount))
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+
+        log.info(
+                "[LEDGER-BALANCE-CALCULATION] ledgerId={} | ledgerName={} | ledgerType={} | "
+                        + "signedBefore={} | debit={} | credit={} | signedAfter={}",
+                ledger.getId(),
+                ledger.getLedgerName(),
+                ledger.getLedgerType(),
+                signedBalance,
+                safeMoney(debitAmount),
+                safeMoney(creditAmount),
+                newSignedBalance
+        );
 
         if (newSignedBalance.compareTo(BigDecimal.ZERO) >= 0) {
             ledger.setCurrentBalance(newSignedBalance);
@@ -574,8 +617,12 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
     private BigDecimal safeMoney(BigDecimal value) {
         return value == null
-                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
-                : value.setScale(2, RoundingMode.HALF_UP);
+                ? zeroMoney()
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private static BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     private String clean(String value) {

@@ -38,8 +38,16 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ExternalVendorServiceImpl implements ExternalVendorService {
 
+    private static final int MONEY_SCALE = 3;
+    private static final int RATE_SCALE = 3;
+    private static final int INTERNAL_SCALE = 12;
+    private static final int WHOLE_SCALE = 0;
+
+    private static final RoundingMode ROUNDING_MODE =
+            RoundingMode.HALF_UP;
+
     private static final BigDecimal ZERO =
-            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
 
     private static final BigDecimal HUNDRED =
             new BigDecimal("100");
@@ -58,6 +66,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
 
     private static final String TDS_PAYABLE_LEDGER_CODE =
             "LED-TDS-PAYABLE";
+
+    private static final String ROUND_OFF_LEDGER_CODE =
+            "LED-ROUND-OFF";
 
     private final ExternalVendorRepository externalVendorRepository;
     private final LedgerMasterRepository ledgerMasterRepository;
@@ -166,7 +177,20 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
 
         CalculatedAmounts amounts = calculateAmounts(request);
 
-        Optional<AccountingVoucher> existingVoucher =
+        AccountingVoucherResponseDto invoiceVoucher;
+        AccountingVoucherResponseDto paymentVoucher = null;
+
+        boolean invoiceAlreadyPosted;
+        boolean paymentAlreadyPosted = false;
+
+        Long purchaseLedgerId = null;
+        Long inputCgstLedgerId = null;
+        Long inputSgstLedgerId = null;
+        Long inputIgstLedgerId = null;
+        Long tdsPayableLedgerId = null;
+        Long paymentBankLedgerId = null;
+
+        Optional<AccountingVoucher> existingInvoiceVoucher =
                 accountingVoucherRepository
                         .findFirstBySourceTypeAndSourceIdAndStatusOrderByIdDesc(
                                 VoucherSourceType.PROCUREMENT_VENDOR_INVOICE,
@@ -174,173 +198,301 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                                 VoucherStatus.POSTED
                         );
 
-        if (existingVoucher.isPresent()) {
-            AccountingVoucherResponseDto voucherResponse =
-                    accountingVoucherService.getVoucherById(
-                            existingVoucher.get().getId()
+        if (existingInvoiceVoucher.isPresent()) {
+            invoiceVoucher = accountingVoucherService.getVoucherById(
+                    existingInvoiceVoucher.get().getId()
+            );
+            invoiceAlreadyPosted = true;
+        } else {
+            invoiceAlreadyPosted = false;
+
+            LedgerMaster purchaseLedger =
+                    getOrCreateSystemLedger(
+                            LedgerType.PURCHASE,
+                            LedgerGroupType.PURCHASE_ACCOUNTS,
+                            "Procurement Purchase",
+                            PURCHASE_LEDGER_CODE,
+                            DebitCredit.DEBIT
                     );
 
-            return PaymentAccountingResult.builder()
-                    .amounts(amounts)
-                    .voucher(voucherResponse)
-                    .alreadyPosted(true)
-                    .build();
+            LedgerMaster inputCgstLedger = null;
+            LedgerMaster inputSgstLedger = null;
+            LedgerMaster inputIgstLedger = null;
+            LedgerMaster tdsPayableLedger = null;
+            LedgerMaster roundOffLedger = null;
+
+            List<AccountingVoucherEntryRequestDto> invoiceEntries =
+                    new ArrayList<>();
+
+            invoiceEntries.add(
+                    debitEntry(
+                            purchaseLedger,
+                            amounts.price(),
+                            "Procurement purchase booked for "
+                                    + resolveInvoiceReference(request)
+                    )
+            );
+
+            if (amounts.cgstAmount().compareTo(BigDecimal.ZERO) > 0) {
+                inputCgstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.INPUT_CGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Input CGST",
+                                INPUT_CGST_LEDGER_CODE,
+                                DebitCredit.DEBIT
+                        );
+
+                invoiceEntries.add(
+                        debitEntry(
+                                inputCgstLedger,
+                                amounts.cgstAmount(),
+                                "Input CGST for "
+                                        + resolveInvoiceReference(request)
+                        )
+                );
+            }
+
+            if (amounts.sgstAmount().compareTo(BigDecimal.ZERO) > 0) {
+                inputSgstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.INPUT_SGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Input SGST",
+                                INPUT_SGST_LEDGER_CODE,
+                                DebitCredit.DEBIT
+                        );
+
+                invoiceEntries.add(
+                        debitEntry(
+                                inputSgstLedger,
+                                amounts.sgstAmount(),
+                                "Input SGST for "
+                                        + resolveInvoiceReference(request)
+                        )
+                );
+            }
+
+            if (amounts.igstAmount().compareTo(BigDecimal.ZERO) > 0) {
+                inputIgstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.INPUT_IGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Input IGST",
+                                INPUT_IGST_LEDGER_CODE,
+                                DebitCredit.DEBIT
+                        );
+
+                invoiceEntries.add(
+                        debitEntry(
+                                inputIgstLedger,
+                                amounts.igstAmount(),
+                                "Input IGST for "
+                                        + resolveInvoiceReference(request)
+                        )
+                );
+            }
+
+            if (amounts.roundOffAmount().compareTo(BigDecimal.ZERO) != 0) {
+                roundOffLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.ROUND_OFF,
+                                LedgerGroupType.INDIRECT_EXPENSES,
+                                "Round Off",
+                                ROUND_OFF_LEDGER_CODE,
+                                DebitCredit.DEBIT
+                        );
+
+                /*
+                 * Purchase voucher balancing:
+                 *
+                 * raw > final  -> Credit Round-Off
+                 * raw < final  -> Debit Round-Off
+                 */
+                if (amounts.roundOffAmount().compareTo(BigDecimal.ZERO) > 0) {
+                    invoiceEntries.add(
+                            debitEntry(
+                                    roundOffLedger,
+                                    amounts.roundOffAmount(),
+                                    "Purchase invoice round-off for "
+                                            + resolveInvoiceReference(request)
+                            )
+                    );
+                } else {
+                    invoiceEntries.add(
+                            creditEntry(
+                                    roundOffLedger,
+                                    amounts.roundOffAmount().abs(),
+                                    "Purchase invoice round-off for "
+                                            + resolveInvoiceReference(request)
+                            )
+                    );
+                }
+            }
+
+            invoiceEntries.add(
+                    creditEntry(
+                            vendorLedger,
+                            amounts.vendorNetPayableAmount(),
+                            "Net amount payable to vendor "
+                                    + externalVendor.getVendorName()
+                    )
+            );
+
+            if (amounts.tdsAmount().compareTo(BigDecimal.ZERO) > 0) {
+                tdsPayableLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.TDS_PAYABLE,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "TDS Payable",
+                                TDS_PAYABLE_LEDGER_CODE,
+                                DebitCredit.CREDIT
+                        );
+
+                invoiceEntries.add(
+                        creditEntry(
+                                tdsPayableLedger,
+                                amounts.tdsAmount(),
+                                "TDS deducted for "
+                                        + resolveInvoiceReference(request)
+                        )
+                );
+            }
+
+            LocalDate invoiceVoucherDate =
+                    request.getInvoiceDate() != null
+                            ? request.getInvoiceDate()
+                            : request.getApprovedDate() != null
+                            ? request.getApprovedDate()
+                            : LocalDate.now();
+
+            AccountingVoucherRequestDto invoiceVoucherRequest =
+                    AccountingVoucherRequestDto.builder()
+                            .voucherType(VoucherType.PURCHASE_INVOICE)
+                            .voucherDate(invoiceVoucherDate)
+                            .sourceType(
+                                    VoucherSourceType.PROCUREMENT_VENDOR_INVOICE
+                            )
+                            .sourceId(
+                                    request.getProcurementPaymentRequestId()
+                            )
+                            .narration(
+                                    buildVoucherNarration(
+                                            externalVendor,
+                                            request,
+                                            amounts
+                                    )
+                            )
+                            .entries(invoiceEntries)
+                            .build();
+
+            invoiceVoucher =
+                    accountingVoucherService.createVoucher(
+                            invoiceVoucherRequest
+                    );
+
+            purchaseLedgerId = purchaseLedger.getId();
+            inputCgstLedgerId = id(inputCgstLedger);
+            inputSgstLedgerId = id(inputSgstLedger);
+            inputIgstLedgerId = id(inputIgstLedger);
+            tdsPayableLedgerId = id(tdsPayableLedger);
         }
 
-        LedgerMaster purchaseLedger =
-                getOrCreateSystemLedger(
-                        LedgerType.PURCHASE,
-                        LedgerGroupType.PURCHASE_ACCOUNTS,
-                        "Procurement Purchase",
-                        PURCHASE_LEDGER_CODE,
-                        DebitCredit.DEBIT
+        if (hasPaymentReleaseData(request)) {
+            validatePaymentReleaseData(request, amounts);
+
+            BigDecimal paidAmount = money(request.getBankPaymentAmount());
+
+            LedgerMaster bankLedger =
+                    getAndValidatePaymentLedger(
+                            request.getBankLedgerId()
+                    );
+
+            paymentBankLedgerId = bankLedger.getId();
+
+            Optional<AccountingVoucher> existingPaymentVoucher =
+                    accountingVoucherRepository
+                            .findFirstBySourceTypeAndSourceIdAndStatusOrderByIdDesc(
+                                    VoucherSourceType.PROCUREMENT_VENDOR_PAYMENT,
+                                    request.getProcurementPaymentRequestId(),
+                                    VoucherStatus.POSTED
+                            );
+
+            if (existingPaymentVoucher.isPresent()) {
+                paymentVoucher =
+                        accountingVoucherService.getVoucherById(
+                                existingPaymentVoucher.get().getId()
+                        );
+                paymentAlreadyPosted = true;
+            } else {
+                List<AccountingVoucherEntryRequestDto> paymentEntries =
+                        new ArrayList<>();
+
+                paymentEntries.add(
+                        debitEntry(
+                                vendorLedger,
+                                paidAmount,
+                                "Payment released to vendor "
+                                        + externalVendor.getVendorName()
+                        )
                 );
 
-        LedgerMaster inputCgstLedger = null;
-        LedgerMaster inputSgstLedger = null;
-        LedgerMaster inputIgstLedger = null;
-        LedgerMaster tdsPayableLedger = null;
-
-        List<AccountingVoucherEntryRequestDto> entries =
-                new ArrayList<>();
-
-        entries.add(
-                debitEntry(
-                        purchaseLedger,
-                        amounts.price(),
-                        "Procurement purchase booked for "
-                                + resolveInvoiceReference(request)
-                )
-        );
-
-        if (amounts.cgstAmount().compareTo(BigDecimal.ZERO) > 0) {
-            inputCgstLedger =
-                    getOrCreateSystemLedger(
-                            LedgerType.INPUT_CGST,
-                            LedgerGroupType.DUTIES_AND_TAXES,
-                            "Input CGST",
-                            INPUT_CGST_LEDGER_CODE,
-                            DebitCredit.DEBIT
-                    );
-
-            entries.add(
-                    debitEntry(
-                            inputCgstLedger,
-                            amounts.cgstAmount(),
-                            "Input CGST for "
-                                    + resolveInvoiceReference(request)
-                    )
-            );
-        }
-
-        if (amounts.sgstAmount().compareTo(BigDecimal.ZERO) > 0) {
-            inputSgstLedger =
-                    getOrCreateSystemLedger(
-                            LedgerType.INPUT_SGST,
-                            LedgerGroupType.DUTIES_AND_TAXES,
-                            "Input SGST",
-                            INPUT_SGST_LEDGER_CODE,
-                            DebitCredit.DEBIT
-                    );
-
-            entries.add(
-                    debitEntry(
-                            inputSgstLedger,
-                            amounts.sgstAmount(),
-                            "Input SGST for "
-                                    + resolveInvoiceReference(request)
-                    )
-            );
-        }
-
-        if (amounts.igstAmount().compareTo(BigDecimal.ZERO) > 0) {
-            inputIgstLedger =
-                    getOrCreateSystemLedger(
-                            LedgerType.INPUT_IGST,
-                            LedgerGroupType.DUTIES_AND_TAXES,
-                            "Input IGST",
-                            INPUT_IGST_LEDGER_CODE,
-                            DebitCredit.DEBIT
-                    );
-
-            entries.add(
-                    debitEntry(
-                            inputIgstLedger,
-                            amounts.igstAmount(),
-                            "Input IGST for "
-                                    + resolveInvoiceReference(request)
-                    )
-            );
-        }
-
-        entries.add(
-                creditEntry(
-                        vendorLedger,
-                        amounts.vendorNetPayableAmount(),
-                        "Net amount payable to vendor "
-                                + externalVendor.getVendorName()
-                )
-        );
-
-        if (amounts.tdsAmount().compareTo(BigDecimal.ZERO) > 0) {
-            tdsPayableLedger =
-                    getOrCreateSystemLedger(
-                            LedgerType.TDS_PAYABLE,
-                            LedgerGroupType.DUTIES_AND_TAXES,
-                            "TDS Payable",
-                            TDS_PAYABLE_LEDGER_CODE,
-                            DebitCredit.CREDIT
-                    );
-
-            entries.add(
-                    creditEntry(
-                            tdsPayableLedger,
-                            amounts.tdsAmount(),
-                            "TDS deducted for "
-                                    + resolveInvoiceReference(request)
-                    )
-            );
-        }
-
-        LocalDate voucherDate =
-                request.getInvoiceDate() != null
-                        ? request.getInvoiceDate()
-                        : request.getApprovedDate() != null
-                        ? request.getApprovedDate()
-                        : LocalDate.now();
-
-        AccountingVoucherRequestDto voucherRequest =
-                AccountingVoucherRequestDto.builder()
-                        .voucherType(VoucherType.PURCHASE_INVOICE)
-                        .voucherDate(voucherDate)
-                        .sourceType(
-                                VoucherSourceType.PROCUREMENT_VENDOR_INVOICE
+                paymentEntries.add(
+                        creditEntry(
+                                bankLedger,
+                                paidAmount,
+                                "Vendor payment through "
+                                        + displayPaymentLedgerName(bankLedger)
                         )
-                        .sourceId(
-                                request.getProcurementPaymentRequestId()
-                        )
-                        .narration(
-                                buildVoucherNarration(
-                                        externalVendor,
-                                        request,
-                                        amounts
+                );
+
+                LocalDate paymentVoucherDate =
+                        request.getPaymentDate() != null
+                                ? request.getPaymentDate()
+                                : request.getPaymentReleasedDate() != null
+                                ? request.getPaymentReleasedDate()
+                                : LocalDate.now();
+
+                AccountingVoucherRequestDto paymentVoucherRequest =
+                        AccountingVoucherRequestDto.builder()
+                                .voucherType(VoucherType.PAYMENT)
+                                .voucherDate(paymentVoucherDate)
+                                .sourceType(
+                                        VoucherSourceType.PROCUREMENT_VENDOR_PAYMENT
                                 )
-                        )
-                        .entries(entries)
-                        .build();
+                                .sourceId(
+                                        request.getProcurementPaymentRequestId()
+                                )
+                                .narration(
+                                        buildPaymentVoucherNarration(
+                                                externalVendor,
+                                                request,
+                                                paidAmount,
+                                                bankLedger
+                                        )
+                                )
+                                .entries(paymentEntries)
+                                .build();
 
-        AccountingVoucherResponseDto voucherResponse =
-                accountingVoucherService.createVoucher(voucherRequest);
+                paymentVoucher =
+                        accountingVoucherService.createVoucher(
+                                paymentVoucherRequest
+                        );
+            }
+        }
 
         return PaymentAccountingResult.builder()
                 .amounts(amounts)
-                .voucher(voucherResponse)
-                .alreadyPosted(false)
-                .purchaseLedgerId(purchaseLedger.getId())
-                .inputCgstLedgerId(id(inputCgstLedger))
-                .inputSgstLedgerId(id(inputSgstLedger))
-                .inputIgstLedgerId(id(inputIgstLedger))
-                .tdsPayableLedgerId(id(tdsPayableLedger))
+                .invoiceVoucher(invoiceVoucher)
+                .paymentVoucher(paymentVoucher)
+                .invoiceAlreadyPosted(invoiceAlreadyPosted)
+                .paymentAlreadyPosted(paymentAlreadyPosted)
+                .purchaseLedgerId(purchaseLedgerId)
+                .inputCgstLedgerId(inputCgstLedgerId)
+                .inputSgstLedgerId(inputSgstLedgerId)
+                .inputIgstLedgerId(inputIgstLedgerId)
+                .tdsPayableLedgerId(tdsPayableLedgerId)
+                .paymentBankLedgerId(paymentBankLedgerId)
                 .build();
     }
 
@@ -348,97 +500,118 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             VendorPaymentApprovalRequestDto request
     ) {
         BigDecimal price = money(request.getPrice());
+        BigDecimal gstPercentage = rate(request.getGstPercentage());
+
+        /*
+         * Backward compatibility:
+         * older Operation clients did not send gstActive.
+         */
+        boolean gstActive = request.getGstActive() != null
+                ? Boolean.TRUE.equals(request.getGstActive())
+                : gstPercentage.compareTo(BigDecimal.ZERO) > 0;
 
         GstRegistrationType registrationType =
                 parsePaymentGstRegistrationType(
                         request.getGstRegistrationType()
                 );
 
-        String supplyType =
-                normalizeEnum(request.getGstSupplyType());
-
-        BigDecimal gstPercentage =
-                rate(request.getGstPercentage());
+        String supplyType = normalizeEnum(request.getGstSupplyType());
 
         BigDecimal cgstAmount = ZERO;
         BigDecimal sgstAmount = ZERO;
         BigDecimal igstAmount = ZERO;
         BigDecimal totalGstAmount = ZERO;
 
-        if (registrationType == null) {
+        if (!gstActive) {
             if (gstPercentage.compareTo(BigDecimal.ZERO) != 0) {
                 throw new ValidationException(
-                        "GST registration type is required when GST percentage is provided",
+                        "GST percentage must be zero when GST is inactive",
+                        "ERR_GST_PERCENTAGE_NOT_ALLOWED",
+                        "paymentApproval.gstPercentage"
+                );
+            }
+        } else {
+            if (registrationType == null) {
+                throw new ValidationException(
+                        "GST registration type is required when GST is active",
                         "ERR_GST_REGISTRATION_TYPE_REQUIRED",
                         "paymentApproval.gstRegistrationType"
                 );
             }
-        } else if (registrationType.isZeroRated()) {
-            if (gstPercentage.compareTo(BigDecimal.ZERO) != 0) {
-                throw new ValidationException(
-                        "GST percentage must be zero for "
-                                + registrationType,
-                        "ERR_ZERO_RATED_GST_PERCENTAGE_NOT_ALLOWED",
-                        "paymentApproval.gstPercentage"
-                );
-            }
 
-            totalGstAmount = ZERO;
+            if (registrationType.isZeroRated()) {
+                if (gstPercentage.compareTo(BigDecimal.ZERO) != 0) {
+                    throw new ValidationException(
+                            "GST percentage must be zero for " + registrationType,
+                            "ERR_ZERO_RATED_GST_PERCENTAGE_NOT_ALLOWED",
+                            "paymentApproval.gstPercentage"
+                    );
+                }
+            } else if (registrationType.isGstApplicable()) {
+                if (gstPercentage.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new ValidationException(
+                            "GST percentage must be greater than zero for "
+                                    + registrationType,
+                            "ERR_GST_PERCENTAGE_REQUIRED",
+                            "paymentApproval.gstPercentage"
+                    );
+                }
 
-        } else if (registrationType.isGstApplicable()) {
-            if (gstPercentage.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new ValidationException(
-                        "GST percentage must be greater than zero for "
-                                + registrationType,
-                        "ERR_GST_PERCENTAGE_REQUIRED",
-                        "paymentApproval.gstPercentage"
-                );
-            }
+                totalGstAmount = percentageAmount(price, gstPercentage);
 
-            totalGstAmount =
-                    percentageAmount(price, gstPercentage);
+                if ("INTRA_STATE".equals(supplyType)) {
+                    cgstAmount =
+                            totalGstAmount.divide(
+                                    new BigDecimal("2"),
+                                    MONEY_SCALE,
+                                    ROUNDING_MODE
+                            );
 
-            if ("INTRA_STATE".equals(supplyType)) {
-                cgstAmount =
-                        totalGstAmount.divide(
-                                new BigDecimal("2"),
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+                    sgstAmount =
+                            totalGstAmount
+                                    .subtract(cgstAmount)
+                                    .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-                sgstAmount =
-                        totalGstAmount.subtract(cgstAmount)
-                                .setScale(
-                                        2,
-                                        RoundingMode.HALF_UP
-                                );
-
-            } else if ("INTER_STATE".equals(supplyType)) {
-                igstAmount = totalGstAmount;
-
+                } else if ("INTER_STATE".equals(supplyType)) {
+                    igstAmount = totalGstAmount;
+                } else {
+                    throw new ValidationException(
+                            "GST supply type must be INTRA_STATE or INTER_STATE",
+                            "ERR_INVALID_GST_SUPPLY_TYPE",
+                            "paymentApproval.gstSupplyType"
+                    );
+                }
             } else {
                 throw new ValidationException(
-                        "GST supply type must be INTRA_STATE or INTER_STATE for "
+                        "GST cannot be applied for registration type "
                                 + registrationType,
-                        "ERR_INVALID_GST_SUPPLY_TYPE",
-                        "paymentApproval.gstSupplyType"
+                        "ERR_GST_NOT_ALLOWED_FOR_REGISTRATION_TYPE",
+                        "paymentApproval.gstRegistrationType"
                 );
             }
         }
 
-        BigDecimal grossInvoiceAmount =
+        /*
+         * Raw purchase invoice value remains at three decimals.
+         */
+        BigDecimal rawGrossInvoiceAmount =
                 price.add(totalGstAmount)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-        boolean tdsActive =
-                Boolean.TRUE.equals(request.getTdsActive());
+        /*
+         * Final purchase invoice value is rounded to a whole rupee
+         * and stored using scale 3.
+         */
+        BigDecimal grossInvoiceAmount =
+                wholeMoney(rawGrossInvoiceAmount);
 
-        BigDecimal tdsPercentage =
-                rate(request.getTdsPercentage());
+        BigDecimal roundOffAmount =
+                grossInvoiceAmount
+                        .subtract(rawGrossInvoiceAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
 
+        boolean tdsActive = Boolean.TRUE.equals(request.getTdsActive());
+        BigDecimal tdsPercentage = rate(request.getTdsPercentage());
         BigDecimal tdsAmount = ZERO;
 
         if (tdsActive) {
@@ -450,11 +623,10 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 );
             }
 
-            tdsAmount =
-                    percentageAmount(
-                            price,
-                            tdsPercentage
-                    );
+            BigDecimal rawTdsAmount =
+                    percentageAmountInternal(price, tdsPercentage);
+
+            tdsAmount = wholeMoney(rawTdsAmount);
 
         } else if (tdsPercentage.compareTo(BigDecimal.ZERO) != 0) {
             throw new ValidationException(
@@ -465,11 +637,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
         }
 
         BigDecimal vendorNetPayableAmount =
-                grossInvoiceAmount.subtract(tdsAmount)
-                        .setScale(
-                                2,
-                                RoundingMode.HALF_UP
-                        );
+                grossInvoiceAmount
+                        .subtract(tdsAmount)
+                        .setScale(MONEY_SCALE, ROUNDING_MODE);
 
         if (vendorNetPayableAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException(
@@ -485,7 +655,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 sgstAmount,
                 igstAmount,
                 totalGstAmount,
+                rawGrossInvoiceAmount,
                 grossInvoiceAmount,
+                roundOffAmount,
                 tdsAmount,
                 vendorNetPayableAmount
         );
@@ -801,9 +973,14 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
     ) {
         LedgerGroup ledgerGroup = ledger.getLedgerGroup();
 
-        AccountingVoucherResponseDto voucher =
+        AccountingVoucherResponseDto invoiceVoucher =
                 paymentResult != null
-                        ? paymentResult.voucher()
+                        ? paymentResult.invoiceVoucher()
+                        : null;
+
+        AccountingVoucherResponseDto paymentVoucher =
+                paymentResult != null
+                        ? paymentResult.paymentVoucher()
                         : null;
 
         CalculatedAmounts amounts =
@@ -811,7 +988,8 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                         ? paymentResult.amounts()
                         : null;
 
-        boolean voucherCreated = voucher != null;
+        boolean invoiceVoucherCreated = invoiceVoucher != null;
+        boolean paymentVoucherCreated = paymentVoucher != null;
 
         return AccountVendorSyncResponseDto.builder()
                 .externalVendorId(externalVendor.getId())
@@ -824,9 +1002,7 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 .vendorFinalizationId(
                         externalVendor.getVendorFinalizationId()
                 )
-                .vendorName(
-                        externalVendor.getVendorName()
-                )
+                .vendorName(externalVendor.getVendorName())
 
                 .ledgerId(ledger.getId())
                 .ledgerCode(ledger.getLedgerCode())
@@ -857,41 +1033,17 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 .action(action)
                 .active(externalVendor.isActive())
 
-                .price(
-                        amounts != null
-                                ? amounts.price()
-                                : null
-                )
-                .cgstAmount(
-                        amounts != null
-                                ? amounts.cgstAmount()
-                                : null
-                )
-                .sgstAmount(
-                        amounts != null
-                                ? amounts.sgstAmount()
-                                : null
-                )
-                .igstAmount(
-                        amounts != null
-                                ? amounts.igstAmount()
-                                : null
-                )
+                .price(amounts != null ? amounts.price() : null)
+                .cgstAmount(amounts != null ? amounts.cgstAmount() : null)
+                .sgstAmount(amounts != null ? amounts.sgstAmount() : null)
+                .igstAmount(amounts != null ? amounts.igstAmount() : null)
                 .totalGstAmount(
-                        amounts != null
-                                ? amounts.totalGstAmount()
-                                : null
+                        amounts != null ? amounts.totalGstAmount() : null
                 )
                 .grossInvoiceAmount(
-                        amounts != null
-                                ? amounts.grossInvoiceAmount()
-                                : null
+                        amounts != null ? amounts.grossInvoiceAmount() : null
                 )
-                .tdsAmount(
-                        amounts != null
-                                ? amounts.tdsAmount()
-                                : null
-                )
+                .tdsAmount(amounts != null ? amounts.tdsAmount() : null)
                 .vendorNetPayableAmount(
                         amounts != null
                                 ? amounts.vendorNetPayableAmount()
@@ -924,66 +1076,106 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                                 : null
                 )
 
-                .voucherCreated(voucherCreated)
+                /*
+                 * Legacy voucher fields continue to represent
+                 * the PURCHASE_INVOICE voucher.
+                 */
+                .voucherCreated(invoiceVoucherCreated)
                 .voucherId(
-                        voucherCreated
-                                ? voucher.getId()
+                        invoiceVoucherCreated
+                                ? invoiceVoucher.getId()
                                 : null
                 )
                 .voucherNumber(
-                        voucherCreated
-                                ? voucher.getVoucherNumber()
+                        invoiceVoucherCreated
+                                ? invoiceVoucher.getVoucherNumber()
                                 : null
                 )
                 .voucherType(
-                        voucherCreated
-                                && voucher.getVoucherType() != null
-                                ? voucher.getVoucherType().name()
+                        invoiceVoucherCreated
+                                && invoiceVoucher.getVoucherType() != null
+                                ? invoiceVoucher.getVoucherType().name()
                                 : null
                 )
                 .voucherSourceType(
-                        voucherCreated
-                                && voucher.getSourceType() != null
-                                ? voucher.getSourceType().name()
+                        invoiceVoucherCreated
+                                && invoiceVoucher.getSourceType() != null
+                                ? invoiceVoucher.getSourceType().name()
                                 : null
                 )
                 .voucherSourceId(
-                        voucherCreated
-                                ? voucher.getSourceId()
+                        invoiceVoucherCreated
+                                ? invoiceVoucher.getSourceId()
                                 : null
                 )
                 .voucherDate(
-                        voucherCreated
-                                ? voucher.getVoucherDate()
+                        invoiceVoucherCreated
+                                ? invoiceVoucher.getVoucherDate()
                                 : null
                 )
                 .totalDebit(
-                        voucherCreated
-                                ? voucher.getTotalDebit()
+                        invoiceVoucherCreated
+                                ? invoiceVoucher.getTotalDebit()
                                 : ZERO
                 )
                 .totalCredit(
-                        voucherCreated
-                                ? voucher.getTotalCredit()
+                        invoiceVoucherCreated
+                                ? invoiceVoucher.getTotalCredit()
                                 : ZERO
                 )
                 .voucherStatus(
-                        voucherCreated
-                                && voucher.getStatus() != null
-                                ? voucher.getStatus().name()
+                        invoiceVoucherCreated
+                                && invoiceVoucher.getStatus() != null
+                                ? invoiceVoucher.getStatus().name()
+                                : null
+                )
+
+                .paymentVoucherCreated(paymentVoucherCreated)
+                .paymentVoucherId(
+                        paymentVoucherCreated
+                                ? paymentVoucher.getId()
+                                : null
+                )
+                .paymentVoucherNumber(
+                        paymentVoucherCreated
+                                ? paymentVoucher.getVoucherNumber()
+                                : null
+                )
+                .paymentVoucherDate(
+                        paymentVoucherCreated
+                                ? paymentVoucher.getVoucherDate()
+                                : null
+                )
+                .paymentVoucherTotalDebit(
+                        paymentVoucherCreated
+                                ? paymentVoucher.getTotalDebit()
+                                : ZERO
+                )
+                .paymentVoucherTotalCredit(
+                        paymentVoucherCreated
+                                ? paymentVoucher.getTotalCredit()
+                                : ZERO
+                )
+                .paymentVoucherStatus(
+                        paymentVoucherCreated
+                                && paymentVoucher.getStatus() != null
+                                ? paymentVoucher.getStatus().name()
+                                : null
+                )
+                .paymentBankLedgerId(
+                        paymentResult != null
+                                ? paymentResult.paymentBankLedgerId()
                                 : null
                 )
 
                 .syncStatus("SUCCESS")
-                .syncedAt(
-                        externalVendor.getLastSyncedAt()
-                )
+                .syncedAt(externalVendor.getLastSyncedAt())
                 .message(
-                        paymentResult == null
-                                ? "Vendor and vendor ledger synchronized successfully"
-                                : paymentResult.alreadyPosted()
-                                ? "Vendor synchronized; accounting voucher was already posted"
-                                : "Vendor, vendor ledger and accounting voucher created successfully"
+                        buildSyncMessage(
+                                paymentResult,
+                                invoiceVoucherCreated,
+                                paymentVoucherCreated
+                        )
                 )
                 .build();
     }
@@ -1069,9 +1261,184 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             );
         }
 
-        parsePaymentGstRegistrationType(
-                request.getGstRegistrationType()
-        );
+        if (hasText(request.getGstRegistrationType())) {
+            parsePaymentGstRegistrationType(
+                    request.getGstRegistrationType()
+            );
+        }
+    }
+
+    private boolean hasPaymentReleaseData(
+            VendorPaymentApprovalRequestDto request
+    ) {
+        return request.getBankPaymentAmount() != null
+                || request.getBankLedgerId() != null
+                || request.getPaymentDate() != null
+                || request.getPaymentReleasedByOperationUserId() != null
+                || hasText(request.getTransactionReference())
+                || hasText(request.getPaymentMode());
+    }
+
+    private void validatePaymentReleaseData(
+            VendorPaymentApprovalRequestDto request,
+            CalculatedAmounts amounts
+    ) {
+        if (request.getBankPaymentAmount() == null
+                || request.getBankPaymentAmount()
+                .compareTo(BigDecimal.ZERO) <= 0) {
+
+            throw new ValidationException(
+                    "Bank payment amount must be greater than zero",
+                    "ERR_INVALID_BANK_PAYMENT_AMOUNT",
+                    "paymentApproval.bankPaymentAmount"
+            );
+        }
+
+        if (request.getBankLedgerId() == null
+                || request.getBankLedgerId() <= 0) {
+
+            throw new ValidationException(
+                    "Bank/Cash ledger ID is required",
+                    "ERR_BANK_LEDGER_REQUIRED",
+                    "paymentApproval.bankLedgerId"
+            );
+        }
+
+        BigDecimal paidAmount = money(request.getBankPaymentAmount());
+
+        if (paidAmount.compareTo(amounts.vendorNetPayableAmount()) > 0) {
+            throw new ValidationException(
+                    "Bank payment amount cannot exceed vendor net payable amount. "
+                            + "Payable: " + amounts.vendorNetPayableAmount()
+                            + ", payment: " + paidAmount,
+                    "ERR_VENDOR_PAYMENT_EXCEEDS_PAYABLE",
+                    "paymentApproval.bankPaymentAmount"
+            );
+        }
+
+        if (request.getTdsAmount() != null) {
+            BigDecimal suppliedTdsAmount = money(request.getTdsAmount());
+            BigDecimal difference = suppliedTdsAmount
+                    .subtract(amounts.tdsAmount())
+                    .abs();
+
+            if (difference.compareTo(ZERO) > 0) {
+                throw new ValidationException(
+                        "Supplied TDS amount does not match Account Service calculation. "
+                                + "Supplied: " + suppliedTdsAmount
+                                + ", calculated: " + amounts.tdsAmount(),
+                        "ERR_TDS_AMOUNT_MISMATCH",
+                        "paymentApproval.tdsAmount"
+                );
+            }
+        }
+    }
+
+    private LedgerMaster getAndValidatePaymentLedger(
+            Long bankLedgerId
+    ) {
+        LedgerMaster bankLedger =
+                ledgerMasterRepository
+                        .findByIdAndDeletedFalse(bankLedgerId)
+                        .orElseThrow(() ->
+                                new ValidationException(
+                                        "Bank/Cash ledger not found with ID: "
+                                                + bankLedgerId,
+                                        "ERR_BANK_LEDGER_NOT_FOUND",
+                                        "paymentApproval.bankLedgerId"
+                                )
+                        );
+
+        if (!bankLedger.isActive()) {
+            throw new ValidationException(
+                    "Selected Bank/Cash ledger is inactive",
+                    "ERR_BANK_LEDGER_INACTIVE",
+                    "paymentApproval.bankLedgerId"
+            );
+        }
+
+        LedgerType type = bankLedger.getLedgerType();
+
+        if (type != LedgerType.BANK
+                && type != LedgerType.CASH
+                && type != LedgerType.PAYMENT_GATEWAY) {
+
+            throw new ValidationException(
+                    "Selected ledger must be BANK, CASH or PAYMENT_GATEWAY",
+                    "ERR_INVALID_PAYMENT_LEDGER",
+                    "paymentApproval.bankLedgerId"
+            );
+        }
+
+        return bankLedger;
+    }
+
+    private String displayPaymentLedgerName(
+            LedgerMaster ledger
+    ) {
+        if (ledger == null) {
+            return "Bank/Cash";
+        }
+
+        if (hasText(ledger.getBankName())) {
+            return ledger.getBankName().trim();
+        }
+
+        return ledger.getLedgerName();
+    }
+
+    private String buildPaymentVoucherNarration(
+            ExternalVendor vendor,
+            VendorPaymentApprovalRequestDto request,
+            BigDecimal paidAmount,
+            LedgerMaster bankLedger
+    ) {
+        StringBuilder narration = new StringBuilder()
+                .append("Vendor payment released to ")
+                .append(vendor.getVendorName())
+                .append(", amount ")
+                .append(paidAmount)
+                .append(", through ")
+                .append(displayPaymentLedgerName(bankLedger));
+
+        if (hasText(request.getPaymentMode())) {
+            narration.append(", mode ")
+                    .append(request.getPaymentMode().trim());
+        }
+
+        if (hasText(request.getTransactionReference())) {
+            narration.append(", reference ")
+                    .append(request.getTransactionReference().trim());
+        }
+
+        return narration.toString();
+    }
+
+    private String buildSyncMessage(
+            PaymentAccountingResult paymentResult,
+            boolean invoiceVoucherCreated,
+            boolean paymentVoucherCreated
+    ) {
+        if (paymentResult == null) {
+            return "Vendor and vendor ledger synchronized successfully";
+        }
+
+        if (paymentResult.invoiceAlreadyPosted()
+                && (!paymentVoucherCreated
+                || paymentResult.paymentAlreadyPosted())) {
+
+            return "Vendor synchronized; accounting vouchers were already posted";
+        }
+
+        if (paymentVoucherCreated) {
+            return "Vendor, purchase invoice voucher and payment voucher synchronized successfully";
+        }
+
+        if (invoiceVoucherCreated) {
+            return "Vendor and purchase invoice voucher synchronized successfully";
+        }
+
+        return "Vendor synchronized successfully";
     }
 
     private AccountingVoucherEntryRequestDto debitEntry(
@@ -1109,8 +1476,12 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                 + vendor.getVendorName()
                 + ", invoice "
                 + resolveInvoiceReference(request)
-                + ", gross invoice amount "
+                + ", raw gross amount "
+                + amounts.rawGrossInvoiceAmount()
+                + ", final gross amount "
                 + amounts.grossInvoiceAmount()
+                + ", round-off "
+                + amounts.roundOffAmount()
                 + ", TDS "
                 + amounts.tdsAmount()
                 + ", vendor net payable "
@@ -1243,11 +1614,20 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             BigDecimal amount,
             BigDecimal percentage
     ) {
-        return amount.multiply(percentage)
+        return percentageAmountInternal(amount, percentage)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private BigDecimal percentageAmountInternal(
+            BigDecimal amount,
+            BigDecimal percentage
+    ) {
+        return money(amount)
+                .multiply(rate(percentage))
                 .divide(
                         HUNDRED,
-                        2,
-                        RoundingMode.HALF_UP
+                        INTERNAL_SCALE,
+                        ROUNDING_MODE
                 );
     }
 
@@ -1256,24 +1636,27 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
     ) {
         return value == null
                 ? ZERO
-                : value.setScale(
-                2,
-                RoundingMode.HALF_UP
-        );
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private BigDecimal wholeMoney(
+            BigDecimal value
+    ) {
+        if (value == null) {
+            return ZERO;
+        }
+
+        return value
+                .setScale(WHOLE_SCALE, ROUNDING_MODE)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
     }
 
     private BigDecimal rate(
             BigDecimal value
     ) {
         return value == null
-                ? BigDecimal.ZERO.setScale(
-                4,
-                RoundingMode.HALF_UP
-        )
-                : value.setScale(
-                4,
-                RoundingMode.HALF_UP
-        );
+                ? BigDecimal.ZERO.setScale(RATE_SCALE, ROUNDING_MODE)
+                : value.setScale(RATE_SCALE, ROUNDING_MODE);
     }
 
     private String normalizeEnum(
@@ -1378,7 +1761,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             BigDecimal sgstAmount,
             BigDecimal igstAmount,
             BigDecimal totalGstAmount,
+            BigDecimal rawGrossInvoiceAmount,
             BigDecimal grossInvoiceAmount,
+            BigDecimal roundOffAmount,
             BigDecimal tdsAmount,
             BigDecimal vendorNetPayableAmount
     ) {
@@ -1387,13 +1772,16 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
     @Builder
     private record PaymentAccountingResult(
             CalculatedAmounts amounts,
-            AccountingVoucherResponseDto voucher,
-            boolean alreadyPosted,
+            AccountingVoucherResponseDto invoiceVoucher,
+            AccountingVoucherResponseDto paymentVoucher,
+            boolean invoiceAlreadyPosted,
+            boolean paymentAlreadyPosted,
             Long purchaseLedgerId,
             Long inputCgstLedgerId,
             Long inputSgstLedgerId,
             Long inputIgstLedgerId,
-            Long tdsPayableLedgerId
+            Long tdsPayableLedgerId,
+            Long paymentBankLedgerId
     ) {
     }
 }

@@ -112,4 +112,17 @@ public class LedgerGroupController {
                 .orElse(groupType.name());
     }
 
+    @GetMapping("/{id}/group-type")
+    @Operation(summary = "Get ledger group type by ledger group ID")
+    public ResponseEntity<Map<String, Object>> getLedgerGroupTypeByGroupId(
+            @PathVariable Long id
+    ) {
+        Map<String, Object> response =
+                ledgerGroupService.getLedgerGroupTypeByGroupId(id);
+
+        return ResponseEntity.ok(response);
+    }
+
+
+
 }

@@ -61,6 +61,10 @@ public class EstimateServiceImpl implements EstimateService {
 
     private static final Logger log = LogManager.getLogger(EstimateServiceImpl.class);
 
+    private static final int MONEY_SCALE = 3;
+    private static final int DOCUMENT_SCALE = 0;
+    private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
+
     private final EstimateRepository estimateRepository;
     private final CompanyRepository companyRepository;
     private final CompanyUnitRepository companyUnitRepository;
@@ -561,8 +565,8 @@ public class EstimateServiceImpl implements EstimateService {
             lineItem.setUnitPriceExGst(
                     itemDto.getUnitPriceExGst()
                             .setScale(
-                                    2,
-                                    RoundingMode.HALF_UP
+                                    MONEY_SCALE,
+                                    ROUNDING_MODE
                             )
             );
 
@@ -587,8 +591,8 @@ public class EstimateServiceImpl implements EstimateService {
 
             lineItem.setGstRate(
                     effectiveGstRate.setScale(
-                            2,
-                            RoundingMode.HALF_UP
+                            MONEY_SCALE,
+                            ROUNDING_MODE
                     )
             );
 
@@ -640,91 +644,32 @@ public class EstimateServiceImpl implements EstimateService {
         estimate.calculateTotals();
 
         /*
-         * Defensive zero-rated enforcement at estimate header.
+         * Defensive zero-rated enforcement at Estimate header.
          */
         if (zeroRatedSupply) {
-
-            estimate.setTotalGstAmount(
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    )
-            );
-
-            estimate.setCgstAmount(
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    )
-            );
-
-            estimate.setSgstAmount(
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    )
-            );
-
-            estimate.setIgstAmount(
-                    BigDecimal.ZERO.setScale(
-                            2,
-                            RoundingMode.HALF_UP
-                    )
-            );
-
-            estimate.setGrandTotal(
-                    estimate.getSubTotalExGst()
-                            .setScale(
-                                    2,
-                                    RoundingMode.HALF_UP
-                            )
-            );
+            estimate.setTotalGstAmount(zeroMoney());
+            estimate.setCgstAmount(zeroMoney());
+            estimate.setSgstAmount(zeroMoney());
+            estimate.setIgstAmount(zeroMoney());
         }
 
         // =====================================================
-        // 12. CUSTOM GRAND-TOTAL ROUNDING
+        // 12. FINAL DOCUMENT ROUNDING
         // =====================================================
 
-        if (estimate.getGrandTotal() != null) {
+        BigDecimal rawEstimateTotal = safeMoney(estimate.getSubTotalExGst())
+                .add(safeMoney(estimate.getTotalGstAmount()))
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-            BigDecimal grandTotal =
-                    estimate.getGrandTotal();
+        BigDecimal finalEstimateTotal = rawEstimateTotal
+                .setScale(DOCUMENT_SCALE, ROUNDING_MODE);
 
-            log.debug(
-                    "Estimate grand total before rounding: {}",
-                    grandTotal
-            );
+        BigDecimal roundOffAmount = finalEstimateTotal
+                .subtract(rawEstimateTotal)
+                .setScale(MONEY_SCALE, ROUNDING_MODE);
 
-            BigDecimal fractionalPart =
-                    grandTotal.remainder(
-                            BigDecimal.ONE
-                    );
-
-            BigDecimal roundedGrandTotal;
-
-            if (fractionalPart.compareTo(
-                    new BigDecimal("0.50")
-            ) >= 0) {
-
-                roundedGrandTotal =
-                        grandTotal.setScale(
-                                0,
-                                RoundingMode.CEILING
-                        );
-
-            } else {
-
-                roundedGrandTotal =
-                        grandTotal.setScale(
-                                0,
-                                RoundingMode.FLOOR
-                        );
-            }
-
-            estimate.setGrandTotal(
-                    roundedGrandTotal
-            );
-        }
+        estimate.setGrandTotal(finalEstimateTotal);
+        estimate.setRoundOffAmount(roundOffAmount);
 
         // =====================================================
         // 13. SAVE ESTIMATE
@@ -764,6 +709,16 @@ public class EstimateServiceImpl implements EstimateService {
 
 
 
+
+    private static BigDecimal safeMoney(BigDecimal value) {
+        return value == null
+                ? zeroMoney()
+                : value.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    private static BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
 
     private String generateEstimateNumber() {
         long count = estimateRepository.count() + 1;
@@ -1099,7 +1054,7 @@ public class EstimateServiceImpl implements EstimateService {
         return mapToResponseDto(estimate);
     }
     @Override
-    public List<EstimateResponseDto> getAllEstimates(
+    public List<EstimateResponseDto>  getAllEstimates(
             Long requestingUserId,
             String search,
             String status,

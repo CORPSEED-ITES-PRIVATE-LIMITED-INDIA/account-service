@@ -8,6 +8,7 @@ import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
 import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
+import com.account.domain.estimate.EstimateLineItem;
 import com.account.domain.estimate.EstimateStatus;
 import com.account.domain.invoice.*;
 import com.account.domain.ledger.*;
@@ -1728,6 +1729,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
     // RESPONSE MAPPING
     // =====================================================
 
+
     private AdvanceTaxInvoiceResponseDto mapToResponse(
             AdvanceTaxInvoiceRequest request,
             String message
@@ -1741,14 +1743,90 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                         .findTopOrganization()
                         .orElse(null);
 
+        /*
+         * GST registration type priority:
+         *
+         * 1. Generated Invoice snapshot
+         * 2. Estimate GST snapshot
+         * 3. Current Company Unit value
+         * 4. REGISTERED fallback
+         */
         GstRegistrationType gstRegistrationType =
-                invoice != null && invoice.getGstRegistrationType() != null
+                invoice != null
+                        && invoice.getGstRegistrationType() != null
                         ? invoice.getGstRegistrationType()
+
+                        : estimate != null
+                        && estimate.getGstRegistrationType() != null
+                        ? estimate.getGstRegistrationType()
+
                         : estimate != null
                         && estimate.getUnit() != null
                         && estimate.getUnit().getGstRegistrationType() != null
                         ? estimate.getUnit().getGstRegistrationType()
+
                         : GstRegistrationType.REGISTERED;
+
+        List<InvoiceDetailDto.LineItemDto> responseLineItems =
+                resolveResponseLineItems(
+                        invoice,
+                        estimate
+                );
+
+        BigDecimal responseSubTotalExGst =
+                invoice != null
+                        ? money(invoice.getSubTotalExGst())
+                        : estimate != null
+                        ? money(estimate.getSubTotalExGst())
+                        : null;
+
+        BigDecimal responseTotalGstAmount =
+                invoice != null
+                        ? money(invoice.getTotalGstAmount())
+                        : estimate != null
+                        ? money(estimate.getTotalGstAmount())
+                        : null;
+
+        BigDecimal responseCgstAmount =
+                invoice != null
+                        ? money(invoice.getCgstAmount())
+                        : estimate != null
+                        ? money(estimate.getCgstAmount())
+                        : null;
+
+        BigDecimal responseSgstAmount =
+                invoice != null
+                        ? money(invoice.getSgstAmount())
+                        : estimate != null
+                        ? money(estimate.getSgstAmount())
+                        : null;
+
+        BigDecimal responseIgstAmount =
+                invoice != null
+                        ? money(invoice.getIgstAmount())
+                        : estimate != null
+                        ? money(estimate.getIgstAmount())
+                        : null;
+
+        BigDecimal responseGrandTotal =
+                invoice != null
+                        ? money(invoice.getGrandTotal())
+                        : estimate != null
+                        ? money(estimate.getGrandTotal())
+                        : null;
+
+        BigDecimal availableOutstandingAmount =
+                invoice != null
+                        ? money(invoice.getOutstandingAmount())
+                        .subtract(
+                                money(invoice.getPendingReceivedAmount())
+                        )
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        )
+                        : null;
 
         return AdvanceTaxInvoiceResponseDto.builder()
 
@@ -1804,7 +1882,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 )
                 .estimateGrandTotal(
                         estimate != null
-                                ? estimate.getGrandTotal()
+                                ? money(estimate.getGrandTotal())
                                 : null
                 )
                 .solutionId(
@@ -1847,6 +1925,49 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? estimate.getUnit().getUnitName()
                                 : null
                 )
+                .unitGstNo(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getGstNo()
+                                : null
+                )
+
+                .unitAddressLine1(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getAddressLine1()
+                                : null
+                )
+                .unitAddressLine2(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getAddressLine2()
+                                : null
+                )
+                .unitCity(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getCity()
+                                : null
+                )
+                .unitState(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getState()
+                                : null
+                )
+                .unitCountry(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getCountry()
+                                : null
+                )
+                .unitPinCode(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getPinCode()
+                                : null
+                )
 
                 .contactId(
                         estimate != null
@@ -1862,7 +1983,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 )
 
                 // =====================================================
-                // INVOICE
+                // GENERATED INVOICE
                 // =====================================================
 
                 .invoiceGenerated(invoice != null)
@@ -1885,7 +2006,8 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 .unbilledNumber(
                         invoice != null
                                 && invoice.getUnbilledInvoice() != null
-                                ? invoice.getUnbilledInvoice().getUnbilledNumber()
+                                ? invoice.getUnbilledInvoice()
+                                .getUnbilledNumber()
                                 : null
                 )
                 .invoiceOrigin(
@@ -1901,6 +2023,8 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 .currency(
                         invoice != null
                                 ? invoice.getCurrency()
+                                : estimate != null
+                                ? estimate.getCurrency()
                                 : null
                 )
                 .invoiceStatus(
@@ -1911,11 +2035,26 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 .placeOfSupplyStateCode(
                         invoice != null
                                 ? invoice.getPlaceOfSupplyStateCode()
+                                : estimate != null
+                                ? estimate.getPlaceOfSupplyStateCode()
                                 : null
                 )
+
+                /*
+                 * buyerGstin represents the GST number used by the Invoice.
+                 *
+                 * Before Invoice generation:
+                 * Current Company Unit GST number is returned.
+                 *
+                 * After Invoice generation:
+                 * Persisted Invoice GST snapshot is returned.
+                 */
                 .buyerGstin(
                         invoice != null
                                 ? invoice.getBuyerGstin()
+                                : estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getGstNo()
                                 : null
                 )
                 .sellerGstin(
@@ -1927,57 +2066,114 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 )
                 .cancelled(
                         invoice != null
-                                ? invoice.isCancelled()
-                                : false
+                                && invoice.isCancelled()
                 )
 
                 // =====================================================
                 // GST
                 // =====================================================
 
-                .gstRegistrationType(gstRegistrationType.name())
-                .gstApplicable(gstRegistrationType.isGstApplicable())
-                .zeroRatedSupply(gstRegistrationType.isZeroRated())
+                .gstRegistrationType(
+                        gstRegistrationType.name()
+                )
+                .gstApplicable(
+                        gstRegistrationType.isGstApplicable()
+                )
+                .zeroRatedSupply(
+                        gstRegistrationType.isZeroRated()
+                )
 
                 // =====================================================
-                // FINANCIALS
+                // INVOICE / ESTIMATE FINANCIALS
                 // =====================================================
 
-                .subTotalExGst(
+                .subTotalExGst(responseSubTotalExGst)
+                .totalGstAmount(responseTotalGstAmount)
+
+                .cgstAmount(responseCgstAmount)
+                .sgstAmount(responseSgstAmount)
+                .igstAmount(responseIgstAmount)
+
+                .invoiceGrandTotal(responseGrandTotal)
+
+                // =====================================================
+                // PAYMENT STATUS
+                // =====================================================
+
+                .invoicePaymentStatus(
                         invoice != null
-                                ? invoice.getSubTotalExGst()
+                                ? invoice.getPaymentStatus()
                                 : null
                 )
-                .totalGstAmount(
+                .receivedAmount(
                         invoice != null
-                                ? invoice.getTotalGstAmount()
+                                ? money(invoice.getReceivedAmount())
                                 : null
                 )
-                .cgstAmount(
+                .pendingReceivedAmount(
                         invoice != null
-                                ? invoice.getCgstAmount()
+                                ? money(invoice.getPendingReceivedAmount())
                                 : null
                 )
-                .sgstAmount(
+                .availableOutstandingAmount(
+                        availableOutstandingAmount
+                )
+                .outstandingAmount(
                         invoice != null
-                                ? invoice.getSgstAmount()
+                                ? money(invoice.getOutstandingAmount())
                                 : null
                 )
-                .igstAmount(
+
+                // =====================================================
+                // E-INVOICE
+                // =====================================================
+
+                .irn(
                         invoice != null
-                                ? invoice.getIgstAmount()
+                                ? invoice.getEInvoiceIrn()
                                 : null
                 )
-                .invoiceGrandTotal(
+                .eInvoiceAckNo(
                         invoice != null
-                                ? invoice.getGrandTotal()
+                                ? invoice.getEInvoiceAckNo()
+                                : null
+                )
+                .eInvoiceAckDate(
+                        invoice != null
+                                ? invoice.getEInvoiceAckDate()
+                                : null
+                )
+                .eInvoiceAttachmentUrl(
+                        invoice != null
+                                ? invoice.getEInvoiceAttachmentUrl()
+                                : null
+                )
+                .eInvoiceConfirmedAt(
+                        invoice != null
+                                ? invoice.getEInvoiceConfirmedAt()
+                                : null
+                )
+                .eInvoiceConfirmedByUserId(
+                        invoice != null
+                                && invoice.getEInvoiceConfirmedBy() != null
+                                ? invoice.getEInvoiceConfirmedBy().getId()
+                                : null
+                )
+                .eInvoiceConfirmedByName(
+                        invoice != null
+                                ? resolveUserName(
+                                invoice.getEInvoiceConfirmedBy()
+                        )
+                                : null
+                )
+                .eInvoiceRemarks(
+                        invoice != null
+                                ? invoice.getEInvoiceRemarks()
                                 : null
                 )
 
                 // =====================================================
                 // ORGANIZATION GENERAL DETAILS
-                // Prefer invoice snapshot after invoice generation.
-                // Otherwise use current organization configuration.
                 // =====================================================
 
                 .organizationName(
@@ -2081,7 +2277,6 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
                 // =====================================================
                 // ORGANIZATION BANK DETAILS
-                // Currently read from Organization master.
                 // =====================================================
 
                 .organizationBankAccountPresent(
@@ -2130,9 +2325,253 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 : null
                 )
 
+                // =====================================================
+                // INVOICE AUDIT
+                // =====================================================
+
+                .invoiceCreatedByUserId(
+                        invoice != null
+                                && invoice.getCreatedBy() != null
+                                ? invoice.getCreatedBy().getId()
+                                : null
+                )
+                .invoiceCreatedByName(
+                        invoice != null
+                                ? resolveUserName(invoice.getCreatedBy())
+                                : null
+                )
+                .invoiceCreatedAt(
+                        invoice != null
+                                ? invoice.getCreatedAt()
+                                : null
+                )
+                .invoiceUpdatedAt(
+                        invoice != null
+                                ? invoice.getUpdatedAt()
+                                : null
+                )
+
+                // =====================================================
+                // LINE ITEMS
+                // =====================================================
+
+                .lineItems(responseLineItems)
+
                 .message(message)
                 .build();
     }
+
+    /**
+     * Before Invoice generation, return Estimate line items.
+     * After Invoice generation, return the persisted Invoice line items.
+     */
+    private List<InvoiceDetailDto.LineItemDto> resolveResponseLineItems(
+            Invoice invoice,
+            Estimate estimate
+    ) {
+
+        if (invoice != null
+                && invoice.getLineItems() != null
+                && !invoice.getLineItems().isEmpty()) {
+
+            List<InvoiceDetailDto.LineItemDto> invoiceLineItems =
+                    new ArrayList<>();
+
+            for (InvoiceLineItem lineItem : invoice.getLineItems()) {
+
+                if (lineItem == null) {
+                    continue;
+                }
+
+                invoiceLineItems.add(
+                        mapInvoiceLineItemToResponse(lineItem)
+                );
+            }
+
+            sortResponseLineItems(invoiceLineItems);
+
+            return invoiceLineItems;
+        }
+
+        if (estimate != null
+                && estimate.getLineItems() != null
+                && !estimate.getLineItems().isEmpty()) {
+
+            List<InvoiceDetailDto.LineItemDto> estimateLineItems =
+                    new ArrayList<>();
+
+            for (EstimateLineItem lineItem : estimate.getLineItems()) {
+
+                if (lineItem == null) {
+                    continue;
+                }
+
+                estimateLineItems.add(
+                        mapEstimateLineItemToResponse(lineItem)
+                );
+            }
+
+            sortResponseLineItems(estimateLineItems);
+
+            return estimateLineItems;
+        }
+
+        return Collections.emptyList();
+    }
+
+    private InvoiceDetailDto.LineItemDto mapInvoiceLineItemToResponse(
+            InvoiceLineItem lineItem
+    ) {
+
+        InvoiceDetailDto.LineItemDto dto =
+                new InvoiceDetailDto.LineItemDto();
+
+        dto.setId(lineItem.getId());
+        dto.setSourceEstimateLineItemId(
+                lineItem.getSourceEstimateLineItemId()
+        );
+
+        dto.setItemName(lineItem.getItemName());
+        dto.setDescription(lineItem.getDescription());
+        dto.setHsnSacCode(lineItem.getHsnSacCode());
+        dto.setQuantity(lineItem.getQuantity());
+        dto.setUnit(lineItem.getUnit());
+
+        dto.setUnitPriceExGst(
+                money(lineItem.getUnitPriceExGst())
+        );
+        dto.setLineTotalExGst(
+                money(lineItem.getLineTotalExGst())
+        );
+        dto.setGstRate(
+                money(lineItem.getGstRate())
+        );
+        dto.setGstAmount(
+                money(lineItem.getGstAmount())
+        );
+        dto.setLineTotalWithGst(
+                money(lineItem.getLineTotalWithGst())
+        );
+
+        dto.setCgstAmount(
+                money(lineItem.getCgstAmount())
+        );
+        dto.setSgstAmount(
+                money(lineItem.getSgstAmount())
+        );
+        dto.setIgstAmount(
+                money(lineItem.getIgstAmount())
+        );
+
+        dto.setDisplayOrder(lineItem.getDisplayOrder());
+        dto.setCategoryCode(lineItem.getCategoryCode());
+        dto.setFeeType(lineItem.getFeeType());
+        dto.setIgstFlag(lineItem.isIgstFlag());
+
+        return dto;
+    }
+
+    private InvoiceDetailDto.LineItemDto mapEstimateLineItemToResponse(
+            EstimateLineItem lineItem
+    ) {
+
+        InvoiceDetailDto.LineItemDto dto =
+                new InvoiceDetailDto.LineItemDto();
+
+        BigDecimal gstAmount =
+                money(lineItem.getGstAmount());
+
+        boolean igstApplicable =
+                Boolean.TRUE.equals(
+                        lineItem.getIgstFlag()
+                );
+
+        BigDecimal cgstAmount = zeroMoney();
+        BigDecimal sgstAmount = zeroMoney();
+        BigDecimal igstAmount = zeroMoney();
+
+        if (gstAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            if (igstApplicable) {
+
+                igstAmount = gstAmount;
+
+            } else {
+
+                cgstAmount =
+                        gstAmount.divide(
+                                BigDecimal.valueOf(2),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+                sgstAmount =
+                        gstAmount
+                                .subtract(cgstAmount)
+                                .setScale(
+                                        2,
+                                        RoundingMode.HALF_UP
+                                );
+            }
+        }
+
+        /*
+         * There is no InvoiceLineItem ID while the request is PENDING.
+         * sourceEstimateLineItemId identifies the source Estimate line.
+         */
+        dto.setId(null);
+        dto.setSourceEstimateLineItemId(lineItem.getId());
+
+        dto.setItemName(lineItem.getItemName());
+        dto.setDescription(lineItem.getDescription());
+        dto.setHsnSacCode(lineItem.getHsnSacCode());
+        dto.setQuantity(lineItem.getQuantity());
+        dto.setUnit(lineItem.getUnit());
+
+        dto.setUnitPriceExGst(
+                money(lineItem.getUnitPriceExGst())
+        );
+        dto.setLineTotalExGst(
+                money(lineItem.getLineTotalExGst())
+        );
+        dto.setGstRate(
+                money(lineItem.getGstRate())
+        );
+        dto.setGstAmount(gstAmount);
+        dto.setLineTotalWithGst(
+                money(lineItem.getLineTotalWithGst())
+        );
+
+        dto.setCgstAmount(cgstAmount);
+        dto.setSgstAmount(sgstAmount);
+        dto.setIgstAmount(igstAmount);
+
+        dto.setDisplayOrder(lineItem.getDisplayOrder());
+        dto.setCategoryCode(lineItem.getCategoryCode());
+        dto.setFeeType(lineItem.getFeeType());
+        dto.setIgstFlag(igstApplicable);
+
+        return dto;
+    }
+
+    private void sortResponseLineItems(
+            List<InvoiceDetailDto.LineItemDto> lineItems
+    ) {
+
+        if (lineItems == null || lineItems.size() <= 1) {
+            return;
+        }
+
+        lineItems.sort(
+                Comparator.comparing(
+                        InvoiceDetailDto.LineItemDto::getDisplayOrder,
+                        Comparator.nullsLast(
+                                Comparator.naturalOrder()
+                        )
+                )
+        );
+    }
+
     private String resolveUserName(
             User user
     ) {
@@ -3266,6 +3705,187 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         );
 
         return ledgerCode;
+    }
+
+    @Override
+    @Transactional
+    public AdvanceTaxInvoiceResponseDto rejectRequest(
+            Long requestId,
+            AdvanceTaxInvoiceRejectionRequestDto requestDto
+    ) {
+
+        // =====================================================
+        // 1. VALIDATE REQUEST ID
+        // =====================================================
+
+        if (requestId == null || requestId <= 0) {
+            throw new ValidationException(
+                    "Valid requestId is required",
+                    "ERR_ADVANCE_REQUEST_ID_REQUIRED",
+                    "requestId"
+            );
+        }
+
+        // =====================================================
+        // 2. VALIDATE REQUEST BODY
+        // =====================================================
+
+        if (requestDto == null) {
+            throw new ValidationException(
+                    "Rejection request is required",
+                    "ERR_ADVANCE_REJECTION_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (requestDto.getRejectedByUserId() == null
+                || requestDto.getRejectedByUserId() <= 0) {
+
+            throw new ValidationException(
+                    "rejectedByUserId is required",
+                    "ERR_REJECTED_BY_USER_REQUIRED",
+                    "rejectedByUserId"
+            );
+        }
+
+        String rejectionReason =
+                clean(requestDto.getRejectionReason());
+
+        if (rejectionReason == null
+                || rejectionReason.isBlank()) {
+
+            throw new ValidationException(
+                    "Rejection reason is required",
+                    "ERR_ADVANCE_REJECTION_REASON_REQUIRED",
+                    "rejectionReason"
+            );
+        }
+
+        if (rejectionReason.length() > 1000) {
+            throw new ValidationException(
+                    "Rejection reason cannot exceed 1000 characters",
+                    "ERR_ADVANCE_REJECTION_REASON_TOO_LONG",
+                    "rejectionReason"
+            );
+        }
+
+        // =====================================================
+        // 3. FETCH AND LOCK REQUEST
+        // =====================================================
+
+        AdvanceTaxInvoiceRequest request =
+                advanceTaxInvoiceRequestRepository
+                        .findByIdForUpdate(requestId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Advance Tax Invoice request not found with ID: "
+                                                + requestId,
+                                        "ADVANCE_TAX_INVOICE_REQUEST_NOT_FOUND",
+                                        "AdvanceTaxInvoiceRequest",
+                                        requestId
+                                )
+                        );
+
+        // =====================================================
+        // 4. VALIDATE CURRENT STATUS
+        // =====================================================
+
+        if (request.getStatus()
+                != AdvanceTaxInvoiceRequestStatus.PENDING) {
+
+            throw new ValidationException(
+                    "Only PENDING Advance Tax Invoice requests can be rejected. "
+                            + "Current status: "
+                            + request.getStatus(),
+                    "ERR_ADVANCE_REQUEST_NOT_PENDING",
+                    "requestId"
+            );
+        }
+
+        /*
+         * Defensive validation.
+         *
+         * A PENDING request should not have an Invoice.
+         * Do not reject a request after Invoice generation.
+         */
+        if (request.getInvoice() != null) {
+            throw new ValidationException(
+                    "Advance Tax Invoice request cannot be rejected because "
+                            + "an Invoice has already been generated.",
+                    "ERR_ADVANCE_REJECTION_INVOICE_ALREADY_GENERATED",
+                    "requestId"
+            );
+        }
+
+        // =====================================================
+        // 5. AUTHORIZE REJECTING USER
+        // =====================================================
+
+        User rejectedBy =
+                getActiveUser(
+                        requestDto.getRejectedByUserId(),
+                        "rejectedByUserId"
+                );
+
+        /*
+         * Same authorization as approval:
+         * Accounts department or ADMIN role.
+         */
+        validateAccountsOrAdmin(rejectedBy);
+
+        // =====================================================
+        // 6. REJECT REQUEST
+        // =====================================================
+
+        request.setStatus(
+                AdvanceTaxInvoiceRequestStatus.REJECTED
+        );
+
+        /*
+         * approvedAmount remains null because no amount was approved.
+         */
+        request.setApprovedAmount(null);
+
+        request.setReviewedBy(rejectedBy);
+        request.setReviewedAt(LocalDateTime.now());
+        request.setReviewRemarks(rejectionReason);
+
+        AdvanceTaxInvoiceRequest savedRequest =
+                advanceTaxInvoiceRequestRepository
+                        .saveAndFlush(request);
+
+        // =====================================================
+        // 7. LOG REJECTION
+        // =====================================================
+
+        log.info(
+                "Advance Tax Invoice request rejected "
+                        + "| requestId={} "
+                        + "| estimateId={} "
+                        + "| estimateNumber={} "
+                        + "| requestedAmount={} "
+                        + "| rejectedByUserId={} "
+                        + "| rejectionReason={}",
+                savedRequest.getId(),
+                savedRequest.getEstimate() != null
+                        ? savedRequest.getEstimate().getId()
+                        : null,
+                savedRequest.getEstimate() != null
+                        ? savedRequest.getEstimate().getEstimateNumber()
+                        : null,
+                savedRequest.getRequestedAmount(),
+                rejectedBy.getId(),
+                rejectionReason
+        );
+
+        // =====================================================
+        // 8. RESPONSE
+        // =====================================================
+
+        return mapToResponse(
+                savedRequest,
+                "Advance Tax Invoice request rejected successfully."
+        );
     }
 
 
