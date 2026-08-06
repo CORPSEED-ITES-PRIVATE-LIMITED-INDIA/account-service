@@ -48,7 +48,7 @@ public class AccountVendorSyncResponseDto {
     private Long inputIgstLedgerId;
     private Long tdsPayableLedgerId;
 
-    /* Legacy fields: PURCHASE_INVOICE voucher. */
+    /* PURCHASE_INVOICE voucher. */
     private Boolean voucherCreated;
     private Long voucherId;
     private String voucherNumber;
