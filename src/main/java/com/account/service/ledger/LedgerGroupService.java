@@ -6,6 +6,7 @@ import com.account.dto.ledger.LedgerGroupResponseDto;
 import org.springframework.data.domain.Page;
 
 import java.util.List;
+import java.util.Map;
 
 public interface LedgerGroupService {
 
@@ -26,4 +27,6 @@ public interface LedgerGroupService {
     List<LedgerGroupResponseDto> getActiveLedgerGroups();
 
     void deleteLedgerGroup(Long id);
+
+    Map<String, Object> getLedgerGroupTypeByGroupId(Long id);
 }
