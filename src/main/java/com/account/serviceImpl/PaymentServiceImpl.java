@@ -1,5 +1,6 @@
 package com.account.serviceImpl;
 
+import com.account.domain.invoice.*;
 import jakarta.annotation.PostConstruct;
 import com.account.domain.*;
 import com.account.domain.company.Company;
@@ -7,9 +8,6 @@ import com.account.domain.company.CompanyUnit;
 import com.account.domain.company.GstRegistrationType;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.estimate.EstimateStatus;
-import com.account.domain.invoice.Invoice;
-import com.account.domain.invoice.InvoiceOrigin;
-import com.account.domain.invoice.InvoicePaymentStatus;
 import com.account.domain.ledger.*;
 import com.account.domain.status.*;
 import com.account.domain.unbilled.UnbilledInvoice;
@@ -46,6 +44,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -84,6 +83,9 @@ public class PaymentServiceImpl implements PaymentService {
     private final LedgerGroupRepository ledgerGroupRepository;
     private final PaymentLegalVerificationService paymentLegalVerificationService;
     private final OrganizationRepository organizationRepository;
+    private final AdvanceTaxInvoiceRequestRepository
+            advanceTaxInvoiceRequestRepository;
+
 
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
@@ -102,7 +104,8 @@ public class PaymentServiceImpl implements PaymentService {
             AccountingVoucherService accountingVoucherService,
             LedgerGroupRepository ledgerGroupRepository,
             PaymentLegalVerificationService paymentLegalVerificationService,
-            OrganizationRepository  organizationRepository
+            OrganizationRepository  organizationRepository,
+            AdvanceTaxInvoiceRequestRepository advanceTaxInvoiceRequestRepository
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -121,6 +124,8 @@ public class PaymentServiceImpl implements PaymentService {
         this.ledgerGroupRepository = ledgerGroupRepository;
         this.paymentLegalVerificationService = paymentLegalVerificationService;
         this.organizationRepository =  organizationRepository;
+        this.advanceTaxInvoiceRequestRepository =
+                advanceTaxInvoiceRequestRepository;
     }
 
     @PostConstruct
@@ -406,6 +411,15 @@ public class PaymentServiceImpl implements PaymentService {
         boolean isZeroAmountPurchaseOrder =
                 isPurchaseOrder
                         && reqAmount.compareTo(BigDecimal.ZERO) == 0;
+
+        // =====================================================
+        // ADVANCE TAX INVOICE APPROVAL GATE
+        // =====================================================
+
+        validateAdvanceTaxInvoiceApprovedBeforePayment(
+                estimate,
+                isZeroAmountPurchaseOrder
+        );
 
         if (!isPurchaseOrder
                 && reqAmount.compareTo(BigDecimal.ZERO) == 0) {
@@ -1634,603 +1648,8 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
 
-    /**
-     * Registers a PENDING PaymentReceipt against an already-generated
-     * Advance Tax Invoice.
-     *
-     * This method intentionally does not:
-     * - create an UnbilledInvoice
-     * - generate another Invoice
-     * - post a Receipt voucher
-     * - update receivedAmount
-     *
-     * Receipt voucher and receivedAmount are handled only after Accounts approval.
-     */
-    private PaymentRegistrationResponseDto registerPaymentAgainstAdvanceInvoice(
-            PaymentRegistrationRequestDto request,
-            Estimate estimate,
-            Invoice invoice,
-            User salesperson,
-            PaymentType paymentType,
-            LedgerMaster bankLedger,
-            BigDecimal requestBankAmount,
-            boolean isPurchaseOrder
-    ) {
 
-        /*
-         * IMPORTANT:
-         * invoice must be selected using a PESSIMISTIC_WRITE repository query.
-         * The Estimate should also be locked to prevent concurrent overpayment
-         * registrations against different invoices of the same Estimate.
-         */
 
-        if (estimate == null || estimate.getId() == null) {
-            throw new ValidationException(
-                    "Estimate is required for payment registration",
-                    "ERR_ESTIMATE_REQUIRED",
-                    "estimateId"
-            );
-        }
-
-        if (invoice == null || invoice.getId() == null) {
-            throw new ValidationException(
-                    "Advance Tax Invoice is required for payment registration",
-                    "ERR_ADVANCE_INVOICE_REQUIRED",
-                    "estimateId"
-            );
-        }
-
-        if (invoice.getInvoiceOrigin() != InvoiceOrigin.ADVANCE_TAX_INVOICE) {
-            throw new ValidationException(
-                    "Selected Invoice is not an Advance Tax Invoice",
-                    "ERR_INVALID_ADVANCE_INVOICE_ORIGIN",
-                    "invoiceId"
-            );
-        }
-
-        if (invoice.isCancelled()) {
-            throw new ValidationException(
-                    "Payment cannot be registered against a cancelled Invoice",
-                    "ERR_PAYMENT_ON_CANCELLED_ADVANCE_INVOICE",
-                    "invoiceId"
-            );
-        }
-
-        if (invoice.getPaymentStatus() == InvoicePaymentStatus.PAID) {
-            throw new ValidationException(
-                    "Advance Tax Invoice is already fully paid",
-                    "ERR_ADVANCE_INVOICE_ALREADY_PAID",
-                    "invoiceId"
-            );
-        }
-
-        if (invoice.getEstimate() == null
-                || invoice.getEstimate().getId() == null
-                || !Objects.equals(
-                invoice.getEstimate().getId(),
-                estimate.getId()
-        )) {
-
-            throw new ValidationException(
-                    "Advance Tax Invoice is not linked with the requested Estimate",
-                    "ERR_ADVANCE_INVOICE_ESTIMATE_MISMATCH",
-                    "estimateId"
-            );
-        }
-
-        /*
-         * Purchase Order is currently an UnbilledInvoice-based flow.
-         * Only actual customer receipts can be registered here.
-         */
-        if (Boolean.TRUE.equals(request.getGovernmentFeeActive())
-                || request.getGovernmentFee() != null) {
-
-            throw new ValidationException(
-                    "Government fee registration is not supported against an Advance Tax Invoice payment",
-                    "ERR_GOV_FEE_NOT_SUPPORTED_FOR_ADVANCE_INVOICE",
-                    "governmentFeeActive"
-            );
-        }
-
-        BigDecimal bankAmount = safe3(requestBankAmount);
-
-        if (bankAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException(
-                    "Payment amount must be greater than zero for an Advance Tax Invoice",
-                    "ERR_ADVANCE_INVOICE_PAYMENT_AMOUNT_INVALID",
-                    "amount"
-            );
-        }
-
-        if (request.getPaymentDate() == null) {
-            throw new ValidationException(
-                    "Payment date is required for an Advance Tax Invoice payment",
-                    "ERR_PAYMENT_DATE_REQUIRED",
-                    "paymentDate"
-            );
-        }
-
-        if (paymentType == null || paymentType.getCode() == null) {
-            throw new ValidationException(
-                    "Payment type is required",
-                    "ERR_PAYMENT_TYPE_REQUIRED",
-                    "paymentTypeId"
-            );
-        }
-
-        /*
-         * Prevent payment-type change after the first receipt against
-         * the Advance Tax Invoice.
-         */
-        paymentReceiptRepository
-                .findTopByInvoiceAndIsCancelledFalseOrderByIdAsc(invoice)
-                .ifPresent(firstReceipt -> {
-
-                    String firstCode =
-                            firstReceipt.getPaymentType() != null
-                                    && firstReceipt.getPaymentType().getCode() != null
-                                    ? firstReceipt.getPaymentType()
-                                    .getCode()
-                                    .trim()
-                                    .toUpperCase()
-                                    : "";
-
-                    String newCode =
-                            paymentType.getCode()
-                                    .trim()
-                                    .toUpperCase();
-
-                    if (!firstCode.equals(newCode)) {
-                        throw new ValidationException(
-                                "Payment type cannot be changed after the first payment against this Advance Tax Invoice. "
-                                        + "First payment type: " + firstCode,
-                                "ERR_ADVANCE_INVOICE_PAYMENT_TYPE_CHANGE_NOT_ALLOWED",
-                                "paymentTypeId"
-                        );
-                    }
-                });
-
-        /*
-         * TDS is calculated against the Advance Invoice.
-         */
-        BigDecimal tdsAmount = wholeTds(
-                calculateAdvanceInvoiceTdsAmountIfRequired(
-                        request,
-                        invoice
-                )
-        );
-
-        BigDecimal settlementAmount = bankAmount
-                .add(tdsAmount)
-                .setScale(3, RoundingMode.HALF_UP);
-
-        /*
-         * ------------------------------------------------------------
-         * STEP 1: Calculate the Advance Invoice's available outstanding.
-         * ------------------------------------------------------------
-         *
-         * Example:
-         *
-         * Invoice total                = 2,500
-         * Pending registered payment   = 0
-         * Available Invoice amount     = 2,500
-         */
-        BigDecimal invoiceOutstanding =
-                safe3(invoice.getOutstandingAmount());
-
-        BigDecimal invoicePendingReceived =
-                safe3(invoice.getPendingReceivedAmount());
-
-        BigDecimal invoiceAvailableAmount =
-                invoiceOutstanding
-                        .subtract(invoicePendingReceived)
-                        .max(BigDecimal.ZERO)
-                        .setScale(3, RoundingMode.HALF_UP);
-
-        if (invoiceAvailableAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException(
-                    "No available outstanding amount remains on Advance Tax Invoice "
-                            + invoice.getInvoiceNumber()
-                            + ". Existing pending payments have reserved its outstanding balance.",
-                    "ERR_NO_AVAILABLE_ADVANCE_INVOICE_OUTSTANDING",
-                    "amount"
-            );
-        }
-
-        /*
-         * ------------------------------------------------------------
-         * STEP 2: Calculate Estimate-level payment availability.
-         * ------------------------------------------------------------
-         *
-         * The complete payment is checked against the Estimate balance,
-         * not against only this Advance Tax Invoice.
-         *
-         * Example:
-         *
-         * Estimate total               = 5,000
-         * Previous registered payments = 0
-         * Estimate available           = 5,000
-         * Current receipt              = 5,000
-         *
-         * Therefore the receipt is allowed.
-         */
-        BigDecimal estimateAvailableAmount =
-                calculateEstimateAvailableSettlement(
-                        estimate
-                );
-
-        if (estimateAvailableAmount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException(
-                    "No payment amount remains available against Estimate "
-                            + estimate.getId(),
-                    "ERR_NO_ESTIMATE_PAYMENT_BALANCE",
-                    "amount"
-            );
-        }
-
-        if (settlementAmount.compareTo(estimateAvailableAmount) > 0) {
-            throw new ValidationException(
-                    "Payment settlement exceeds the available Estimate balance. "
-                            + "Bank amount: ₹" + bankAmount
-                            + ", TDS amount: ₹" + tdsAmount
-                            + ", settlement amount: ₹" + settlementAmount
-                            + ", Estimate available amount: ₹"
-                            + estimateAvailableAmount,
-                    "ERR_PAYMENT_EXCEEDS_ESTIMATE_AVAILABLE_BALANCE",
-                    "amount"
-            );
-        }
-
-        validateAdvanceInvoiceReceiptPaymentType(
-                paymentType,
-                settlementAmount,
-                invoiceAvailableAmount
-        );
-
-        /*
-         * ------------------------------------------------------------
-         * STEP 3: Allocate the receipt.
-         * ------------------------------------------------------------
-         *
-         * Only the amount required by this Invoice is allocated.
-         * The remaining amount becomes customer advance/unallocated.
-         *
-         * Example:
-         *
-         * Receipt settlement       = 5,000
-         * Invoice available        = 2,500
-         *
-         * Allocated to Invoice     = 2,500
-         * Unallocated advance      = 2,500
-         */
-        BigDecimal allocatedAmount =
-                settlementAmount.setScale(3, RoundingMode.HALF_UP);
-
-        BigDecimal unallocatedAmount =
-                BigDecimal.ZERO.setScale(3, RoundingMode.HALF_UP);
-
-        /*
-         * TDS must be associated with an Invoice settlement.
-         * It should not become an unapplied customer advance.
-         */
-        if (tdsAmount.compareTo(allocatedAmount) > 0) {
-            throw new ValidationException(
-                    "TDS amount cannot exceed the amount allocated to the Advance Tax Invoice. "
-                            + "TDS amount: ₹" + tdsAmount
-                            + ", Invoice allocated amount: ₹" + allocatedAmount,
-                    "ERR_TDS_EXCEEDS_INVOICE_ALLOCATION",
-                    "tds"
-            );
-        }
-
-        /*
-         * Bank allocation is whatever remains after allocating the full TDS.
-         *
-         * Example:
-         *
-         * Allocated total = 2,500
-         * TDS             = 250
-         * Allocated bank  = 2,250
-         */
-        BigDecimal allocatedBankAmount =
-                allocatedAmount
-                        .subtract(tdsAmount)
-                        .max(BigDecimal.ZERO)
-                        .setScale(3, RoundingMode.HALF_UP);
-
-        BigDecimal unallocatedBankAmount =
-                bankAmount
-                        .subtract(allocatedBankAmount)
-                        .max(BigDecimal.ZERO)
-                        .setScale(3, RoundingMode.HALF_UP);
-
-        /*
-         * Defensive validation:
-         *
-         * Unallocated settlement should consist only of actual Bank/Cash
-         * receipt because TDS cannot be maintained as a customer advance.
-         */
-        if (unallocatedAmount.compareTo(unallocatedBankAmount) != 0) {
-            throw new ValidationException(
-                    "Invalid payment allocation. TDS cannot remain unallocated.",
-                    "ERR_INVALID_ADVANCE_PAYMENT_ALLOCATION",
-                    "amount"
-            );
-        }
-
-        PaymentReceipt receipt = new PaymentReceipt();
-
-        receipt.setUnbilledInvoice(null);
-        receipt.setInvoice(invoice);
-        receipt.setPaymentType(paymentType);
-
-        /*
-         * amount stores the complete actual Bank/Cash amount received,
-         * not only the portion allocated to the Invoice.
-         */
-        receipt.setAmount(bankAmount);
-
-        /*
-         * These fields must be added to PaymentReceipt.
-         */
-        receipt.setAllocatedAmount(allocatedAmount);
-        receipt.setUnallocatedAmount(unallocatedAmount);
-
-        receipt.setPaymentDate(request.getPaymentDate());
-        receipt.setPaymentMode(request.getPaymentMode());
-        receipt.setTransactionReference(
-                request.getTransactionReference()
-        );
-        receipt.setRemarks(request.getRemarks());
-        receipt.setReceivedBy(salesperson);
-        receipt.setPaymentProof(request.getPaymentProof());
-        receipt.setPaymentTermsDays(
-                request.getPaymentTermsDays()
-        );
-        receipt.setPoNumber(request.getPoNumber());
-        receipt.setPoAttachmentUrl(
-                request.getPoAttachmentUrl()
-        );
-
-        if (request.getPaymentTermsDays() != null
-                && request.getPaymentTermsDays() > 0) {
-
-            receipt.setPaymentTerms(
-                    "Net "
-                            + request.getPaymentTermsDays()
-                            + " Days"
-            );
-
-        } else {
-            receipt.setPaymentTerms(
-                    request.getPaymentTerms()
-            );
-        }
-
-        receipt.setBankLedger(bankLedger);
-        receipt.setEprFinancialYear(
-                request.getEprFinancialYear()
-        );
-        receipt.setEprPortalRegistrationNumber(
-                request.getEprPortalRegistrationNumber()
-        );
-        receipt.setEprCertificateOrInvoiceNumber(
-                request.getEprCertificateOrInvoiceNumber()
-        );
-        receipt.setStatus(PaymentStatus.PENDING);
-
-        receipt = paymentReceiptRepository.save(receipt);
-
-        /*
-         * Create TDS against this Invoice and receipt.
-         *
-         * The complete TDS is allocated because TDS cannot remain
-         * as an unapplied customer advance.
-         */
-        createAdvanceInvoiceTdsIfRequired(
-                request,
-                estimate,
-                invoice,
-                receipt,
-                salesperson,
-                tdsAmount
-        );
-
-        /*
-         * Reserve only the amount allocated to the Advance Invoice.
-         *
-         * Do not reserve the complete settlement.
-         *
-         * Example:
-         *
-         * Receipt                  = 5,000
-         * Advance Invoice pending  = 2,500
-         * Unallocated advance      = 2,500
-         */
-        invoice.setPendingReceivedAmount(
-                invoicePendingReceived
-                        .add(allocatedAmount)
-                        .setScale(3, RoundingMode.HALF_UP)
-        );
-
-        /*
-         * receivedAmount and outstandingAmount are changed only when
-         * Accounts approves this receipt.
-         */
-        invoiceRepository.save(invoice);
-
-        pushAdvanceInvoicePaymentRegisteredNotificationToAccountUsers(
-                invoice,
-                receipt,
-                estimate,
-                salesperson,
-                settlementAmount
-        );
-
-        PaymentRegistrationResponseDto response =
-                new PaymentRegistrationResponseDto();
-
-        response.setPaymentReceiptId(receipt.getId());
-        response.setUnbilledNumber(null);
-        response.setUnbilledStatus(null);
-
-        StringBuilder message = new StringBuilder();
-
-        message.append("Payment of ₹")
-                .append(bankAmount);
-
-        if (tdsAmount.compareTo(BigDecimal.ZERO) > 0) {
-            message.append(" with TDS of ₹")
-                    .append(tdsAmount);
-        }
-
-        message.append(" registered against Advance Tax Invoice ")
-                .append(invoice.getInvoiceNumber())
-                .append(". Settlement amount ₹")
-                .append(settlementAmount)
-                .append(" is awaiting Accounts approval. ")
-                .append("₹")
-                .append(allocatedAmount)
-                .append(" has been allocated to the Advance Tax Invoice.");
-
-        if (unallocatedAmount.compareTo(BigDecimal.ZERO) > 0) {
-            message.append(" Remaining ₹")
-                    .append(unallocatedAmount)
-                    .append(" will remain as an unapplied customer advance.");
-        }
-
-        message.append(
-                " No Unbilled Invoice or new Tax Invoice was created."
-        );
-
-        response.setMessage(message.toString());
-
-        log.info(
-                "Advance Invoice payment registered | "
-                        + "estimateId={} | invoiceId={} | invoiceNumber={} "
-                        + "| receiptId={} | bankAmount={} | tdsAmount={} "
-                        + "| settlementAmount={} | allocatedAmount={} "
-                        + "| unallocatedAmount={} | invoiceAvailableBefore={} "
-                        + "| estimateAvailableBefore={} | invoicePendingAfter={}",
-                estimate.getId(),
-                invoice.getId(),
-                invoice.getInvoiceNumber(),
-                receipt.getId(),
-                bankAmount,
-                tdsAmount,
-                settlementAmount,
-                allocatedAmount,
-                unallocatedAmount,
-                invoiceAvailableAmount,
-                estimateAvailableAmount,
-                invoice.getPendingReceivedAmount()
-        );
-
-        return response;
-    }
-
-
-    private void validateAdvanceInvoiceReceiptPaymentType(
-            PaymentType paymentType,
-            BigDecimal settlementAmount,
-            BigDecimal availableOutstanding
-    ) {
-        if (paymentType == null || paymentType.getCode() == null) {
-            throw new ValidationException(
-                    "Payment type is required",
-                    "ERR_PAYMENT_TYPE_REQUIRED",
-                    "paymentTypeId"
-            );
-        }
-
-        String code = paymentType.getCode().trim().toUpperCase(Locale.ROOT);
-        BigDecimal settlement = safe3(settlementAmount);
-        BigDecimal outstanding = safe3(availableOutstanding);
-
-        if (settlement.compareTo(BigDecimal.ZERO) <= 0
-                || settlement.compareTo(outstanding) > 0) {
-            throw new ValidationException(
-                    "Settlement must be positive and cannot exceed available outstanding",
-                    "ERR_ADVANCE_INVOICE_SETTLEMENT_INVALID",
-                    "amount"
-            );
-        }
-
-        switch (code) {
-            case "FULL", "PURCHASE_ORDER" -> {
-                if (settlement.compareTo(outstanding) != 0) {
-                    throw new ValidationException(
-                            code + " payment must fully settle available outstanding Rs. "
-                                    + outstanding,
-                            "FULL".equals(code)
-                                    ? "ERR_FULL_PAYMENT_AMOUNT_MISMATCH"
-                                    : "ERR_PURCHASE_ORDER_AMOUNT_MISMATCH",
-                            "amount"
-                    );
-                }
-            }
-            case "PARTIAL", "INSTALLMENT" -> {
-                // Any positive whole-rupee settlement up to outstanding is allowed.
-            }
-            default -> throw new ValidationException(
-                    "Unsupported payment type for Advance Tax Invoice payment: " + code,
-                    "ERR_UNSUPPORTED_ADVANCE_INVOICE_PAYMENT_TYPE",
-                    "paymentTypeId"
-            );
-        }
-    }
-
-    private BigDecimal calculateEstimateAvailableSettlement(
-            Estimate estimate
-    ) {
-
-        if (estimate == null || estimate.getId() == null) {
-            throw new ValidationException(
-                    "Estimate is required",
-                    "ERR_ESTIMATE_REQUIRED",
-                    "estimateId"
-            );
-        }
-
-
-
-        BigDecimal estimateGrandTotal =
-                wholeAs3(estimate.getGrandTotal());
-
-        BigDecimal registeredBankAmount =
-                safe3(
-                        paymentReceiptRepository
-                                .sumRegisteredBankAmountForEstimate(
-                                        estimate.getId(),
-                                        List.of(
-                                                PaymentStatus.PENDING,
-                                                PaymentStatus.APPROVED
-                                        )
-                                )
-                );
-
-        BigDecimal registeredTdsAmount =
-                wholeTds(
-                        tdsRegistrationRepository
-                                .sumRegisteredTdsAmountForEstimate(
-                                        estimate.getId(),
-                                        List.of(
-                                                TdsStatus.PENDING,
-                                                TdsStatus.APPROVED
-                                        )
-                                )
-                );
-
-        BigDecimal registeredSettlement =
-                registeredBankAmount
-                        .add(registeredTdsAmount)
-                        .setScale(3, RoundingMode.HALF_UP);
-
-        return estimateGrandTotal
-                .subtract(registeredSettlement)
-                .max(BigDecimal.ZERO)
-                .setScale(3, RoundingMode.HALF_UP);
-    }
 
 
     private BigDecimal getTotalActiveTdsAmountForInvoice(Invoice invoice) {
@@ -4473,13 +3892,13 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         BigDecimal eligible = safe3(selectedAmount);
-        if (eligible.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ValidationException(
-                    "Selected milestone/installment amount is required for INSTALLMENT payment",
-                    "ERR_INSTALLMENT_ELIGIBLE_AMOUNT_REQUIRED",
-                    "installmentAmount"
-            );
-        }
+//        if (eligible.compareTo(BigDecimal.ZERO) <= 0) {
+//            throw new ValidationException(
+//                    "Selected milestone/installment amount is required for INSTALLMENT payment",
+//                    "ERR_INSTALLMENT_ELIGIBLE_AMOUNT_REQUIRED",
+//                    "installmentAmount"
+//            );
+//        }
 
         BigDecimal safeOutstanding = safe3(outstanding);
         if (eligible.compareTo(safeOutstanding) > 0) {
@@ -8374,6 +7793,117 @@ public class PaymentServiceImpl implements PaymentService {
                 this.gst = gst;
                 this.tds = tds;
             }
+        }
+    }
+
+    private void validateAdvanceTaxInvoiceApprovedBeforePayment(
+            Estimate estimate,
+            boolean zeroAmountPurchaseOrder
+    ) {
+
+        /*
+         * The initial zero-value PURCHASE_ORDER must be allowed because it is
+         * registered before the completed-project Advance Tax Invoice flow.
+         */
+        if (zeroAmountPurchaseOrder) {
+            return;
+        }
+
+        if (estimate == null || estimate.getId() == null) {
+            throw new ValidationException(
+                    "Estimate is required to validate Advance Tax Invoice approval",
+                    "ERR_ESTIMATE_REQUIRED_FOR_ADVANCE_INVOICE_VALIDATION",
+                    "estimateId"
+            );
+        }
+
+        Optional<AdvanceTaxInvoiceRequest> latestRequestOptional =
+                advanceTaxInvoiceRequestRepository
+                        .findLatestByEstimateForPaymentValidation(
+                                estimate.getId()
+                        );
+
+        /*
+         * No ATI request means this Estimate is still following the normal
+         * payment-first workflow. Therefore, payment may continue.
+         */
+        if (latestRequestOptional.isEmpty()) {
+            return;
+        }
+
+        AdvanceTaxInvoiceRequest advanceRequest =
+                latestRequestOptional.get();
+
+        AdvanceTaxInvoiceRequestStatus status =
+                advanceRequest.getStatus();
+
+        if (status != AdvanceTaxInvoiceRequestStatus.APPROVED) {
+
+            String message;
+
+            if (status == AdvanceTaxInvoiceRequestStatus.PENDING) {
+                message =
+                        "Payment cannot be registered because the Advance Tax "
+                                + "Invoice request is awaiting Accounts approval.";
+            } else if (status == AdvanceTaxInvoiceRequestStatus.REJECTED) {
+                message =
+                        "Payment cannot be registered because the Advance Tax "
+                                + "Invoice request was rejected. Raise a new request "
+                                + "and obtain Accounts approval first.";
+            } else if (status == AdvanceTaxInvoiceRequestStatus.CANCELLED) {
+                message =
+                        "Payment cannot be registered because the Advance Tax "
+                                + "Invoice request was cancelled. Raise a new request "
+                                + "and obtain Accounts approval first.";
+            } else {
+                message =
+                        "Payment cannot be registered until the Advance Tax "
+                                + "Invoice request is approved by Accounts.";
+            }
+
+            throw new ValidationException(
+                    message,
+                    "ERR_ADVANCE_INVOICE_NOT_APPROVED_FOR_PAYMENT",
+                    "estimateId"
+            );
+        }
+
+        /*
+         * APPROVED status must always have a generated Invoice.
+         * This catches incomplete or inconsistent approval transactions.
+         */
+        Invoice generatedInvoice =
+                advanceRequest.getInvoice();
+
+        if (generatedInvoice == null
+                || generatedInvoice.getId() == null) {
+
+            throw new ValidationException(
+                    "The Advance Tax Invoice request is approved, but the Invoice "
+                            + "has not been generated. Payment registration is blocked.",
+                    "ERR_APPROVED_ADVANCE_REQUEST_INVOICE_NOT_GENERATED",
+                    "estimateId"
+            );
+        }
+
+        if (generatedInvoice.isCancelled()) {
+            throw new ValidationException(
+                    "Payment cannot be registered because the generated Advance "
+                            + "Tax Invoice is cancelled.",
+                    "ERR_PAYMENT_ON_CANCELLED_ADVANCE_INVOICE",
+                    "estimateId"
+            );
+        }
+
+        if (generatedInvoice.getInvoiceOrigin()
+                != InvoiceOrigin.ADVANCE_TAX_INVOICE) {
+
+            throw new ValidationException(
+                    "The Invoice generated from the approved request is not an "
+                            + "Advance Tax Invoice.",
+                    "ERR_INVALID_ADVANCE_INVOICE_ORIGIN",
+                    "estimateId"
+            );
         }
     }
 

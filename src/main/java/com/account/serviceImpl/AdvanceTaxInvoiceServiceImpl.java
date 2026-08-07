@@ -58,6 +58,13 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
     private static final BigDecimal MINIMUM_REQUEST_PERCENTAGE =
             new BigDecimal("0.25");
 
+    /**
+     * Only normal paise-level differences are corrected while posting the
+     * accounting voucher. Larger differences indicate inconsistent invoice data.
+     */
+    private static final BigDecimal MAX_VOUCHER_ROUNDING_DIFFERENCE =
+            new BigDecimal("0.05");
+
     private final AdvanceTaxInvoiceRequestRepository
             advanceTaxInvoiceRequestRepository;
 
@@ -3104,110 +3111,271 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             Estimate estimate,
             User confirmedBy
     ) {
-        if (accountingVoucherService.existsPostedVoucher(
-                VoucherType.SALES_INVOICE,
-                VoucherSourceType.INVOICE,
-                invoice.getId()
-        )) {
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+        if (invoice == null || invoice.getId() == null) {
+            throw new ValidationException(
+                    "Invoice is required for Sales Voucher posting",
+                    "ERR_INVOICE_REQUIRED_FOR_VOUCHER",
+                    "invoiceId"
+            );
+        }
+
+        if (estimate == null || estimate.getId() == null) {
+            throw new ValidationException(
+                    "Estimate is required for Sales Voucher posting",
+                    "ERR_ESTIMATE_REQUIRED_FOR_VOUCHER",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 2. IDEMPOTENCY CHECK
+        // =====================================================
+        boolean voucherAlreadyPosted =
+                accountingVoucherService.existsPostedVoucher(
+                        VoucherType.SALES_INVOICE,
+                        VoucherSourceType.INVOICE,
+                        invoice.getId()
+                );
+
+        if (voucherAlreadyPosted) {
             log.info(
-                    "Advance Invoice Sales Voucher already exists | invoiceId={}",
-                    invoice.getId()
+                    "Advance Invoice Sales Voucher already exists "
+                            + "| invoiceId={} | invoiceNumber={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber()
             );
             return;
         }
 
         try {
+            // =====================================================
+            // 3. RESOLVE CUSTOMER AND INCOME LEDGERS
+            // =====================================================
             LedgerMaster customerLedger =
-                    getOrCreateCustomerLedgerFromEstimate(estimate, confirmedBy);
+                    getOrCreateCustomerLedgerFromEstimate(
+                            estimate,
+                            confirmedBy
+                    );
 
-            LedgerMaster serviceIncomeLedger = getOrCreateSystemLedger(
-                    LedgerType.SERVICE_INCOME,
-                    LedgerGroupType.SALES_ACCOUNTS,
-                    "Service Income",
-                    DebitCredit.CREDIT,
-                    confirmedBy
+            LedgerMaster serviceIncomeLedger =
+                    getOrCreateSystemLedger(
+                            LedgerType.SERVICE_INCOME,
+                            LedgerGroupType.SALES_ACCOUNTS,
+                            "Service Income",
+                            DebitCredit.CREDIT,
+                            confirmedBy
+                    );
+
+            // =====================================================
+            // 4. CALCULATE BALANCED ACCOUNTING AMOUNTS
+            // =====================================================
+            BalancedSalesVoucherAmounts amounts =
+                    calculateBalancedSalesVoucherAmounts(invoice);
+
+            List<AccountingVoucherEntryRequestDto> entries =
+                    new ArrayList<>();
+
+            // Customer / Sundry Debtor Dr.
+            entries.add(
+                    buildVoucherEntry(
+                            customerLedger.getId(),
+                            amounts.grandTotal(),
+                            BigDecimal.ZERO,
+                            "Customer receivable for Advance Tax Invoice "
+                                    + invoice.getInvoiceNumber()
+                    )
             );
 
-            BigDecimal grandTotal = money(invoice.getGrandTotal());
-            BigDecimal taxable = money(invoice.getSubTotalExGst());
-            BigDecimal cgst = money(invoice.getCgstAmount());
-            BigDecimal sgst = money(invoice.getSgstAmount());
-            BigDecimal igst = money(invoice.getIgstAmount());
+            // Service Income Cr.
+            if (amounts.taxableAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
 
-            List<AccountingVoucherEntryRequestDto> entries = new ArrayList<>();
-
-            entries.add(buildVoucherEntry(
-                    customerLedger.getId(),
-                    grandTotal,
-                    BigDecimal.ZERO,
-                    "Customer receivable for Advance Tax Invoice "
-                            + invoice.getInvoiceNumber()
-            ));
-
-            entries.add(buildVoucherEntry(
-                    serviceIncomeLedger.getId(),
-                    BigDecimal.ZERO,
-                    taxable,
-                    "Service income for Advance Tax Invoice "
-                            + invoice.getInvoiceNumber()
-            ));
-
-            if (cgst.compareTo(BigDecimal.ZERO) > 0) {
-                LedgerMaster ledger = getOrCreateSystemLedger(
-                        LedgerType.OUTPUT_CGST,
-                        LedgerGroupType.DUTIES_AND_TAXES,
-                        "Output CGST",
-                        DebitCredit.CREDIT,
-                        confirmedBy
+                entries.add(
+                        buildVoucherEntry(
+                                serviceIncomeLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.taxableAmount(),
+                                "Service income for Advance Tax Invoice "
+                                        + invoice.getInvoiceNumber()
+                        )
                 );
-                entries.add(buildVoucherEntry(
-                        ledger.getId(),
-                        BigDecimal.ZERO,
-                        cgst,
-                        "Output CGST for " + invoice.getInvoiceNumber()
-                ));
             }
 
-            if (sgst.compareTo(BigDecimal.ZERO) > 0) {
-                LedgerMaster ledger = getOrCreateSystemLedger(
-                        LedgerType.OUTPUT_SGST,
-                        LedgerGroupType.DUTIES_AND_TAXES,
-                        "Output SGST",
-                        DebitCredit.CREDIT,
-                        confirmedBy
+            // Output CGST Cr.
+            if (amounts.cgstAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                LedgerMaster cgstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.OUTPUT_CGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Output CGST",
+                                DebitCredit.CREDIT,
+                                confirmedBy
+                        );
+
+                entries.add(
+                        buildVoucherEntry(
+                                cgstLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.cgstAmount(),
+                                "Output CGST for "
+                                        + invoice.getInvoiceNumber()
+                        )
                 );
-                entries.add(buildVoucherEntry(
-                        ledger.getId(),
-                        BigDecimal.ZERO,
-                        sgst,
-                        "Output SGST for " + invoice.getInvoiceNumber()
-                ));
             }
 
-            if (igst.compareTo(BigDecimal.ZERO) > 0) {
-                LedgerMaster ledger = getOrCreateSystemLedger(
-                        LedgerType.OUTPUT_IGST,
-                        LedgerGroupType.DUTIES_AND_TAXES,
-                        "Output IGST",
-                        DebitCredit.CREDIT,
-                        confirmedBy
+            // Output SGST Cr.
+            if (amounts.sgstAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                LedgerMaster sgstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.OUTPUT_SGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Output SGST",
+                                DebitCredit.CREDIT,
+                                confirmedBy
+                        );
+
+                entries.add(
+                        buildVoucherEntry(
+                                sgstLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.sgstAmount(),
+                                "Output SGST for "
+                                        + invoice.getInvoiceNumber()
+                        )
                 );
-                entries.add(buildVoucherEntry(
-                        ledger.getId(),
-                        BigDecimal.ZERO,
-                        igst,
-                        "Output IGST for " + invoice.getInvoiceNumber()
-                ));
             }
 
+            // Output IGST Cr.
+            if (amounts.igstAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                LedgerMaster igstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.OUTPUT_IGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Output IGST",
+                                DebitCredit.CREDIT,
+                                confirmedBy
+                        );
+
+                entries.add(
+                        buildVoucherEntry(
+                                igstLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.igstAmount(),
+                                "Output IGST for "
+                                        + invoice.getInvoiceNumber()
+                        )
+                );
+            }
+
+            // =====================================================
+            // 5. FINAL VOUCHER BALANCE CHECK
+            // =====================================================
+            BigDecimal totalDebit =
+                    entries.stream()
+                            .map(AccountingVoucherEntryRequestDto::getDebitAmount)
+                            .map(this::money)
+                            .reduce(zeroMoney(), BigDecimal::add)
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal totalCredit =
+                    entries.stream()
+                            .map(AccountingVoucherEntryRequestDto::getCreditAmount)
+                            .map(this::money)
+                            .reduce(zeroMoney(), BigDecimal::add)
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal difference =
+                    totalDebit
+                            .subtract(totalCredit)
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            log.info(
+                    "Advance Invoice voucher calculation "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| grandTotal={} "
+                            + "| taxable={} "
+                            + "| cgst={} "
+                            + "| sgst={} "
+                            + "| igst={} "
+                            + "| totalDebit={} "
+                            + "| totalCredit={} "
+                            + "| difference={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber(),
+                    amounts.grandTotal(),
+                    amounts.taxableAmount(),
+                    amounts.cgstAmount(),
+                    amounts.sgstAmount(),
+                    amounts.igstAmount(),
+                    totalDebit,
+                    totalCredit,
+                    difference
+            );
+
+            for (int index = 0; index < entries.size(); index++) {
+                AccountingVoucherEntryRequestDto entry =
+                        entries.get(index);
+
+                log.info(
+                        "Advance Invoice voucher entry "
+                                + "| invoiceId={} "
+                                + "| entryIndex={} "
+                                + "| ledgerId={} "
+                                + "| debit={} "
+                                + "| credit={} "
+                                + "| narration={}",
+                        invoice.getId(),
+                        index,
+                        entry.getLedgerId(),
+                        entry.getDebitAmount(),
+                        entry.getCreditAmount(),
+                        entry.getNarration()
+                );
+            }
+
+            if (totalDebit.compareTo(totalCredit) != 0) {
+                throw new ValidationException(
+                        "Sales Voucher calculation is not balanced. "
+                                + "Total debit: ₹"
+                                + totalDebit
+                                + ", total credit: ₹"
+                                + totalCredit
+                                + ", difference: ₹"
+                                + difference,
+                        "ERR_ADVANCE_INVOICE_VOUCHER_NOT_BALANCED",
+                        "invoiceId"
+                );
+            }
+
+            // =====================================================
+            // 6. BUILD VOUCHER REQUEST
+            // =====================================================
             AccountingVoucherRequestDto voucherRequest =
                     AccountingVoucherRequestDto.builder()
-                            .voucherType(VoucherType.SALES_INVOICE)
-                            .voucherDate(invoice.getInvoiceDate() != null
-                                    ? invoice.getInvoiceDate()
-                                    : LocalDate.now())
-                            .sourceType(VoucherSourceType.INVOICE)
-                            .sourceId(invoice.getId())
+                            .voucherType(
+                                    VoucherType.SALES_INVOICE
+                            )
+                            .voucherDate(
+                                    invoice.getInvoiceDate() != null
+                                            ? invoice.getInvoiceDate()
+                                            : LocalDate.now()
+                            )
+                            .sourceType(
+                                    VoucherSourceType.INVOICE
+                            )
+                            .sourceId(
+                                    invoice.getId()
+                            )
                             .narration(
                                     "Advance Tax Invoice posted: "
                                             + invoice.getInvoiceNumber()
@@ -3215,19 +3383,42 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                             .entries(entries)
                             .build();
 
-            accountingVoucherService.createVoucher(voucherRequest);
+            // =====================================================
+            // 7. CREATE ACCOUNTING VOUCHER
+            // =====================================================
+            accountingVoucherService.createVoucher(
+                    voucherRequest
+            );
 
-        } catch (ValidationException ex) {
-            throw ex;
+            log.info(
+                    "Advance Invoice Sales Voucher posted successfully "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| totalDebit={} "
+                            + "| totalCredit={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber(),
+                    totalDebit,
+                    totalCredit
+            );
 
-        } catch (Exception ex) {
+        } catch (ValidationException exception) {
+            throw exception;
 
+        } catch (Exception exception) {
             log.error(
                     "Unable to post Advance Tax Invoice Sales Voucher "
-                            + "| invoiceId={} | error={}",
-                    invoice != null ? invoice.getId() : null,
-                    ex.getMessage(),
-                    ex
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| error={}",
+                    invoice != null
+                            ? invoice.getId()
+                            : null,
+                    invoice != null
+                            ? invoice.getInvoiceNumber()
+                            : null,
+                    exception.getMessage(),
+                    exception
             );
 
             throw new ValidationException(
@@ -3236,6 +3427,304 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                     "invoiceId"
             );
         }
+    }
+
+    /**
+     * Produces voucher values that always satisfy:
+     *
+     * customer debit = service income credit + GST credits
+     *
+     * The Invoice grand total is treated as the authoritative receivable amount.
+     * A final GST component is derived as a balancing amount, preventing a one-paise
+     * mismatch caused by independently rounded CGST and SGST values.
+     */
+    private BalancedSalesVoucherAmounts calculateBalancedSalesVoucherAmounts(
+            Invoice invoice
+    ) {
+        if (invoice == null || invoice.getId() == null) {
+            throw new ValidationException(
+                    "Invoice is required for voucher calculation",
+                    "ERR_INVOICE_REQUIRED_FOR_VOUCHER_CALCULATION",
+                    "invoiceId"
+            );
+        }
+
+        BigDecimal grandTotal = money(invoice.getGrandTotal());
+        BigDecimal taxableAmount = money(invoice.getSubTotalExGst());
+
+        BigDecimal originalCgstAmount = money(invoice.getCgstAmount());
+        BigDecimal originalSgstAmount = money(invoice.getSgstAmount());
+        BigDecimal originalIgstAmount = money(invoice.getIgstAmount());
+        BigDecimal storedTotalGstAmount = money(invoice.getTotalGstAmount());
+
+        validateNonNegativeVoucherAmount(grandTotal, "grandTotal");
+        validateNonNegativeVoucherAmount(taxableAmount, "subTotalExGst");
+        validateNonNegativeVoucherAmount(originalCgstAmount, "cgstAmount");
+        validateNonNegativeVoucherAmount(originalSgstAmount, "sgstAmount");
+        validateNonNegativeVoucherAmount(originalIgstAmount, "igstAmount");
+        validateNonNegativeVoucherAmount(storedTotalGstAmount, "totalGstAmount");
+
+        if (grandTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Invoice grand total must be greater than zero",
+                    "ERR_INVALID_INVOICE_GRAND_TOTAL_FOR_VOUCHER",
+                    "grandTotal"
+            );
+        }
+
+        if (taxableAmount.compareTo(grandTotal) > 0) {
+            throw new ValidationException(
+                    "Invoice taxable amount cannot exceed the grand total. "
+                            + "Grand total: ₹"
+                            + grandTotal
+                            + ", taxable amount: ₹"
+                            + taxableAmount,
+                    "ERR_TAXABLE_AMOUNT_EXCEEDS_GRAND_TOTAL",
+                    "subTotalExGst"
+            );
+        }
+
+        BigDecimal componentGstTotal =
+                originalCgstAmount
+                        .add(originalSgstAmount)
+                        .add(originalIgstAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        /*
+         * Prefer the component total because those are the ledgers that will be
+         * posted. If component snapshots are absent, fall back to totalGstAmount.
+         */
+        BigDecimal referenceGstAmount =
+                componentGstTotal.compareTo(BigDecimal.ZERO) > 0
+                        ? componentGstTotal
+                        : storedTotalGstAmount;
+
+        if (componentGstTotal.compareTo(BigDecimal.ZERO) > 0
+                && storedTotalGstAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            BigDecimal gstSnapshotDifference =
+                    componentGstTotal
+                            .subtract(storedTotalGstAmount)
+                            .abs()
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            if (gstSnapshotDifference
+                    .compareTo(MAX_VOUCHER_ROUNDING_DIFFERENCE) > 0) {
+
+                throw new ValidationException(
+                        "Invoice GST component total does not match total GST. "
+                                + "Component GST: ₹"
+                                + componentGstTotal
+                                + ", total GST: ₹"
+                                + storedTotalGstAmount
+                                + ", difference: ₹"
+                                + gstSnapshotDifference,
+                        "ERR_INVOICE_GST_COMPONENT_TOTAL_MISMATCH",
+                        "invoiceId"
+                );
+            }
+        }
+
+        BigDecimal originalCreditTotal =
+                taxableAmount
+                        .add(referenceGstAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal originalDifference =
+                grandTotal
+                        .subtract(originalCreditTotal)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        /*
+         * A difference such as ₹0.01 is a rounding issue. A larger difference is
+         * treated as corrupted or incomplete invoice financial data.
+         */
+        if (originalDifference.abs()
+                .compareTo(MAX_VOUCHER_ROUNDING_DIFFERENCE) > 0) {
+
+            throw new ValidationException(
+                    "Invoice financial values contain more than an allowable "
+                            + "rounding difference. Grand total: ₹"
+                            + grandTotal
+                            + ", taxable amount: ₹"
+                            + taxableAmount
+                            + ", component GST: ₹"
+                            + componentGstTotal
+                            + ", total GST: ₹"
+                            + storedTotalGstAmount
+                            + ", difference: ₹"
+                            + originalDifference,
+                    "ERR_INVOICE_FINANCIAL_VALUES_MISMATCH",
+                    "invoiceId"
+            );
+        }
+
+        boolean hasOriginalIgst =
+                originalIgstAmount.compareTo(BigDecimal.ZERO) > 0;
+
+        boolean hasOriginalLocalGst =
+                originalCgstAmount.compareTo(BigDecimal.ZERO) > 0
+                        || originalSgstAmount.compareTo(BigDecimal.ZERO) > 0;
+
+        if (hasOriginalIgst && hasOriginalLocalGst) {
+            throw new ValidationException(
+                    "Invoice cannot contain both IGST and CGST/SGST amounts",
+                    "ERR_MIXED_GST_COMPONENTS",
+                    "invoiceId"
+            );
+        }
+
+        BigDecimal totalGstToPost =
+                grandTotal
+                        .subtract(taxableAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal finalTaxableAmount = taxableAmount;
+        BigDecimal finalCgstAmount = zeroMoney();
+        BigDecimal finalSgstAmount = zeroMoney();
+        BigDecimal finalIgstAmount = zeroMoney();
+
+        if (referenceGstAmount.compareTo(BigDecimal.ZERO) == 0) {
+            /*
+             * No-GST invoice. Any paise difference between subtotal and total is
+             * absorbed into service income rather than creating a tax ledger entry.
+             */
+            finalTaxableAmount = grandTotal;
+
+        } else {
+            boolean igstRoute =
+                    hasOriginalIgst
+                            || (!hasOriginalLocalGst && isIgstInvoice(invoice));
+
+            if (igstRoute) {
+                /*
+                 * IGST is the single balancing tax component.
+                 */
+                finalIgstAmount = totalGstToPost;
+
+            } else {
+                /*
+                 * CGST is rounded first. SGST is the balancing component.
+                 *
+                 * Example:
+                 * total GST = 15.25
+                 * CGST      = 7.63
+                 * SGST      = 7.62
+                 */
+                finalCgstAmount =
+                        totalGstToPost.divide(
+                                BigDecimal.valueOf(2),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+                finalSgstAmount =
+                        totalGstToPost
+                                .subtract(finalCgstAmount)
+                                .setScale(2, RoundingMode.HALF_UP);
+            }
+        }
+
+        BigDecimal calculatedCreditTotal =
+                finalTaxableAmount
+                        .add(finalCgstAmount)
+                        .add(finalSgstAmount)
+                        .add(finalIgstAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        if (grandTotal.compareTo(calculatedCreditTotal) != 0) {
+            throw new ValidationException(
+                    "Unable to balance Invoice voucher calculation. "
+                            + "Grand total: ₹"
+                            + grandTotal
+                            + ", calculated credit: ₹"
+                            + calculatedCreditTotal,
+                    "ERR_UNABLE_TO_BALANCE_INVOICE_VOUCHER",
+                    "invoiceId"
+            );
+        }
+
+        log.info(
+                "Balanced Advance Invoice voucher amounts calculated "
+                        + "| invoiceId={} "
+                        + "| grandTotal={} "
+                        + "| originalTaxable={} "
+                        + "| originalCgst={} "
+                        + "| originalSgst={} "
+                        + "| originalIgst={} "
+                        + "| storedTotalGst={} "
+                        + "| originalDifference={} "
+                        + "| finalTaxable={} "
+                        + "| finalCgst={} "
+                        + "| finalSgst={} "
+                        + "| finalIgst={}",
+                invoice.getId(),
+                grandTotal,
+                taxableAmount,
+                originalCgstAmount,
+                originalSgstAmount,
+                originalIgstAmount,
+                storedTotalGstAmount,
+                originalDifference,
+                finalTaxableAmount,
+                finalCgstAmount,
+                finalSgstAmount,
+                finalIgstAmount
+        );
+
+        return new BalancedSalesVoucherAmounts(
+                grandTotal,
+                finalTaxableAmount,
+                finalCgstAmount,
+                finalSgstAmount,
+                finalIgstAmount
+        );
+    }
+
+    /**
+     * Uses the persisted invoice line-item route only when the invoice-level tax
+     * components do not already identify IGST versus CGST/SGST.
+     */
+    private boolean isIgstInvoice(
+            Invoice invoice
+    ) {
+        if (invoice == null
+                || invoice.getLineItems() == null
+                || invoice.getLineItems().isEmpty()) {
+            return false;
+        }
+
+        return invoice.getLineItems()
+                .stream()
+                .filter(Objects::nonNull)
+                .anyMatch(InvoiceLineItem::isIgstFlag);
+    }
+
+    private void validateNonNegativeVoucherAmount(
+            BigDecimal amount,
+            String field
+    ) {
+        BigDecimal safeAmount = money(amount);
+
+        if (safeAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException(
+                    field + " cannot be negative",
+                    "ERR_NEGATIVE_INVOICE_VOUCHER_AMOUNT",
+                    field
+            );
+        }
+    }
+
+    /**
+     * Immutable result of the balanced Sales Voucher calculation.
+     */
+    private record BalancedSalesVoucherAmounts(
+            BigDecimal grandTotal,
+            BigDecimal taxableAmount,
+            BigDecimal cgstAmount,
+            BigDecimal sgstAmount,
+            BigDecimal igstAmount
+    ) {
     }
 
     private LedgerMaster getOrCreateCustomerLedgerFromEstimate(
