@@ -4,6 +4,8 @@ import com.account.domain.ledger.AccountingVoucher;
 import com.account.domain.ledger.VoucherSourceType;
 import com.account.domain.ledger.VoucherStatus;
 import com.account.domain.ledger.VoucherType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -35,6 +37,16 @@ public interface AccountingVoucherRepository extends JpaRepository<AccountingVou
             Long sourceId,
             VoucherStatus status
     );
+
+
+
+    Page<AccountingVoucher> findBySourceTypeAndStatus(
+            VoucherSourceType sourceType,
+            VoucherStatus status,
+            Pageable pageable
+    );
+
+
 
 
 }

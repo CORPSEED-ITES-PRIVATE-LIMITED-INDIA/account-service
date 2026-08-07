@@ -10,26 +10,41 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Immutable procurement invoice and vendor-payment calculation snapshot
- * received from Operation Service.
+ * Procurement vendor payment snapshot received from Operation Service.
  *
- * Amount meanings:
+ * Operation Service calculates the procurement payment values.
  *
- * price / taxableAmount:
- *     Basic taxable purchase value before GST.
+ * Account Service may:
+ * 1. independently recalculate and cross-check them, or
+ * 2. validate the immutable calculation snapshot before posting vouchers.
  *
- * invoiceGrossAmount:
- *     taxableAmount + totalGstAmount.
+ * Monetary model:
  *
- * vendorNetPayableAmount:
- *     invoiceGrossAmount - tdsAmount.
+ * taxableAmount / price
+ *      = basic purchase amount before GST
  *
- * settlementAmount:
- *     bankPaymentAmount + tdsAmount.
+ * totalGstAmount
+ *      = CGST + SGST + IGST
  *
- * For a full payment:
- *     vendorNetPayableAmount == bankPaymentAmount
- *     settlementAmount == invoiceGrossAmount
+ * invoiceGrossAmount
+ *      = taxableAmount + totalGstAmount
+ *
+ * tdsAmount
+ *      = TDS calculated on taxable/basic amount
+ *
+ * vendorNetPayableAmount
+ *      = invoiceGrossAmount - tdsAmount
+ *
+ * bankPaymentAmount
+ *      = actual vendor bank/cash payment
+ *
+ * settlementAmount
+ *      = bankPaymentAmount + tdsAmount
+ *
+ * For current full-settlement workflow:
+ *
+ * bankPaymentAmount = vendorNetPayableAmount
+ * settlementAmount  = invoiceGrossAmount
  */
 @Data
 @Builder
@@ -38,113 +53,313 @@ import java.util.List;
 public class VendorPaymentApprovalRequestDto {
 
     /*
-     * Procurement references
+     * ================================================================
+     * PROCUREMENT REFERENCES
+     * ================================================================
      */
-    private Long procurementPaymentRequestId;
-    private Long procurementOrderId;
-    private String purchaseOrderNumber;
-
-    /*
-     * Vendor invoice
-     */
-    private String invoiceNumber;
-    private LocalDate invoiceDate;
 
     /**
-     * Legacy/basic purchase value.
+     * Procurement payment request ID from Operation Service.
      *
-     * Keep this field because the current Operation Service payload
-     * sends the taxable value as price.
+     * Used as voucher sourceId for idempotency.
+     */
+    private Long procurementPaymentRequestId;
+
+    /**
+     * Procurement order ID.
+     */
+    private Long procurementOrderId;
+
+    /**
+     * Human-readable PO number.
+     *
+     * Example:
+     * PO-2026-000123
+     */
+    private String purchaseOrderNumber;
+
+
+    /*
+     * ================================================================
+     * INVOICE INFORMATION
+     * ================================================================
+     */
+
+    private String invoiceNumber;
+
+    private LocalDate invoiceDate;
+
+
+    /*
+     * ================================================================
+     * BASIC / TAXABLE VALUE
+     * ================================================================
+     */
+
+    /**
+     * Basic/taxable value before GST.
+     *
+     * Kept because existing Account implementation uses getPrice().
      */
     private BigDecimal price;
 
     /**
-     * Taxable/basic purchase value before GST.
+     * Same taxable/basic value represented explicitly
+     * in the immutable calculation snapshot.
      *
-     * This should contain the same value as price.
+     * Normally:
+     *
+     * taxableAmount == price
      */
     private BigDecimal taxableAmount;
 
-    /**
-     * Total invoice value including GST.
-     *
-     * invoiceGrossAmount = taxableAmount + totalGstAmount
-     */
-    private BigDecimal invoiceGrossAmount;
 
     /*
-     * GST snapshot
+     * ================================================================
+     * GST CONFIGURATION
+     * ================================================================
      */
-    private Boolean gstActive;
+
+    /**
+     * Vendor registration type.
+     *
+     * Example:
+     * REGISTERED
+     * UNREGISTERED
+     * SEZ
+     * INTERNATIONAL
+     */
     private String gstRegistrationType;
 
     /**
-     * INTRA_STATE or INTER_STATE when GST is active.
+     * GST applicability.
+     */
+    private Boolean gstActive;
+
+    /**
+     * INTRA_STATE / INTER_STATE.
      */
     private String gstSupplyType;
 
+    /**
+     * Operation GST state code/reference.
+     */
     private String gstStateCode;
+
+    /**
+     * GST percentage.
+     *
+     * Example:
+     * 18.00
+     */
     private BigDecimal gstPercentage;
 
-    private BigDecimal cgstAmount;
-    private BigDecimal sgstAmount;
-    private BigDecimal igstAmount;
-    private BigDecimal totalGstAmount;
 
     /*
-     * TDS snapshot
+     * ================================================================
+     * GST CALCULATION SNAPSHOT
+     * ================================================================
      */
+
+    private BigDecimal cgstAmount;
+
+    private BigDecimal sgstAmount;
+
+    private BigDecimal igstAmount;
+
+    /**
+     * Total GST:
+     *
+     * CGST + SGST + IGST
+     */
+    private BigDecimal totalGstAmount;
+
+
+    /*
+     * ================================================================
+     * INVOICE TOTAL
+     * ================================================================
+     */
+
+    /**
+     * GST-inclusive invoice amount.
+     *
+     * invoiceGrossAmount
+     *      = taxableAmount + totalGstAmount
+     */
+    private BigDecimal invoiceGrossAmount;
+
+
+    /*
+     * ================================================================
+     * TDS CONFIGURATION / CALCULATION
+     * ================================================================
+     */
+
     private Boolean tdsActive;
+
+    /**
+     * Amount on which TDS is calculated.
+     *
+     * Current procurement flow:
+     *
+     * tdsBaseAmount == taxableAmount
+     */
+    private BigDecimal tdsBaseAmount;
+
+    /**
+     * TDS percentage.
+     *
+     * Example:
+     * 10.00
+     */
     private BigDecimal tdsPercentage;
+
+    /**
+     * Calculated TDS amount.
+     */
     private BigDecimal tdsAmount;
 
     /**
-     * Amount payable to the vendor after deducting TDS.
+     * Normally null.
      *
-     * vendorNetPayableAmount = invoiceGrossAmount - tdsAmount
-     */
-    private BigDecimal vendorNetPayableAmount;
-
-    /**
-     * Total amount settled against the vendor invoice.
-     *
-     * settlementAmount = bankPaymentAmount + tdsAmount
-     */
-    private BigDecimal settlementAmount;
-
-    /*
-     * Approval information
-     */
-    private Long approvedByOperationUserId;
-    private LocalDate approvedDate;
-    private String approvalComment;
-
-    /**
-     * Optional legacy value.
-     * Account Service should resolve the system TDS ledger itself.
+     * Account Service should resolve its own
+     * TDS_PAYABLE system ledger.
      */
     private Long tdsPayableLedgerId;
 
+
     /*
-     * Payment release
+     * ================================================================
+     * VENDOR PAYABLE
+     * ================================================================
      */
-    private LocalDate paymentDate;
-    private BigDecimal bankPaymentAmount;
-    private String paymentMode;
-    private Long bankLedgerId;
 
     /**
-     * Optional legacy vendor-ledger metadata.
-     * Account Service resolves the vendor ledger itself.
+     * Amount actually payable to vendor after TDS.
+     *
+     * vendorNetPayableAmount
+     *      = invoiceGrossAmount - tdsAmount
+     */
+    private BigDecimal vendorNetPayableAmount;
+
+
+    /*
+     * ================================================================
+     * SETTLEMENT
+     * ================================================================
+     */
+
+    /**
+     * Total invoice liability being settled.
+     *
+     * settlementAmount
+     *      = bankPaymentAmount + tdsAmount
+     *
+     * For current full settlement:
+     *
+     * settlementAmount == invoiceGrossAmount
+     */
+    private BigDecimal settlementAmount;
+
+
+    /*
+     * ================================================================
+     * PAYMENT EXECUTION
+     * ================================================================
+     */
+
+    private LocalDate paymentDate;
+
+    /**
+     * Actual Bank/Cash amount released.
+     *
+     * Current full settlement:
+     *
+     * bankPaymentAmount
+     *      = vendorNetPayableAmount
+     */
+    private BigDecimal bankPaymentAmount;
+
+    /**
+     * NEFT / RTGS / IMPS / UPI / CASH /
+     * CHEQUE / BANK_TRANSFER etc.
+     */
+    private String paymentMode;
+
+    /**
+     * Paying BANK / CASH / PAYMENT_GATEWAY ledger.
+     */
+    private Long bankLedgerId;
+
+
+    /*
+     * ================================================================
+     * OPTIONAL / LEGACY VENDOR LEDGER METADATA
+     * ================================================================
+     */
+
+    /**
+     * Normally null.
+     *
+     * Account Service resolves vendor ledger from
+     * AccountVendorSyncRequestDto.operationVendorId.
      */
     private Long ledgerId;
+
     private String ledgerType;
 
+
+    /*
+     * ================================================================
+     * TRANSACTION / PAYMENT PROOF
+     * ================================================================
+     */
+
     private String transactionReference;
+
     private String paymentProof;
+
     private List<String> proofAttachmentUrls;
 
+
+    /*
+     * ================================================================
+     * APPROVAL AUDIT
+     * ================================================================
+     */
+
+    private Long approvedByOperationUserId;
+
+    private LocalDate approvedDate;
+
+    private String approvalComment;
+
+
+    /*
+     * ================================================================
+     * PAYMENT RELEASE AUDIT
+     * ================================================================
+     */
+
     private Long paymentReleasedByOperationUserId;
+
     private LocalDate paymentReleasedDate;
+
     private String releaseComment;
+
+
+    /*
+     * ================================================================
+     * CALCULATION CONTRACT VERSION
+     * ================================================================
+     */
+
+    /**
+     * Optional calculation-contract version.
+     *
+     * Example:
+     * PROCUREMENT_PAYMENT_V1
+     */
+    private String calculationVersion;
 }

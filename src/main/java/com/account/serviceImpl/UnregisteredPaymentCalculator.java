@@ -464,6 +464,7 @@ public class UnregisteredPaymentCalculator {
                 }
             }
 
+
             case INSTALLMENT -> {
                 BigDecimal eligible =
                         money(input.getInstallmentEligibleAmount());

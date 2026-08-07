@@ -29,6 +29,8 @@ import com.account.service.ledger.ProjectExpenseAccountingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -1406,10 +1408,84 @@ public class ProjectExpenseAccountingServiceImpl
                 : value.trim();
     }
 
-    private String truncate(String value, int maxLength) {
-        if (value == null || value.length() <= maxLength) {
-            return value;
-        }
-        return value.substring(0, maxLength);
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<GovernmentExpenseListItemDto> getGovernmentFeeExpenses(
+            Pageable pageable
+    ) {
+
+        log.info(
+                "[GOVERNMENT-EXPENSE-LIST-START] page={} | size={}",
+                pageable.getPageNumber(),
+                pageable.getPageSize()
+        );
+
+        Page<AccountingVoucher> accrualVouchers =
+                accountingVoucherRepository.findBySourceTypeAndStatus(
+                        VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL,
+                        VoucherStatus.POSTED,
+                        pageable
+                );
+
+        return accrualVouchers.map(this::mapGovernmentExpenseListItem);
     }
+
+    private GovernmentExpenseListItemDto mapGovernmentExpenseListItem(
+            AccountingVoucher accrualVoucher
+    ) {
+
+        Long operationExpenseId = accrualVoucher.getSourceId();
+
+        Optional<AccountingVoucher> fundTransfer =
+                findPostedVoucher(
+                        VoucherSourceType.PROJECT_EXPENSE_FUND_TRANSFER,
+                        operationExpenseId
+                );
+
+        Optional<AccountingVoucher> payment =
+                findPostedVoucher(
+                        VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_PAYMENT,
+                        operationExpenseId
+                );
+
+        return GovernmentExpenseListItemDto.builder()
+
+                .operationExpenseId(operationExpenseId)
+
+                .voucherId(accrualVoucher.getId())
+                .voucherNumber(accrualVoucher.getVoucherNumber())
+                .voucherDate(accrualVoucher.getVoucherDate())
+
+                /*
+                 * Accrual voucher is balanced:
+                 * totalDebit == totalCredit == government fee amount
+                 */
+                .amount(accrualVoucher.getTotalDebit())
+
+                .status(accrualVoucher.getStatus().name())
+                .narration(accrualVoucher.getNarration())
+
+                .fundTransferPosted(fundTransfer.isPresent())
+                .paymentPosted(payment.isPresent())
+
+                .fundTransferVoucherId(
+                        fundTransfer
+                                .map(AccountingVoucher::getId)
+                                .orElse(null)
+                )
+
+                .paymentVoucherId(
+                        payment
+                                .map(AccountingVoucher::getId)
+                                .orElse(null)
+                )
+
+                .postedAt(resolvePostedAt(accrualVoucher))
+
+                .build();
+    }
+
+
 }
