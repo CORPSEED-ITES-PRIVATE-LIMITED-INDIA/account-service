@@ -53,9 +53,6 @@ public class ProjectExpenseAccountingServiceImpl
     private static final int MONEY_SCALE = 3;
     private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;
 
-    private static final String GOVERNMENT_FEE_EXPENSE_CODE =
-            "LED-GOV-FEE-EXP";
-
     private static final String GOVERNMENT_FEE_PAYABLE_CODE =
             "LED-GOV-FEE-PAY";
 
@@ -449,73 +446,159 @@ public class ProjectExpenseAccountingServiceImpl
             GovernmentFeePostingRequestDto request
     ) {
 
-        Optional<AccountingVoucher> existingJournal = findPostedVoucher(
-                VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL,
-                request.getOperationExpenseId()
-        );
+        /*
+         * COMPANY means:
+         *
+         * Corpseed is paying the government fee on behalf of the client.
+         * Therefore the amount becomes receivable from the client.
+         *
+         * DR Customer
+         * CR Government Fee Payable
+         */
+
+        validateCompanyFundedClientDetails(request);
+
+        Optional<AccountingVoucher> existingJournal =
+                findPostedVoucher(
+                        VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL,
+                        request.getOperationExpenseId()
+                );
 
         if (existingJournal.isPresent()) {
-            AccountingVoucher journal = existingJournal.get();
+
+            AccountingVoucher journal =
+                    existingJournal.get();
 
             return GovernmentFeePostingResponseDto.builder()
                     .postingStatus("ALREADY_POSTED")
-                    .message("Company-funded government-fee accrual was already posted")
-                    .operationExpenseId(request.getOperationExpenseId())
-                    .journalVoucherId(journal.getId())
-                    .journalVoucherNumber(journal.getVoucherNumber())
-                    .voucherId(journal.getId())
-                    .voucherNumber(journal.getVoucherNumber())
-                    .postedAt(resolvePostedAt(journal))
+                    .message(
+                            "Company-funded government-fee receivable was already posted"
+                    )
+                    .operationExpenseId(
+                            request.getOperationExpenseId()
+                    )
+                    .journalVoucherId(
+                            journal.getId()
+                    )
+                    .journalVoucherNumber(
+                            journal.getVoucherNumber()
+                    )
+                    .voucherId(
+                            journal.getId()
+                    )
+                    .voucherNumber(
+                            journal.getVoucherNumber()
+                    )
+                    .postedAt(
+                            resolvePostedAt(journal)
+                    )
                     .build();
         }
 
-        User approver = resolveApprover(request.getApprovedByUserId());
+        User approver =
+                resolveApprover(
+                        request.getApprovedByUserId()
+                );
 
-        LedgerMaster expenseLedger = getOrCreateSystemLedger(
-                LedgerType.GOVERNMENT_FEE_EXPENSE,
-                LedgerGroupType.INDIRECT_EXPENSES,
-                "Government Fee Expense",
-                GOVERNMENT_FEE_EXPENSE_CODE,
-                DebitCredit.DEBIT,
-                approver
-        );
+        /*
+         * IMPORTANT:
+         *
+         * Resolve existing customer ledger.
+         *
+         * Example:
+         * RK ENTERPRISES
+         * LedgerType.CUSTOMER
+         */
+        LedgerMaster clientLedger =
+                resolveExistingClientLedger(request);
 
-        LedgerMaster payableLedger = getOrCreateSystemLedger(
-                LedgerType.GOVERNMENT_FEE_PAYABLE,
-                LedgerGroupType.CURRENT_LIABILITIES,
-                "Government Fee Payable",
-                GOVERNMENT_FEE_PAYABLE_CODE,
-                DebitCredit.CREDIT,
-                approver
-        );
+        LedgerMaster payableLedger =
+                getOrCreateSystemLedger(
+                        LedgerType.GOVERNMENT_FEE_PAYABLE,
+                        LedgerGroupType.CURRENT_LIABILITIES,
+                        "Government Fee Payable",
+                        GOVERNMENT_FEE_PAYABLE_CODE,
+                        DebitCredit.CREDIT,
+                        approver
+                );
 
-        BigDecimal amount = money(request.getApprovedAmount());
+        BigDecimal amount =
+                money(
+                        request.getApprovedAmount()
+                );
 
-        AccountingVoucher journal = createCompanyAccrualJournal(
-                request,
-                expenseLedger,
-                payableLedger,
+        AccountingVoucher journal =
+                createCompanyFundedClientReceivableJournal(
+                        request,
+                        clientLedger,
+                        payableLedger,
+                        amount
+                );
+
+        log.info(
+                "[COMPANY-FUNDED-GOVERNMENT-FEE-POSTED] " +
+                        "operationExpenseId={} | " +
+                        "journalVoucherId={} | " +
+                        "journalVoucherNumber={} | " +
+                        "clientLedgerId={} | " +
+                        "clientLedgerName={} | amount={}",
+                request.getOperationExpenseId(),
+                journal.getId(),
+                journal.getVoucherNumber(),
+                clientLedger.getId(),
+                clientLedger.getLedgerName(),
                 amount
         );
 
-        log.info(
-                "[COMPANY-FUNDED-GOVERNMENT-FEE-POSTED] operationExpenseId={} | journalVoucherId={} | journalVoucherNumber={}",
-                request.getOperationExpenseId(),
-                journal.getId(),
-                journal.getVoucherNumber()
-        );
-
         return GovernmentFeePostingResponseDto.builder()
+
                 .postingStatus("POSTED")
-                .message("Company-funded government-fee accrual posted successfully")
-                .operationExpenseId(request.getOperationExpenseId())
-                .journalVoucherId(journal.getId())
-                .journalVoucherNumber(journal.getVoucherNumber())
-                .governmentFeeExpenseLedgerId(expenseLedger.getId())
-                .governmentFeePayableLedgerId(payableLedger.getId())
-                .voucherId(journal.getId())
-                .voucherNumber(journal.getVoucherNumber())
-                .postedAt(resolvePostedAt(journal))
+
+                .message(
+                        "Company-funded government-fee client receivable posted successfully"
+                )
+
+                .operationExpenseId(
+                        request.getOperationExpenseId()
+                )
+
+                .journalVoucherId(
+                        journal.getId()
+                )
+
+                .journalVoucherNumber(
+                        journal.getVoucherNumber()
+                )
+
+                /*
+                 * Existing field can carry CUSTOMER ledger ID.
+                 */
+                .clientAdvanceLedgerId(
+                        clientLedger.getId()
+                )
+
+                .governmentFeePayableLedgerId(
+                        payableLedger.getId()
+                )
+
+                /*
+                 * No Government Fee Expense ledger in
+                 * client-recoverable COMPANY flow.
+                 */
+                .governmentFeeExpenseLedgerId(null)
+
+                .voucherId(
+                        journal.getId()
+                )
+
+                .voucherNumber(
+                        journal.getVoucherNumber()
+                )
+
+                .postedAt(
+                        resolvePostedAt(journal)
+                )
+
                 .build();
     }
 
@@ -596,40 +679,80 @@ public class ProjectExpenseAccountingServiceImpl
         return getCreatedVoucher(response.getId());
     }
 
-    private AccountingVoucher createCompanyAccrualJournal(
+    private AccountingVoucher createCompanyFundedClientReceivableJournal(
             GovernmentFeePostingRequestDto request,
-            LedgerMaster expenseLedger,
+            LedgerMaster clientLedger,
             LedgerMaster payableLedger,
             BigDecimal amount
     ) {
 
         AccountingVoucherRequestDto voucherRequest =
                 AccountingVoucherRequestDto.builder()
-                        .voucherType(VoucherType.JOURNAL)
-                        .voucherDate(resolvePostingDate(request))
-                        .sourceType(
-                                VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL
+
+                        .voucherType(
+                                VoucherType.JOURNAL
                         )
-                        .sourceId(request.getOperationExpenseId())
-                        .narration(buildNarration(request))
-                        .entries(List.of(
-                                debitEntry(
-                                        expenseLedger.getId(),
-                                        amount,
-                                        "Government-fee expense booked"
-                                ),
-                                creditEntry(
-                                        payableLedger.getId(),
-                                        amount,
-                                        "Government-fee payable created"
+
+                        .voucherDate(
+                                resolvePostingDate(request)
+                        )
+
+                        .sourceType(
+                                VoucherSourceType
+                                        .PROJECT_EXPENSE_GOVT_FEE_ACCRUAL
+                        )
+
+                        .sourceId(
+                                request.getOperationExpenseId()
+                        )
+
+                        .narration(
+                                "Government fee funded by company on behalf of client for project "
+                                        + safeProjectNumber(request)
+                        )
+
+                        .entries(
+                                List.of(
+
+                                        /*
+                                         * DR CUSTOMER
+                                         *
+                                         * Client now owes this amount
+                                         * to Corpseed.
+                                         *
+                                         * Example:
+                                         * RK ENTERPRISES Dr 15,850
+                                         */
+                                        debitEntry(
+                                                clientLedger.getId(),
+                                                amount,
+                                                "Government fee paid/funded by company on behalf of client"
+                                        ),
+
+                                        /*
+                                         * CR GOVERNMENT FEE PAYABLE
+                                         *
+                                         * Government amount is now payable.
+                                         */
+                                        creditEntry(
+                                                payableLedger.getId(),
+                                                amount,
+                                                "Government-fee payable created"
+                                        )
                                 )
-                        ))
+                        )
+
                         .build();
 
         AccountingVoucherResponseDto response =
-                accountingVoucherService.createVoucher(voucherRequest);
+                accountingVoucherService
+                        .createVoucher(
+                                voucherRequest
+                        );
 
-        return getCreatedVoucher(response.getId());
+        return getCreatedVoucher(
+                response.getId()
+        );
     }
 
     private AccountingVoucherEntryRequestDto debitEntry(
@@ -767,7 +890,7 @@ public class ProjectExpenseAccountingServiceImpl
 
     /**
      * Resolves the normal customer ledger already maintained for the project's
-     * company and unit. Government-fee posting must not create another party
+     * company and unit. Government-fee posting must not c reate another party
      * ledger because doing so splits the client's statement across ledgers.
      */
     private LedgerMaster resolveExistingClientLedger(
@@ -776,17 +899,20 @@ public class ProjectExpenseAccountingServiceImpl
         Long companyId = request.getClientCompanyId();
         Long unitId = request.getClientUnitId();
 
+        /*
+         * IMPORTANT:
+         * Government-fee receivable must hit the normal CUSTOMER ledger,
+         * not CUSTOMER_ADVANCE. This guarantees entries such as
+         * RK ENTERPRISES appear in the regular customer statement.
+         */
         LedgerMaster ledger = ledgerMasterRepository
                 .findFirstByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
                         companyId,
                         unitId,
-                        List.of(
-                                LedgerType.CUSTOMER,
-                                LedgerType.CUSTOMER_ADVANCE
-                        )
+                        List.of(LedgerType.CUSTOMER)
                 )
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Customer ledger not found for company ID "
+                        "CUSTOMER ledger not found for company ID "
                                 + companyId
                                 + " and unit ID "
                                 + unitId,
@@ -1485,6 +1611,30 @@ public class ProjectExpenseAccountingServiceImpl
                 .postedAt(resolvePostedAt(accrualVoucher))
 
                 .build();
+    }
+    private void validateCompanyFundedClientDetails(
+            GovernmentFeePostingRequestDto request
+    ) {
+
+        if (request.getClientCompanyId() == null
+                || request.getClientCompanyId() <= 0) {
+
+            throw new ValidationException(
+                    "Client company ID is required when company funds government fee on behalf of client",
+                    "ERR_CLIENT_COMPANY_REQUIRED",
+                    "clientCompanyId"
+            );
+        }
+
+        if (request.getClientUnitId() == null
+                || request.getClientUnitId() <= 0) {
+
+            throw new ValidationException(
+                    "Client unit ID is required when company funds government fee on behalf of client",
+                    "ERR_CLIENT_UNIT_REQUIRED",
+                    "clientUnitId"
+            );
+        }
     }
 
 

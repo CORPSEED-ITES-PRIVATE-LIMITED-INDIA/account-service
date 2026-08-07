@@ -46,6 +46,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.account.domain.invoice.AdvanceTaxInvoiceRequest;
+import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -84,6 +86,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final LedgerGroupRepository ledgerGroupRepository;
     private final PaymentLegalVerificationService paymentLegalVerificationService;
     private final OrganizationRepository organizationRepository;
+    private final AdvanceTaxInvoiceRequestRepository advanceTaxInvoiceRequestRepository;
 
     public PaymentServiceImpl(
             EstimateRepository estimateRepository,
@@ -102,7 +105,9 @@ public class PaymentServiceImpl implements PaymentService {
             AccountingVoucherService accountingVoucherService,
             LedgerGroupRepository ledgerGroupRepository,
             PaymentLegalVerificationService paymentLegalVerificationService,
-            OrganizationRepository  organizationRepository
+            OrganizationRepository  organizationRepository,
+            AdvanceTaxInvoiceRequestRepository advanceTaxInvoiceRequestRepository
+
     ) {
         this.estimateRepository = estimateRepository;
         this.unbilledInvoiceRepository = unbilledInvoiceRepository;
@@ -121,6 +126,8 @@ public class PaymentServiceImpl implements PaymentService {
         this.ledgerGroupRepository = ledgerGroupRepository;
         this.paymentLegalVerificationService = paymentLegalVerificationService;
         this.organizationRepository =  organizationRepository;
+        this.advanceTaxInvoiceRequestRepository =
+                advanceTaxInvoiceRequestRepository;
     }
 
     @PostConstruct
@@ -253,6 +260,15 @@ public class PaymentServiceImpl implements PaymentService {
                     "estimateId"
             );
         }
+        // =====================================================
+// 3A. ADVANCE TAX INVOICE REQUEST VALIDATION
+// =====================================================
+
+        validateAdvanceTaxInvoiceRequestBeforePayment(
+                estimate,
+                traceId
+        );
+
 
         Company company = estimate.getCompany();
         CompanyUnit unit = estimate.getUnit();
@@ -292,6 +308,8 @@ public class PaymentServiceImpl implements PaymentService {
                 estimate,
                 null
         );
+
+
 
         log.info(
                 "[PAYMENT-GST-RESOLVED] traceId={} | estimateId={} | unitId={} | "
@@ -8303,6 +8321,212 @@ public class PaymentServiceImpl implements PaymentService {
                 this.tds = tds;
             }
         }
+    }
+
+    private void validateAdvanceTaxInvoiceRequestBeforePayment(
+            Estimate estimate,
+            String traceId
+    ) {
+
+        if (estimate == null || estimate.getId() == null) {
+            throw new ValidationException(
+                    "Estimate is required for Advance Tax Invoice payment validation",
+                    "ERR_ESTIMATE_REQUIRED_FOR_ADVANCE_PAYMENT_VALIDATION",
+                    "estimateId"
+            );
+        }
+
+        Optional<AdvanceTaxInvoiceRequest> latestRequest =
+                advanceTaxInvoiceRequestRepository
+                        .findLatestByEstimateForPaymentValidation(
+                                estimate.getId()
+                        );
+
+        /*
+         * No Advance Tax Invoice request exists.
+         *
+         * Continue with the existing normal payment flow.
+         */
+        if (latestRequest.isEmpty()) {
+
+            log.debug(
+                    "[ADVANCE-REQUEST-PAYMENT-CHECK] "
+                            + "traceId={} | estimateId={} | requestExists=false",
+                    traceId,
+                    estimate.getId()
+            );
+
+            return;
+        }
+
+        AdvanceTaxInvoiceRequest advanceRequest =
+                latestRequest.get();
+
+        AdvanceTaxInvoiceRequestStatus status =
+                advanceRequest.getStatus();
+
+        log.info(
+                "[ADVANCE-REQUEST-PAYMENT-CHECK] "
+                        + "traceId={} | estimateId={} | "
+                        + "advanceRequestId={} | status={} | "
+                        + "invoiceId={} | invoiceNumber={}",
+                traceId,
+                estimate.getId(),
+                advanceRequest.getId(),
+                status,
+                advanceRequest.getInvoice() != null
+                        ? advanceRequest.getInvoice().getId()
+                        : null,
+                advanceRequest.getInvoice() != null
+                        ? advanceRequest.getInvoice().getInvoiceNumber()
+                        : null
+        );
+
+        /*
+         * -----------------------------------------------------
+         * PENDING
+         * -----------------------------------------------------
+         *
+         * Sales has already requested an Advance Tax Invoice.
+         *
+         * Accounts must make the decision first.
+         * Do not allow normal payment registration while the
+         * Advance Tax Invoice request is awaiting approval.
+         */
+        if (status == AdvanceTaxInvoiceRequestStatus.PENDING) {
+
+            throw new ValidationException(
+                    "Payment cannot be registered because Advance Tax Invoice "
+                            + "request ID "
+                            + advanceRequest.getId()
+                            + " is still PENDING for Estimate "
+                            + (
+                            estimate.getEstimateNumber() != null
+                                    ? estimate.getEstimateNumber()
+                                    : estimate.getId()
+                    )
+                            + ". Accounts must APPROVE or REJECT the "
+                            + "Advance Tax Invoice request before payment registration.",
+                    "ERR_ADVANCE_INVOICE_DECISION_REQUIRED_BEFORE_PAYMENT",
+                    "estimateId"
+            );
+        }
+
+        /*
+         * -----------------------------------------------------
+         * APPROVED
+         * -----------------------------------------------------
+         *
+         * The approval transaction should already have generated
+         * an Advance Tax Invoice.
+         *
+         * Defensive check: never silently fall back to the normal
+         * payment flow if the request says APPROVED but the Invoice
+         * is missing.
+         */
+        if (status == AdvanceTaxInvoiceRequestStatus.APPROVED) {
+
+            Invoice advanceInvoice =
+                    advanceRequest.getInvoice();
+
+            if (advanceInvoice == null
+                    || advanceInvoice.getId() == null) {
+
+                throw new ValidationException(
+                        "Advance Tax Invoice request "
+                                + advanceRequest.getId()
+                                + " is APPROVED, but the Advance Tax Invoice "
+                                + "has not been generated yet. "
+                                + "Payment registration cannot continue.",
+                        "ERR_APPROVED_ADVANCE_REQUEST_INVOICE_NOT_GENERATED",
+                        "estimateId"
+                );
+            }
+
+            if (advanceInvoice.isCancelled()) {
+
+                throw new ValidationException(
+                        "The Advance Tax Invoice generated from request "
+                                + advanceRequest.getId()
+                                + " is cancelled. Payment cannot be registered "
+                                + "against the cancelled Advance Tax Invoice.",
+                        "ERR_PAYMENT_ON_CANCELLED_ADVANCE_INVOICE",
+                        "estimateId"
+                );
+            }
+
+            log.info(
+                    "[ADVANCE-REQUEST-APPROVED-PAYMENT-CONTINUE] "
+                            + "traceId={} | estimateId={} | "
+                            + "advanceRequestId={} | invoiceId={} | "
+                            + "invoiceNumber={} | paymentStatus={} | "
+                            + "outstanding={}",
+                    traceId,
+                    estimate.getId(),
+                    advanceRequest.getId(),
+                    advanceInvoice.getId(),
+                    advanceInvoice.getInvoiceNumber(),
+                    advanceInvoice.getPaymentStatus(),
+                    safe3(advanceInvoice.getOutstandingAmount())
+            );
+
+            /*
+             * IMPORTANT:
+             *
+             * Do not return a PaymentRegistrationResponseDto here.
+             * Simply return from this validation method.
+             *
+             * registerPayment() will continue normally.
+             *
+             * Later, existing code:
+             *
+             * findActiveAdvanceInvoicesForUpdate(...)
+             *
+             * will find this Advance Tax Invoice and apply all the
+             * existing ATI payment/TDS/outstanding logic.
+             */
+            return;
+        }
+
+        /*
+         * -----------------------------------------------------
+         * REJECTED / CANCELLED
+         * -----------------------------------------------------
+         *
+         * There is no active Advance Tax Invoice request that
+         * should block payment.
+         *
+         * Continue through the existing normal payment flow.
+         */
+        if (status == AdvanceTaxInvoiceRequestStatus.REJECTED
+                || status == AdvanceTaxInvoiceRequestStatus.CANCELLED) {
+
+            log.info(
+                    "[ADVANCE-REQUEST-NOT-BLOCKING-PAYMENT] "
+                            + "traceId={} | estimateId={} | "
+                            + "advanceRequestId={} | status={}",
+                    traceId,
+                    estimate.getId(),
+                    advanceRequest.getId(),
+                    status
+            );
+
+            return;
+        }
+
+        /*
+         * Defensive protection if another status is added later
+         * to AdvanceTaxInvoiceRequestStatus.
+         */
+        throw new ValidationException(
+                "Payment registration cannot continue because Advance Tax Invoice "
+                        + "request "
+                        + advanceRequest.getId()
+                        + " has unsupported status: "
+                        + status,
+                "ERR_ADVANCE_INVOICE_REQUEST_STATUS_INVALID_FOR_PAYMENT",
+                "estimateId"
+        );
     }
 
 }
