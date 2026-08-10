@@ -44,7 +44,7 @@ public enum LedgerType {
     LOAN,
     CAPITAL,
 
-    // Other Tally-style types
+    // Other
     INVESTMENT,
     STOCK,
     SUSPENSE,
@@ -55,8 +55,31 @@ public enum LedgerType {
     REFUND_PAYABLE,
     ROUND_OFF,
 
-    // Government-fee flow
+    // =====================================================
+    // GOVERNMENT FEE
+    // =====================================================
+
+    /**
+     * Liability when client has already deposited money
+     * with Corpseed specifically for government fee.
+     */
     GOVERNMENT_FEE_CLIENT_ADVANCE,
+
+    /**
+     * Asset when Corpseed funds a government fee on behalf
+     * of a client and the amount must be recovered later.
+     */
+    GOVERNMENT_FEE_RECEIVABLE,
+
+    /**
+     * Expense only when Corpseed itself ultimately bears
+     * the government fee and it is not recoverable.
+     */
     GOVERNMENT_FEE_EXPENSE,
+
+    /**
+     * Liability created when the amount becomes payable
+     * to the government.
+     */
     GOVERNMENT_FEE_PAYABLE
 }
