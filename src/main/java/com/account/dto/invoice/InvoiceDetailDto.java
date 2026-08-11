@@ -43,7 +43,7 @@ public class InvoiceDetailDto {
     private String companyUnitGstNo;
 
     private String contactName;
-
+    private String contactEmail;
     // =====================================================
     // INVOICE DETAILS
     // =====================================================

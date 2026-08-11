@@ -1490,6 +1490,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 						: null
 		);
 
+		dto.setContactEmail(
+				unbilled != null && unbilled.getContact() != null
+						? unbilled.getContact().getEmails()
+						: null
+		);
 		GstRegistrationType gstRegistrationType =
 				invoice.getGstRegistrationType() != null
 						? invoice.getGstRegistrationType()
