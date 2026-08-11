@@ -24,14 +24,16 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
-    private static final int MONEY_SCALE = 3;
+    private static final int MONEY_SCALE = 2;
     private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
     private final AccountingVoucherRepository accountingVoucherRepository;
@@ -58,6 +60,16 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         validateDuplicateSource(sourceType, request.getSourceId());
         log.debug("Duplicate source validation completed. sourceType={}, sourceId={}", sourceType, request.getSourceId());
 
+        Map<Long, LedgerMaster> lockedLedgers = lockRequestedLedgers(request);
+
+        /*
+         * Re-check after ledger locks are acquired. For normal duplicate retries
+         * using the same ledgers, this closes the common check-then-insert race.
+         * A database-level idempotency key is still recommended for absolute
+         * cross-node protection.
+         */
+        validateDuplicateSource(sourceType, request.getSourceId());
+
         AccountingVoucher voucher = AccountingVoucher.builder()
                 .voucherNumber(generateVoucherNumber(request.getVoucherType()))
                 .voucherType(request.getVoucherType())
@@ -72,14 +84,18 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
         for (AccountingVoucherEntryRequestDto entryRequest : request.getEntries()) {
 
-            LedgerMaster ledger = ledgerMasterRepository.findByIdAndDeletedFalse(entryRequest.getLedgerId())
-                    .orElseThrow(() -> {
-                        log.warn("Ledger not found while creating voucher. ledgerId={}", entryRequest.getLedgerId());
-                        return new ResourceNotFoundException(
-                                "Ledger not found with ID: " + entryRequest.getLedgerId(),
-                                "LEDGER_NOT_FOUND"
-                        );
-                    });
+            LedgerMaster ledger = lockedLedgers.get(entryRequest.getLedgerId());
+
+            if (ledger == null) {
+                log.warn(
+                        "Ledger not found while creating voucher. ledgerId={}",
+                        entryRequest.getLedgerId()
+                );
+                throw new ResourceNotFoundException(
+                        "Ledger not found with ID: " + entryRequest.getLedgerId(),
+                        "LEDGER_NOT_FOUND"
+                );
+            }
 
             if (!ledger.isActive()) {
                 log.warn("Inactive ledger used in voucher request. ledgerId={}, ledgerName={}", ledger.getId(), ledger.getLedgerName());
@@ -312,6 +328,35 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
             return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    private Map<Long, LedgerMaster> lockRequestedLedgers(
+            AccountingVoucherRequestDto request
+    ) {
+        List<Long> ledgerIds = request.getEntries().stream()
+                .map(AccountingVoucherEntryRequestDto::getLedgerId)
+                .distinct()
+                .sorted()
+                .toList();
+
+        List<LedgerMaster> locked = ledgerMasterRepository
+                .findAllByIdInAndDeletedFalseForUpdate(ledgerIds);
+
+        Map<Long, LedgerMaster> byId = new LinkedHashMap<>();
+        for (LedgerMaster ledger : locked) {
+            byId.put(ledger.getId(), ledger);
+        }
+
+        for (Long ledgerId : ledgerIds) {
+            if (!byId.containsKey(ledgerId)) {
+                throw new ResourceNotFoundException(
+                        "Ledger not found with ID: " + ledgerId,
+                        "LEDGER_NOT_FOUND"
+                );
+            }
+        }
+
+        return byId;
     }
 
     private void validateVoucherRequest(AccountingVoucherRequestDto request) {

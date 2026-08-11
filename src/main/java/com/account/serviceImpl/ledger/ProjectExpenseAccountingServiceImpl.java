@@ -2,6 +2,7 @@ package com.account.serviceImpl.ledger;
 
 import com.account.domain.User;
 import com.account.domain.ledger.AccountingVoucher;
+import com.account.domain.ledger.AccountingVoucherEntry;
 import com.account.domain.ledger.DebitCredit;
 import com.account.domain.ledger.LedgerGroup;
 import com.account.domain.ledger.LedgerGroupType;
@@ -32,6 +33,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -50,7 +52,7 @@ import java.util.Set;
 public class ProjectExpenseAccountingServiceImpl
         implements ProjectExpenseAccountingService {
 
-    private static final int MONEY_SCALE = 3;
+    private static final int MONEY_SCALE = 2;
     private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;
 
     private static final String GOVERNMENT_FEE_RECEIVABLE_CODE =
@@ -119,7 +121,7 @@ public class ProjectExpenseAccountingServiceImpl
      * changes are rolled back by Spring.
      */
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public GovernmentFeePostingResponseDto postGovernmentFeeExpense(
             GovernmentFeePostingRequestDto request
     ) {
@@ -152,7 +154,7 @@ public class ProjectExpenseAccountingServiceImpl
     // =========================================================
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public GovernmentFeeFundTransferPostingResponseDto
     postGovernmentFeeFundTransfer(
             GovernmentFeeFundTransferPostingRequestDto request
@@ -166,14 +168,25 @@ public class ProjectExpenseAccountingServiceImpl
 
         if (existing.isPresent()) {
             AccountingVoucher voucher = existing.get();
+            LedgerMaster fromBank = resolveVoucherBankLedger(
+                    voucher,
+                    DebitCredit.CREDIT,
+                    "Existing CONTRA voucher does not contain a source-bank credit entry"
+            );
+            LedgerMaster toBank = resolveVoucherBankLedger(
+                    voucher,
+                    DebitCredit.DEBIT,
+                    "Existing CONTRA voucher does not contain a destination-bank debit entry"
+            );
+
             return GovernmentFeeFundTransferPostingResponseDto.builder()
                     .postingStatus("ALREADY_POSTED")
                     .message("Government-fee fund transfer was already posted")
                     .operationExpenseId(request.getOperationExpenseId())
                     .contraVoucherId(voucher.getId())
                     .contraVoucherNumber(voucher.getVoucherNumber())
-                    .fromBankLedgerId(request.getFromBankLedgerId())
-                    .toBankLedgerId(request.getToBankLedgerId())
+                    .fromBankLedgerId(fromBank.getId())
+                    .toBankLedgerId(toBank.getId())
                     .postedAt(resolvePostedAt(voucher))
                     .build();
         }
@@ -247,7 +260,7 @@ public class ProjectExpenseAccountingServiceImpl
     // =========================================================
 
     @Override
-    @Transactional
+    @Transactional(isolation = Isolation.SERIALIZABLE)
     public GovernmentFeePaymentPostingResponseDto postGovernmentFeePayment(
             GovernmentFeePaymentPostingRequestDto request
     ) {
@@ -260,16 +273,26 @@ public class ProjectExpenseAccountingServiceImpl
 
         if (existing.isPresent()) {
             AccountingVoucher voucher = existing.get();
+            LedgerMaster paymentBank = resolveVoucherBankLedger(
+                    voucher,
+                    DebitCredit.CREDIT,
+                    "Existing PAYMENT voucher does not contain a payment-bank credit entry"
+            );
+            LedgerMaster payableLedger = resolveVoucherLedgerByType(
+                    voucher,
+                    LedgerType.GOVERNMENT_FEE_PAYABLE,
+                    DebitCredit.DEBIT,
+                    "Existing PAYMENT voucher does not contain Government Fee Payable debit entry"
+            );
+
             return GovernmentFeePaymentPostingResponseDto.builder()
                     .postingStatus("ALREADY_POSTED")
                     .message("Government-fee payment was already posted")
                     .operationExpenseId(request.getOperationExpenseId())
                     .paymentVoucherId(voucher.getId())
                     .paymentVoucherNumber(voucher.getVoucherNumber())
-                    .paymentBankLedgerId(request.getPaymentBankLedgerId())
-                    .governmentFeePayableLedgerId(
-                            resolveGovernmentFeePayableLedger().getId()
-                    )
+                    .paymentBankLedgerId(paymentBank.getId())
+                    .governmentFeePayableLedgerId(payableLedger.getId())
                     .postedAt(resolvePostedAt(voucher))
                     .build();
         }
@@ -376,15 +399,36 @@ public class ProjectExpenseAccountingServiceImpl
         if (existingReceipt.isPresent()
                 && existingJournal.isPresent()) {
 
+            AccountingVoucher receipt = existingReceipt.get();
+            AccountingVoucher journal = existingJournal.get();
+
+            LedgerMaster receivingLedger = resolveVoucherLedgerBySide(
+                    receipt,
+                    DebitCredit.DEBIT,
+                    "Existing client receipt voucher does not contain a debit receiving ledger"
+            );
+            LedgerMaster clientAdvanceLedger = resolveVoucherLedgerByType(
+                    receipt,
+                    LedgerType.GOVERNMENT_FEE_CLIENT_ADVANCE,
+                    DebitCredit.CREDIT,
+                    "Existing client receipt voucher does not contain Government Fee Client Advance credit entry"
+            );
+            LedgerMaster payableLedger = resolveVoucherLedgerByType(
+                    journal,
+                    LedgerType.GOVERNMENT_FEE_PAYABLE,
+                    DebitCredit.CREDIT,
+                    "Existing accrual voucher does not contain Government Fee Payable credit entry"
+            );
+
             return buildClientFundedResponse(
                     request,
                     "ALREADY_POSTED",
                     "Client government-fee funding and accrual were already posted",
-                    existingReceipt.get(),
-                    existingJournal.get(),
-                    null,
-                    null,
-                    null
+                    receipt,
+                    journal,
+                    receivingLedger,
+                    clientAdvanceLedger,
+                    payableLedger
             );
         }
 
@@ -916,21 +960,46 @@ public class ProjectExpenseAccountingServiceImpl
                 .findByLedgerCodeIgnoreCaseAndDeletedFalse(ledgerCode);
 
         if (byCode.isPresent()) {
-            return activateIfRequired(byCode.get(), approver);
+            return validateAndActivateSystemLedger(
+                    byCode.get(),
+                    ledgerType,
+                    groupType,
+                    ledgerCode,
+                    approver
+            );
         }
 
         Optional<LedgerMaster> byType = ledgerMasterRepository
                 .findByLedgerTypeAndDeletedFalse(ledgerType);
 
         if (byType.isPresent()) {
-            return activateIfRequired(byType.get(), approver);
+            LedgerMaster existing = byType.get();
+            if (!ledgerCode.equalsIgnoreCase(existing.getLedgerCode())) {
+                log.warn(
+                        "[SYSTEM-LEDGER-CODE-NONCANONICAL] ledgerType={} | expectedCode={} | existingCode={} | ledgerId={}",
+                        ledgerType,
+                        ledgerCode,
+                        existing.getLedgerCode(),
+                        existing.getId()
+                );
+            }
+
+            return validateAndActivateSystemLedger(
+                    existing,
+                    ledgerType,
+                    groupType,
+                    existing.getLedgerCode(),
+                    approver
+            );
         }
+
+        LedgerGroup ledgerGroup = getOrCreateLedgerGroupByType(groupType);
 
         LedgerMaster ledger = new LedgerMaster();
         ledger.setLedgerName(ledgerName);
         ledger.setLedgerCode(ledgerCode);
         ledger.setLedgerType(ledgerType);
-        ledger.setLedgerGroup(getLedgerGroup(groupType));
+        ledger.setLedgerGroup(ledgerGroup);
         ledger.setOpeningBalance(zero());
         ledger.setOpeningBalanceType(normalBalance);
         ledger.setCurrentBalance(zero());
@@ -949,31 +1018,244 @@ public class ProjectExpenseAccountingServiceImpl
         } catch (DataIntegrityViolationException exception) {
             return ledgerMasterRepository
                     .findByLedgerCodeIgnoreCaseAndDeletedFalse(ledgerCode)
-                    .map(value -> activateIfRequired(value, approver))
+                    .or(() -> ledgerMasterRepository.findByLedgerTypeAndDeletedFalse(ledgerType))
+                    .map(value -> validateAndActivateSystemLedger(
+                            value,
+                            ledgerType,
+                            groupType,
+                            value.getLedgerCode(),
+                            approver
+                    ))
                     .orElseThrow(() -> exception);
         }
     }
 
-    private LedgerMaster activateIfRequired(
+    private LedgerMaster validateAndActivateSystemLedger(
             LedgerMaster ledger,
+            LedgerType expectedType,
+            LedgerGroupType expectedGroupType,
+            String expectedCode,
             User approver
     ) {
-        if (ledger.isActive()) {
-            return ledger;
+        if (ledger.getLedgerType() != expectedType) {
+            throw new ValidationException(
+                    "System ledger code " + expectedCode
+                            + " is mapped to invalid ledger type " + ledger.getLedgerType()
+                            + "; expected " + expectedType,
+                    "ERR_SYSTEM_LEDGER_TYPE_MISMATCH",
+                    "ledgerType"
+            );
         }
 
-        ledger.setActive(true);
-        ledger.setUpdatedBy(approver);
-        return ledgerMasterRepository.save(ledger);
+        LedgerGroup group = ledger.getLedgerGroup();
+        if (group == null || group.getGroupType() != expectedGroupType) {
+            throw new ValidationException(
+                    "System ledger " + ledger.getLedgerName()
+                            + " is mapped to invalid ledger group. Expected "
+                            + expectedGroupType,
+                    "ERR_SYSTEM_LEDGER_GROUP_MISMATCH",
+                    "ledgerGroup"
+            );
+        }
+
+        boolean changed = false;
+
+        if (!group.isActive() || group.isDeleted()) {
+            group.setActive(true);
+            group.setDeleted(false);
+            group.setSystemDefault(true);
+            ledgerGroupRepository.save(group);
+        }
+
+        if (!ledger.isSystemCreated()) {
+            ledger.setSystemCreated(true);
+            changed = true;
+        }
+
+        if (!ledger.isActive()) {
+            ledger.setActive(true);
+            changed = true;
+        }
+
+        if (ledger.isDeleted()) {
+            ledger.setDeleted(false);
+            changed = true;
+        }
+
+        if (approver != null) {
+            ledger.setUpdatedBy(approver);
+            changed = true;
+        }
+
+        return changed ? ledgerMasterRepository.save(ledger) : ledger;
     }
 
-    private LedgerGroup getLedgerGroup(LedgerGroupType groupType) {
-        return ledgerGroupRepository
-                .findByGroupTypeAndDeletedFalse(groupType)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Ledger group not found for type: " + groupType,
-                        "LEDGER_GROUP_NOT_FOUND"
+    private LedgerGroup getOrCreateLedgerGroupByType(
+            LedgerGroupType groupType
+    ) {
+        if (groupType == null) {
+            throw new ValidationException(
+                    "Ledger group type is required",
+                    "ERR_LEDGER_GROUP_TYPE_REQUIRED",
+                    "groupType"
+            );
+        }
+
+        Optional<LedgerGroup> existingActive = ledgerGroupRepository
+                .findByGroupTypeAndDeletedFalse(groupType);
+
+        if (existingActive.isPresent()) {
+            LedgerGroup group = existingActive.get();
+            if (!group.isActive() || !group.isSystemDefault()) {
+                group.setActive(true);
+                group.setSystemDefault(true);
+                return ledgerGroupRepository.save(group);
+            }
+            return group;
+        }
+
+        Optional<LedgerGroup> existingAny = ledgerGroupRepository.findByGroupType(groupType);
+        if (existingAny.isPresent()) {
+            LedgerGroup group = existingAny.get();
+            group.setDeleted(false);
+            group.setActive(true);
+            group.setSystemDefault(true);
+            return ledgerGroupRepository.saveAndFlush(group);
+        }
+
+        LedgerGroup group = LedgerGroup.builder()
+                .name(formatGroupTypeLabel(groupType))
+                .groupType(groupType)
+                .description("System default group for "
+                        + formatGroupTypeLabel(groupType).toLowerCase(Locale.ROOT))
+                .systemDefault(true)
+                .active(true)
+                .deleted(false)
+                .build();
+
+        try {
+            LedgerGroup saved = ledgerGroupRepository.saveAndFlush(group);
+            log.info(
+                    "[LEDGER-GROUP-AUTO-CREATED] groupId={} | groupType={} | name={}",
+                    saved.getId(),
+                    saved.getGroupType(),
+                    saved.getName()
+            );
+            return saved;
+        } catch (DataIntegrityViolationException exception) {
+            return ledgerGroupRepository.findByGroupType(groupType)
+                    .map(existing -> {
+                        existing.setDeleted(false);
+                        existing.setActive(true);
+                        existing.setSystemDefault(true);
+                        return ledgerGroupRepository.saveAndFlush(existing);
+                    })
+                    .orElseThrow(() -> exception);
+        }
+    }
+
+    private String formatGroupTypeLabel(LedgerGroupType groupType) {
+        String[] words = groupType.name().toLowerCase(Locale.ROOT).split("_");
+        StringBuilder result = new StringBuilder();
+        for (String word : words) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (result.length() > 0) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(word.charAt(0)))
+                    .append(word.substring(1));
+        }
+        return result.toString();
+    }
+
+    private LedgerMaster resolveVoucherBankLedger(
+            AccountingVoucher voucher,
+            DebitCredit side,
+            String errorMessage
+    ) {
+        if (voucher == null || voucher.getEntries() == null) {
+            throw new ValidationException(
+                    errorMessage,
+                    "ERR_EXISTING_VOUCHER_LEDGER_NOT_FOUND",
+                    "voucher"
+            );
+        }
+
+        return voucher.getEntries().stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> entry.getLedger().getLedgerType() == LedgerType.BANK)
+                .filter(entry -> side == DebitCredit.DEBIT
+                        ? isPositive(entry.getDebitAmount())
+                        : isPositive(entry.getCreditAmount()))
+                .map(AccountingVoucherEntry::getLedger)
+                .findFirst()
+                .orElseThrow(() -> new ValidationException(
+                        errorMessage,
+                        "ERR_EXISTING_VOUCHER_LEDGER_NOT_FOUND",
+                        "voucher"
                 ));
+    }
+
+    private LedgerMaster resolveVoucherLedgerBySide(
+            AccountingVoucher voucher,
+            DebitCredit side,
+            String errorMessage
+    ) {
+        if (voucher == null || voucher.getEntries() == null) {
+            throw new ValidationException(
+                    errorMessage,
+                    "ERR_EXISTING_VOUCHER_LEDGER_NOT_FOUND",
+                    "voucher"
+            );
+        }
+
+        return voucher.getEntries().stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> side == DebitCredit.DEBIT
+                        ? isPositive(entry.getDebitAmount())
+                        : isPositive(entry.getCreditAmount()))
+                .map(AccountingVoucherEntry::getLedger)
+                .findFirst()
+                .orElseThrow(() -> new ValidationException(
+                        errorMessage,
+                        "ERR_EXISTING_VOUCHER_LEDGER_NOT_FOUND",
+                        "voucher"
+                ));
+    }
+
+    private LedgerMaster resolveVoucherLedgerByType(
+            AccountingVoucher voucher,
+            LedgerType ledgerType,
+            DebitCredit side,
+            String errorMessage
+    ) {
+        if (voucher == null || voucher.getEntries() == null) {
+            throw new ValidationException(
+                    errorMessage,
+                    "ERR_EXISTING_VOUCHER_LEDGER_NOT_FOUND",
+                    "voucher"
+            );
+        }
+
+        return voucher.getEntries().stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> entry.getLedger().getLedgerType() == ledgerType)
+                .filter(entry -> side == DebitCredit.DEBIT
+                        ? isPositive(entry.getDebitAmount())
+                        : isPositive(entry.getCreditAmount()))
+                .map(AccountingVoucherEntry::getLedger)
+                .findFirst()
+                .orElseThrow(() -> new ValidationException(
+                        errorMessage,
+                        "ERR_EXISTING_VOUCHER_LEDGER_NOT_FOUND",
+                        "voucher"
+                ));
+    }
+
+    private boolean isPositive(BigDecimal value) {
+        return value != null && value.compareTo(BigDecimal.ZERO) > 0;
     }
 
     private User resolveApprover(Long userId) {
@@ -1256,6 +1538,25 @@ public class ProjectExpenseAccountingServiceImpl
             throw new ValidationException(
                     "Government Fee Payable ledger is inactive",
                     "ERR_GOVERNMENT_FEE_PAYABLE_INACTIVE",
+                    "governmentFeePayableLedgerId"
+            );
+        }
+
+        if (payable.getLedgerType() != LedgerType.GOVERNMENT_FEE_PAYABLE) {
+            throw new ValidationException(
+                    "Government Fee Payable ledger has invalid ledger type: "
+                            + payable.getLedgerType(),
+                    "ERR_GOVERNMENT_FEE_PAYABLE_TYPE_MISMATCH",
+                    "governmentFeePayableLedgerId"
+            );
+        }
+
+        if (payable.getLedgerGroup() == null
+                || payable.getLedgerGroup().getGroupType()
+                != LedgerGroupType.CURRENT_LIABILITIES) {
+            throw new ValidationException(
+                    "Government Fee Payable ledger must belong to CURRENT_LIABILITIES",
+                    "ERR_GOVERNMENT_FEE_PAYABLE_GROUP_MISMATCH",
                     "governmentFeePayableLedgerId"
             );
         }
