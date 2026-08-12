@@ -1,10 +1,12 @@
 package com.account.controller.ledger;
 
-import com.account.dto.operationService.*;
+import com.account.dto.operationService.GovernmentExpenseListItemDto;
 import com.account.dto.operationService.GovernmentFeeFundTransferPostingRequestDto;
 import com.account.dto.operationService.GovernmentFeeFundTransferPostingResponseDto;
 import com.account.dto.operationService.GovernmentFeePaymentPostingRequestDto;
 import com.account.dto.operationService.GovernmentFeePaymentPostingResponseDto;
+import com.account.dto.operationService.GovernmentFeePostingRequestDto;
+import com.account.dto.operationService.GovernmentFeePostingResponseDto;
 import com.account.service.ledger.ProjectExpenseAccountingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +18,12 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
 @Validated
@@ -31,7 +38,6 @@ public class ProjectExpenseAccountingController {
     public ResponseEntity<GovernmentFeePostingResponseDto> postGovernmentFee(
             @Valid @RequestBody GovernmentFeePostingRequestDto request
     ) {
-
         log.info(
                 "[GOVERNMENT-FEE-POSTING-REQUEST] operationExpenseId={} | projectId={} | paidBy={} | approvedAmount={} | bankLedgerId={}",
                 request.getOperationExpenseId(),
@@ -54,15 +60,23 @@ public class ProjectExpenseAccountingController {
     @PostMapping("/government-fee/fund-transfer")
     public ResponseEntity<GovernmentFeeFundTransferPostingResponseDto>
     postGovernmentFeeFundTransfer(
-            @Valid @RequestBody
-            GovernmentFeeFundTransferPostingRequestDto request
+            @Valid @RequestBody GovernmentFeeFundTransferPostingRequestDto request
     ) {
-        GovernmentFeeFundTransferPostingResponseDto response =
-                projectExpenseAccountingService
-                        .postGovernmentFeeFundTransfer(request);
+        log.info(
+                "[GOVERNMENT-FEE-FUND-TRANSFER-REQUEST] operationExpenseId={} | projectId={} | fromBankLedgerId={} | toBankLedgerId={} | amount={} | transferDate={} | reference={}",
+                request.getOperationExpenseId(),
+                request.getProjectId(),
+                request.getFromBankLedgerId(),
+                request.getToBankLedgerId(),
+                request.getAmount(),
+                request.getTransferDate(),
+                request.getTransferReference()
+        );
 
-        HttpStatus status = "POSTED".equalsIgnoreCase(
-                response.getPostingStatus())
+        GovernmentFeeFundTransferPostingResponseDto response =
+                projectExpenseAccountingService.postGovernmentFeeFundTransfer(request);
+
+        HttpStatus status = "POSTED".equalsIgnoreCase(response.getPostingStatus())
                 ? HttpStatus.CREATED
                 : HttpStatus.OK;
 
@@ -85,44 +99,33 @@ public class ProjectExpenseAccountingController {
         );
 
         GovernmentFeePaymentPostingResponseDto response =
-                projectExpenseAccountingService
-                        .postGovernmentFeePayment(request);
+                projectExpenseAccountingService.postGovernmentFeePayment(request);
 
-        HttpStatus status = "POSTED".equalsIgnoreCase(
-                response.getPostingStatus())
+        HttpStatus status = "POSTED".equalsIgnoreCase(response.getPostingStatus())
                 ? HttpStatus.CREATED
                 : HttpStatus.OK;
 
         return ResponseEntity.status(status).body(response);
     }
 
-
     @GetMapping("/government-fee")
     public ResponseEntity<Page<GovernmentExpenseListItemDto>>
     getGovernmentFeeExpenses(
-
-            @RequestParam(defaultValue = "0")
-            int page,
-
-            @RequestParam(defaultValue = "20")
-            int size
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 || size > 200 ? 20 : size;
 
-        Pageable pageable =
-                PageRequest.of(
-                        page,
-                        size,
-                        Sort.by(
-                                Sort.Direction.DESC,
-                                "id"
-                        )
-                );
+        Pageable pageable = PageRequest.of(
+                safePage,
+                safeSize,
+                Sort.by(Sort.Direction.DESC, "id")
+        );
 
         Page<GovernmentExpenseListItemDto> response =
-                projectExpenseAccountingService
-                        .getGovernmentFeeExpenses(pageable);
+                projectExpenseAccountingService.getGovernmentFeeExpenses(pageable);
 
         return ResponseEntity.ok(response);
     }
-
 }

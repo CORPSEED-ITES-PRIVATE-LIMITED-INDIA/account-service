@@ -45,6 +45,14 @@ public class LedgerGroupServiceImpl implements LedgerGroupService {
             );
         }
 
+        if (ledgerGroupRepository.existsByGroupType(request.getGroupType())) {
+            throw new ValidationException(
+                    "Ledger group already exists for type: " + request.getGroupType(),
+                    "ERR_LEDGER_GROUP_TYPE_DUPLICATE",
+                    "groupType"
+            );
+        }
+
         LedgerGroup ledgerGroup = LedgerGroup.builder()
                 .name(normalizedName)
                 .groupType(request.getGroupType())
@@ -73,6 +81,32 @@ public class LedgerGroupServiceImpl implements LedgerGroupService {
 
         String normalizedName = normalizeName(request.getName());
 
+        if (ledgerGroup.isSystemDefault()) {
+            if (request.getGroupType() != ledgerGroup.getGroupType()) {
+                throw new ValidationException(
+                        "System default ledger group type cannot be changed",
+                        "ERR_SYSTEM_LEDGER_GROUP_TYPE_EDIT_NOT_ALLOWED",
+                        "groupType"
+                );
+            }
+
+            if (Boolean.FALSE.equals(request.getSystemDefault())) {
+                throw new ValidationException(
+                        "System default flag cannot be removed from a system ledger group",
+                        "ERR_SYSTEM_LEDGER_GROUP_FLAG_EDIT_NOT_ALLOWED",
+                        "systemDefault"
+                );
+            }
+
+            if (Boolean.FALSE.equals(request.getActive())) {
+                throw new ValidationException(
+                        "System default ledger group cannot be deactivated",
+                        "ERR_SYSTEM_LEDGER_GROUP_DEACTIVATE_NOT_ALLOWED",
+                        "active"
+                );
+            }
+        }
+
         if (ledgerGroupRepository.existsByNameIgnoreCaseAndIdNot(normalizedName, id)) {
             throw new ValidationException(
                     "Ledger group already exists with name: " + normalizedName,
@@ -81,16 +115,29 @@ public class LedgerGroupServiceImpl implements LedgerGroupService {
             );
         }
 
+        if (ledgerGroupRepository.existsByGroupTypeAndIdNot(request.getGroupType(), id)) {
+            throw new ValidationException(
+                    "Another ledger group already exists for type: " + request.getGroupType(),
+                    "ERR_LEDGER_GROUP_TYPE_DUPLICATE",
+                    "groupType"
+            );
+        }
+
         ledgerGroup.setName(normalizedName);
         ledgerGroup.setGroupType(request.getGroupType());
         ledgerGroup.setDescription(clean(request.getDescription()));
 
-        if (request.getSystemDefault() != null) {
-            ledgerGroup.setSystemDefault(request.getSystemDefault());
-        }
+        if (ledgerGroup.isSystemDefault()) {
+            ledgerGroup.setSystemDefault(true);
+            ledgerGroup.setActive(true);
+        } else {
+            if (request.getSystemDefault() != null) {
+                ledgerGroup.setSystemDefault(request.getSystemDefault());
+            }
 
-        if (request.getActive() != null) {
-            ledgerGroup.setActive(request.getActive());
+            if (request.getActive() != null) {
+                ledgerGroup.setActive(request.getActive());
+            }
         }
 
         LedgerGroup saved = ledgerGroupRepository.save(ledgerGroup);
