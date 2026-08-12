@@ -82,6 +82,7 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private Long contactId;
     private String contactName;
+    private String contactEmail;   // ← added
 
     // =====================================================
     // GENERATED INVOICE

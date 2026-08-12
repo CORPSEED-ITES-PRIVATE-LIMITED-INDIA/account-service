@@ -1989,6 +1989,12 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? estimate.getContact().getName()
                                 : null
                 )
+                .contactEmail(
+                        estimate != null
+                                && estimate.getContact() != null
+                                ? estimate.getContact().getEmails()
+                                : null
+                )
 
                 // =====================================================
                 // GENERATED INVOICE
