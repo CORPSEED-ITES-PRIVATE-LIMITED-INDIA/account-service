@@ -67,6 +67,14 @@ public class ProjectExpenseAccountingServiceImpl
     private static final String MAIN_CASH_LEDGER_CODE =
             "LED-CASH-MAIN";
 
+    private static final Set<VoucherSourceType> GOVERNMENT_FEE_VOUCHER_SOURCE_TYPES =
+            EnumSet.of(
+                    VoucherSourceType.PROJECT_EXPENSE_CLIENT_RECEIPT,
+                    VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL,
+                    VoucherSourceType.PROJECT_EXPENSE_FUND_TRANSFER,
+                    VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_PAYMENT
+            );
+
     private static final Set<String> ALLOWED_PAYMENT_MODES =
             Set.of(
                     "CASH",
@@ -1906,6 +1914,68 @@ public class ProjectExpenseAccountingServiceImpl
                     "clientUnitId"
             );
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<GovernmentExpenseVoucherListItemDto> getGovernmentFeeVouchers(
+            Pageable pageable
+    ) {
+
+        log.info(
+                "[GOVERNMENT-FEE-VOUCHER-LIST] page={} | size={}",
+                pageable.getPageNumber(),
+                pageable.getPageSize()
+        );
+
+        Page<AccountingVoucher> vouchers =
+                accountingVoucherRepository.findBySourceTypeInAndStatus(
+                        GOVERNMENT_FEE_VOUCHER_SOURCE_TYPES,
+                        VoucherStatus.POSTED,
+                        pageable
+                );
+
+        return vouchers.map(this::mapGovernmentFeeVoucherListItem);
+    }
+
+    private GovernmentExpenseVoucherListItemDto
+    mapGovernmentFeeVoucherListItem(AccountingVoucher voucher) {
+
+        return GovernmentExpenseVoucherListItemDto.builder()
+
+                .voucherId(voucher.getId())
+
+                .voucherNumber(voucher.getVoucherNumber())
+
+                .voucherType(voucher.getVoucherType())
+
+                .voucherDate(voucher.getVoucherDate())
+
+                /*
+                 * For all PROJECT_EXPENSE_* voucher source types,
+                 * sourceId = operationExpenseId.
+                 */
+                .operationExpenseId(voucher.getSourceId())
+
+                .sourceType(voucher.getSourceType())
+
+                .status(voucher.getStatus())
+
+                /*
+                 * Voucher is balanced, therefore:
+                 * totalDebit == totalCredit.
+                 */
+                .amount(voucher.getTotalDebit())
+
+                .totalDebit(voucher.getTotalDebit())
+
+                .totalCredit(voucher.getTotalCredit())
+
+                .narration(voucher.getNarration())
+
+                .createdAt(voucher.getCreatedAt())
+
+                .build();
     }
 
 

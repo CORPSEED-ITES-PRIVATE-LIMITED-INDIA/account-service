@@ -1,5 +1,6 @@
 package com.account.controller.ledger;
 
+import com.account.domain.ledger.DebitCredit;
 import com.account.domain.ledger.LedgerGroupType;
 import com.account.domain.ledger.LedgerType;
 import com.account.dto.ledger.LedgerMasterRequestDto;
@@ -15,9 +16,12 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Arrays;
 import java.util.List;
 
 import java.time.LocalDate;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/accountService/api/v1/ledgers")
@@ -147,6 +151,26 @@ public class LedgerMasterController {
     }
 
 
+    @GetMapping("/debit-credit-types")
+    @Operation(summary = "Get debit/credit types")
+    public ResponseEntity<List<Map<String, String>>> getDebitCreditTypes() {
+
+        List<Map<String, String>> response = Arrays.stream(DebitCredit.values())
+                .map(type -> Map.of(
+                        "value", type.name(),
+                        "label", formatDebitCreditLabel(type)
+                ))
+                .toList();
+
+        return ResponseEntity.ok(response);
+    }
+
+    private String formatDebitCreditLabel(DebitCredit type) {
+        String value = type.name().toLowerCase();
+
+        return value.substring(0, 1).toUpperCase()
+                + value.substring(1);
+    }
 
 
 }
