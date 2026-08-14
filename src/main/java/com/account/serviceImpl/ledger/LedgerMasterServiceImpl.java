@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 public class LedgerMasterServiceImpl implements LedgerMasterService {
 
     private static final String LEDGER_STATEMENT_VERSION =
-            "2026-08-04-CUSTOMER-TDS-SPLIT-3DP-V3";
+            "2026-08-14-ACCOUNTING-SIDE-DISPLAY-V4";
 
     private static final int MONEY_SCALE = 3;
     private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;
@@ -841,36 +841,36 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             case CASH -> LedgerGroupType.CASH_IN_HAND;
 
             case BANK,
-                    PAYMENT_GATEWAY -> LedgerGroupType.BANK_ACCOUNTS;
+                 PAYMENT_GATEWAY -> LedgerGroupType.BANK_ACCOUNTS;
 
             case CUSTOMER -> LedgerGroupType.SUNDRY_DEBTORS;
 
             case SUPPLIER,
-                    VENDOR,
-                    VENDOR_PAYABLE -> LedgerGroupType.SUNDRY_CREDITORS;
+                 VENDOR,
+                 VENDOR_PAYABLE -> LedgerGroupType.SUNDRY_CREDITORS;
 
             case CUSTOMER_ADVANCE,
-                    LIABILITY,
-                    REFUND_PAYABLE -> LedgerGroupType.CURRENT_LIABILITIES;
+                 LIABILITY,
+                 REFUND_PAYABLE -> LedgerGroupType.CURRENT_LIABILITIES;
 
             case SALES,
-                    SERVICE_INCOME,
-                    SALES_RETURN -> LedgerGroupType.SALES_ACCOUNTS;
+                 SERVICE_INCOME,
+                 SALES_RETURN -> LedgerGroupType.SALES_ACCOUNTS;
 
             case PURCHASE -> LedgerGroupType.PURCHASE_ACCOUNTS;
 
             case TAX,
-                    OUTPUT_IGST,
-                    OUTPUT_CGST,
-                    OUTPUT_SGST,
-                    INPUT_IGST,
-                    INPUT_CGST,
-                    INPUT_SGST,
-                    TDS_RECEIVABLE,
-                    TDS_PAYABLE -> LedgerGroupType.DUTIES_AND_TAXES;
+                 OUTPUT_IGST,
+                 OUTPUT_CGST,
+                 OUTPUT_SGST,
+                 INPUT_IGST,
+                 INPUT_CGST,
+                 INPUT_SGST,
+                 TDS_RECEIVABLE,
+                 TDS_PAYABLE -> LedgerGroupType.DUTIES_AND_TAXES;
 
             case EXPENSE,
-                    ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;
+                 ROUND_OFF -> LedgerGroupType.INDIRECT_EXPENSES;
 
             case INCOME -> LedgerGroupType.INDIRECT_INCOMES;
 
@@ -924,9 +924,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
          * DEBIT  = positive
          * CREDIT = negative
          *
-         * For BANK / PAYMENT_GATEWAY display:
-         * Bank debit balance should be shown as CREDIT,
-         * because you want bank-statement style display.
+         * All ledger types, including BANK and PAYMENT_GATEWAY, are displayed
+         * on the actual accounting side. We do not reverse debit/credit merely
+         * to imitate a bank passbook statement.
          */
         BigDecimal displayOpeningSignedBalance = displaySignedBalanceForLedger(
                 ledger,
@@ -1371,10 +1371,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                     : null;
 
             /*
-             * Default display amount.
+             * Display the actual accounting side for every ledger type.
              *
-             * For BANK / PAYMENT_GATEWAY:
-             * accounting debit is money received, but UI shows it as Credit.
+             * Example for a bank-to-bank CONTRA:
+             *   Dr destination bank -> Debit column
+             *   Cr source bank      -> Credit column
              */
             BigDecimal displayDebit = displayDebitForLedger(
                     ledger,
@@ -2310,29 +2311,16 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     }
 
 
-    private boolean isBankStatementDisplayLedger(LedgerMaster ledger) {
-        return ledger != null
-                && ledger.getLedgerType() != null
-                && (
-                ledger.getLedgerType() == LedgerType.BANK
-                        || ledger.getLedgerType() == LedgerType.PAYMENT_GATEWAY
-        );
-    }
-
     private BigDecimal displayDebitForLedger(
             LedgerMaster ledger,
             BigDecimal accountingDebit,
             BigDecimal accountingCredit
     ) {
         /*
-         * Bank statement display:
-         * Accounting debit = money received = show in Credit column
-         * Accounting credit = money paid = show in Debit column
+         * Ledger UI follows accounting semantics for every ledger type.
+         * The ledger argument is intentionally retained so this helper's
+         * call-site contract stays stable.
          */
-        if (isBankStatementDisplayLedger(ledger)) {
-            return moneyForStatement(accountingCredit);
-        }
-
         return moneyForStatement(accountingDebit);
     }
 
@@ -2341,10 +2329,6 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             BigDecimal accountingDebit,
             BigDecimal accountingCredit
     ) {
-        if (isBankStatementDisplayLedger(ledger)) {
-            return moneyForStatement(accountingDebit);
-        }
-
         return moneyForStatement(accountingCredit);
     }
 
@@ -2353,13 +2337,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             BigDecimal accountingSignedBalance
     ) {
         /*
-         * Accounting bank balance is normally DR.
-         * For bank-statement UI, show positive bank balance as CR.
+         * Positive signed balance = DEBIT.
+         * Negative signed balance = CREDIT.
+         *
+         * Do not negate BANK / PAYMENT_GATEWAY balances for presentation.
          */
-        if (isBankStatementDisplayLedger(ledger)) {
-            return moneyForStatement(accountingSignedBalance).negate();
-        }
-
         return moneyForStatement(accountingSignedBalance);
     }
 
