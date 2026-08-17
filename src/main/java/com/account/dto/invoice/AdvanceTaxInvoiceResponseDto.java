@@ -30,6 +30,8 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private BigDecimal requestedAmount;
     private BigDecimal approvedAmount;
+    private String clientPoNumber;
+
 
     private AdvanceTaxInvoiceRequestStatus requestStatus;
 

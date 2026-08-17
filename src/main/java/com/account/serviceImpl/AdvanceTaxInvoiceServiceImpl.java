@@ -1903,6 +1903,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? estimate.getSolutionName()
                                 : null
                 )
+                .clientPoNumber(
+                        estimate != null
+                                ? estimate.getClientPoNumber()
+                                : null
+                )
 
                 // =====================================================
                 // COMPANY / UNIT / CONTACT
@@ -3764,17 +3769,40 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         Long companyId = company.getId();
         Long unitId = unit.getId();
 
+        /*
+         * IMPORTANT:
+         * A company/unit's customer-facing ledger may have been created as
+         * LedgerType.CUSTOMER (normal sales flow) OR LedgerType.CUSTOMER_ADVANCE
+         * (advance/PO flow). Both represent the SAME party ledger from an
+         * accounting point of view.
+         *
+         * Looking up CUSTOMER only causes a duplicate "Company - Unit" ledger
+         * to be silently created whenever the existing ledger happens to be
+         * CUSTOMER_ADVANCE, splitting that party's entries across two ledgers.
+         *
+         * Match on BOTH types so the Advance Tax Invoice voucher always posts
+         * into whichever party ledger already exists for this company/unit.
+         */
         Optional<LedgerMaster> existing =
                 ledgerMasterRepository
-                        .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+                        .findFirstByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
                                 companyId,
                                 unitId,
-                                LedgerType.CUSTOMER
+                                List.of(
+                                        LedgerType.CUSTOMER,
+                                        LedgerType.CUSTOMER_ADVANCE
+                                )
                         );
 
         if (existing.isPresent()) {
             LedgerMaster ledger = existing.get();
 
+            /*
+             * Do NOT overwrite ledger.setLedgerType(...) here.
+             * Preserve whatever type (CUSTOMER or CUSTOMER_ADVANCE) the
+             * ledger already has so existing ledger entries and reports
+             * for that ledger stay consistent.
+             */
             ledger.setCompany(company);
             ledger.setUnit(unit);
             ledger.setContact(contact);
@@ -3824,6 +3852,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 generateLedgerCode("CUST")
         );
 
+        /*
+         * No existing party ledger of either type was found, so a fresh
+         * CUSTOMER ledger is created — matching the original behaviour
+         * for genuinely new companies/units.
+         */
         ledger.setLedgerType(LedgerType.CUSTOMER);
         ledger.setLedgerGroup(debtors);
 

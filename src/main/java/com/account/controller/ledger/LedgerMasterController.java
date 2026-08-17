@@ -151,26 +151,7 @@ public class LedgerMasterController {
     }
 
 
-    @GetMapping("/debit-credit-types")
-    @Operation(summary = "Get debit/credit types")
-    public ResponseEntity<List<Map<String, String>>> getDebitCreditTypes() {
 
-        List<Map<String, String>> response = Arrays.stream(DebitCredit.values())
-                .map(type -> Map.of(
-                        "value", type.name(),
-                        "label", formatDebitCreditLabel(type)
-                ))
-                .toList();
-
-        return ResponseEntity.ok(response);
-    }
-
-    private String formatDebitCreditLabel(DebitCredit type) {
-        String value = type.name().toLowerCase();
-
-        return value.substring(0, 1).toUpperCase()
-                + value.substring(1);
-    }
 
 
 }

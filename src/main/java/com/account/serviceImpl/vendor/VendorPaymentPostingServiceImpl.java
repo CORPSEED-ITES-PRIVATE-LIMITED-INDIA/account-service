@@ -147,21 +147,46 @@ public class VendorPaymentPostingServiceImpl
                 new ArrayList<>();
 
         // =====================================================
-        // DR VENDOR LEDGER
-        // Liability toward vendor is reduced.
+        // DR VENDOR LEDGER — BANK PORTION
+        // Liability toward vendor is reduced by the actual
+        // cash/bank amount paid out.
         // =====================================================
 
-        entries.add(
-                AccountingVoucherEntryRequestDto.builder()
-                        .ledgerId(vendorLedger.getId())
-                        .debitAmount(grossPayable)
-                        .creditAmount(zero())
-                        .narration(
-                                "Vendor payment settled for "
-                                        + externalVendor.getVendorName()
-                        )
-                        .build()
-        );
+        if (bankPayment.compareTo(BigDecimal.ZERO) > 0) {
+            entries.add(
+                    AccountingVoucherEntryRequestDto.builder()
+                            .ledgerId(vendorLedger.getId())
+                            .debitAmount(bankPayment)
+                            .creditAmount(zero())
+                            .narration(
+                                    "Vendor payment settled (bank portion) for "
+                                            + externalVendor.getVendorName()
+                            )
+                            .build()
+            );
+        }
+
+        // =====================================================
+        // DR VENDOR LEDGER — TDS PORTION
+        // Same liability reduction, but the TDS-withheld portion
+        // is shown as its own line so it is visible directly
+        // inside the vendor's own ledger, not only inside the
+        // TDS Payable ledger.
+        // =====================================================
+
+        if (tdsAmount.compareTo(BigDecimal.ZERO) > 0) {
+            entries.add(
+                    AccountingVoucherEntryRequestDto.builder()
+                            .ledgerId(vendorLedger.getId())
+                            .debitAmount(tdsAmount)
+                            .creditAmount(zero())
+                            .narration(
+                                    "TDS deducted from payment to "
+                                            + externalVendor.getVendorName()
+                            )
+                            .build()
+            );
+        }
 
         // =====================================================
         // CR BANK LEDGER

@@ -551,6 +551,66 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // =====================================================
+// 12A. MINIMUM PAYMENT AMOUNT VALIDATION FOR ADVANCE TAX INVOICE
+// =====================================================
+        /*
+         * Business rule:
+         *
+         * When an Advance Tax Invoice already exists for this Estimate,
+         * the actual bank amount entered for this payment must NEVER be
+         * less than the Advance Tax Invoice's outstanding amount.
+         *
+         * It is allowed to be equal to it or greater than it
+         * (e.g. customer decides to pay more than the raised ATI amount),
+         * but never less.
+         *
+         * Example:
+         *   Advance Tax Invoice = ₹100
+         *   Entered amount = ₹50   -> REJECTED
+         *   Entered amount = ₹100  -> ALLOWED
+         *   Entered amount = ₹150  -> ALLOWED
+         */
+        if (existingAdvanceTaxInvoice != null && !isZeroAmountPurchaseOrder) {
+
+            BigDecimal advanceInvoiceMinimumAmount =
+                    safe3(existingAdvanceTaxInvoice.getOutstandingAmount());
+
+            if (advanceInvoiceMinimumAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new ValidationException(
+                        "No outstanding amount is available against Advance Tax Invoice "
+                                + existingAdvanceTaxInvoice.getInvoiceNumber(),
+                        "ERR_ADVANCE_INVOICE_NO_OUTSTANDING",
+                        "amount"
+                );
+            }
+
+            if (reqAmount.compareTo(advanceInvoiceMinimumAmount) < 0) {
+                throw new ValidationException(
+                        "Payment amount cannot be less than the Advance Tax Invoice amount. "
+                                + "Advance Tax Invoice: "
+                                + existingAdvanceTaxInvoice.getInvoiceNumber()
+                                + ", required minimum amount: ₹"
+                                + advanceInvoiceMinimumAmount
+                                + ", entered amount: ₹"
+                                + reqAmount,
+                        "ERR_PAYMENT_BELOW_ADVANCE_INVOICE_MINIMUM",
+                        "amount"
+                );
+            }
+
+            log.info(
+                    "[ADVANCE-INVOICE-MINIMUM-AMOUNT-VALIDATED] traceId={} | "
+                            + "invoiceId={} | invoiceNumber={} | minimumRequired={} | "
+                            + "entered={}",
+                    traceId,
+                    existingAdvanceTaxInvoice.getId(),
+                    existingAdvanceTaxInvoice.getInvoiceNumber(),
+                    advanceInvoiceMinimumAmount,
+                    reqAmount
+            );
+        }
+
+        // =====================================================
         // 13. FIND EXISTING UNBILLED
         // =====================================================
 
@@ -683,7 +743,7 @@ public class PaymentServiceImpl implements PaymentService {
                     );
                 }
 
-                unbilledTotal = invoiceOutstanding;
+                unbilledTotal = estimateTotal.max(invoiceOutstanding);
 
                 log.info(
                         "[ADVANCE-INVOICE-UNBILLED-TOTAL-RESOLVED] "

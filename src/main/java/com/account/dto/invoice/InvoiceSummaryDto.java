@@ -34,6 +34,8 @@ public class InvoiceSummaryDto {
     private String contactName;
     private String contactEmail;
 
+    private String clientPoNumber;
+
 
     private LocalDate invoiceDate;
     private BigDecimal grandTotal;
