@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 public class LedgerMasterServiceImpl implements LedgerMasterService {
 
     private static final String LEDGER_STATEMENT_VERSION =
-            "2026-08-14-ACCOUNTING-SIDE-DISPLAY-V4";
+            "2026-08-18-VENDOR-PAYMENT-TDS-SPLIT-V5";
 
     private static final int MONEY_SCALE = 3;
     private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;
@@ -1390,6 +1390,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             );
 
             boolean customerReceiptCreditRowWithTdsSplit = false;
+            boolean vendorPaymentDebitRowWithTdsSplit = false;
 
             /*
              * The accounting voucher contains one customer credit equal to
@@ -1421,9 +1422,48 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 }
             }
 
+            /*
+             * A procurement vendor PAYMENT voucher contains one vendor debit
+             * equal to Bank + TDS:
+             *
+             *   Dr Vendor                  gross settlement
+             *       Cr Bank/Cash           actual bank payment
+             *       Cr TDS Payable         tax withheld
+             *
+             * The vendor statement is easier to understand when that gross
+             * debit is displayed as two rows: Bank and TDS Payable. This is
+             * display-only; the posted accounting voucher is not changed.
+             */
+            if (isVendorPaymentDebitRow(
+                    ledger,
+                    voucher,
+                    accountingDebit,
+                    accountingCredit
+            )) {
+                BigDecimal bankAmount = getVendorPaymentBankAmount(
+                        ledger,
+                        voucher,
+                        otherEntriesCache
+                );
+
+                if (bankAmount.compareTo(BigDecimal.ZERO) > 0
+                        && bankAmount.compareTo(accountingDebit) < 0) {
+                    displayDebit = bankAmount;
+                    displayCredit = zeroMoneyForStatement();
+                    receiptBankName = resolvePaymentBankName(
+                            ledger,
+                            voucher,
+                            otherEntriesCache
+                    );
+                    particulars = receiptBankName;
+                    vendorPaymentDebitRowWithTdsSplit = true;
+                }
+            }
+
             BigDecimal rowDisplaySignedBalance = runningSignedBalance;
 
-            if (customerReceiptCreditRowWithTdsSplit) {
+            if (customerReceiptCreditRowWithTdsSplit
+                    || vendorPaymentDebitRowWithTdsSplit) {
                 rowDisplaySignedBalance = previousRunningSignedBalance
                         .add(displayDebit)
                         .subtract(displayCredit)
@@ -1497,6 +1537,17 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                         )
                 );
             }
+
+            if (vendorPaymentDebitRowWithTdsSplit) {
+                allRows.addAll(
+                        buildAdditionalVendorPaymentRows(
+                                ledger,
+                                voucher,
+                                otherEntriesCache,
+                                rowDisplaySignedBalance
+                        )
+                );
+            }
         }
 
         List<LedgerTransactionResponseDto> filteredRows = allRows.stream()
@@ -1510,8 +1561,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 .collect(Collectors.toList());
 
         /*
-         * Customer Receipt vouchers may produce a display-only Bank row and
-         * TDS row. Their sum equals the actual customer credit entry.
+         * Customer receipts and procurement vendor payments may produce
+         * display-only Bank and TDS rows. Their sum always equals the actual
+         * posted party-ledger entry.
          */
         BigDecimal totalDebit = filteredRows.stream()
                 .map(LedgerTransactionResponseDto::getDebitAmount)
@@ -2172,6 +2224,77 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 || ledger.getLedgerType() == LedgerType.CUSTOMER_ADVANCE);
     }
 
+    private boolean isVendorLedgerForStatement(LedgerMaster ledger) {
+        return ledger != null
+                && ledger.getLedgerType() != null
+                && (ledger.getLedgerType() == LedgerType.VENDOR
+                || ledger.getLedgerType() == LedgerType.SUPPLIER
+                || ledger.getLedgerType() == LedgerType.VENDOR_PAYABLE);
+    }
+
+    private boolean isVendorPaymentDebitRow(
+            LedgerMaster ledger,
+            AccountingVoucher voucher,
+            BigDecimal debit,
+            BigDecimal credit
+    ) {
+        return isVendorLedgerForStatement(ledger)
+                && voucher != null
+                && voucher.getVoucherType() == VoucherType.PAYMENT
+                && voucher.getSourceType()
+                == VoucherSourceType.PROCUREMENT_VENDOR_PAYMENT
+                && moneyForStatement(debit).compareTo(BigDecimal.ZERO) > 0
+                && moneyForStatement(credit).compareTo(BigDecimal.ZERO) == 0;
+    }
+
+    private BigDecimal getVendorPaymentBankAmount(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        BigDecimal bankAmount = getOtherVoucherEntries(
+                voucher,
+                currentLedger.getId(),
+                otherEntriesCache
+        ).stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .filter(entry -> isBankOrCashLedger(entry.getLedger()))
+                .map(AccountingVoucherEntry::getCreditAmount)
+                .filter(Objects::nonNull)
+                .map(this::moneyForStatement)
+                .reduce(zeroMoneyForStatement(), BigDecimal::add)
+                .setScale(MONEY_SCALE, MONEY_ROUNDING);
+
+        log.info(
+                "[VENDOR-PAYMENT-BANK-SPLIT] voucherId={} | vendorLedgerId={} | bankAmount={}",
+                voucher != null ? voucher.getId() : null,
+                currentLedger != null ? currentLedger.getId() : null,
+                bankAmount
+        );
+
+        return bankAmount;
+    }
+
+    private String resolvePaymentBankName(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache
+    ) {
+        return getOtherVoucherEntries(
+                voucher,
+                currentLedger.getId(),
+                otherEntriesCache
+        ).stream()
+                .filter(entry -> entry != null && entry.getLedger() != null)
+                .map(AccountingVoucherEntry::getLedger)
+                .filter(this::isBankOrCashLedger)
+                .map(this::displayBankLedgerName)
+                .filter(Objects::nonNull)
+                .filter(name -> !name.trim().isEmpty())
+                .findFirst()
+                .orElse("Bank/Cash");
+    }
+
     private boolean isCustomerReceiptCreditRow(
             LedgerMaster ledger,
             AccountingVoucher voucher,
@@ -2297,6 +2420,128 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                                             && !counterEntry.getNarration().trim().isEmpty()
                                             ? counterEntry.getNarration()
                                             : "TDS deducted by customer"
+                            )
+                            .gstDetails(null)
+                            .build()
+            );
+        }
+
+        return rows;
+    }
+
+    private List<LedgerTransactionResponseDto> buildAdditionalVendorPaymentRows(
+            LedgerMaster currentLedger,
+            AccountingVoucher voucher,
+            Map<Long, List<AccountingVoucherEntry>> otherEntriesCache,
+            BigDecimal baseRunningSignedBalanceAfterMainRow
+    ) {
+        if (!isVendorLedgerForStatement(currentLedger)
+                || voucher == null
+                || voucher.getVoucherType() != VoucherType.PAYMENT
+                || voucher.getSourceType()
+                != VoucherSourceType.PROCUREMENT_VENDOR_PAYMENT) {
+            return new ArrayList<>();
+        }
+
+        List<AccountingVoucherEntry> otherEntries = getOtherVoucherEntries(
+                voucher,
+                currentLedger.getId(),
+                otherEntriesCache
+        );
+
+        BigDecimal runningAfterMainRow =
+                baseRunningSignedBalanceAfterMainRow == null
+                        ? zeroMoneyForStatement()
+                        : moneyForStatement(baseRunningSignedBalanceAfterMainRow);
+
+        List<LedgerTransactionResponseDto> rows = new ArrayList<>();
+
+        for (AccountingVoucherEntry counterEntry : otherEntries) {
+            if (counterEntry == null || counterEntry.getLedger() == null) {
+                continue;
+            }
+
+            LedgerMaster tdsLedger = counterEntry.getLedger();
+
+            if (tdsLedger.getLedgerType() != LedgerType.TDS_PAYABLE) {
+                continue;
+            }
+
+            BigDecimal tdsAmount =
+                    moneyForStatement(counterEntry.getCreditAmount());
+
+            if (tdsAmount.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            /*
+             * The original vendor row is a debit for Bank + TDS. The main
+             * display row already applied the Bank debit, so apply the TDS
+             * debit here to arrive at the original accounting balance.
+             */
+            runningAfterMainRow = runningAfterMainRow
+                    .add(tdsAmount)
+                    .setScale(MONEY_SCALE, MONEY_ROUNDING);
+
+            BigDecimal displayRunningSignedBalance =
+                    displaySignedBalanceForLedger(
+                            currentLedger,
+                            runningAfterMainRow
+                    );
+
+            log.info(
+                    "[VENDOR-PAYMENT-TDS-SPLIT] voucherId={} | voucherNumber={} | "
+                            + "vendorLedgerId={} | tdsLedgerId={} | tdsAmount={} | "
+                            + "runningBalance={} {}",
+                    voucher.getId(),
+                    voucher.getVoucherNumber(),
+                    currentLedger.getId(),
+                    tdsLedger.getId(),
+                    tdsAmount,
+                    absAmountForStatement(displayRunningSignedBalance),
+                    balanceTypeForStatement(displayRunningSignedBalance)
+            );
+
+            rows.add(
+                    LedgerTransactionResponseDto.builder()
+                            .entryId(counterEntry.getId())
+                            .voucherId(voucher.getId())
+                            .voucherNumber(voucher.getVoucherNumber())
+                            .voucherType(voucher.getVoucherType())
+                            .voucherDate(voucher.getVoucherDate())
+                            .sourceType(voucher.getSourceType())
+                            .sourceId(voucher.getSourceId())
+                            .status(voucher.getStatus())
+
+                            /*
+                             * This is a display row inside the vendor
+                             * statement, so retain the vendor ledger identity.
+                             */
+                            .ledgerId(currentLedger.getId())
+                            .ledgerName(currentLedger.getLedgerName())
+                            .ledgerCode(currentLedger.getLedgerCode())
+
+                            .debitAmount(tdsAmount)
+                            .creditAmount(zeroMoneyForStatement())
+                            .runningBalanceAmount(
+                                    absAmountForStatement(
+                                            displayRunningSignedBalance
+                                    )
+                            )
+                            .runningBalanceType(
+                                    balanceTypeForStatement(
+                                            displayRunningSignedBalance
+                                    )
+                            )
+                            .particulars(tdsLedger.getLedgerName())
+                            .serviceName(null)
+                            .bankName(null)
+                            .narration(
+                                    counterEntry.getNarration() != null
+                                            && !counterEntry.getNarration()
+                                            .trim().isEmpty()
+                                            ? counterEntry.getNarration()
+                                            : "TDS deducted from vendor payment"
                             )
                             .gstDetails(null)
                             .build()

@@ -7,8 +7,6 @@ import com.account.exception.ValidationException;
 import com.account.repository.ledger.AccountingVoucherRepository;
 import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.service.ledger.AccountingVoucherService;
-import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,9 +22,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -70,15 +70,35 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
          */
         validateDuplicateSource(sourceType, request.getSourceId());
 
+
+        LedgerMaster partyLedger = resolveOptionalPartyLedger(
+                request.getPartyLedgerId(),
+                lockedLedgers
+        );
         AccountingVoucher voucher = AccountingVoucher.builder()
                 .voucherNumber(generateVoucherNumber(request.getVoucherType()))
                 .voucherType(request.getVoucherType())
-                .voucherDate(request.getVoucherDate() == null ? LocalDate.now() : request.getVoucherDate())
+                .voucherDate(
+                        request.getVoucherDate() != null
+                                ? request.getVoucherDate()
+                                : LocalDate.now()
+                )
                 .sourceType(sourceType)
                 .sourceId(request.getSourceId())
                 .status(VoucherStatus.POSTED)
                 .narration(clean(request.getNarration()))
+                .projectId(request.getProjectId())
+                .projectNo(clean(request.getProjectNo()))
+                .projectName(clean(request.getProjectName()))
+                .clientCompanyId(request.getClientCompanyId())
+                .clientCompanyName(clean(request.getClientCompanyName()))
+                .clientUnitId(request.getClientUnitId())
+                .clientUnitName(clean(request.getClientUnitName()))
+                .expensePaidBy(clean(request.getExpensePaidBy()))
+                .partyLedger(partyLedger)
                 .build();
+
+
 
         int order = 1;
 
@@ -171,6 +191,43 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         log.info("Ledger balances updated for posted voucher. voucherId={}, voucherNumber={}", saved.getId(), saved.getVoucherNumber());
 
         return mapToResponse(saved);
+    }
+
+    private LedgerMaster resolveOptionalPartyLedger(
+            Long partyLedgerId,
+            Map<Long, LedgerMaster> lockedLedgers
+    ) {
+        if (partyLedgerId == null) {
+            return null;
+        }
+
+        LedgerMaster ledger = lockedLedgers.get(partyLedgerId);
+
+        if (ledger == null) {
+            throw new ResourceNotFoundException(
+                    "Party ledger not found in voucher entries with ID: "
+                            + partyLedgerId,
+                    "PARTY_LEDGER_NOT_FOUND"
+            );
+        }
+
+        if (!ledger.isActive()) {
+            throw new ValidationException(
+                    "Party ledger is inactive: " + ledger.getLedgerName(),
+                    "ERR_PARTY_LEDGER_INACTIVE",
+                    "partyLedgerId"
+            );
+        }
+
+        if (ledger.getLedgerType() != LedgerType.CUSTOMER) {
+            throw new ValidationException(
+                    "Debit-note party ledger must be a CUSTOMER ledger",
+                    "ERR_INVALID_PARTY_LEDGER_TYPE",
+                    "partyLedgerId"
+            );
+        }
+
+        return ledger;
     }
 
     @Override
@@ -382,10 +439,14 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 ? VoucherSourceType.MANUAL
                 : request.getSourceType();
 
-        if (sourceType != VoucherSourceType.MANUAL && request.getSourceId() == null) {
-            log.warn("Voucher validation failed. Source ID missing for non-manual voucher. sourceType={}", sourceType);
+        if (request.getSourceId() == null || request.getSourceId() <= 0) {
+            log.warn(
+                    "Voucher validation failed. Source ID missing/invalid. sourceType={}, sourceId={}",
+                    sourceType,
+                    request.getSourceId()
+            );
             throw new ValidationException(
-                    "Source ID is required for non-manual voucher",
+                    "Source ID must be greater than zero",
                     "ERR_SOURCE_ID_REQUIRED",
                     "sourceId"
             );
@@ -400,6 +461,32 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                     "ERR_MIN_TWO_VOUCHER_ENTRIES_REQUIRED",
                     "entries"
             );
+        }
+
+        if (request.getVoucherType() == VoucherType.DEBIT_NOTE) {
+            if (request.getPartyLedgerId() == null
+                    || request.getPartyLedgerId() <= 0) {
+                throw new ValidationException(
+                        "Customer party ledger is required for a debit note",
+                        "ERR_DEBIT_NOTE_PARTY_LEDGER_REQUIRED",
+                        "partyLedgerId"
+                );
+            }
+
+            boolean partyLedgerIncluded = request.getEntries()
+                    .stream()
+                    .anyMatch(entry -> Objects.equals(
+                            entry.getLedgerId(),
+                            request.getPartyLedgerId()
+                    ));
+
+            if (!partyLedgerIncluded) {
+                throw new ValidationException(
+                        "Debit-note party ledger must be included in voucher entries",
+                        "ERR_DEBIT_NOTE_PARTY_ENTRY_REQUIRED",
+                        "partyLedgerId"
+                );
+            }
         }
 
         BigDecimal totalDebit = zeroMoney();
@@ -611,33 +698,16 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
             VoucherType voucherType
     ) {
         String prefix = switch (voucherType) {
-
-            case RECEIPT ->
-                    "RCP-VCH-";
-
-            case SALES_INVOICE ->
-                    "INV-VCH-";
-
-            case PURCHASE_INVOICE ->
-                    "PUR-VCH-";
-
-            case ADVANCE_ADJUSTMENT ->
-                    "ADJ-VCH-";
-
-            case CREDIT_NOTE ->
-                    "CN-VCH-";
-
-            case REFUND ->
-                    "REF-VCH-";
-
-            case JOURNAL ->
-                    "JRN-VCH-";
-
-            case CONTRA ->
-                    "CON-VCH-";
-
-            case PAYMENT ->
-                    "PAY-VCH-";
+            case RECEIPT -> "RCP-VCH-";
+            case SALES_INVOICE -> "INV-VCH-";
+            case PURCHASE_INVOICE -> "PUR-VCH-";
+            case DEBIT_NOTE -> "DN-VCH-";
+            case ADVANCE_ADJUSTMENT -> "ADJ-VCH-";
+            case CREDIT_NOTE -> "CN-VCH-";
+            case REFUND -> "REF-VCH-";
+            case JOURNAL -> "JRN-VCH-";
+            case CONTRA -> "CON-VCH-";
+            case PAYMENT -> "PAY-VCH-";
         };
 
         String voucherNumber;
@@ -674,23 +744,41 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
         return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
-    private AccountingVoucherResponseDto mapToResponse(AccountingVoucher voucher) {
-
+    private AccountingVoucherResponseDto mapToResponse(
+            AccountingVoucher voucher
+    ) {
         if (voucher == null) {
             return null;
         }
 
-        List<AccountingVoucherEntryResponseDto> entryResponses = voucher.getEntries() == null
-                ? List.of()
-                : voucher.getEntries()
-                .stream()
-                .sorted((a, b) -> {
-                    Integer x = a.getDisplayOrder() == null ? 0 : a.getDisplayOrder();
-                    Integer y = b.getDisplayOrder() == null ? 0 : b.getDisplayOrder();
-                    return x.compareTo(y);
-                })
-                .map(this::mapEntryToResponse)
-                .toList();
+        List<AccountingVoucherEntryResponseDto> entryResponses =
+                mapVoucherEntries(voucher);
+
+        LedgerMaster partyLedger = resolvePartyLedgerFromVoucher(voucher);
+
+        Long clientCompanyId = voucher.getClientCompanyId();
+        String clientCompanyName = voucher.getClientCompanyName();
+        Long clientUnitId = voucher.getClientUnitId();
+        String clientUnitName = voucher.getClientUnitName();
+
+        // Fallback for older vouchers created before snapshot columns existed.
+        if (partyLedger != null && partyLedger.getCompany() != null) {
+            if (clientCompanyId == null) {
+                clientCompanyId = partyLedger.getCompany().getId();
+            }
+            if (clientCompanyName == null) {
+                clientCompanyName = partyLedger.getCompany().getName();
+            }
+        }
+
+        if (partyLedger != null && partyLedger.getUnit() != null) {
+            if (clientUnitId == null) {
+                clientUnitId = partyLedger.getUnit().getId();
+            }
+            if (clientUnitName == null) {
+                clientUnitName = partyLedger.getUnit().getUnitName();
+            }
+        }
 
         return AccountingVoucherResponseDto.builder()
                 .id(voucher.getId())
@@ -703,10 +791,69 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
                 .totalDebit(voucher.getTotalDebit())
                 .totalCredit(voucher.getTotalCredit())
                 .narration(voucher.getNarration())
+                .projectId(voucher.getProjectId())
+                .projectNo(voucher.getProjectNo())
+                .projectName(voucher.getProjectName())
+                .clientCompanyId(clientCompanyId)
+                .clientCompanyName(clientCompanyName)
+                .clientUnitId(clientUnitId)
+                .clientUnitName(clientUnitName)
+                .expensePaidBy(voucher.getExpensePaidBy())
+                .partyLedgerId(
+                        partyLedger != null ? partyLedger.getId() : null
+                )
+                .partyLedgerCode(
+                        partyLedger != null
+                                ? partyLedger.getLedgerCode()
+                                : null
+                )
+                .partyLedgerName(
+                        partyLedger != null
+                                ? partyLedger.getLedgerName()
+                                : null
+                )
                 .entries(entryResponses)
                 .createdAt(voucher.getCreatedAt())
                 .updatedAt(voucher.getUpdatedAt())
                 .build();
+    }
+
+    private List<AccountingVoucherEntryResponseDto> mapVoucherEntries(
+            AccountingVoucher voucher
+    ) {
+        if (voucher.getEntries() == null) {
+            return List.of();
+        }
+
+        return voucher.getEntries()
+                .stream()
+                .sorted(Comparator.comparing(
+                        entry -> entry.getDisplayOrder() != null
+                                ? entry.getDisplayOrder()
+                                : 0
+                ))
+                .map(this::mapEntryToResponse)
+                .toList();
+    }
+
+    private LedgerMaster resolvePartyLedgerFromVoucher(
+            AccountingVoucher voucher
+    ) {
+        if (voucher.getPartyLedger() != null) {
+            return voucher.getPartyLedger();
+        }
+
+        if (voucher.getEntries() == null) {
+            return null;
+        }
+
+        return voucher.getEntries()
+                .stream()
+                .map(AccountingVoucherEntry::getLedger)
+                .filter(Objects::nonNull)
+                .filter(ledger -> ledger.getLedgerType() == LedgerType.CUSTOMER)
+                .findFirst()
+                .orElse(null);
     }
 
     private AccountingVoucherEntryResponseDto mapEntryToResponse(AccountingVoucherEntry entry) {
@@ -748,3 +895,5 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
 
 }
+
+

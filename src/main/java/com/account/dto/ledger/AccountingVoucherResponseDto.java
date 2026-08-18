@@ -12,34 +12,37 @@ import java.util.List;
 
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class AccountingVoucherResponseDto {
 
     private Long id;
-
     private String voucherNumber;
-
     private VoucherType voucherType;
-
     private LocalDate voucherDate;
-
     private VoucherSourceType sourceType;
-
     private Long sourceId;
-
     private VoucherStatus status;
-
     private BigDecimal totalDebit;
-
     private BigDecimal totalCredit;
-
     private String narration;
 
+    private Long projectId;
+    private String projectNo;
+    private String projectName;
+
+    private Long clientCompanyId;
+    private String clientCompanyName;
+    private Long clientUnitId;
+    private String clientUnitName;
+
+    private String expensePaidBy;
+    private Long partyLedgerId;
+    private String partyLedgerCode;
+    private String partyLedgerName;
+
     private List<AccountingVoucherEntryResponseDto> entries;
-
     private LocalDateTime createdAt;
-
     private LocalDateTime updatedAt;
 }

@@ -3,15 +3,13 @@ package com.account.dto.operationService;
 import com.account.domain.ledger.VoucherSourceType;
 import com.account.domain.ledger.VoucherStatus;
 import com.account.domain.ledger.VoucherType;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.Setter;
+import com.account.dto.ledger.AccountingVoucherEntryResponseDto;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Setter
@@ -21,29 +19,31 @@ import java.time.LocalDateTime;
 public class GovernmentExpenseVoucherListItemDto {
 
     private Long voucherId;
-
     private String voucherNumber;
-
     private VoucherType voucherType;
-
     private LocalDate voucherDate;
-
-    /**
-     * This is operationExpenseId for project-expense vouchers.
-     */
     private Long operationExpenseId;
-
     private VoucherSourceType sourceType;
-
     private VoucherStatus status;
 
+    private Long projectId;
+    private String projectNo;
+    private String projectName;
+
+    private Long clientCompanyId;
+    private String clientCompanyName;
+    private Long clientUnitId;
+    private String clientUnitName;
+
+    private String expensePaidBy;
+    private Long partyLedgerId;
+    private String partyLedgerCode;
+    private String partyLedgerName;
+
     private BigDecimal amount;
-
     private BigDecimal totalDebit;
-
     private BigDecimal totalCredit;
-
     private String narration;
-
+    private List<AccountingVoucherEntryResponseDto> entries;
     private LocalDateTime createdAt;
 }
