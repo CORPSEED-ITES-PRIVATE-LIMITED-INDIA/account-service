@@ -737,7 +737,7 @@ public class ProjectExpenseAccountingServiceImpl
          * is used instead of resolving by companyId+unitId.
          */
         LedgerMaster customerLedger =
-                resolveCompanyFundedCustomerLedger(request);
+                resolveCompanyFundedCustomerLedger(request, approver);
 
         log.info(
                 "[ACC-CUSTOMER-LEDGER-RESOLVED] operationExpenseId={} | ledgerId={} | ledgerCode={} | ledgerName={}",
@@ -950,8 +950,7 @@ public class ProjectExpenseAccountingServiceImpl
          * is used instead of resolving by companyId+unitId.
          */
         LedgerMaster customerLedger =
-                resolveCompanyFundedCustomerLedger(request);
-
+                resolveCompanyFundedCustomerLedger(request, approver);
         LedgerMaster payableLedger =
                 getOrCreateSystemLedger(
                         LedgerType.GOVERNMENT_FEE_PAYABLE,
@@ -1445,15 +1444,26 @@ public class ProjectExpenseAccountingServiceImpl
      *   - actually owned by the request's clientCompanyId (guards against
      *     accidentally posting against the wrong client's ledger)
      *
-     * PRIORITY 2 (fallback): resolve by clientCompanyId + clientUnitId
+     * PRIORITY 2: resolve by clientCompanyId only (matches the ledger
+     * resolution used by PaymentServiceImpl/InvoiceServiceImpl for normal
+     * Sales Invoice / Payment Receipt flows, so all flows converge on the
+     * SAME ledger per company regardless of which unit raised the expense).
+     *
+     * PRIORITY 3: no CUSTOMER ledger exists anywhere for this company yet
+     * (e.g. this is the client's very first transaction). Auto-create one,
+     * exactly like the invoice/payment flows do, instead of failing.
      *
      * Used by BOTH funding branches (COMPANY and CLIENT_TO_COMPANY), since
      * both call this same method.
      * ================================================================
      */
     private LedgerMaster resolveCompanyFundedCustomerLedger(
-            GovernmentFeePostingRequestDto request
+            GovernmentFeePostingRequestDto request,
+            User approver
     ) {
+        // =========================================================
+        // PRIORITY 1 - EXPLICIT CRT OVERRIDE (unchanged)
+        // =========================================================
         if (request.getClientLedgerId() != null && request.getClientLedgerId() > 0) {
 
             log.info(
@@ -1494,12 +1504,6 @@ public class ProjectExpenseAccountingServiceImpl
                 );
             }
 
-            /*
-             * Sanity check: the explicitly selected ledger must actually
-             * belong to the company on this expense, so CRT can't
-             * accidentally post against the wrong client's ledger
-             * (e.g. selecting Amazon's ledger for a Microsoft expense).
-             */
             if (request.getClientCompanyId() != null
                     && ledger.getCompany() != null
                     && !request.getClientCompanyId().equals(ledger.getCompany().getId())) {
@@ -1522,67 +1526,136 @@ public class ProjectExpenseAccountingServiceImpl
             return ledger;
         }
 
+        // =========================================================
+        // PRIORITY 2 - COMPANY-LEVEL LOOKUP (NEW: unit removed)
+        // =========================================================
         Long companyId = request.getClientCompanyId();
-        Long unitId = request.getClientUnitId();
 
-        org.springframework.data.jpa.domain.Specification<LedgerMaster> specification =
-                (root, query, criteriaBuilder) -> criteriaBuilder.and(
-                        criteriaBuilder.isFalse(root.get("deleted")),
-                        criteriaBuilder.equal(root.get("ledgerType"), LedgerType.CUSTOMER),
-                        criteriaBuilder.equal(root.get("company").get("id"), companyId),
-                        criteriaBuilder.equal(root.get("unit").get("id"), unitId)
+        if (companyId == null || companyId <= 0) {
+            throw new ValidationException(
+                    "Client company ID is required to resolve customer ledger",
+                    "ERR_CLIENT_COMPANY_REQUIRED",
+                    "clientCompanyId"
+            );
+        }
+
+        List<LedgerMaster> existingLedgers =
+                ledgerMasterRepository.findByCompanyIdAndLedgerTypeInAndDeletedFalse(
+                        companyId,
+                        List.of(LedgerType.CUSTOMER, LedgerType.CUSTOMER_ADVANCE)
                 );
 
-        LedgerMaster customerLedger = ledgerMasterRepository
-                .findAll(specification)
-                .stream()
-                .findFirst()
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "CUSTOMER ledger not found for company ID "
-                                + companyId
-                                + " and unit ID "
-                                + unitId,
-                        "CLIENT_LEDGER_NOT_FOUND"
-                ));
+        if (existingLedgers != null && !existingLedgers.isEmpty()) {
 
-        if (!customerLedger.isActive()) {
-            throw new ValidationException(
-                    "Customer ledger is inactive: "
-                            + customerLedger.getLedgerName(),
-                    "ERR_CLIENT_LEDGER_INACTIVE",
-                    "clientCompanyId"
+            LedgerMaster customerLedger = existingLedgers.stream()
+                    .filter(Objects::nonNull)
+                    .filter(LedgerMaster::isActive)
+                    .findFirst()
+                    .orElse(existingLedgers.get(0));
+
+            if (customerLedger.getLedgerType() != LedgerType.CUSTOMER) {
+                throw new ValidationException(
+                        "Company-funded government fee must use the normal CUSTOMER ledger, found: "
+                                + customerLedger.getLedgerType(),
+                        "ERR_INVALID_CLIENT_LEDGER_TYPE",
+                        "clientCompanyId"
+                );
+            }
+
+            if (!customerLedger.isActive()) {
+                throw new ValidationException(
+                        "Customer ledger is inactive: " + customerLedger.getLedgerName(),
+                        "ERR_CLIENT_LEDGER_INACTIVE",
+                        "clientCompanyId"
+                );
+            }
+
+            if (customerLedger.getLedgerGroup() == null
+                    || customerLedger.getLedgerGroup().getGroupType() != LedgerGroupType.SUNDRY_DEBTORS) {
+                throw new ValidationException(
+                        "Customer ledger must belong to SUNDRY_DEBTORS: " + customerLedger.getLedgerName(),
+                        "ERR_INVALID_CLIENT_LEDGER_GROUP",
+                        "clientCompanyId"
+                );
+            }
+
+            log.info(
+                    "[COMPANY-GOVT-FEE-CUSTOMER-LEDGER-REUSED] companyId={} | ledgerId={} | ledgerName={} | candidateCount={}",
+                    companyId,
+                    customerLedger.getId(),
+                    customerLedger.getLedgerName(),
+                    existingLedgers.size()
             );
+
+            return customerLedger;
         }
 
-        if (customerLedger.getLedgerType() != LedgerType.CUSTOMER) {
-            throw new ValidationException(
-                    "Company-funded government fee must use the normal CUSTOMER ledger",
-                    "ERR_INVALID_CLIENT_LEDGER_TYPE",
-                    "clientCompanyId"
-            );
-        }
-
-        if (customerLedger.getLedgerGroup() == null
-                || customerLedger.getLedgerGroup().getGroupType()
-                != LedgerGroupType.SUNDRY_DEBTORS) {
-            throw new ValidationException(
-                    "Customer ledger must belong to SUNDRY_DEBTORS: "
-                            + customerLedger.getLedgerName(),
-                    "ERR_INVALID_CLIENT_LEDGER_GROUP",
-                    "clientCompanyId"
-            );
-        }
-
-        log.info(
-                "[COMPANY-GOVT-FEE-CUSTOMER-LEDGER-RESOLVED] "
-                        + "companyId={} | unitId={} | ledgerId={} | ledgerName={}",
-                companyId,
-                unitId,
-                customerLedger.getId(),
-                customerLedger.getLedgerName()
+        // =========================================================
+        // PRIORITY 3 - NO LEDGER EXISTS YET, AUTO-CREATE ONE
+        // =========================================================
+        String companyName = firstNonBlank(
+                request.getClientCompanyName(),
+                request.getClientUnitName(),
+                "Company-" + companyId
         );
 
-        return customerLedger;
+        LedgerGroup sundryDebtorsGroup = getOrCreateLedgerGroupByType(LedgerGroupType.SUNDRY_DEBTORS);
+
+        LedgerMaster newLedger = new LedgerMaster();
+        newLedger.setLedgerName(companyName);
+        newLedger.setLedgerCode(generateCustomerLedgerCode());
+        newLedger.setLedgerType(LedgerType.CUSTOMER);
+        newLedger.setLedgerGroup(sundryDebtorsGroup);
+        newLedger.setOpeningBalance(zero());
+        newLedger.setOpeningBalanceType(DebitCredit.DEBIT);
+        newLedger.setCurrentBalance(zero());
+        newLedger.setCurrentBalanceType(DebitCredit.DEBIT);
+        newLedger.setSystemCreated(true);
+        newLedger.setActive(true);
+        newLedger.setDeleted(false);
+
+        if (approver != null) {
+            newLedger.setCreatedBy(approver);
+            newLedger.setUpdatedBy(approver);
+        }
+
+        try {
+            LedgerMaster saved = ledgerMasterRepository.saveAndFlush(newLedger);
+
+            log.info(
+                    "[COMPANY-GOVT-FEE-CUSTOMER-LEDGER-CREATED] companyId={} | ledgerId={} | ledgerName={} | ledgerCode={}",
+                    companyId,
+                    saved.getId(),
+                    saved.getLedgerName(),
+                    saved.getLedgerCode()
+            );
+
+            return saved;
+        } catch (DataIntegrityViolationException exception) {
+            // Concurrent request created the same company's ledger first. Re-fetch instead of failing.
+            return ledgerMasterRepository
+                    .findByCompanyIdAndLedgerTypeInAndDeletedFalse(
+                            companyId,
+                            List.of(LedgerType.CUSTOMER, LedgerType.CUSTOMER_ADVANCE)
+                    )
+                    .stream()
+                    .findFirst()
+                    .orElseThrow(() -> exception);
+        }
+    }
+
+    /**
+     * Generates a unique ledger code for an auto-created CUSTOMER ledger,
+     * following the same "LED-CUST-NNNNNN" convention used by
+     * PaymentServiceImpl/InvoiceServiceImpl's getOrCreateCustomerLedger.
+     */
+    private String generateCustomerLedgerCode() {
+        long sequence = ledgerMasterRepository.count() + 1;
+        String code;
+        do {
+            code = String.format("LED-CUST-%06d", sequence++);
+        } while (ledgerMasterRepository.existsByLedgerCodeIgnoreCase(code));
+        return code;
     }
 
     private LedgerMaster getOrCreateSystemLedger(
