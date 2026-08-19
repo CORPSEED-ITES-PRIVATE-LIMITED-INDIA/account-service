@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -79,6 +80,19 @@ public interface AdvanceTaxInvoiceRequestRepository
             """)
     Optional<AdvanceTaxInvoiceRequest>
     findLatestByEstimateForPaymentValidation(
+            @Param("estimateId") Long estimateId
+    );
+
+    @Query("""
+        select request
+        from AdvanceTaxInvoiceRequest request
+        left join fetch request.invoice invoice
+        left join fetch request.requestedBy
+        left join fetch request.reviewedBy
+        where request.estimate.id = :estimateId
+        order by request.createdAt desc
+        """)
+    List<AdvanceTaxInvoiceRequest> findAllByEstimateIdOrderByCreatedAtDesc(
             @Param("estimateId") Long estimateId
     );
 

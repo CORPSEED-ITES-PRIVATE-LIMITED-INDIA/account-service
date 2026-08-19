@@ -4,6 +4,8 @@ import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
 import com.account.dto.invoice.*;
 import org.springframework.data.domain.Page;
 
+import java.util.List;
+
 public interface AdvanceTaxInvoiceService {
 
     AdvanceTaxInvoiceResponseDto createRequest(
@@ -36,5 +38,9 @@ public interface AdvanceTaxInvoiceService {
             AdvanceTaxInvoiceRejectionRequestDto requestDto
     );
 
+    List<AdvanceTaxInvoiceResponseDto> getAdvanceInvoicesByInvoiceId(
+            Long invoiceId,
+            Long userId
+    );
 
 }

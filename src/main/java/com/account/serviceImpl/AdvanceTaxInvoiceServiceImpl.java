@@ -3441,6 +3441,92 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdvanceTaxInvoiceResponseDto> getAdvanceInvoicesByInvoiceId(
+            Long invoiceId,
+            Long userId
+    ) {
+
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+        if (invoiceId == null || invoiceId <= 0) {
+            throw new ValidationException(
+                    "Valid invoiceId is required",
+                    "ERR_INVOICE_ID_REQUIRED",
+                    "invoiceId"
+            );
+        }
+
+        if (userId == null || userId <= 0) {
+            throw new ValidationException(
+                    "Valid userId is required",
+                    "ERR_USER_ID_REQUIRED",
+                    "userId"
+            );
+        }
+
+        // =====================================================
+        // 2. VERIFY USER (simple existence + active check)
+        // =====================================================
+        getActiveUser(userId, "userId");
+
+        // =====================================================
+        // 3. FETCH INVOICE AND RESOLVE ESTIMATE
+        // =====================================================
+        Invoice invoice =
+                invoiceRepository.findById(invoiceId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Invoice not found with ID: " + invoiceId,
+                                        "INVOICE_NOT_FOUND",
+                                        "Invoice",
+                                        invoiceId
+                                )
+                        );
+
+        if (invoice.getEstimate() == null
+                || invoice.getEstimate().getId() == null) {
+
+            throw new ValidationException(
+                    "Estimate is missing from Invoice",
+                    "ERR_INVOICE_ESTIMATE_MISSING",
+                    "invoiceId"
+            );
+        }
+
+        Long estimateId = invoice.getEstimate().getId();
+
+        // =====================================================
+        // 4. FETCH ALL ADVANCE TAX INVOICE REQUESTS FOR THIS ESTIMATE
+        // =====================================================
+        List<AdvanceTaxInvoiceRequest> requests =
+                advanceTaxInvoiceRequestRepository
+                        .findAllByEstimateIdOrderByCreatedAtDesc(estimateId);
+
+        // =====================================================
+        // 5. MAP TO RESPONSE
+        // =====================================================
+        List<AdvanceTaxInvoiceResponseDto> responses =
+                new ArrayList<>();
+
+        for (AdvanceTaxInvoiceRequest request : requests) {
+            responses.add(mapToResponse(request, null));
+        }
+
+        log.info(
+                "Advance Tax Invoice requests fetched for Invoice "
+                        + "| invoiceId={} | estimateId={} | userId={} | count={}",
+                invoiceId,
+                estimateId,
+                userId,
+                responses.size()
+        );
+
+        return responses;
+    }
+
     /**
      * Produces voucher values that always satisfy:
      *

@@ -19,6 +19,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping(
         "/accountService/api/v1/advance-tax-invoice-requests"
@@ -225,6 +227,28 @@ public class AdvanceTaxInvoiceController {
                         size
                 )
         );
+    }
+    // =====================================================
+// LIST ADVANCE TAX INVOICES AGAINST AN INVOICE
+// =====================================================
+
+    @GetMapping("/by-invoice/{invoiceId}")
+    @Operation(
+            summary = "Get all Advance Tax Invoice requests raised against an Invoice's Estimate"
+    )
+    public ResponseEntity<List<AdvanceTaxInvoiceResponseDto>>
+    getAdvanceInvoicesByInvoiceId(
+            @PathVariable Long invoiceId,
+            @RequestParam Long userId
+    ) {
+
+        List<AdvanceTaxInvoiceResponseDto> response =
+                advanceTaxInvoiceService.getAdvanceInvoicesByInvoiceId(
+                        invoiceId,
+                        userId
+                );
+
+        return ResponseEntity.ok(response);
     }
 
     // =====================================================
