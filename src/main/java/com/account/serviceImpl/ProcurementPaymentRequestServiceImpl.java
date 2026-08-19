@@ -1,9 +1,13 @@
 package com.account.serviceImpl;
 
+import com.account.domain.Organization;
+import com.account.dto.ProcurementPaymentRequestResponseDto;
 import com.account.dto.operationService.ProcurementPaymentActionRequestDto;
 import com.account.dto.procurement.OperationApiResponseDto;
 import com.account.exception.ValidationException;
 import com.account.feignClient.OperationFeignClient;
+import com.account.repository.OrganizationRepository;
+import com.account.dto.PagedResponse;
 import com.account.service.ProcurementPaymentRequestService;
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -12,32 +16,35 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class ProcurementPaymentRequestServiceImpl implements ProcurementPaymentRequestService {
 
     private final OperationFeignClient operationFeignClient;
+    private final OrganizationRepository organizationRepository;
 
     @Override
     @Transactional(readOnly = true)
-    public OperationApiResponseDto<?> getProcurementPaymentRequests(
-            String status,
-            int page,
-            int size
-    ) {
+    public OperationApiResponseDto<?> getProcurementPaymentRequests(String status, int page, int size) {
         try {
-            ResponseEntity<?> response = operationFeignClient.getProcurementPaymentRequests(
-                    status,
-                    page,
-                    size
-            );
+            ResponseEntity<PagedResponse<ProcurementPaymentRequestResponseDto>> response =
+                    operationFeignClient.getProcurementPaymentRequests(status, page, size);
+
+            PagedResponse<ProcurementPaymentRequestResponseDto> pagedResponse = response.getBody();
+
+            Organization org = organizationRepository.findTopOrganization().orElse(null);
+
+            if (pagedResponse != null && pagedResponse.getContent() != null) {
+                pagedResponse.getContent().forEach(dto -> enrichWithOrganizationData(dto, org));
+            }
 
             return OperationApiResponseDto.builder()
                     .success(true)
                     .message("Procurement payment requests fetched successfully")
                     .statusCode(response.getStatusCode().value())
-                    .data(response.getBody())
+                    .data(pagedResponse)
                     .timestamp(LocalDateTime.now())
                     .build();
 
@@ -46,6 +53,33 @@ public class ProcurementPaymentRequestServiceImpl implements ProcurementPaymentR
         } catch (Exception e) {
             return buildInternalErrorResponse(e);
         }
+    }
+
+    private void enrichWithOrganizationData(ProcurementPaymentRequestResponseDto dto, Organization org) {
+        if (org == null) return;
+        dto.setOrganizationName(org.getName());
+        dto.setOrganizationAddressLine1(org.getAddressLine1());
+        dto.setOrganizationAddressLine2(org.getAddressLine2());
+        dto.setOrganizationCity(org.getCity());
+        dto.setOrganizationState(org.getState());
+        dto.setOrganizationCountry(org.getCountry());
+        dto.setOrganizationPinCode(org.getPinCode());
+        dto.setOrganizationGstNo(org.getGstNo());
+        dto.setOrganizationPanNo(org.getPanNo());
+        dto.setOrganizationCinNumber(org.getCinNumber());
+        dto.setOrganizationEmail(org.getEmail());
+        dto.setOrganizationPhone(org.getPhone());
+        dto.setOrganizationWebsite(org.getWebsite());
+        dto.setOrganizationLogoUrl(org.getLogoUrl());
+        dto.setOrganizationBankAccountPresent(org.getAccountNo() != null);
+        dto.setOrganizationAccountHolderName(org.getAccountHolderName());
+        dto.setOrganizationAccountNumber(org.getAccountNo());
+        dto.setOrganizationIfscCode(org.getIfscCode());
+        dto.setOrganizationSwiftCode(org.getSwiftCode());
+        dto.setOrganizationBankName(org.getBankName());
+        dto.setOrganizationBankBranch(org.getBranch());
+        dto.setOrganizationUpiId(org.getUpiId());
+        dto.setOrganizationPaymentPageLink(org.getPaymentPageLink());
     }
 
     @Override
