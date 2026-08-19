@@ -45,6 +45,23 @@ public class GovernmentFeePostingRequestDto {
     @Size(max = 255)
     private String clientUnitName;
 
+    /**
+     * ================================================================
+     * OPTIONAL explicit override of the client's own CUSTOMER
+     * LedgerMaster ID (e.g. "Microsoft") already created in Account
+     * Service. When null/omitted, resolveCompanyFundedCustomerLedger()
+     * falls back to resolving the ledger automatically from
+     * clientCompanyId + clientUnitId.
+     *
+     * Used by BOTH funding branches:
+     *   - postCompanyFundedGovernmentFee  (COMPANY)
+     *   - postClientFundedGovernmentFee   (CLIENT_TO_COMPANY)
+     * because both call resolveCompanyFundedCustomerLedger(request).
+     * ================================================================
+     */
+    @Positive(message = "Client ledger ID must be greater than zero")
+    private Long clientLedgerId;
+
     @NotBlank(message = "Expense category is required")
     @Size(max = 50)
     private String expenseCategory;
@@ -68,7 +85,7 @@ public class GovernmentFeePostingRequestDto {
     @Size(max = 50)
     private String clientPaymentMode;
 
-    /** Account Service LedgerMaster ID of the company bank that received the money. */
+    /** Account Service LedgerMaster ID of the company BANK that received the money. */
     @Positive(message = "Client payment bank ledger ID must be greater than zero")
     private Long clientPaymentBankLedgerId;
 

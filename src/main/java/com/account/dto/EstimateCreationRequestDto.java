@@ -21,6 +21,8 @@ public class EstimateCreationRequestDto {
 
     private Long proposalId;
 
+    private String clientPoNumber;
+
 
     private Long contactId; // Optional
 

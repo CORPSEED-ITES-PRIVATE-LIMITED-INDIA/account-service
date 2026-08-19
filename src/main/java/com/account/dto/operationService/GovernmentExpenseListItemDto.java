@@ -1,8 +1,6 @@
-package com.account.dto.ledger;
+package com.account.dto.operationService;
 
-import com.account.domain.ledger.VoucherSourceType;
-import com.account.domain.ledger.VoucherStatus;
-import com.account.domain.ledger.VoucherType;
+import com.account.dto.ledger.AccountingVoucherEntryResponseDto;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -15,18 +13,12 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class AccountingVoucherResponseDto {
+public class GovernmentExpenseListItemDto {
 
-    private Long id;
+    private Long operationExpenseId;
+    private Long voucherId;
     private String voucherNumber;
-    private VoucherType voucherType;
     private LocalDate voucherDate;
-    private VoucherSourceType sourceType;
-    private Long sourceId;
-    private VoucherStatus status;
-    private BigDecimal totalDebit;
-    private BigDecimal totalCredit;
-    private String narration;
 
     private Long projectId;
     private String projectNo;
@@ -42,7 +34,14 @@ public class AccountingVoucherResponseDto {
     private String partyLedgerCode;
     private String partyLedgerName;
 
+    private BigDecimal amount;
+    private String status;
+    private String narration;
     private List<AccountingVoucherEntryResponseDto> entries;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+
+    private boolean fundTransferPosted;
+    private boolean paymentPosted;
+    private Long fundTransferVoucherId;
+    private Long paymentVoucherId;
+    private LocalDateTime postedAt;
 }

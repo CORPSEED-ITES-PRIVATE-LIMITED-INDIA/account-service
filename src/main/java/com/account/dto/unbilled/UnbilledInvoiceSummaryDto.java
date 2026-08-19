@@ -33,6 +33,8 @@ public class UnbilledInvoiceSummaryDto {
     private Long unitId;
     private String unitName;
     private String unitStatus;
+    private String clientPoNumber;
+
 
     private String contactName;
     private BigDecimal totalAmount;

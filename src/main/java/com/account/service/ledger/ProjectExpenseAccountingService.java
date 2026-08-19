@@ -5,6 +5,8 @@ import com.account.dto.operationService.GovernmentFeeFundTransferPostingRequestD
 import com.account.dto.operationService.GovernmentFeeFundTransferPostingResponseDto;
 import com.account.dto.operationService.GovernmentFeePaymentPostingRequestDto;
 import com.account.dto.operationService.GovernmentFeePaymentPostingResponseDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface ProjectExpenseAccountingService {
 
@@ -20,4 +22,10 @@ public interface ProjectExpenseAccountingService {
     GovernmentFeePaymentPostingResponseDto postGovernmentFeePayment(
             GovernmentFeePaymentPostingRequestDto request
     );
+
+    Page<GovernmentExpenseListItemDto> getGovernmentFeeExpenses(
+            Pageable pageable
+    );
+
+    Page<GovernmentExpenseVoucherListItemDto> getGovernmentFeeVouchers(Pageable pageable);
 }

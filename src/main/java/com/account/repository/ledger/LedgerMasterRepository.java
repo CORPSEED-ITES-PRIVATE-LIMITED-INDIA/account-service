@@ -2,8 +2,10 @@ package com.account.repository.ledger;
 
 import com.account.domain.ledger.LedgerMaster;
 import com.account.domain.ledger.LedgerType;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -15,19 +17,11 @@ public interface LedgerMasterRepository
         extends JpaRepository<LedgerMaster, Long>,
         JpaSpecificationExecutor<LedgerMaster> {
 
-    // =====================================================
-    // BASIC LOOKUPS
-    // =====================================================
-
     Optional<LedgerMaster> findByIdAndDeletedFalse(Long id);
 
     Optional<LedgerMaster> findByLedgerNameIgnoreCase(String ledgerName);
 
     Optional<LedgerMaster> findByLedgerCodeIgnoreCase(String ledgerCode);
-
-    // =====================================================
-    // DUPLICATE VALIDATION
-    // =====================================================
 
     boolean existsByLedgerNameIgnoreCase(String ledgerName);
 
@@ -38,18 +32,10 @@ public interface LedgerMasterRepository
 
     boolean existsByLedgerCodeIgnoreCase(String ledgerCode);
 
-    // =====================================================
-    // ACTIVE LEDGER LIST
-    // =====================================================
-
     List<LedgerMaster>
     findByDeletedFalseAndActiveTrueAndLedgerTypeInOrderByLedgerNameAsc(
             Collection<LedgerType> ledgerTypes
     );
-
-    // =====================================================
-    // COMPANY + UNIT + LEDGER TYPE
-    // =====================================================
 
     List<LedgerMaster>
     findAllByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
@@ -71,15 +57,6 @@ public interface LedgerMasterRepository
         ).stream().findFirst();
     }
 
-    // =====================================================
-    // COMPANY + UNIT + MULTIPLE LEDGER TYPES
-    // =====================================================
-
-    /*
-     * Used by project-expense accounting to locate the existing party ledger.
-     * Active ledgers are preferred; the oldest matching row is selected when
-     * legacy duplicate data exists.
-     */
     List<LedgerMaster>
     findAllByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalseOrderByActiveDescIdAsc(
             Long companyId,
@@ -100,10 +77,6 @@ public interface LedgerMasterRepository
         ).stream().findFirst();
     }
 
-    // =====================================================
-    // LEDGER TYPE LOOKUP
-    // =====================================================
-
     List<LedgerMaster>
     findAllByLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
             LedgerType ledgerType
@@ -116,10 +89,6 @@ public interface LedgerMasterRepository
                 ledgerType
         ).stream().findFirst();
     }
-
-    // =====================================================
-    // COMPANY + LEDGER TYPE LOOKUP
-    // =====================================================
 
     List<LedgerMaster>
     findAllByCompanyIdAndLedgerTypeAndDeletedFalseOrderByActiveDescIdAsc(
@@ -138,10 +107,6 @@ public interface LedgerMasterRepository
         ).stream().findFirst();
     }
 
-    // =====================================================
-    // COMPANY LEDGERS BY MULTIPLE TYPES
-    // =====================================================
-
     @Query("""
             SELECT lm
             FROM LedgerMaster lm
@@ -156,10 +121,6 @@ public interface LedgerMasterRepository
             @Param("companyId") Long companyId,
             @Param("ledgerTypes") List<LedgerType> ledgerTypes
     );
-
-    // =====================================================
-    // DUPLICATE CHECK BY COMPANY + UNIT + TYPE
-    // =====================================================
 
     boolean existsByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
             Long companyId,
@@ -192,5 +153,22 @@ public interface LedgerMasterRepository
 
     Optional<LedgerMaster> findByLedgerCodeIgnoreCaseAndDeletedFalse(
             String ledgerCode
+    );
+
+    /**
+     * Locks all ledgers participating in a voucher in stable ID order.
+     * This prevents lost currentBalance updates when two posted vouchers
+     * touch the same bank/customer/system ledger concurrently.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            SELECT lm
+            FROM LedgerMaster lm
+            WHERE lm.id IN :ledgerIds
+              AND lm.deleted = false
+            ORDER BY lm.id ASC
+            """)
+    List<LedgerMaster> findAllByIdInAndDeletedFalseForUpdate(
+            @Param("ledgerIds") Collection<Long> ledgerIds
     );
 }

@@ -918,6 +918,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
 				.estimateId(estimate != null ? estimate.getId() : null)
+                .clientPoNumber(estimate != null ? estimate.getClientPoNumber() : null)
 
 				.paymentTypeId(paymentTypeId)
 				.paymentTypeCode(paymentTypeCode)
@@ -1490,6 +1491,11 @@ public class InvoiceServiceImpl implements InvoiceService {
 						: null
 		);
 
+		dto.setContactEmail(
+				unbilled != null && unbilled.getContact() != null
+						? unbilled.getContact().getEmails()
+						: null
+		);
 		GstRegistrationType gstRegistrationType =
 				invoice.getGstRegistrationType() != null
 						? invoice.getGstRegistrationType()

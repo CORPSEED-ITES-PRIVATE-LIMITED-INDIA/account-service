@@ -329,6 +329,12 @@ public class EstimateServiceImpl implements EstimateService {
         estimate.setPerformanceInvoiceNumber(
                 generatePINumber()
         );
+        estimate.setClientPoNumber(
+                requestDto.getClientPoNumber() != null
+                        && !requestDto.getClientPoNumber().trim().isEmpty()
+                        ? requestDto.getClientPoNumber().trim()
+                        : null
+        );
         estimate.setPerformanceInvoiceFlag(false);
 
         estimate.setLeadId(
@@ -817,6 +823,9 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLeadId(estimate.getLeadId());
         dto.setPublicUuid(estimate.getPublicUuid());
         dto.setProposalId(estimate.getProposalId());
+        dto.setClientPoNumber(
+                estimate.getClientPoNumber()
+        );
 
         dto.setEstimateNumber(estimate.getEstimateNumber());
         dto.setPerformanceInvoiceNumber(estimate.getPerformanceInvoiceNumber());
@@ -1692,6 +1701,7 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setPublicUuid(estimate.getPublicUuid());
         dto.setProposalId(estimate.getProposalId());
         dto.setLeadId(estimate.getLeadId());
+        dto.setClientPoNumber(estimate.getClientPoNumber());
         dto.setEstimateNumber(estimate.getEstimateNumber());
         dto.setPerformanceInvoiceNumber(estimate.getPerformanceInvoiceNumber());
         dto.setPerformanceInvoiceFlag(estimate.isPerformanceInvoiceFlag());

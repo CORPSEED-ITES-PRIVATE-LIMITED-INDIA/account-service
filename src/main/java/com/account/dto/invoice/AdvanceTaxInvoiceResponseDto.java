@@ -30,6 +30,8 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private BigDecimal requestedAmount;
     private BigDecimal approvedAmount;
+    private String clientPoNumber;
+
 
     private AdvanceTaxInvoiceRequestStatus requestStatus;
 
@@ -82,6 +84,7 @@ public class AdvanceTaxInvoiceResponseDto {
 
     private Long contactId;
     private String contactName;
+    private String contactEmail;   // ← added
 
     // =====================================================
     // GENERATED INVOICE
