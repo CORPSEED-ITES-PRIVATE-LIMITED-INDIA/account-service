@@ -924,9 +924,9 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
          * DEBIT  = positive
          * CREDIT = negative
          *
-         * All ledger types, including BANK and PAYMENT_GATEWAY, are displayed
-         * on the actual accounting side. We do not reverse debit/credit merely
-         * to imitate a bank passbook statement.
+         * BANK, CASH and PAYMENT_GATEWAY ledgers are displayed in
+         * passbook-style (money IN = Credit, money OUT = Debit).
+         * All other ledger types use standard accounting display.
          */
         BigDecimal displayOpeningSignedBalance = displaySignedBalanceForLedger(
                 ledger,
@@ -1749,7 +1749,13 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
                 voucher,
                 "RECEIPT",
                 "PAYMENT_RECEIPT",
-                "PAYMENT"
+                "PAYMENT",
+                /*
+                 * Government-fee Step 3A: Dr receiving bank, Cr customer.
+                 * Without this, HDFC Bank ledger shows wrong particulars and
+                 * Mr Beast customer ledger misses the credit entry display.
+                 */
+                "PROJECT_EXPENSE_CLIENT_RECEIPT"
         );
     }
 
@@ -1916,6 +1922,38 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
          */
         if (serviceName != null && !serviceName.trim().isEmpty()) {
             return serviceName;
+        }
+
+        /*
+         * GOVERNMENT FEE RECEIVABLE / PAYABLE LEDGER LOGIC
+         *
+         * When the user opens:
+         *   - GOVERNMENT_FEE_RECEIVABLE ledger → show client company name
+         *     (i.e., "which client's project is this advance for?")
+         *   - GOVERNMENT_FEE_PAYABLE ledger    → show client company name
+         *     (i.e., "which client's government fee is this liability for?")
+         *
+         * The client name is stored as a snapshot on the voucher itself
+         * (voucher.clientCompanyName / voucher.clientUnitName), so it
+         * remains correct even if master data changes later.
+         *
+         * Falls back to project number if name is missing, and finally
+         * to the opposite ledger name if neither is available.
+         */
+        if (currentLedger != null
+                && isGovernmentFeeLedger(currentLedger)
+                && voucher != null) {
+
+            String clientName = firstNonBlank(
+                    voucher.getClientCompanyName(),
+                    voucher.getClientUnitName(),
+                    voucher.getProjectName(),
+                    voucher.getProjectNo()
+            );
+
+            if (clientName != null && !clientName.trim().isEmpty()) {
+                return clientName.trim();
+            }
         }
 
         /*
@@ -2116,6 +2154,38 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         return ledger.getLedgerType() == LedgerType.BANK
                 || ledger.getLedgerType() == LedgerType.PAYMENT_GATEWAY
                 || ledger.getLedgerType() == LedgerType.CASH;
+    }
+
+    /**
+     * Returns true for ledger types that represent government-fee accounting.
+     * When the user opens these ledgers, particulars should show the client
+     * company/project name (from the voucher snapshot), not the opposite
+     * ledger name.
+     */
+    private boolean isGovernmentFeeLedger(LedgerMaster ledger) {
+        if (ledger == null || ledger.getLedgerType() == null) {
+            return false;
+        }
+        return ledger.getLedgerType() == LedgerType.GOVERNMENT_FEE_RECEIVABLE
+                || ledger.getLedgerType() == LedgerType.GOVERNMENT_FEE_PAYABLE
+                || ledger.getLedgerType() == LedgerType.GOVERNMENT_FEE_CLIENT_ADVANCE
+                || ledger.getLedgerType() == LedgerType.GOVERNMENT_FEE_EXPENSE;
+    }
+
+    /**
+     * Returns the first non-null, non-blank string from the given candidates.
+     * Used to build particulars/narration from voucher snapshot fields.
+     */
+    private String firstNonBlank(String... candidates) {
+        if (candidates == null) {
+            return null;
+        }
+        for (String candidate : candidates) {
+            if (candidate != null && !candidate.trim().isEmpty()) {
+                return candidate.trim();
+            }
+        }
+        return null;
     }
 
 
@@ -2556,16 +2626,44 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     }
 
 
+    /**
+     * ================================================================
+     * PASSBOOK-STYLE DISPLAY FOR BANK / CASH / PAYMENT_GATEWAY LEDGERS
+     * ================================================================
+     * In company double-entry books, BANK is an ASSET ledger:
+     *   Money IN  = Debit  (asset increases)
+     *   Money OUT = Credit (asset decreases)
+     *
+     * In a bank passbook / statement (what users expect to see):
+     *   Money IN  = Credit (deposit)
+     *   Money OUT = Debit  (withdrawal)
+     *
+     * These three helpers swap Dr/Cr display for BANK, CASH and
+     * PAYMENT_GATEWAY ledgers ONLY. Voucher entries, currentBalance,
+     * and trial balance are completely unchanged.
+     *
+     * All other ledger types (CUSTOMER, VENDOR, GOVERNMENT_FEE_PAYABLE,
+     * SERVICE_INCOME, etc.) remain on standard accounting display.
+     * ================================================================
+     */
+    private boolean isPassbookStyleLedger(LedgerMaster ledger) {
+        if (ledger == null || ledger.getLedgerType() == null) {
+            return false;
+        }
+        return ledger.getLedgerType() == LedgerType.BANK
+                || ledger.getLedgerType() == LedgerType.CASH
+                || ledger.getLedgerType() == LedgerType.PAYMENT_GATEWAY;
+    }
+
     private BigDecimal displayDebitForLedger(
             LedgerMaster ledger,
             BigDecimal accountingDebit,
             BigDecimal accountingCredit
     ) {
-        /*
-         * Ledger UI follows accounting semantics for every ledger type.
-         * The ledger argument is intentionally retained so this helper's
-         * call-site contract stays stable.
-         */
+        if (isPassbookStyleLedger(ledger)) {
+            // Passbook: accounting Credit (money out) shown as Debit (withdrawal)
+            return moneyForStatement(accountingCredit);
+        }
         return moneyForStatement(accountingDebit);
     }
 
@@ -2574,6 +2672,10 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             BigDecimal accountingDebit,
             BigDecimal accountingCredit
     ) {
+        if (isPassbookStyleLedger(ledger)) {
+            // Passbook: accounting Debit (money in) shown as Credit (deposit)
+            return moneyForStatement(accountingDebit);
+        }
         return moneyForStatement(accountingCredit);
     }
 
@@ -2581,12 +2683,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
             LedgerMaster ledger,
             BigDecimal accountingSignedBalance
     ) {
-        /*
-         * Positive signed balance = DEBIT.
-         * Negative signed balance = CREDIT.
-         *
-         * Do not negate BANK / PAYMENT_GATEWAY balances for presentation.
-         */
+        if (isPassbookStyleLedger(ledger)) {
+            // Negate so DR balance shows as CR (you have money in the bank)
+            // and CR balance shows as DR (overdraft)
+            return moneyForStatement(accountingSignedBalance).negate();
+        }
         return moneyForStatement(accountingSignedBalance);
     }
 

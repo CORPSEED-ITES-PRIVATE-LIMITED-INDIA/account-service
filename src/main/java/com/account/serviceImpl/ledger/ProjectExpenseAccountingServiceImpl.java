@@ -66,6 +66,9 @@ public class ProjectExpenseAccountingServiceImpl
     private static final String GOVERNMENT_FEE_PAYABLE_CODE =
             "LED-GOV-FEE-PAY";
 
+    private static final String GOVERNMENT_FEE_RECEIVABLE_CODE =
+            "LED-GOV-FEE-REC";
+
     private static final String MAIN_CASH_LEDGER_CODE =
             "LED-CASH-MAIN";
 
@@ -766,6 +769,32 @@ public class ProjectExpenseAccountingServiceImpl
                 payableLedger.getLedgerName()
         );
 
+        /*
+         * FIX: CLIENT_TO_COMPANY accrual must debit GOVERNMENT_FEE_RECEIVABLE,
+         * not the client's CUSTOMER ledger. Without this, the accrual entry
+         * was landing under the customer's name instead of "Government Fee
+         * Receivable", and the Government Fee Payable statement showed
+         * customer names as particulars instead of "Government Fee
+         * Receivable".
+         */
+        LedgerMaster receivableLedger =
+                getOrCreateSystemLedger(
+                        LedgerType.GOVERNMENT_FEE_RECEIVABLE,
+                        LedgerGroupType.CURRENT_ASSETS,
+                        "Government Fee Receivable",
+                        GOVERNMENT_FEE_RECEIVABLE_CODE,
+                        DebitCredit.DEBIT,
+                        approver
+                );
+
+        log.info(
+                "[ACC-RECEIVABLE-LEDGER-RESOLVED] operationExpenseId={} | ledgerId={} | ledgerCode={} | ledgerName={}",
+                request.getOperationExpenseId(),
+                receivableLedger.getId(),
+                receivableLedger.getLedgerCode(),
+                receivableLedger.getLedgerName()
+        );
+
         BigDecimal amount =
                 money(
                         request.getApprovedAmount()
@@ -799,20 +828,22 @@ public class ProjectExpenseAccountingServiceImpl
         );
 
         /*
-         * ENTRY B
+         * ENTRY B (FIXED)
          *
-         * Dr CUSTOMER ledger (client's own ledger)
-         * Cr Government Fee Payable
+         * Dr GOVERNMENT_FEE_RECEIVABLE
+         * Cr GOVERNMENT_FEE_PAYABLE
          *
-         * The customer ledger nets back to zero once accrued, but both
-         * the receipt credit and the accrual debit are now visible inside
-         * the client's own ledger statement.
+         * The client's own CUSTOMER ledger is no longer touched here — it was
+         * already credited in Entry A. This entry now correctly records the
+         * government-fee accrual against the system Receivable/Payable
+         * ledgers instead of leaking into the customer ledger and, from
+         * there, into the Government Fee Payable statement.
          */
         AccountingVoucher journalVoucher =
                 existingJournal.orElseGet(() ->
                         createClientAccrualJournal(
                                 request,
-                                customerLedger,
+                                receivableLedger,
                                 payableLedger,
                                 amount
                         )
@@ -820,11 +851,11 @@ public class ProjectExpenseAccountingServiceImpl
 
         log.info(
                 "[ACC-CLIENT-ACCRUAL-READY] operationExpenseId={} | voucherId={} | voucherNumber={} | " +
-                        "debitCustomerLedgerId={} | creditPayableLedgerId={} | amount={}",
+                        "debitReceivableLedgerId={} | creditPayableLedgerId={} | amount={}",
                 request.getOperationExpenseId(),
                 journalVoucher.getId(),
                 journalVoucher.getVoucherNumber(),
-                customerLedger.getId(),
+                receivableLedger.getId(),
                 payableLedger.getId(),
                 amount
         );
@@ -861,16 +892,19 @@ public class ProjectExpenseAccountingServiceImpl
         /*
          * COMPANY-funded government fee:
          *
-         * Corpseed funds the government fee on behalf of the client and expects
-         * to recover that amount later.
+         * Corpseed pays the government fee on behalf of the client and expects
+         * to recover the amount later.
          *
-         * ACCOUNTING:
+         * ACCOUNTING (DEBIT_NOTE voucher):
          *
-         * Dr CUSTOMER ledger             (SUNDRY_DEBTORS)
-         * Cr Government Fee Payable      (CURRENT_LIABILITIES)
+         * Dr GOVERNMENT_FEE_RECEIVABLE  (CURRENT_ASSETS)   ← Corpseed advanced money, expects recovery
+         * Cr GOVERNMENT_FEE_PAYABLE     (CURRENT_LIABILITIES) ← liability to the government is created
          *
-         * This makes the recoverable government fee visible directly in the
-         * normal customer statement (for example Shivani Mithas).
+         * The GOVERNMENT_FEE_RECEIVABLE ledger tracks all amounts Corpseed has
+         * advanced on behalf of clients across all projects in one place.
+         * The client's CUSTOMER ledger is NOT debited here because Corpseed
+         * is bearing the cost — client recovery happens through invoicing, not
+         * directly through this accounting entry.
          */
 
         validateCompanyFundedClientDetails(request);
@@ -890,41 +924,37 @@ public class ProjectExpenseAccountingServiceImpl
                     "Existing company-funded debit-note amount differs from the approved amount"
             );
 
-            /*
-             * Do not silently accept an old accrual posted with the previous
-             * generic GOVERNMENT_FEE_RECEIVABLE model. A retry must point to a
-             * journal that already debits the actual CUSTOMER ledger.
-             */
-            LedgerMaster existingCustomerLedger = resolveVoucherLedgerByType(
+            LedgerMaster existingReceivableLedger = resolveVoucherLedgerByType(
                     journal,
-                    LedgerType.CUSTOMER,
+                    LedgerType.GOVERNMENT_FEE_RECEIVABLE,
                     DebitCredit.DEBIT,
-                    "Existing company-funded government-fee accrual does not contain a CUSTOMER debit entry. "
-                            + "Cancel/reverse the old accrual voucher and repost the government-fee approval."
+                    "Existing company-funded government-fee accrual does not contain "
+                            + "a GOVERNMENT_FEE_RECEIVABLE debit entry."
             );
 
             LedgerMaster existingPayableLedger = resolveVoucherLedgerByType(
                     journal,
                     LedgerType.GOVERNMENT_FEE_PAYABLE,
                     DebitCredit.CREDIT,
-                    "Existing company-funded government-fee accrual does not contain Government Fee Payable credit entry"
+                    "Existing company-funded government-fee accrual does not contain "
+                            + "a GOVERNMENT_FEE_PAYABLE credit entry."
             );
 
             log.info(
                     "[COMPANY-FUNDED-GOVERNMENT-FEE-ALREADY-POSTED] "
                             + "operationExpenseId={} | journalVoucherId={} | "
-                            + "customerLedgerId={} | customerLedgerName={} | payableLedgerId={}",
+                            + "receivableLedgerId={} | receivableLedgerName={} | payableLedgerId={}",
                     request.getOperationExpenseId(),
                     journal.getId(),
-                    existingCustomerLedger.getId(),
-                    existingCustomerLedger.getLedgerName(),
+                    existingReceivableLedger.getId(),
+                    existingReceivableLedger.getLedgerName(),
                     existingPayableLedger.getId()
             );
 
             return GovernmentFeePostingResponseDto.builder()
                     .postingStatus("ALREADY_POSTED")
                     .message(
-                            "Company-funded government-fee customer receivable was already posted"
+                            "Company-funded government-fee receivable was already posted"
                     )
                     .operationExpenseId(request.getOperationExpenseId())
                     .journalVoucherId(journal.getId())
@@ -944,14 +974,20 @@ public class ProjectExpenseAccountingServiceImpl
                 );
 
         /*
-         * Resolve the already-existing normal customer ledger for this project's
-         * company + unit. Do not create another customer/receivable ledger.
-         *
-         * If request.getClientLedgerId() is present, that explicit override
-         * is used instead of resolving by companyId+unitId.
+         * GOVERNMENT_FEE_RECEIVABLE — tracks the total amount Corpseed has
+         * advanced to the government on behalf of clients. One shared system
+         * ledger for all projects (not per-client).
          */
-        LedgerMaster customerLedger =
-                resolveCompanyFundedCustomerLedger(request, approver);
+        LedgerMaster receivableLedger =
+                getOrCreateSystemLedger(
+                        LedgerType.GOVERNMENT_FEE_RECEIVABLE,
+                        LedgerGroupType.CURRENT_ASSETS,
+                        "Government Fee Receivable",
+                        GOVERNMENT_FEE_RECEIVABLE_CODE,
+                        DebitCredit.DEBIT,
+                        approver
+                );
+
         LedgerMaster payableLedger =
                 getOrCreateSystemLedger(
                         LedgerType.GOVERNMENT_FEE_PAYABLE,
@@ -968,9 +1004,9 @@ public class ProjectExpenseAccountingServiceImpl
                 );
 
         AccountingVoucher journal =
-                createCompanyFundedGovernmentFeeCustomerJournal(
+                createCompanyFundedGovernmentFeeReceivableJournal(
                         request,
-                        customerLedger,
+                        receivableLedger,
                         payableLedger,
                         amount
                 );
@@ -980,15 +1016,15 @@ public class ProjectExpenseAccountingServiceImpl
                         + "operationExpenseId={} | "
                         + "journalVoucherId={} | "
                         + "journalVoucherNumber={} | "
-                        + "customerLedgerId={} | "
-                        + "customerLedgerName={} | "
+                        + "receivableLedgerId={} | "
+                        + "receivableLedgerName={} | "
                         + "payableLedgerId={} | "
                         + "clientCompanyId={} | clientUnitId={} | amount={}",
                 request.getOperationExpenseId(),
                 journal.getId(),
                 journal.getVoucherNumber(),
-                customerLedger.getId(),
-                customerLedger.getLedgerName(),
+                receivableLedger.getId(),
+                receivableLedger.getLedgerName(),
                 payableLedger.getId(),
                 request.getClientCompanyId(),
                 request.getClientUnitId(),
@@ -998,27 +1034,16 @@ public class ProjectExpenseAccountingServiceImpl
         return GovernmentFeePostingResponseDto.builder()
                 .postingStatus("POSTED")
                 .message(
-                        "Company-funded government-fee customer receivable posted successfully"
+                        "Company-funded government-fee receivable and payable posted successfully"
                 )
                 .operationExpenseId(request.getOperationExpenseId())
                 .journalVoucherId(journal.getId())
                 .journalVoucherNumber(journal.getVoucherNumber())
-
-                /*
-                 * COMPANY funding is not a client advance.
-                 */
                 .clientAdvanceLedgerId(null)
-
                 .governmentFeePayableLedgerId(
                         payableLedger.getId()
                 )
-
-                /*
-                 * Recoverable from client, therefore this is not a company
-                 * government-fee expense in this accounting model.
-                 */
                 .governmentFeeExpenseLedgerId(null)
-
                 .voucherId(journal.getId())
                 .voucherNumber(journal.getVoucherNumber())
                 .postedAt(resolvePostedAt(journal))
@@ -1097,13 +1122,12 @@ public class ProjectExpenseAccountingServiceImpl
 
     private AccountingVoucher createClientAccrualJournal(
             GovernmentFeePostingRequestDto request,
-            LedgerMaster customerLedger,
+            LedgerMaster receivableLedger,
             LedgerMaster payableLedger,
             BigDecimal amount
     ) {
 
         String customerName = firstNonBlank(
-                customerLedger != null ? customerLedger.getLedgerName() : null,
                 request.getClientCompanyName(),
                 request.getClientUnitName(),
                 "Client-" + request.getClientCompanyId()
@@ -1114,13 +1138,23 @@ public class ProjectExpenseAccountingServiceImpl
                         "debitLedgerId={} | debitLedgerName={} | creditLedgerId={} | creditLedgerName={} | amount={}",
                 request.getOperationExpenseId(),
                 VoucherType.JOURNAL,
-                customerLedger.getId(),
-                customerLedger.getLedgerName(),
+                receivableLedger.getId(),
+                receivableLedger.getLedgerName(),
                 payableLedger.getId(),
                 payableLedger.getLedgerName(),
                 amount
         );
 
+        /*
+         * FIX: use JOURNAL (not DEBIT_NOTE) and debit GOVERNMENT_FEE_RECEIVABLE
+         * instead of the client's CUSTOMER ledger.
+         *
+         * DEBIT_NOTE requires a partyLedgerId that (a) is a CUSTOMER ledger and
+         * (b) is one of the voucher's own entries. Neither leg of this entry
+         * (GOVERNMENT_FEE_RECEIVABLE / GOVERNMENT_FEE_PAYABLE) is a CUSTOMER
+         * ledger, so JOURNAL is the correct voucher type here and no
+         * partyLedgerId is set.
+         */
         AccountingVoucherRequestDto voucherRequest =
                 AccountingVoucherRequestDto.builder()
                         .voucherType(VoucherType.JOURNAL)
@@ -1137,13 +1171,12 @@ public class ProjectExpenseAccountingServiceImpl
                         .clientUnitId(request.getClientUnitId())
                         .clientUnitName(request.getClientUnitName())
                         .expensePaidBy(request.getPaidBy().name())
-                        .partyLedgerId(customerLedger.getId())
                         .narration(buildNarration(request))
                         .entries(List.of(
                                 debitEntry(
-                                        customerLedger.getId(),
+                                        receivableLedger.getId(),
                                         amount,
-                                        "Government fee adjusted against client funding from "
+                                        "Government fee advanced against client funding from "
                                                 + customerName
                                 ),
                                 creditEntry(
@@ -1168,18 +1201,49 @@ public class ProjectExpenseAccountingServiceImpl
         return getCreatedVoucher(response.getId());
     }
 
-    private AccountingVoucher createCompanyFundedGovernmentFeeCustomerJournal(
+    private AccountingVoucher createCompanyFundedGovernmentFeeReceivableJournal(
             GovernmentFeePostingRequestDto request,
-            LedgerMaster customerLedger,
+            LedgerMaster receivableLedger,
             LedgerMaster payableLedger,
             BigDecimal amount
     ) {
 
+        /*
+         * COMPANY-funded government fee accounting:
+         *
+         * Dr Government Fee Receivable  (CURRENT_ASSETS)
+         *     Cr Government Fee Payable (CURRENT_LIABILITIES)
+         *
+         * Dr side: Corpseed has advanced money on behalf of the client.
+         *          GOVERNMENT_FEE_RECEIVABLE is an asset — money Corpseed
+         *          expects to recover. Increasing this ledger shows the total
+         *          amount outstanding to be recovered across all projects.
+         *
+         * Cr side: Corpseed now owes ₹X to the government portal.
+         *          GOVERNMENT_FEE_PAYABLE is a liability — cleared in Step 5
+         *          when Axis Bank pays the government.
+         *
+         * The client's CUSTOMER ledger is NOT touched here. Client recovery
+         * is handled through invoicing (a separate billing workflow), not
+         * directly through this expense accounting entry.
+         */
+
         String customerName = firstNonBlank(
-                customerLedger != null ? customerLedger.getLedgerName() : null,
                 request.getClientCompanyName(),
                 request.getClientUnitName(),
                 "Client-" + request.getClientCompanyId()
+        );
+
+        log.info(
+                "[ACC-COMPANY-FUNDED-JOURNAL-CREATE-START] operationExpenseId={} | voucherType={} | "
+                        + "debitLedgerId={} | debitLedgerName={} | creditLedgerId={} | creditLedgerName={} | amount={}",
+                request.getOperationExpenseId(),
+                VoucherType.DEBIT_NOTE,
+                receivableLedger.getId(),
+                receivableLedger.getLedgerName(),
+                payableLedger.getId(),
+                payableLedger.getLedgerName(),
+                amount
         );
 
         AccountingVoucherRequestDto voucherRequest =
@@ -1198,37 +1262,43 @@ public class ProjectExpenseAccountingServiceImpl
                         .clientUnitId(request.getClientUnitId())
                         .clientUnitName(request.getClientUnitName())
                         .expensePaidBy(request.getPaidBy().name())
-                        .partyLedgerId(customerLedger.getId())
+                        .partyLedgerId(receivableLedger.getId())
                         .narration(
-                                "Government fee funded by company and recoverable from "
+                                "Government fee funded by company for "
                                         + customerName
-                                        + " for project "
+                                        + " | project "
                                         + safeProjectNumber(request)
                         )
                         .entries(
                                 List.of(
                                         /*
-                                         * DR CUSTOMER / SUNDRY DEBTORS
+                                         * DR GOVERNMENT FEE RECEIVABLE (CURRENT_ASSETS)
                                          *
-                                         * The amount is recoverable from this specific
-                                         * customer, so it must appear in that customer's
-                                         * normal ledger statement.
+                                         * Corpseed has advanced money on behalf of the client.
+                                         * This is an asset — amount Corpseed expects to recover.
                                          */
                                         debitEntry(
-                                                customerLedger.getId(),
+                                                receivableLedger.getId(),
                                                 amount,
-                                                "Government fee recoverable from " + customerName
+                                                "Government fee advanced by company for "
+                                                        + customerName
+                                                        + " | project "
+                                                        + safeProjectNumber(request)
                                         ),
 
                                         /*
-                                         * CR GOVERNMENT FEE PAYABLE
+                                         * CR GOVERNMENT FEE PAYABLE (CURRENT_LIABILITIES)
                                          *
-                                         * Liability to the government is created.
+                                         * Corpseed now owes this amount to the government.
+                                         * Cleared in Step 5 when the bank pays the government.
                                          */
                                         creditEntry(
                                                 payableLedger.getId(),
                                                 amount,
-                                                "Government-fee payable created for " + customerName
+                                                "Government-fee payable created for "
+                                                        + customerName
+                                                        + " | project "
+                                                        + safeProjectNumber(request)
                                         )
                                 )
                         )
@@ -1236,6 +1306,13 @@ public class ProjectExpenseAccountingServiceImpl
 
         AccountingVoucherResponseDto response =
                 accountingVoucherService.createVoucher(voucherRequest);
+
+        log.info(
+                "[ACC-COMPANY-FUNDED-JOURNAL-CREATE-RESPONSE] operationExpenseId={} | voucherId={} | voucherNumber={}",
+                request.getOperationExpenseId(),
+                response != null ? response.getId() : null,
+                response != null ? response.getVoucherNumber() : null
+        );
 
         return getCreatedVoucher(response.getId());
     }
@@ -2949,6 +3026,7 @@ public class ProjectExpenseAccountingServiceImpl
         }
 
         return partyLedger != null && partyLedger.getUnit() != null
+
                 ? partyLedger.getUnit().getUnitName()
                 : null;
     }
