@@ -496,5 +496,18 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
     );
 
 
+    @Query("""
+    select i from Invoice i
+    where i.isCancelled = false
+      and (:createdById is null or i.createdBy.id = :createdById)
+      and (:fromDate is null or i.invoiceDate >= :fromDate)
+      and (:toDate is null or i.invoiceDate <= :toDate)
+    order by i.createdAt desc
+    """)
+    List<Invoice> findInvoicesForFeed(
+            @Param("createdById") Long createdById,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate
+    );
 
 }

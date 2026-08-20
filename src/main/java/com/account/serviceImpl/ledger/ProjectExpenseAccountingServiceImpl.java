@@ -48,7 +48,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-
+import com.account.domain.Organization;
+import com.account.repository.OrganizationRepository;
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -57,7 +58,7 @@ public class ProjectExpenseAccountingServiceImpl
 
     private static final int MONEY_SCALE = 2;
     private static final RoundingMode MONEY_ROUNDING = RoundingMode.HALF_UP;
-
+    private final OrganizationRepository organizationRepository;
 
     private static final String GOVERNMENT_FEE_CLIENT_ADVANCE_CODE =
             "LED-GOV-FEE-ADV";
@@ -2702,6 +2703,11 @@ public class ProjectExpenseAccountingServiceImpl
                 contextVoucher
         );
 
+        // Same single-organization lookup pattern used in InvoiceServiceImpl
+        Organization organization = organizationRepository
+                .findTopOrganization()
+                .orElse(null);
+
         return GovernmentExpenseVoucherListItemDto.builder()
                 .voucherId(voucher.getId())
                 .voucherNumber(voucher.getVoucherNumber())
@@ -2745,6 +2751,63 @@ public class ProjectExpenseAccountingServiceImpl
                 .narration(voucher.getNarration())
                 .entries(mapVoucherEntries(voucher))
                 .createdAt(voucher.getCreatedAt())
+                // ---- Organization / letterhead details ----
+                .organizationName(
+                        organization != null ? organization.getName() : null
+                )
+                .organizationAddressLine1(
+                        organization != null
+                                ? organization.getAddressLine1()
+                                : null
+                )
+                .organizationAddressLine2(
+                        organization != null
+                                ? organization.getAddressLine2()
+                                : null
+                )
+                .organizationCity(
+                        organization != null ? organization.getCity() : null
+                )
+                .organizationState(
+                        organization != null ? organization.getState() : null
+                )
+                .organizationCountry(
+                        organization != null
+                                ? organization.getCountry()
+                                : null
+                )
+                .organizationPinCode(
+                        organization != null
+                                ? organization.getPinCode()
+                                : null
+                )
+                .organizationGstNo(
+                        organization != null ? organization.getGstNo() : null
+                )
+                .organizationPanNo(
+                        organization != null ? organization.getPanNo() : null
+                )
+                .organizationCinNumber(
+                        organization != null
+                                ? organization.getCinNumber()
+                                : null
+                )
+                .organizationEmail(
+                        organization != null ? organization.getEmail() : null
+                )
+                .organizationPhone(
+                        organization != null ? organization.getPhone() : null
+                )
+                .organizationWebsite(
+                        organization != null
+                                ? organization.getWebsite()
+                                : null
+                )
+                .organizationLogoUrl(
+                        organization != null
+                                ? organization.getLogoUrl()
+                                : null
+                )
                 .build();
     }
 

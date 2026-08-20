@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -94,6 +95,19 @@ public interface AdvanceTaxInvoiceRequestRepository
         """)
     List<AdvanceTaxInvoiceRequest> findAllByEstimateIdOrderByCreatedAtDesc(
             @Param("estimateId") Long estimateId
+    );
+
+    @Query("""
+    select r from AdvanceTaxInvoiceRequest r
+    where (:requestedById is null or r.requestedBy.id = :requestedById)
+      and (:fromDate is null or r.createdAt >= :fromDateTime)
+      and (:toDate is null or r.createdAt <= :toDateTime)
+    order by r.createdAt desc
+    """)
+    List<AdvanceTaxInvoiceRequest> findRequestsForFeed(
+            @Param("requestedById") Long requestedById,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
     );
 
 }
