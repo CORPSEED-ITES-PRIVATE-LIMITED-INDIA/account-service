@@ -695,6 +695,40 @@ public class ProjectExpenseAccountingServiceImpl
                     "Existing accrual voucher does not contain Government Fee Payable credit entry"
             );
 
+            /*
+             * Backfill only the missing CUSTOMER debit-note entry without
+             * changing the already-posted receipt or accrual journal.
+             *
+             * Dr CUSTOMER
+             * Cr GOVERNMENT_FEE_RECEIVABLE
+             */
+            LedgerMaster receivableLedger = resolveVoucherLedgerByType(
+                    journal,
+                    LedgerType.GOVERNMENT_FEE_RECEIVABLE,
+                    DebitCredit.DEBIT,
+                    "Existing accrual voucher does not contain Government Fee Receivable debit entry"
+            );
+
+            AccountingVoucher customerDebitNote =
+                    getOrCreateClientGovernmentFeeCustomerDebitNote(
+                            request,
+                            customerLedger,
+                            receivableLedger,
+                            money(request.getApprovedAmount())
+                    );
+
+            log.info(
+                    "[ACC-CLIENT-CUSTOMER-DEBIT-NOTE-BACKFILL] " +
+                            "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
+                            "customerLedgerId={} | receivableLedgerId={} | amount={}",
+                    request.getOperationExpenseId(),
+                    customerDebitNote.getId(),
+                    customerDebitNote.getVoucherNumber(),
+                    customerLedger.getId(),
+                    receivableLedger.getId(),
+                    money(request.getApprovedAmount())
+            );
+
             return buildClientFundedResponse(
                     request,
                     "ALREADY_POSTED",
@@ -823,6 +857,36 @@ public class ProjectExpenseAccountingServiceImpl
                 receiptVoucher.getVoucherNumber(),
                 receivingLedger.getId(),
                 customerLedger.getId(),
+                amount
+        );
+
+        /*
+         * EXTRA CUSTOMER LEDGER ENTRY ONLY
+         *
+         * Dr CUSTOMER
+         * Cr GOVERNMENT_FEE_RECEIVABLE
+         *
+         * This does not change the existing receipt, accrual, fund-transfer,
+         * payable, or payment logic. It only adds the missing debit entry in
+         * the customer's ledger and the balancing credit in receivable.
+         */
+        AccountingVoucher customerDebitNote =
+                getOrCreateClientGovernmentFeeCustomerDebitNote(
+                        request,
+                        customerLedger,
+                        receivableLedger,
+                        amount
+                );
+
+        log.info(
+                "[ACC-CLIENT-CUSTOMER-DEBIT-NOTE-READY] " +
+                        "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
+                        "debitCustomerLedgerId={} | creditReceivableLedgerId={} | amount={}",
+                request.getOperationExpenseId(),
+                customerDebitNote.getId(),
+                customerDebitNote.getVoucherNumber(),
+                customerLedger.getId(),
+                receivableLedger.getId(),
                 amount
         );
 
@@ -2999,6 +3063,335 @@ public class ProjectExpenseAccountingServiceImpl
 
                 ? partyLedger.getUnit().getUnitName()
                 : null;
+    }
+
+
+    /**
+     * Creates only the missing CUSTOMER debit-note voucher for CLIENT_TO_COMPANY.
+     *
+     * No new VoucherSourceType is introduced. The legacy PROJECT_EXPENSE source
+     * is used for this one balancing voucher:
+     *
+     * Dr CUSTOMER
+     * Cr GOVERNMENT_FEE_RECEIVABLE
+     *
+     * Existing receipt / accrual / contra / government-payment vouchers remain
+     * untouched and continue to use their existing source types.
+     */
+    private AccountingVoucher getOrCreateClientGovernmentFeeCustomerDebitNote(
+            GovernmentFeePostingRequestDto request,
+            LedgerMaster customerLedger,
+            LedgerMaster receivableLedger,
+            BigDecimal amount
+    ) {
+
+        BigDecimal postingAmount = money(amount);
+
+        Optional<AccountingVoucher> existing =
+                findPostedVoucher(
+                        VoucherSourceType.PROJECT_EXPENSE,
+                        request.getOperationExpenseId()
+                );
+
+        if (existing.isPresent()) {
+
+            AccountingVoucher voucher = existing.get();
+
+            validateExistingVoucherAmount(
+                    existing,
+                    postingAmount,
+                    "Existing customer government-fee debit note amount differs from approved amount"
+            );
+
+            LedgerMaster existingCustomer = resolveVoucherLedgerByType(
+                    voucher,
+                    LedgerType.CUSTOMER,
+                    DebitCredit.DEBIT,
+                    "Existing PROJECT_EXPENSE voucher does not contain CUSTOMER debit entry"
+            );
+
+            LedgerMaster existingReceivable = resolveVoucherLedgerByType(
+                    voucher,
+                    LedgerType.GOVERNMENT_FEE_RECEIVABLE,
+                    DebitCredit.CREDIT,
+                    "Existing PROJECT_EXPENSE voucher does not contain Government Fee Receivable credit entry"
+            );
+
+            if (!Objects.equals(existingCustomer.getId(), customerLedger.getId())) {
+                throw new ValidationException(
+                        "Existing customer debit-note voucher belongs to another customer ledger",
+                        "ERR_GOVT_FEE_CUSTOMER_DEBIT_NOTE_LEDGER_MISMATCH",
+                        "clientLedgerId"
+                );
+            }
+
+            if (!Objects.equals(existingReceivable.getId(), receivableLedger.getId())) {
+                throw new ValidationException(
+                        "Existing customer debit-note voucher has a different Government Fee Receivable ledger",
+                        "ERR_GOVT_FEE_RECEIVABLE_LEDGER_MISMATCH",
+                        "operationExpenseId"
+                );
+            }
+
+            log.info(
+                    "[ACC-CLIENT-GOVT-FEE-DEBIT-NOTE-ALREADY-POSTED] " +
+                            "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
+                            "customerLedgerId={} | receivableLedgerId={} | amount={}",
+                    request.getOperationExpenseId(),
+                    voucher.getId(),
+                    voucher.getVoucherNumber(),
+                    customerLedger.getId(),
+                    receivableLedger.getId(),
+                    postingAmount
+            );
+
+            return voucher;
+        }
+
+        return createClientGovernmentFeeCustomerDebitNote(
+                request,
+                customerLedger,
+                receivableLedger,
+                postingAmount
+        );
+    }
+
+
+    private AccountingVoucher createClientGovernmentFeeCustomerDebitNote(
+            GovernmentFeePostingRequestDto request,
+            LedgerMaster customerLedger,
+            LedgerMaster receivableLedger,
+            BigDecimal amount
+    ) {
+
+        BigDecimal postingAmount = money(amount);
+
+        if (customerLedger == null) {
+            throw new ValidationException(
+                    "Customer ledger is required for government-fee debit note",
+                    "ERR_CUSTOMER_LEDGER_REQUIRED",
+                    "clientLedgerId"
+            );
+        }
+
+        if (customerLedger.getLedgerType() != LedgerType.CUSTOMER) {
+            throw new ValidationException(
+                    "Government-fee debit note requires CUSTOMER ledger. Found: "
+                            + customerLedger.getLedgerType(),
+                    "ERR_INVALID_CUSTOMER_LEDGER",
+                    "clientLedgerId"
+            );
+        }
+
+        if (receivableLedger == null) {
+            throw new ValidationException(
+                    "Government Fee Receivable ledger is required",
+                    "ERR_GOVERNMENT_FEE_RECEIVABLE_REQUIRED",
+                    "operationExpenseId"
+            );
+        }
+
+        if (receivableLedger.getLedgerType()
+                != LedgerType.GOVERNMENT_FEE_RECEIVABLE) {
+
+            throw new ValidationException(
+                    "Expected GOVERNMENT_FEE_RECEIVABLE ledger but found: "
+                            + receivableLedger.getLedgerType(),
+                    "ERR_INVALID_GOVERNMENT_FEE_RECEIVABLE",
+                    "operationExpenseId"
+            );
+        }
+
+        String customerName =
+                firstNonBlank(
+                        request.getClientCompanyName(),
+                        request.getClientUnitName(),
+                        customerLedger.getLedgerName(),
+                        "Client-" + request.getClientCompanyId()
+                );
+
+        log.info(
+                "[ACC-CLIENT-GOVT-FEE-DEBIT-NOTE-CREATE-START] " +
+                        "operationExpenseId={} | customerLedgerId={} | customerLedgerName={} | " +
+                        "receivableLedgerId={} | receivableLedgerName={} | amount={}",
+                request.getOperationExpenseId(),
+                customerLedger.getId(),
+                customerLedger.getLedgerName(),
+                receivableLedger.getId(),
+                receivableLedger.getLedgerName(),
+                postingAmount
+        );
+
+        /*
+         * =====================================================
+         * ONLY MISSING ENTRY
+         * =====================================================
+         *
+         * Dr CUSTOMER
+         * Cr GOVERNMENT_FEE_RECEIVABLE
+         *
+         * DO NOT TOUCH GOVERNMENT_FEE_PAYABLE HERE.
+         *
+         * Payable is already handled by:
+         *
+         * createClientAccrualJournal()
+         *
+         * Dr Government Fee Receivable
+         * Cr Government Fee Payable
+         * =====================================================
+         */
+
+        AccountingVoucherRequestDto voucherRequest =
+                AccountingVoucherRequestDto.builder()
+
+                        .voucherType(
+                                VoucherType.DEBIT_NOTE
+                        )
+
+                        .voucherDate(
+                                resolvePostingDate(request)
+                        )
+
+                        /*
+                         * NO NEW ENUM.
+                         *
+                         * Existing PROJECT_EXPENSE is used only
+                         * for this additional customer debit note.
+                         */
+                        .sourceType(
+                                VoucherSourceType.PROJECT_EXPENSE
+                        )
+
+                        .sourceId(
+                                request.getOperationExpenseId()
+                        )
+
+                        .projectId(
+                                request.getProjectId()
+                        )
+
+                        .projectNo(
+                                request.getProjectNo()
+                        )
+
+                        .projectName(
+                                request.getProjectName()
+                        )
+
+                        .clientCompanyId(
+                                request.getClientCompanyId()
+                        )
+
+                        .clientCompanyName(
+                                request.getClientCompanyName()
+                        )
+
+                        .clientUnitId(
+                                request.getClientUnitId()
+                        )
+
+                        .clientUnitName(
+                                request.getClientUnitName()
+                        )
+
+                        .expensePaidBy(
+                                request.getPaidBy().name()
+                        )
+
+                        /*
+                         * Debit Note belongs to Infosys/customer.
+                         */
+                        .partyLedgerId(
+                                customerLedger.getId()
+                        )
+
+                        .narration(
+                                "Government fee debit note for "
+                                        + customerName
+                                        + " | project "
+                                        + safeProjectNumber(request)
+                        )
+
+                        .entries(
+                                List.of(
+
+                                        /*
+                                         * DR CUSTOMER
+                                         *
+                                         * THIS IS THE MISSING INFOSYS ENTRY.
+                                         */
+                                        debitEntry(
+                                                customerLedger.getId(),
+                                                postingAmount,
+                                                "Government Fee Receivable"
+                                        ),
+
+                                        /*
+                                         * CR GOVERNMENT FEE RECEIVABLE
+                                         *
+                                         * Balancing side of Debit Note.
+                                         *
+                                         * IMPORTANT:
+                                         * Government Fee Payable is NOT used here.
+                                         */
+                                        creditEntry(
+                                                receivableLedger.getId(),
+                                                postingAmount,
+                                                "Government fee receivable from "
+                                                        + customerName
+                                        )
+                                )
+                        )
+
+                        .build();
+
+        log.info(
+                "[ACC-CLIENT-GOVT-FEE-DEBIT-NOTE-ENTRIES] " +
+                        "operationExpenseId={} | " +
+                        "DR[customerLedgerId={}, customerName={}, amount={}] | " +
+                        "CR[receivableLedgerId={}, receivableName={}, amount={}]",
+                request.getOperationExpenseId(),
+
+                customerLedger.getId(),
+                customerLedger.getLedgerName(),
+                postingAmount,
+
+                receivableLedger.getId(),
+                receivableLedger.getLedgerName(),
+                postingAmount
+        );
+
+        AccountingVoucherResponseDto response =
+                accountingVoucherService.createVoucher(
+                        voucherRequest
+                );
+
+        if (response == null || response.getId() == null) {
+            throw new ValidationException(
+                    "Customer government-fee debit note was not created",
+                    "ERR_GOVT_FEE_CUSTOMER_DEBIT_NOTE_CREATION_FAILED",
+                    "operationExpenseId"
+            );
+        }
+
+        AccountingVoucher voucher =
+                getCreatedVoucher(
+                        response.getId()
+                );
+
+        log.info(
+                "[ACC-CLIENT-GOVT-FEE-DEBIT-NOTE-CREATED] " +
+                        "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
+                        "DR_CUSTOMER={} | CR_GOVT_RECEIVABLE={} | amount={}",
+                request.getOperationExpenseId(),
+                voucher.getId(),
+                voucher.getVoucherNumber(),
+                customerLedger.getId(),
+                receivableLedger.getId(),
+                postingAmount
+        );
+
+        return voucher;
     }
 
 

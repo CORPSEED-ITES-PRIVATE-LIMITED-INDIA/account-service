@@ -1934,7 +1934,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
          *     (i.e., "which client's government fee is this liability for?")
          *
          * The client name is stored as a snapshot on the voucher itself
-         * (voucher.clientCompanyName / voucher.clientUnitName), so it
+         * (voucher.clientCompanyName / voucher.clientUn    itName), so it
          * remains correct even if master data changes later.
          *
          * Falls back to project number if name is missing, and finally
@@ -2690,5 +2690,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
         return moneyForStatement(accountingSignedBalance);
     }
+
+
 
 }
