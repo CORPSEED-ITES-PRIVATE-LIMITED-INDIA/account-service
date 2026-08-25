@@ -1133,9 +1133,20 @@ public class ProjectExpenseAccountingServiceImpl
                 "Client-" + request.getClientCompanyId()
         );
 
+        /*
+         * EXISTING ACCRUAL - KEEP ORIGINAL ACCOUNTING
+         *
+         * Dr Government Fee Receivable
+         * Cr Government Fee Payable
+         *
+         * Payable is created ONLY here.
+         */
+
         log.info(
-                "[ACC-CLIENT-ACCRUAL-CREATE-START] operationExpenseId={} | voucherType={} | " +
-                        "debitLedgerId={} | debitLedgerName={} | creditLedgerId={} | creditLedgerName={} | amount={}",
+                "[ACC-CLIENT-ACCRUAL-CREATE-START] " +
+                        "operationExpenseId={} | voucherType={} | " +
+                        "debitReceivableLedgerId={} | debitReceivableLedgerName={} | " +
+                        "creditPayableLedgerId={} | creditPayableLedgerName={} | amount={}",
                 request.getOperationExpenseId(),
                 VoucherType.JOURNAL,
                 receivableLedger.getId(),
@@ -1145,60 +1156,82 @@ public class ProjectExpenseAccountingServiceImpl
                 amount
         );
 
-        /*
-         * FIX: use JOURNAL (not DEBIT_NOTE) and debit GOVERNMENT_FEE_RECEIVABLE
-         * instead of the client's CUSTOMER ledger.
-         *
-         * DEBIT_NOTE requires a partyLedgerId that (a) is a CUSTOMER ledger and
-         * (b) is one of the voucher's own entries. Neither leg of this entry
-         * (GOVERNMENT_FEE_RECEIVABLE / GOVERNMENT_FEE_PAYABLE) is a CUSTOMER
-         * ledger, so JOURNAL is the correct voucher type here and no
-         * partyLedgerId is set.
-         */
         AccountingVoucherRequestDto voucherRequest =
                 AccountingVoucherRequestDto.builder()
                         .voucherType(VoucherType.JOURNAL)
                         .voucherDate(resolvePostingDate(request))
+
                         .sourceType(
                                 VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL
                         )
+
                         .sourceId(request.getOperationExpenseId())
+
                         .projectId(request.getProjectId())
                         .projectNo(request.getProjectNo())
                         .projectName(request.getProjectName())
+
                         .clientCompanyId(request.getClientCompanyId())
                         .clientCompanyName(request.getClientCompanyName())
+
                         .clientUnitId(request.getClientUnitId())
                         .clientUnitName(request.getClientUnitName())
-                        .expensePaidBy(request.getPaidBy().name())
-                        .narration(buildNarration(request))
-                        .entries(List.of(
-                                debitEntry(
-                                        receivableLedger.getId(),
-                                        amount,
-                                        "Government fee advanced against client funding from "
-                                                + customerName
-                                ),
-                                creditEntry(
-                                        payableLedger.getId(),
-                                        amount,
-                                        "Government-fee payable created for "
-                                                + customerName
+
+                        .expensePaidBy(
+                                request.getPaidBy().name()
+                        )
+
+                        .narration(
+                                buildNarration(request)
+                        )
+
+                        .entries(
+                                List.of(
+
+                                        /*
+                                         * DR GOVERNMENT FEE RECEIVABLE
+                                         */
+                                        debitEntry(
+                                                receivableLedger.getId(),
+                                                amount,
+                                                "Government fee receivable accrued for "
+                                                        + customerName
+                                        ),
+
+                                        /*
+                                         * CR GOVERNMENT FEE PAYABLE
+                                         */
+                                        creditEntry(
+                                                payableLedger.getId(),
+                                                amount,
+                                                "Government-fee payable created for "
+                                                        + customerName
+                                        )
                                 )
-                        ))
+                        )
+
                         .build();
 
         AccountingVoucherResponseDto response =
-                accountingVoucherService.createVoucher(voucherRequest);
+                accountingVoucherService.createVoucher(
+                        voucherRequest
+                );
 
         log.info(
-                "[ACC-CLIENT-ACCRUAL-CREATE-RESPONSE] operationExpenseId={} | voucherId={} | voucherNumber={}",
+                "[ACC-CLIENT-ACCRUAL-CREATE-RESPONSE] " +
+                        "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
+                        "DR_RECEIVABLE={} | CR_PAYABLE={} | amount={}",
                 request.getOperationExpenseId(),
                 response != null ? response.getId() : null,
-                response != null ? response.getVoucherNumber() : null
+                response != null ? response.getVoucherNumber() : null,
+                receivableLedger.getId(),
+                payableLedger.getId(),
+                amount
         );
 
-        return getCreatedVoucher(response.getId());
+        return getCreatedVoucher(
+                response.getId()
+        );
     }
 
     private AccountingVoucher createCompanyFundedGovernmentFeeReceivableJournal(
