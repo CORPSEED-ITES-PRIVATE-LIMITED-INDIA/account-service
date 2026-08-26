@@ -1925,6 +1925,36 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         }
 
         /*
+         * =========================================================
+         * GOVERNMENT FEE PAYABLE - PAYMENT PARTICULARS
+         * =========================================================
+         *
+         * New display requirement:
+         * When Government Fee Payable is opened and the voucher is the
+         * government-payment voucher, show the actual counter BANK ledger
+         * (for example "AXIS BANK LTD") instead of client/company name.
+         *
+         * Accounting remains untouched:
+         *      Dr Government Fee Payable
+         *      Cr Payment Bank
+         */
+        if (currentLedger != null
+                && currentLedger.getLedgerType() == LedgerType.GOVERNMENT_FEE_PAYABLE
+                && voucher != null
+                && voucher.getSourceType() == VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_PAYMENT) {
+
+            String paymentBankName = resolveOppositeLedgerName(
+                    currentLedger,
+                    voucher,
+                    otherEntriesCache
+            );
+
+            if (paymentBankName != null && !paymentBankName.trim().isEmpty()) {
+                return paymentBankName.trim();
+            }
+        }
+
+        /*
          * GOVERNMENT FEE RECEIVABLE / PAYABLE LEDGER LOGIC
          *
          * When the user opens:
