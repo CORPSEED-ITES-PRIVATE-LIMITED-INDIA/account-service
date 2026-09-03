@@ -1608,6 +1608,15 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             Long inputIgstLedgerId,
             Long tdsPayableLedgerId,
             Long paymentBankLedgerId
-    ) {
+    ){
     }
+
+
+
+
+
+
+
+
+
 }

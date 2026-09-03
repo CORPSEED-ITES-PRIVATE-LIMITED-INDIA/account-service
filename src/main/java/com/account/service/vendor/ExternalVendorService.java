@@ -8,4 +8,5 @@ public interface ExternalVendorService {
     AccountVendorSyncResponseDto syncVendor(
             AccountVendorSyncRequestDto request
     );
+
 }

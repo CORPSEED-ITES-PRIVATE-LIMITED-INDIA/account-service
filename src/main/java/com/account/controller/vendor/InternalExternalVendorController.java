@@ -2,11 +2,13 @@ package com.account.controller.vendor;
 
 import com.account.dto.vendor.AccountVendorSyncRequestDto;
 import com.account.dto.vendor.AccountVendorSyncResponseDto;
+import com.account.dto.vendor.VendorTransactionResponseDto;
 import com.account.service.vendor.ExternalVendorService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -43,4 +45,6 @@ public class InternalExternalVendorController {
                 externalVendorService.syncVendor(request)
         );
     }
+
+
 }

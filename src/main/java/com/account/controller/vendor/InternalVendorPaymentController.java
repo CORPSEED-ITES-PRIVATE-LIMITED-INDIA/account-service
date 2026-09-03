@@ -1,4 +1,4 @@
-package com.account.controller.internal;
+package com.account.controller.vendor;
 
 import com.account.dto.vendor.VendorPaymentPostingRequestDto;
 import com.account.dto.vendor.VendorPaymentPostingResponseDto;

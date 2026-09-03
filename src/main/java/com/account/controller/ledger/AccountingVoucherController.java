@@ -86,4 +86,6 @@ public class AccountingVoucherController {
         accountingVoucherService.cancelVoucher(id, reason);
         return ResponseEntity.noContent().build();
     }
+
+
 }
