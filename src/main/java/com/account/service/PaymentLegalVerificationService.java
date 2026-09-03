@@ -2,6 +2,7 @@ package com.account.service;
 
 import com.account.domain.PaymentReceipt;
 import com.account.domain.User;
+import com.account.dto.payment.PaymentLegalSummaryResponseDto;
 import com.account.dto.payment.PaymentLegalVerificationResponseDto;
 import com.account.dto.payment.ReviewPaymentLegalVerificationRequestDto;
 
@@ -20,6 +21,7 @@ public interface PaymentLegalVerificationService {
             Long reviewedById,
             ReviewPaymentLegalVerificationRequestDto request
     );
+    PaymentLegalSummaryResponseDto getSummary(Long userId);
 
     void validatePurchaseOrderLegalApprovalBeforeAccountsApproval(PaymentReceipt receipt);
 }
