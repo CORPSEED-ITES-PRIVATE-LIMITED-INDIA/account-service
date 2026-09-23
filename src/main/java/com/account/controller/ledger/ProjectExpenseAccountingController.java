@@ -1,12 +1,10 @@
 package com.account.controller.ledger;
 
-import com.account.dto.operationService.GovernmentExpenseListItemDto;
+import com.account.dto.operationService.*;
 import com.account.dto.operationService.GovernmentFeeFundTransferPostingRequestDto;
 import com.account.dto.operationService.GovernmentFeeFundTransferPostingResponseDto;
 import com.account.dto.operationService.GovernmentFeePaymentPostingRequestDto;
 import com.account.dto.operationService.GovernmentFeePaymentPostingResponseDto;
-import com.account.dto.operationService.GovernmentFeePostingRequestDto;
-import com.account.dto.operationService.GovernmentFeePostingResponseDto;
 import com.account.service.ledger.ProjectExpenseAccountingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -128,4 +126,34 @@ public class ProjectExpenseAccountingController {
 
         return ResponseEntity.ok(response);
     }
+
+
+
+    @GetMapping("/government-fee/vouchers")
+    public ResponseEntity<Page<GovernmentExpenseVoucherListItemDto>>
+    getGovernmentFeeVouchers(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0 || size > 200
+                ? 20
+                : size;
+
+        Pageable pageable = PageRequest.of(
+                safePage,
+                safeSize,
+                Sort.by(Sort.Direction.DESC, "id")
+        );
+
+        Page<GovernmentExpenseVoucherListItemDto> response =
+                projectExpenseAccountingService
+                        .getGovernmentFeeVouchers(pageable);
+
+        return ResponseEntity.ok(response);
+    }
+
+
+
 }

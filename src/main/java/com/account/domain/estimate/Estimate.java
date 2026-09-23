@@ -113,6 +113,9 @@ public class Estimate {
     )
     private String performanceInvoiceNumber;
 
+    @Column(name = "client_po_number", length = 100)
+    private String clientPoNumber;
+
     @Column(
             name = "performance_invoice_flag",
             nullable = false

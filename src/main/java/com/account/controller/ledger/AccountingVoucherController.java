@@ -87,5 +87,4 @@ public class AccountingVoucherController {
         return ResponseEntity.noContent().build();
     }
 
-
 }

@@ -27,6 +27,8 @@ public class EstimateResponseDto {
 
     private Long leadId;
     private Long proposalId;
+    private String clientPoNumber;
+
 
     // Human-readable estimate number
     private String estimateNumber;

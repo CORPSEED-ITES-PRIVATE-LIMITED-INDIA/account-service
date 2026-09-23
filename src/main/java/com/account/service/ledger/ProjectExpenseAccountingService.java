@@ -27,4 +27,5 @@ public interface ProjectExpenseAccountingService {
             Pageable pageable
     );
 
+    Page<GovernmentExpenseVoucherListItemDto> getGovernmentFeeVouchers(Pageable pageable);
 }

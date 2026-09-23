@@ -918,6 +918,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
 				.estimateId(estimate != null ? estimate.getId() : null)
+                .clientPoNumber(estimate != null ? estimate.getClientPoNumber() : null)
 
 				.paymentTypeId(paymentTypeId)
 				.paymentTypeCode(paymentTypeCode)

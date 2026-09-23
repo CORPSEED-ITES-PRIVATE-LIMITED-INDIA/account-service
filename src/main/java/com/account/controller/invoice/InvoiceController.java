@@ -4,6 +4,8 @@ import com.account.domain.status.InvoiceStatus;
 import com.account.dto.invoice.*;
 import com.account.dto.taxation.TaxationReportDto;
 import com.account.dto.taxation.TaxationReportRequest;
+import com.account.enm.InvoiceFeedFilter;
+import com.account.service.InvoiceFeedService;
 import com.account.service.InvoiceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -26,6 +28,7 @@ import java.util.List;
 public class InvoiceController {
 
     private final InvoiceService invoiceService;
+    private final InvoiceFeedService invoiceFeedService;
 
 
     @Operation(summary = "Get paginated list of tax invoices")
@@ -279,6 +282,46 @@ public class InvoiceController {
 
 
 
+
+    @Operation(summary = "Get combined Invoice + Advance Tax Invoice request feed")
+    @GetMapping("/feed")
+    public ResponseEntity<List<InvoiceFeedItemDto>> getInvoiceFeed(
+            @RequestParam Long userId,
+            @RequestParam(required = false, defaultValue = "ALL") InvoiceFeedFilter filter,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        List<InvoiceFeedItemDto> feed = invoiceFeedService.getFeed(
+                userId, filter, parsedFromDate, parsedToDate, page - 1, size
+        );
+
+        return ResponseEntity.ok(feed);
+    }
+
+    @Operation(summary = "Get count for the combined Invoice + Advance Tax Invoice request feed")
+    @GetMapping("/feed/count")
+    public ResponseEntity<Long> getInvoiceFeedCount(
+            @RequestParam Long userId,
+            @RequestParam(required = false, defaultValue = "ALL") InvoiceFeedFilter filter,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate
+    ) {
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        return ResponseEntity.ok(
+                invoiceFeedService.getFeedCount(userId, filter, parsedFromDate, parsedToDate)
+        );
+    }
 
 
 }

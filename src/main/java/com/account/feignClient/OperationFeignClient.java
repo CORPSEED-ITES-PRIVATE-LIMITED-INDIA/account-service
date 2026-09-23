@@ -1,6 +1,8 @@
 package com.account.feignClient;
 
 
+import com.account.dto.PagedResponse;
+import com.account.dto.ProcurementPaymentRequestResponseDto;
 import com.account.dto.operationService.*;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -8,6 +10,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @FeignClient(name = "OPERATION-SERVICE")
 public interface OperationFeignClient {
@@ -88,8 +92,9 @@ public interface OperationFeignClient {
     // PROCUREMENT PAYMENT REQUEST APIs
     // ============================================================
 
+
     @GetMapping("/operationService/api/procurement-payment-requests")
-    ResponseEntity<?> getProcurementPaymentRequests(
+    ResponseEntity<PagedResponse<ProcurementPaymentRequestResponseDto>> getProcurementPaymentRequests(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size

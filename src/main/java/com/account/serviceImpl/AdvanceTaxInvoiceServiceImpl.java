@@ -1903,6 +1903,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                                 ? estimate.getSolutionName()
                                 : null
                 )
+                .clientPoNumber(
+                        estimate != null
+                                ? estimate.getClientPoNumber()
+                                : null
+                )
 
                 // =====================================================
                 // COMPANY / UNIT / CONTACT
@@ -3436,6 +3441,92 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdvanceTaxInvoiceResponseDto> getAdvanceInvoicesByInvoiceId(
+            Long invoiceId,
+            Long userId
+    ) {
+
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+        if (invoiceId == null || invoiceId <= 0) {
+            throw new ValidationException(
+                    "Valid invoiceId is required",
+                    "ERR_INVOICE_ID_REQUIRED",
+                    "invoiceId"
+            );
+        }
+
+        if (userId == null || userId <= 0) {
+            throw new ValidationException(
+                    "Valid userId is required",
+                    "ERR_USER_ID_REQUIRED",
+                    "userId"
+            );
+        }
+
+        // =====================================================
+        // 2. VERIFY USER (simple existence + active check)
+        // =====================================================
+        getActiveUser(userId, "userId");
+
+        // =====================================================
+        // 3. FETCH INVOICE AND RESOLVE ESTIMATE
+        // =====================================================
+        Invoice invoice =
+                invoiceRepository.findById(invoiceId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Invoice not found with ID: " + invoiceId,
+                                        "INVOICE_NOT_FOUND",
+                                        "Invoice",
+                                        invoiceId
+                                )
+                        );
+
+        if (invoice.getEstimate() == null
+                || invoice.getEstimate().getId() == null) {
+
+            throw new ValidationException(
+                    "Estimate is missing from Invoice",
+                    "ERR_INVOICE_ESTIMATE_MISSING",
+                    "invoiceId"
+            );
+        }
+
+        Long estimateId = invoice.getEstimate().getId();
+
+        // =====================================================
+        // 4. FETCH ALL ADVANCE TAX INVOICE REQUESTS FOR THIS ESTIMATE
+        // =====================================================
+        List<AdvanceTaxInvoiceRequest> requests =
+                advanceTaxInvoiceRequestRepository
+                        .findAllByEstimateIdOrderByCreatedAtDesc(estimateId);
+
+        // =====================================================
+        // 5. MAP TO RESPONSE
+        // =====================================================
+        List<AdvanceTaxInvoiceResponseDto> responses =
+                new ArrayList<>();
+
+        for (AdvanceTaxInvoiceRequest request : requests) {
+            responses.add(mapToResponse(request, null));
+        }
+
+        log.info(
+                "Advance Tax Invoice requests fetched for Invoice "
+                        + "| invoiceId={} | estimateId={} | userId={} | count={}",
+                invoiceId,
+                estimateId,
+                userId,
+                responses.size()
+        );
+
+        return responses;
+    }
+
     /**
      * Produces voucher values that always satisfy:
      *
@@ -3764,17 +3855,40 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         Long companyId = company.getId();
         Long unitId = unit.getId();
 
+        /*
+         * IMPORTANT:
+         * A company/unit's customer-facing ledger may have been created as
+         * LedgerType.CUSTOMER (normal sales flow) OR LedgerType.CUSTOMER_ADVANCE
+         * (advance/PO flow). Both represent the SAME party ledger from an
+         * accounting point of view.
+         *
+         * Looking up CUSTOMER only causes a duplicate "Company - Unit" ledger
+         * to be silently created whenever the existing ledger happens to be
+         * CUSTOMER_ADVANCE, splitting that party's entries across two ledgers.
+         *
+         * Match on BOTH types so the Advance Tax Invoice voucher always posts
+         * into whichever party ledger already exists for this company/unit.
+         */
         Optional<LedgerMaster> existing =
                 ledgerMasterRepository
-                        .findByCompanyIdAndUnitIdAndLedgerTypeAndDeletedFalse(
+                        .findFirstByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
                                 companyId,
                                 unitId,
-                                LedgerType.CUSTOMER
+                                List.of(
+                                        LedgerType.CUSTOMER,
+                                        LedgerType.CUSTOMER_ADVANCE
+                                )
                         );
 
         if (existing.isPresent()) {
             LedgerMaster ledger = existing.get();
 
+            /*
+             * Do NOT overwrite ledger.setLedgerType(...) here.
+             * Preserve whatever type (CUSTOMER or CUSTOMER_ADVANCE) the
+             * ledger already has so existing ledger entries and reports
+             * for that ledger stay consistent.
+             */
             ledger.setCompany(company);
             ledger.setUnit(unit);
             ledger.setContact(contact);
@@ -3824,6 +3938,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 generateLedgerCode("CUST")
         );
 
+        /*
+         * No existing party ledger of either type was found, so a fresh
+         * CUSTOMER ledger is created — matching the original behaviour
+         * for genuinely new companies/units.
+         */
         ledger.setLedgerType(LedgerType.CUSTOMER);
         ledger.setLedgerGroup(debtors);
 

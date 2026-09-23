@@ -4,6 +4,8 @@ import com.account.domain.*;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.payment.PaymentLegalVerificationRequest;
 import com.account.domain.unbilled.UnbilledInvoice;
+import com.account.dto.payment.PaymentLegalStatusCountDto;
+import com.account.dto.payment.PaymentLegalSummaryResponseDto;
 import com.account.dto.payment.PaymentLegalVerificationResponseDto;
 import com.account.dto.payment.ReviewPaymentLegalVerificationRequestDto;
 import com.account.enm.PaymentLegalVerificationStatus;
@@ -187,6 +189,35 @@ public class PaymentLegalVerificationServiceImpl implements PaymentLegalVerifica
         legalRequest = legalRequestRepository.save(legalRequest);
 
         return mapToDto(legalRequest);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PaymentLegalSummaryResponseDto getSummary(Long userId) {
+
+        User user = getActiveUser(userId);
+
+        if (!isAdmin(user) && !isLegalDepartment(user)) {
+            throw new ResponseStatusException(
+                    FORBIDDEN,
+                    "Only Legal department or Admin can view PO legal verification summary"
+            );
+        }
+
+        List<PaymentLegalVerificationRequestRepository.PaymentLegalStatusCountProjection> rows =
+                legalRequestRepository.countGroupedByStatus();
+
+        List<PaymentLegalStatusCountDto> statusCounts = rows.stream()
+                .map(r -> new PaymentLegalStatusCountDto(r.getStatus().name(), r.getTotal()))
+                .toList();
+
+        long totalPending = statusCounts.stream()
+                .filter(s -> PaymentLegalVerificationStatus.PENDING.name().equals(s.getStatus()))
+                .mapToLong(PaymentLegalStatusCountDto::getCount)
+                .findFirst()
+                .orElse(0L);
+
+        return new PaymentLegalSummaryResponseDto(totalPending, statusCounts);
     }
 
     @Override
