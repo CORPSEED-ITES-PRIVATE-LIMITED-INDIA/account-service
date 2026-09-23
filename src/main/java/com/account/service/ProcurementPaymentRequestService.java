@@ -3,6 +3,8 @@ package com.account.service;
 import com.account.dto.operationService.ProcurementPaymentActionRequestDto;
 import com.account.dto.procurement.OperationApiResponseDto;
 
+import java.util.Map;
+
 public interface ProcurementPaymentRequestService {
 
     OperationApiResponseDto<?> getProcurementPaymentRequests(
@@ -28,4 +30,12 @@ public interface ProcurementPaymentRequestService {
             Long userId,
             ProcurementPaymentActionRequestDto request
     );
+
+
+    Map<String, Object> getApprovedOrReleasedPayments(
+            int page,
+            int size
+    );
+
+
 }

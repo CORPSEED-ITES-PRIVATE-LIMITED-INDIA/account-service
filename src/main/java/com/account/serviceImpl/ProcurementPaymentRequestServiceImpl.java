@@ -16,7 +16,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -260,4 +262,237 @@ public class ProcurementPaymentRequestServiceImpl implements ProcurementPaymentR
                 .timestamp(LocalDateTime.now())
                 .build();
     }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<String, Object> getApprovedOrReleasedPayments(
+            int page,
+            int size
+    ) {
+
+        int safePage = Math.max(page, 0);
+        int safeSize = size <= 0
+                ? 10
+                : Math.min(size, 100);
+
+        try {
+
+            /*
+             * =========================================================
+             * FETCH APPROVED PAYMENTS
+             * =========================================================
+             *
+             * Accounts has approved these PRs,
+             * but payment has not yet been released.
+             */
+            ResponseEntity<PagedResponse<ProcurementPaymentRequestResponseDto>>
+                    approvedResponse =
+                    operationFeignClient.getProcurementPaymentRequests(
+                            "APPROVED",
+                            safePage,
+                            safeSize
+                    );
+
+            PagedResponse<ProcurementPaymentRequestResponseDto>
+                    approvedPayments =
+                    approvedResponse.getBody();
+
+
+            /*
+             * =========================================================
+             * FETCH PAYMENT RELEASED
+             * =========================================================
+             *
+             * These PRs have completed the payment release flow.
+             */
+            ResponseEntity<PagedResponse<ProcurementPaymentRequestResponseDto>>
+                    releasedResponse =
+                    operationFeignClient.getProcurementPaymentRequests(
+                            "PAYMENT_RELEASED",
+                            safePage,
+                            safeSize
+                    );
+
+            PagedResponse<ProcurementPaymentRequestResponseDto>
+                    releasedPayments =
+                    releasedResponse.getBody();
+
+
+            /*
+             * =========================================================
+             * ORGANIZATION DETAILS
+             * =========================================================
+             */
+            Organization organization =
+                    organizationRepository
+                            .findTopOrganization()
+                            .orElse(null);
+
+
+            /*
+             * Enrich APPROVED payments.
+             */
+            if (approvedPayments != null
+                    && approvedPayments.getContent() != null) {
+
+                approvedPayments
+                        .getContent()
+                        .forEach(dto ->
+                                enrichWithOrganizationData(
+                                        dto,
+                                        organization
+                                )
+                        );
+            }
+
+
+            /*
+             * Enrich PAYMENT_RELEASED payments.
+             */
+            if (releasedPayments != null
+                    && releasedPayments.getContent() != null) {
+
+                releasedPayments
+                        .getContent()
+                        .forEach(dto ->
+                                enrichWithOrganizationData(
+                                        dto,
+                                        organization
+                                )
+                        );
+            }
+
+
+            /*
+             * =========================================================
+             * DATA MAP
+             * =========================================================
+             */
+            Map<String, Object> data =
+                    new LinkedHashMap<>();
+
+            data.put(
+                    "approvedPayments",
+                    approvedPayments
+            );
+
+            data.put(
+                    "releasedPayments",
+                    releasedPayments
+            );
+
+
+            /*
+             * =========================================================
+             * FINAL RESPONSE
+             * =========================================================
+             */
+            Map<String, Object> response =
+                    new LinkedHashMap<>();
+
+            response.put(
+                    "success",
+                    true
+            );
+
+            response.put(
+                    "message",
+                    "Approved and released procurement payments fetched successfully"
+            );
+
+            response.put(
+                    "statusCode",
+                    200
+            );
+
+            response.put(
+                    "data",
+                    data
+            );
+
+            response.put(
+                    "timestamp",
+                    LocalDateTime.now()
+            );
+
+            return response;
+
+        } catch (FeignException e) {
+
+            Map<String, Object> response =
+                    new LinkedHashMap<>();
+
+            String errorBody =
+                    e.contentUTF8();
+
+            response.put(
+                    "success",
+                    false
+            );
+
+            response.put(
+                    "message",
+                    errorBody != null
+                            && !errorBody.trim().isEmpty()
+                            ? errorBody
+                            : "Unable to fetch procurement payments from Operation Service"
+            );
+
+            response.put(
+                    "statusCode",
+                    e.status() > 0
+                            ? e.status()
+                            : 500
+            );
+
+            response.put(
+                    "data",
+                    null
+            );
+
+            response.put(
+                    "timestamp",
+                    LocalDateTime.now()
+            );
+
+            return response;
+
+        } catch (Exception e) {
+
+            Map<String, Object> response =
+                    new LinkedHashMap<>();
+
+            response.put(
+                    "success",
+                    false
+            );
+
+            response.put(
+                    "message",
+                    e.getMessage() != null
+                            ? e.getMessage()
+                            : "Internal server error"
+            );
+
+            response.put(
+                    "statusCode",
+                    500
+            );
+
+            response.put(
+                    "data",
+                    null
+            );
+
+            response.put(
+                    "timestamp",
+                    LocalDateTime.now()
+            );
+
+            return response;
+        }
+    }
+
+
 }

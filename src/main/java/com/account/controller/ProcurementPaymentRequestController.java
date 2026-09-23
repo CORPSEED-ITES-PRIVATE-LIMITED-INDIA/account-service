@@ -8,6 +8,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/accountService/api/procurement-payment-requests")
 @RequiredArgsConstructor
@@ -98,4 +100,33 @@ public class ProcurementPaymentRequestController {
             return HttpStatus.INTERNAL_SERVER_ERROR;
         }
     }
+
+
+    @GetMapping("/approved-or-released")
+    public ResponseEntity<Map<String, Object>>
+    getApprovedOrReleasedPayments(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+
+        Map<String, Object> response =
+                procurementPaymentRequestService
+                        .getApprovedOrReleasedPayments(
+                                page,
+                                size
+                        );
+
+        Integer statusCode =
+                response.get("statusCode") instanceof Integer
+                        ? (Integer) response.get("statusCode")
+                        : 500;
+
+        return ResponseEntity
+                .status(
+                        resolveHttpStatus(statusCode)
+                )
+                .body(response);
+    }
+
+
 }
