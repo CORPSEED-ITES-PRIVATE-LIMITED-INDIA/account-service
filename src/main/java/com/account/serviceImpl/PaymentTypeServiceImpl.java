@@ -21,8 +21,6 @@ import java.util.stream.Collectors;
 @Transactional
 public class PaymentTypeServiceImpl implements PaymentTypeService {
 
-
-
     @Autowired
     private PaymentTypeRepository paymentTypeRepository;
 

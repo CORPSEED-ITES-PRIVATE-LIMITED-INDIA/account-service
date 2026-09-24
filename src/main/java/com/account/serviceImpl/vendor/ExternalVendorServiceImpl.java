@@ -220,18 +220,29 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
          *
          * TDS is therefore posted ONLY in the PAYMENT voucher.
          */
+        /*
+         * Partial/entered bank payment is allowed.
+         *
+         * settlement = actual bank amount + TDS
+         *
+         * It may be lower than gross invoice amount,
+         * but must never exceed gross invoice amount.
+         */
         if (settlementAmount.compareTo(
                 money(amounts.grossInvoiceAmount())
-        ) != 0) {
+        ) > 0) {
+
             throw new ValidationException(
-                    "Vendor settlement amount mismatch. Expected gross invoice amount: "
+                    "Vendor settlement amount cannot exceed gross invoice amount. "
+                            + "Gross invoice amount: "
                             + money(amounts.grossInvoiceAmount())
-                            + ", calculated settlement: "
+                            + ", settlement amount: "
                             + settlementAmount,
-                    "ERR_VENDOR_SETTLEMENT_AMOUNT_MISMATCH",
+                    "ERR_VENDOR_SETTLEMENT_EXCEEDS_GROSS",
                     "paymentApproval"
             );
         }
+
 
         log.info(
                 "[VENDOR-ACCOUNTING-SNAPSHOT] operationVendorId={} | "
@@ -1441,6 +1452,7 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             VendorPaymentApprovalRequestDto request,
             CalculatedAmounts amounts
     ) {
+
         if (request.getBankPaymentAmount() == null
                 || request.getBankPaymentAmount()
                 .compareTo(BigDecimal.ZERO) <= 0) {
@@ -1462,38 +1474,48 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             );
         }
 
-        BigDecimal paidAmount = money(request.getBankPaymentAmount());
+        BigDecimal paidAmount =
+                money(request.getBankPaymentAmount());
 
         /*
-         * Operation Service currently models one full settlement per payment
-         * request. Account Service also allows only one posted PAYMENT voucher
-         * for this source ID. Therefore a smaller amount must not be accepted,
-         * otherwise the residual vendor balance could never be settled through
-         * the same payment request.
+         * Actual Bank/Cash payment may be less than
+         * vendor net payable.
+         *
+         * But it must never exceed vendor net payable.
          */
-        if (paidAmount.compareTo(amounts.vendorNetPayableAmount()) != 0) {
+        if (paidAmount.compareTo(
+                amounts.vendorNetPayableAmount()
+        ) > 0) {
+
             throw new ValidationException(
-                    "Bank payment amount mismatch. Expected full vendor net payable: "
+                    "Bank payment amount cannot exceed vendor net payable. "
+                            + "Vendor net payable: "
                             + amounts.vendorNetPayableAmount()
-                            + ", received: " + paidAmount,
-                    "ERR_BANK_PAYMENT_AMOUNT_MISMATCH",
+                            + ", received: "
+                            + paidAmount,
+                    "ERR_BANK_PAYMENT_EXCEEDS_VENDOR_PAYABLE",
                     "paymentApproval.bankPaymentAmount"
             );
         }
 
         /*
-         * TDS supplied by Operation Service is only a cross-check snapshot.
-         * Account Service recalculates it from taxable price and rate, normalizes
-         * both values to two decimals, and requires exact equality.
+         * Validate TDS snapshot exactly as before.
          */
         if (request.getTdsAmount() != null) {
-            BigDecimal suppliedTdsAmount = money(request.getTdsAmount());
 
-            if (suppliedTdsAmount.compareTo(amounts.tdsAmount()) != 0) {
+            BigDecimal suppliedTdsAmount =
+                    money(request.getTdsAmount());
+
+            if (suppliedTdsAmount.compareTo(
+                    amounts.tdsAmount()
+            ) != 0) {
+
                 throw new ValidationException(
                         "Supplied TDS amount does not match Account Service calculation. "
-                                + "Supplied: " + suppliedTdsAmount
-                                + ", calculated: " + amounts.tdsAmount(),
+                                + "Supplied: "
+                                + suppliedTdsAmount
+                                + ", calculated: "
+                                + amounts.tdsAmount(),
                         "ERR_TDS_AMOUNT_MISMATCH",
                         "paymentApproval.tdsAmount"
                 );
