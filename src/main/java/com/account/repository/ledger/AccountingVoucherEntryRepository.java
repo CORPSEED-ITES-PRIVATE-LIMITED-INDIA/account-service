@@ -1,0 +1,87 @@
+package com.account.repository.ledger;
+
+import com.account.domain.ledger.AccountingVoucherEntry;
+import com.account.domain.ledger.VoucherSourceType;
+import com.account.domain.ledger.VoucherStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Set;
+
+@Repository
+public interface AccountingVoucherEntryRepository extends JpaRepository<AccountingVoucherEntry, Long> {
+
+
+    @Query("""
+            SELECT e
+            FROM AccountingVoucherEntry e
+            JOIN FETCH e.voucher v
+            JOIN FETCH e.ledger l
+            WHERE l.id = :ledgerId
+              AND v.status = :status
+              AND (:fromDate IS NULL OR v.voucherDate >= :fromDate)
+              AND (:toDate IS NULL OR v.voucherDate <= :toDate)
+            ORDER BY v.voucherDate ASC, v.id ASC, e.displayOrder ASC, e.id ASC
+            """)
+    List<AccountingVoucherEntry> findLedgerEntriesForStatement(
+            @Param("ledgerId") Long ledgerId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("toDate") LocalDate toDate,
+            @Param("status") VoucherStatus status
+    );
+
+    @Query("""
+            SELECT COALESCE(SUM(e.debitAmount), 0)
+            FROM AccountingVoucherEntry e
+            JOIN e.voucher v
+            JOIN e.ledger l
+            WHERE l.id = :ledgerId
+              AND v.status = :status
+              AND v.voucherDate < :fromDate
+            """)
+    BigDecimal sumDebitBeforeDate(
+            @Param("ledgerId") Long ledgerId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("status") VoucherStatus status
+    );
+
+    @Query("""
+            SELECT COALESCE(SUM(e.creditAmount), 0)
+            FROM AccountingVoucherEntry e
+            JOIN e.voucher v
+            JOIN e.ledger l
+            WHERE l.id = :ledgerId
+              AND v.status = :status
+              AND v.voucherDate < :fromDate
+            """)
+    BigDecimal sumCreditBeforeDate(
+            @Param("ledgerId") Long ledgerId,
+            @Param("fromDate") LocalDate fromDate,
+            @Param("status") VoucherStatus status
+    );
+
+
+    @Query("""
+        SELECT e
+        FROM AccountingVoucherEntry e
+        LEFT JOIN FETCH e.ledger l
+        WHERE e.voucher.id = :voucherId
+          AND e.ledger.id <> :ledgerId
+        ORDER BY e.id ASC
+        """)
+    List<AccountingVoucherEntry> findOtherEntriesByVoucherId(
+            @Param("voucherId") Long voucherId,
+            @Param("ledgerId") Long ledgerId
+    );
+
+
+
+}

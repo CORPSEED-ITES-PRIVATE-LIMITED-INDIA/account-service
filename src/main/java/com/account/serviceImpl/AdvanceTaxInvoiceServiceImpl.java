@@ -1,0 +1,4507 @@
+package com.account.serviceImpl;
+
+import com.account.domain.Contact;
+import com.account.domain.Organization;
+import com.account.domain.PaymentReceipt;
+import com.account.domain.User;
+import com.account.domain.company.Company;
+import com.account.domain.company.CompanyUnit;
+import com.account.domain.company.GstRegistrationType;
+import com.account.domain.estimate.Estimate;
+import com.account.domain.estimate.EstimateLineItem;
+import com.account.domain.estimate.EstimateStatus;
+import com.account.domain.invoice.*;
+import com.account.domain.ledger.*;
+import com.account.domain.status.InvoiceStatus;
+import com.account.domain.status.PaymentStatus;
+import com.account.domain.status.UnbilledStatus;
+import com.account.domain.unbilled.UnbilledInvoice;
+import com.account.dto.invoice.*;
+import com.account.dto.ledger.AccountingVoucherEntryRequestDto;
+import com.account.dto.ledger.AccountingVoucherRequestDto;
+import com.account.dto.operationService.OperationProjectResponseDto;
+import com.account.exception.ResourceNotFoundException;
+import com.account.exception.ValidationException;
+import com.account.feignClient.OperationFeignClient;
+import com.account.repository.*;
+import com.account.service.AdvanceTaxInvoiceService;
+import com.account.service.InvoiceService;
+import com.account.service.ledger.AccountingVoucherService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
+import feign.FeignException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.*;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.account.dto.invoice.ConfirmAdvanceInvoiceResponseDto;
+import com.account.dto.invoice.ConfirmInvoiceEInvoiceRequestDto;
+import com.account.repository.ledger.LedgerGroupRepository;
+import com.account.repository.ledger.LedgerMasterRepository;
+
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.*;
+
+@Service
+@RequiredArgsConstructor
+public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
+
+    private static final BigDecimal MINIMUM_REQUEST_PERCENTAGE =
+            new BigDecimal("0.25");
+
+    /**
+     * Only normal paise-level differences are corrected while posting the
+     * accounting voucher. Larger differences indicate inconsistent invoice data.
+     */
+    private static final BigDecimal MAX_VOUCHER_ROUNDING_DIFFERENCE =
+            new BigDecimal("0.05");
+
+    private final AdvanceTaxInvoiceRequestRepository
+            advanceTaxInvoiceRequestRepository;
+
+    private final UserRepository userRepository;
+
+    private final UnbilledInvoiceRepository
+            unbilledInvoiceRepository;
+
+    private final InvoiceService invoiceService;
+
+    private final OrganizationRepository organizationRepository;
+
+    private final OperationFeignClient operationFeignClient;
+
+    private final InvoiceRepository invoiceRepository;
+    private final AccountingVoucherService accountingVoucherService;
+    private final LedgerMasterRepository ledgerMasterRepository;
+    private final LedgerGroupRepository ledgerGroupRepository;
+    private static final Logger log =
+            LoggerFactory.getLogger(AdvanceTaxInvoiceServiceImpl.class);
+
+    @PersistenceContext
+    private EntityManager entityManager;
+
+    @Override
+    @Transactional
+    public AdvanceTaxInvoiceResponseDto createRequest(
+            AdvanceTaxInvoiceCreateRequestDto requestDto
+    ) {
+
+        // =====================================================
+        // 1. VALIDATE REQUEST AND LOCK ESTIMATE
+        // =====================================================
+        validateCreateRequest(requestDto);
+
+        Estimate estimate =
+                findEstimateForUpdate(
+                        requestDto.getEstimateId()
+                );
+
+        validateEstimateForAdvanceInvoice(estimate);
+
+        User requestedBy =
+                getActiveUser(
+                        requestDto.getRequestedByUserId(),
+                        "requestedByUserId"
+                );
+
+        // =====================================================
+        // 2. RESOLVE NORMAL FLOW OR COMPLETED PO CONVERSION
+        // =====================================================
+        /*
+         * Normal Advance Tax Invoice:
+         *     existingUnbilled == null
+         *
+         * Completed zero-value PURCHASE_ORDER conversion:
+         *     existingUnbilled != null
+         *     existing approved PO Unbilled remains linked
+         *     with the generated Advance Tax Invoice.
+         */
+        UnbilledInvoice existingUnbilled =
+                unbilledInvoiceRepository
+                        .findByEstimateAndIsCancelledFalse(
+                                estimate
+                        )
+                        .orElse(null);
+
+        boolean purchaseOrderConversion =
+                existingUnbilled != null;
+
+        OperationProjectResponseDto existingPoProject = null;
+
+        if (purchaseOrderConversion) {
+            existingPoProject =
+                    validatePurchaseOrderConversionEligibility(
+                            estimate,
+                            existingUnbilled
+                    );
+        }
+
+        // =====================================================
+        // 3. PREVENT DUPLICATE PENDING REQUEST
+        // =====================================================
+        boolean pendingRequestExists =
+                advanceTaxInvoiceRequestRepository
+                        .existsByEstimateAndStatus(
+                                estimate,
+                                AdvanceTaxInvoiceRequestStatus.PENDING
+                        );
+
+        if (pendingRequestExists) {
+            throw new ValidationException(
+                    "A pending Advance Tax Invoice request already exists "
+                            + "for Estimate "
+                            + estimate.getEstimateNumber(),
+                    "ERR_ADVANCE_INVOICE_REQUEST_ALREADY_PENDING",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 4. CALCULATE REMAINING INVOICEABLE AMOUNT
+        // =====================================================
+        BigDecimal estimateTotal =
+                money(estimate.getGrandTotal());
+
+        BigDecimal alreadyInvoicedAmount =
+                getAlreadyInvoicedAdvanceAmount(
+                        estimate.getId()
+                );
+
+        BigDecimal pendingRequestedAmount =
+                money(
+                        advanceTaxInvoiceRequestRepository
+                                .sumAmountByEstimateAndStatus(
+                                        estimate,
+                                        AdvanceTaxInvoiceRequestStatus.PENDING
+                                )
+                );
+
+
+        BigDecimal remainingInvoiceableAmount =
+                estimateTotal
+                        .subtract(alreadyInvoicedAmount)
+                        .subtract(pendingRequestedAmount)
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+        if (remainingInvoiceableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "No remaining invoiceable amount is available for Estimate "
+                            + estimate.getEstimateNumber()
+                            + ". Estimate total: ₹"
+                            + estimateTotal
+                            + ", already invoiced: ₹"
+                            + alreadyInvoicedAmount
+                            + ", pending requested amount: ₹"
+                            + pendingRequestedAmount,
+                    "ERR_NO_REMAINING_INVOICEABLE_AMOUNT",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 5. RESOLVE AND VALIDATE REQUESTED AMOUNT
+        // =====================================================
+        if (requestDto.getRequestedAmount() == null) {
+            throw new ValidationException(
+                    purchaseOrderConversion
+                            ? "requestedAmount is required for PURCHASE_ORDER "
+                            + "Advance Tax Invoice conversion."
+                            : "requestedAmount is required for a normal "
+                            + "Advance Tax Invoice request.",
+                    "ERR_REQUESTED_AMOUNT_REQUIRED",
+                    "requestedAmount"
+            );
+        }
+
+        BigDecimal requestedAmount =
+                money(requestDto.getRequestedAmount());
+
+        /*
+         * Business rules:
+         *
+         * 1. Requested amount must be greater than zero.
+         * 2. Requested amount must not exceed the remaining amount.
+         * 3. Requested amount must normally be at least 25% of Estimate total.
+         * 4. When the final remaining balance is below 25%, that complete
+         *    smaller remaining balance is allowed.
+         */
+        validateRequestedAmount(
+                requestedAmount,
+                estimateTotal,
+                remainingInvoiceableAmount,
+                "requestedAmount"
+        );
+
+        // =====================================================
+        // 6. CREATE REQUEST
+        // =====================================================
+        AdvanceTaxInvoiceRequest request =
+                new AdvanceTaxInvoiceRequest();
+
+        request.setEstimate(estimate);
+        request.setRequestedAmount(requestedAmount);
+        request.setApprovedAmount(null);
+
+        request.setStatus(
+                AdvanceTaxInvoiceRequestStatus.PENDING
+        );
+
+        request.setRequestRemarks(
+                clean(requestDto.getRequestRemarks())
+        );
+
+        request.setReviewRemarks(null);
+        request.setRequestedBy(requestedBy);
+        request.setReviewedBy(null);
+        request.setReviewedAt(null);
+
+        AdvanceTaxInvoiceRequest saved =
+                advanceTaxInvoiceRequestRepository.saveAndFlush(
+                        request
+                );
+
+        // =====================================================
+        // 7. LOG REQUEST CREATION
+        // =====================================================
+        log.info(
+                "Advance Tax Invoice request created "
+                        + "| requestId={} "
+                        + "| estimateId={} "
+                        + "| estimateNumber={} "
+                        + "| purchaseOrderConversion={} "
+                        + "| unbilledId={} "
+                        + "| unbilledNumber={} "
+                        + "| projectNo={} "
+                        + "| estimateTotal={} "
+                        + "| alreadyInvoicedAmount={} "
+                        + "| pendingRequestedAmount={} "
+                        + "| remainingInvoiceableAmount={} "
+                        + "| requestedAmount={} "
+                        + "| requestedByUserId={}",
+                saved.getId(),
+                estimate.getId(),
+                estimate.getEstimateNumber(),
+                purchaseOrderConversion,
+                existingUnbilled != null
+                        ? existingUnbilled.getId()
+                        : null,
+                existingUnbilled != null
+                        ? existingUnbilled.getUnbilledNumber()
+                        : null,
+                existingPoProject != null
+                        ? existingPoProject.getProjectNo()
+                        : null,
+                estimateTotal,
+                alreadyInvoicedAmount,
+                pendingRequestedAmount,
+                remainingInvoiceableAmount,
+                requestedAmount,
+                requestedBy.getId()
+        );
+
+        // =====================================================
+        // 8. BUILD RESPONSE MESSAGE
+        // =====================================================
+        String message;
+
+        if (purchaseOrderConversion) {
+            message =
+                    "Advance Tax Invoice request created successfully for "
+                            + "completed PURCHASE_ORDER amount of ₹"
+                            + requestedAmount
+                            + ". Existing Unbilled Invoice "
+                            + existingUnbilled.getUnbilledNumber()
+                            + " will remain linked with the generated Invoice. "
+                            + "Remaining invoiceable amount before this request was ₹"
+                            + remainingInvoiceableAmount
+                            + ". The request is awaiting Accounts approval.";
+        } else {
+            message =
+                    "Advance Tax Invoice request created successfully for ₹"
+                            + requestedAmount
+                            + " and is awaiting Accounts approval.";
+        }
+
+        return mapToResponse(
+                saved,
+                message
+        );
+    }
+
+    @Override
+    @Transactional
+    public AdvanceTaxInvoiceResponseDto approveRequest(
+            Long requestId,
+            AdvanceTaxInvoiceApprovalRequestDto requestDto
+    ) {
+
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+        if (requestId == null || requestId <= 0) {
+            throw new ValidationException(
+                    "Valid requestId is required",
+                    "ERR_ADVANCE_REQUEST_ID_REQUIRED",
+                    "requestId"
+            );
+        }
+
+        if (requestDto == null) {
+            throw new ValidationException(
+                    "Approval request is required",
+                    "ERR_ADVANCE_APPROVAL_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (requestDto.getApproverUserId() == null
+                || requestDto.getApproverUserId() <= 0) {
+
+            throw new ValidationException(
+                    "approverUserId is required",
+                    "ERR_APPROVER_USER_REQUIRED",
+                    "approverUserId"
+            );
+        }
+
+        // =====================================================
+        // 2. FETCH AND LOCK REQUEST
+        // =====================================================
+        AdvanceTaxInvoiceRequest request =
+                advanceTaxInvoiceRequestRepository
+                        .findByIdForUpdate(requestId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Advance Tax Invoice request not found with ID: "
+                                                + requestId,
+                                        "ADVANCE_TAX_INVOICE_REQUEST_NOT_FOUND",
+                                        "AdvanceTaxInvoiceRequest",
+                                        requestId
+                                )
+                        );
+
+        if (request.getStatus()
+                != AdvanceTaxInvoiceRequestStatus.PENDING) {
+
+            throw new ValidationException(
+                    "Only PENDING Advance Tax Invoice requests can be approved. "
+                            + "Current status: "
+                            + request.getStatus(),
+                    "ERR_ADVANCE_REQUEST_NOT_PENDING",
+                    "requestId"
+            );
+        }
+
+        if (request.getInvoice() != null) {
+            throw new ValidationException(
+                    "Invoice has already been generated for this request",
+                    "ERR_ADVANCE_INVOICE_ALREADY_GENERATED",
+                    "requestId"
+            );
+        }
+
+        // =====================================================
+        // 3. AUTHORIZE APPROVER
+        // =====================================================
+        User approver =
+                getActiveUser(
+                        requestDto.getApproverUserId(),
+                        "approverUserId"
+                );
+
+        validateAccountsOrAdmin(approver);
+
+        // =====================================================
+        // 4. FETCH AND LOCK ESTIMATE
+        // =====================================================
+        if (request.getEstimate() == null
+                || request.getEstimate().getId() == null) {
+
+            throw new ValidationException(
+                    "Estimate is missing from the Advance Tax Invoice request",
+                    "ERR_ESTIMATE_NOT_LINKED_WITH_ADVANCE_REQUEST",
+                    "requestId"
+            );
+        }
+
+        Estimate estimate =
+                findEstimateForUpdate(
+                        request.getEstimate().getId()
+                );
+
+        validateEstimateForAdvanceInvoice(estimate);
+
+        // =====================================================
+        // 5. FIND EXISTING PO UNBILLED
+        // =====================================================
+        UnbilledInvoice existingUnbilled =
+                unbilledInvoiceRepository
+                        .findByEstimateAndIsCancelledFalse(estimate)
+                        .orElse(null);
+
+        boolean purchaseOrderConversion =
+                existingUnbilled != null;
+
+        OperationProjectResponseDto existingPoProject = null;
+
+        if (purchaseOrderConversion) {
+            existingPoProject =
+                    validatePurchaseOrderConversionEligibility(
+                            estimate,
+                            existingUnbilled
+                    );
+        }
+
+        // =====================================================
+        // 6. CALCULATE REMAINING INVOICEABLE AMOUNT
+        // =====================================================
+        BigDecimal estimateTotal =
+                money(estimate.getGrandTotal());
+
+        if (estimateTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Estimate grand total must be greater than zero",
+                    "ERR_ESTIMATE_TOTAL_NOT_POSITIVE",
+                    "estimateId"
+            );
+        }
+
+        BigDecimal alreadyInvoicedAmount =
+                money(
+                        getAlreadyInvoicedAdvanceAmount(
+                                estimate.getId()
+                        )
+                );
+
+        BigDecimal remainingInvoiceableAmount =
+                estimateTotal
+                        .subtract(alreadyInvoicedAmount)
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+        if (remainingInvoiceableAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "The complete Estimate amount has already been invoiced. "
+                            + "Estimate total: ₹"
+                            + estimateTotal
+                            + ", already invoiced: ₹"
+                            + alreadyInvoicedAmount,
+                    "ERR_NO_REMAINING_INVOICEABLE_AMOUNT",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 7. RESOLVE APPROVED AMOUNT
+        // =====================================================
+        BigDecimal requestedAmount =
+                money(request.getRequestedAmount());
+
+        BigDecimal approvedAmount;
+
+        if (requestDto.getApprovedAmount() != null) {
+            approvedAmount =
+                    money(requestDto.getApprovedAmount());
+        } else {
+            approvedAmount =
+                    requestedAmount;
+        }
+
+        /*
+         * Rules:
+         *
+         * 1. Approved amount must normally be at least 25% of Estimate total.
+         * 2. Approved amount cannot exceed remaining invoiceable amount.
+         * 3. Approved amount cannot exceed requested amount.
+         * 4. Final balance below 25% is allowed.
+         */
+        validateRequestedAmount(
+                approvedAmount,
+                estimateTotal,
+                remainingInvoiceableAmount,
+                "approvedAmount"
+        );
+
+        if (approvedAmount.compareTo(requestedAmount) > 0) {
+            throw new ValidationException(
+                    "Approved amount cannot exceed the requested amount. "
+                            + "Requested amount: ₹"
+                            + requestedAmount
+                            + ", approved amount: ₹"
+                            + approvedAmount,
+                    "ERR_APPROVED_AMOUNT_EXCEEDS_REQUESTED_AMOUNT",
+                    "approvedAmount"
+            );
+        }
+
+        // =====================================================
+        // 8. APPROVE REQUEST
+        // =====================================================
+        request.setEstimate(estimate);
+
+        /*
+         * Do not overwrite requestedAmount.
+         * Preserve what Sales originally requested.
+         */
+        request.setApprovedAmount(approvedAmount);
+        request.setReviewedBy(approver);
+        request.setReviewedAt(LocalDateTime.now());
+        request.setReviewRemarks(
+                clean(requestDto.getReviewRemarks())
+        );
+        request.setStatus(
+                AdvanceTaxInvoiceRequestStatus.APPROVED
+        );
+
+        advanceTaxInvoiceRequestRepository.saveAndFlush(request);
+
+        // =====================================================
+        // 9. GENERATE ADVANCE TAX INVOICE
+        // =====================================================
+        Invoice generatedInvoice =
+                invoiceService.generateAdvanceTaxInvoice(
+                        request,
+                        approver
+                );
+
+        if (generatedInvoice == null
+                || generatedInvoice.getId() == null) {
+
+            throw new ValidationException(
+                    "Advance Tax Invoice generation failed",
+                    "ERR_ADVANCE_INVOICE_GENERATION_FAILED",
+                    "requestId"
+            );
+        }
+
+        BigDecimal generatedInvoiceTotal =
+                money(generatedInvoice.getGrandTotal());
+
+        if (generatedInvoiceTotal.compareTo(approvedAmount) != 0) {
+            throw new ValidationException(
+                    "Generated Invoice total does not match the approved amount. "
+                            + "Approved amount: ₹"
+                            + approvedAmount
+                            + ", Invoice total: ₹"
+                            + generatedInvoiceTotal,
+                    "ERR_GENERATED_INVOICE_TOTAL_MISMATCH",
+                    "invoice"
+            );
+        }
+
+        BigDecimal generatedOutstanding =
+                money(generatedInvoice.getOutstandingAmount());
+
+        if (generatedOutstanding.compareTo(approvedAmount) != 0) {
+
+            generatedInvoice.setReceivedAmount(
+                    zeroMoney()
+            );
+
+            generatedInvoice.setPendingReceivedAmount(
+                    zeroMoney()
+            );
+
+            generatedInvoice.setOutstandingAmount(
+                    approvedAmount
+            );
+
+            generatedInvoice.setPaymentStatus(
+                    InvoicePaymentStatus.UNPAID
+            );
+
+            generatedInvoice =
+                    invoiceRepository.saveAndFlush(
+                            generatedInvoice
+                    );
+        }
+
+        request.setInvoice(generatedInvoice);
+
+        // =====================================================
+        // 10. REUSE ORIGINAL PO UNBILLED
+        // =====================================================
+        if (purchaseOrderConversion) {
+
+            generatedInvoice.setUnbilledInvoice(
+                    existingUnbilled
+            );
+
+            if (existingPoProject != null) {
+                generatedInvoice.setOperationProjectNo(
+                        existingPoProject.getProjectNo()
+                );
+            }
+
+            generatedInvoice.setOperationSynced(true);
+            generatedInvoice.setOperationSyncedAt(
+                    LocalDateTime.now()
+            );
+            generatedInvoice.setOperationSyncStatus(
+                    OperationSyncStatus.SYNCED
+            );
+            generatedInvoice.setOperationLastError(null);
+            generatedInvoice.setOperationNextRetryAt(null);
+            generatedInvoice.setOperationSyncAttempts(0);
+            generatedInvoice.setUpdatedBy(approver);
+            generatedInvoice.setUpdatedAt(
+                    LocalDateTime.now()
+            );
+
+            generatedInvoice =
+                    invoiceRepository.saveAndFlush(
+                            generatedInvoice
+                    );
+
+            /*
+             * Important:
+             * Do not permanently block future partial ATI requests.
+             *
+             * Since partial ATI is now allowed, marking the PO Unbilled as
+             * fully converted here would prevent the remaining amount from
+             * being requested later.
+             */
+            BigDecimal remainingAfterApproval =
+                    remainingInvoiceableAmount
+                            .subtract(approvedAmount)
+                            .max(BigDecimal.ZERO)
+                            .setScale(
+                                    2,
+                                    RoundingMode.HALF_UP
+                            );
+
+            existingUnbilled.setConvertedToAdvanceTaxInvoice(
+                    remainingAfterApproval.compareTo(BigDecimal.ZERO) == 0
+            );
+
+            existingUnbilled.setUpdatedBy(approver);
+            existingUnbilled.setUpdatedAt(
+                    LocalDateTime.now()
+            );
+
+            unbilledInvoiceRepository.save(
+                    existingUnbilled
+            );
+
+            log.info(
+                    "PURCHASE_ORDER converted to partial Advance Tax Invoice "
+                            + "| requestId={} "
+                            + "| estimateId={} "
+                            + "| estimateTotal={} "
+                            + "| alreadyInvoiced={} "
+                            + "| requestedAmount={} "
+                            + "| approvedAmount={} "
+                            + "| remainingBefore={} "
+                            + "| remainingAfter={} "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| unbilledNumber={} "
+                            + "| projectNo={} "
+                            + "| fullyConverted={}",
+                    request.getId(),
+                    estimate.getId(),
+                    estimateTotal,
+                    alreadyInvoicedAmount,
+                    requestedAmount,
+                    approvedAmount,
+                    remainingInvoiceableAmount,
+                    remainingAfterApproval,
+                    generatedInvoice.getId(),
+                    generatedInvoice.getInvoiceNumber(),
+                    existingUnbilled.getUnbilledNumber(),
+                    existingPoProject != null
+                            ? existingPoProject.getProjectNo()
+                            : null,
+                    existingUnbilled.isConvertedToAdvanceTaxInvoice()
+            );
+
+        } else {
+
+            log.info(
+                    "Advance Tax Invoice approved "
+                            + "| requestId={} "
+                            + "| estimateId={} "
+                            + "| estimateTotal={} "
+                            + "| alreadyInvoiced={} "
+                            + "| requestedAmount={} "
+                            + "| approvedAmount={} "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| outstanding={}",
+                    request.getId(),
+                    estimate.getId(),
+                    estimateTotal,
+                    alreadyInvoicedAmount,
+                    requestedAmount,
+                    approvedAmount,
+                    generatedInvoice.getId(),
+                    generatedInvoice.getInvoiceNumber(),
+                    generatedInvoice.getOutstandingAmount()
+            );
+        }
+
+        // =====================================================
+        // 11. SAVE REQUEST
+        // =====================================================
+        AdvanceTaxInvoiceRequest savedRequest =
+                advanceTaxInvoiceRequestRepository
+                        .saveAndFlush(request);
+
+        // =====================================================
+        // 12. RESPONSE
+        // =====================================================
+        String message;
+
+        if (purchaseOrderConversion) {
+            message =
+                    "Advance Tax Invoice approved and Invoice "
+                            + generatedInvoice.getInvoiceNumber()
+                            + " generated successfully for ₹"
+                            + approvedAmount
+                            + ". Existing Unbilled Invoice "
+                            + existingUnbilled.getUnbilledNumber()
+                            + " was preserved and linked. "
+                            + "No new Unbilled Invoice or Operation Project was created.";
+        } else {
+            message =
+                    "Advance Tax Invoice approved and Invoice "
+                            + generatedInvoice.getInvoiceNumber()
+                            + " generated successfully for ₹"
+                            + approvedAmount
+                            + ".";
+        }
+
+        return mapToResponse(
+                savedRequest,
+                message
+        );
+    }
+
+    private BigDecimal zeroMoney() {
+        return BigDecimal.ZERO.setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public AdvanceTaxInvoiceResponseDto getRequestById(
+            Long requestId
+    ) {
+
+        if (requestId == null || requestId <= 0) {
+            throw new ValidationException(
+                    "Valid requestId is required",
+                    "ERR_ADVANCE_REQUEST_ID_REQUIRED",
+                    "requestId"
+            );
+        }
+
+        AdvanceTaxInvoiceRequest request =
+                advanceTaxInvoiceRequestRepository
+                        .findById(requestId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Advance Tax Invoice request "
+                                                + "not found with ID: "
+                                                + requestId,
+                                        "ADVANCE_TAX_INVOICE_REQUEST_NOT_FOUND",
+                                        "AdvanceTaxInvoiceRequest",
+                                        requestId
+                                )
+                        );
+
+        return mapToResponse(request, null);
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<AdvanceTaxInvoiceResponseDto> getRequests(
+            Long requestingUserId,
+            AdvanceTaxInvoiceRequestStatus status,
+            int page,
+            int size
+    ) {
+
+        // =====================================================
+        // 1. VALIDATE REQUESTING USER ID
+        // =====================================================
+
+        if (requestingUserId == null || requestingUserId <= 0) {
+            throw new ValidationException(
+                    "Valid userId is required",
+                    "ERR_INVALID_USER_ID",
+                    "userId"
+            );
+        }
+
+        // =====================================================
+        // 2. FETCH ACTIVE REQUESTING USER
+        // =====================================================
+
+        User requestingUser =
+                getActiveUser(
+                        requestingUserId,
+                        "userId"
+                );
+
+        // =====================================================
+        // 3. DETERMINE USER ACCESS
+        // =====================================================
+
+        boolean accountsUser =
+                belongsToAccountsDepartment(requestingUser);
+
+        boolean adminUser =
+                hasAdminRole(requestingUser);
+
+        boolean salesUser =
+                belongsToSalesDepartment(requestingUser);
+
+        if (!accountsUser && !adminUser && !salesUser) {
+            throw new ValidationException(
+                    "Only Sales, Accounts or Admin users can view "
+                            + "Advance Tax Invoice requests.",
+                    "ERR_ADVANCE_INVOICE_LIST_ACCESS_DENIED",
+                    "userId"
+            );
+        }
+
+        /*
+         * Accounts/Admin:
+         * requestedByUserIdFilter = null
+         * Therefore, all requests are returned.
+         *
+         * Sales:
+         * requestedByUserIdFilter = requestingUserId
+         * Therefore, only that salesperson's requests are returned.
+         */
+        Long requestedByUserIdFilter =
+                accountsUser || adminUser
+                        ? null
+                        : requestingUser.getId();
+
+        // =====================================================
+        // 4. VALIDATE PAGINATION
+        // =====================================================
+
+        int safePage = Math.max(page, 0);
+
+        int safeSize =
+                size <= 0 || size > 200
+                        ? 20
+                        : size;
+
+        Pageable pageable =
+                PageRequest.of(
+                        safePage,
+                        safeSize,
+                        Sort.by(
+                                Sort.Direction.DESC,
+                                "createdAt"
+                        )
+                );
+
+        // =====================================================
+        // 5. FETCH VISIBLE REQUESTS
+        // =====================================================
+
+        Page<AdvanceTaxInvoiceRequest> requestPage =
+                advanceTaxInvoiceRequestRepository
+                        .findVisibleRequests(
+                                requestedByUserIdFilter,
+                                status,
+                                pageable
+                        );
+
+        // =====================================================
+        // 6. MAP RESPONSE
+        // =====================================================
+
+        return requestPage.map(
+                request -> mapToResponse(
+                        request,
+                        null
+                )
+        );
+    }
+
+    // =====================================================
+    // VALIDATION
+    // =====================================================
+
+    private void validateCreateRequest(
+            AdvanceTaxInvoiceCreateRequestDto requestDto
+    ) {
+
+        if (requestDto == null) {
+            throw new ValidationException(
+                    "Request body is required",
+                    "ERR_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (requestDto.getEstimateId() == null
+                || requestDto.getEstimateId() <= 0) {
+
+            throw new ValidationException(
+                    "Valid estimateId is required",
+                    "ERR_INVALID_ESTIMATE_ID",
+                    "estimateId"
+            );
+        }
+
+        if (requestDto.getRequestedByUserId() == null
+                || requestDto.getRequestedByUserId() <= 0) {
+
+            throw new ValidationException(
+                    "Valid requestedByUserId is required",
+                    "ERR_INVALID_REQUESTED_BY",
+                    "requestedByUserId"
+            );
+        }
+    }
+
+    private Estimate findEstimateForUpdate(
+            Long estimateId
+    ) {
+
+        Estimate estimate =
+                entityManager.find(
+                        Estimate.class,
+                        estimateId,
+                        LockModeType.PESSIMISTIC_WRITE
+                );
+
+        if (estimate == null) {
+            throw new ResourceNotFoundException(
+                    "Estimate not found with ID: "
+                            + estimateId,
+                    "ESTIMATE_NOT_FOUND",
+                    "Estimate",
+                    estimateId
+            );
+        }
+
+        return estimate;
+    }
+
+    private void validateEstimateForAdvanceInvoice(
+            Estimate estimate
+    ) {
+
+        if (estimate == null) {
+            throw new ValidationException(
+                    "Estimate is required",
+                    "ERR_ESTIMATE_REQUIRED",
+                    "estimateId"
+            );
+        }
+
+        if (estimate.isDeleted()) {
+            throw new ValidationException(
+                    "Advance Tax Invoice request cannot be created "
+                            + "against a deleted Estimate.",
+                    "ERR_ADVANCE_INVOICE_ON_DELETED_ESTIMATE",
+                    "estimateId"
+            );
+        }
+
+        if (estimate.isCancelled()) {
+            throw new ValidationException(
+                    "Advance Tax Invoice request cannot be created "
+                            + "against a cancelled Estimate.",
+                    "ERR_ADVANCE_INVOICE_ON_CANCELLED_ESTIMATE",
+                    "estimateId"
+            );
+        }
+
+        if (estimate.getStatus() == EstimateStatus.REJECTED) {
+            throw new ValidationException(
+                    "Advance Tax Invoice request cannot be created "
+                            + "against a REJECTED Estimate.",
+                    "ERR_ADVANCE_INVOICE_ON_REJECTED_ESTIMATE",
+                    "estimateId"
+            );
+        }
+
+        BigDecimal estimateTotal =
+                money(estimate.getGrandTotal());
+
+        if (estimateTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Estimate grand total must be greater than zero.",
+                    "ERR_ESTIMATE_TOTAL_NOT_POSITIVE",
+                    "estimateId"
+            );
+        }
+
+        validateCompanyAndUnitApproval(estimate);
+    }
+
+    private void validateCompanyAndUnitApproval(
+            Estimate estimate
+    ) {
+
+        Company company = estimate.getCompany();
+        CompanyUnit unit = estimate.getUnit();
+
+        boolean companyApproved =
+                company != null
+                        && !company.isDeleted()
+                        && (
+                        company.isAccountsApproved()
+                                || (
+                                company.getOnboardingStatus() != null
+                                        && "APPROVED".equalsIgnoreCase(
+                                        company.getOnboardingStatus().name()
+                                )
+                        )
+                );
+
+        boolean unitApproved =
+                unit != null
+                        && !unit.isDeleted()
+                        && (
+                        unit.isAccountsApproved()
+                                || (
+                                unit.getOnboardingStatus() != null
+                                        && "APPROVED".equalsIgnoreCase(
+                                        unit.getOnboardingStatus().name()
+                                )
+                        )
+                );
+
+        if (!companyApproved || !unitApproved) {
+            throw new ValidationException(
+                    "Company and Company Unit must both be approved "
+                            + "by Accounts before raising or approving "
+                            + "an Advance Tax Invoice request.",
+                    "ERR_COMPANY_OR_UNIT_NOT_APPROVED_FOR_ADVANCE_INVOICE",
+                    !companyApproved
+                            ? "companyId"
+                            : "unitId"
+            );
+        }
+    }
+
+    private User getActiveUser(
+            Long userId,
+            String field
+    ) {
+
+        User user =
+                userRepository
+                        .findByIdAndNotDeleted(userId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "User not found with ID: "
+                                                + userId,
+                                        "USER_NOT_FOUND",
+                                        "User",
+                                        userId
+                                )
+                        );
+
+        if (!user.isActive()) {
+            throw new ValidationException(
+                    "Inactive user cannot perform this action.",
+                    "ERR_INACTIVE_USER",
+                    field
+            );
+        }
+
+        return user;
+    }
+
+    private void validateAccountsOrAdmin(
+            User approver
+    ) {
+
+        boolean accountsDepartment =
+                approver.getDepartment() != null
+                        && (
+                        "ACCOUNT".equalsIgnoreCase(
+                                approver.getDepartment().trim()
+                        )
+                                || "ACCOUNTS".equalsIgnoreCase(
+                                approver.getDepartment().trim()
+                        )
+                );
+
+        boolean adminRole =
+                approver.getUserRole() != null
+                        && approver.getUserRole()
+                        .stream()
+                        .filter(Objects::nonNull)
+                        .anyMatch(role ->
+                                !role.isDeleted()
+                                        && role.getName() != null
+                                        && "ADMIN".equalsIgnoreCase(
+                                        role.getName().trim()
+                                )
+                        );
+
+        if (!accountsDepartment && !adminRole) {
+            throw new ValidationException(
+                    "Only Accounts department or ADMIN users can "
+                            + "approve an Advance Tax Invoice request.",
+                    "ERR_ADVANCE_INVOICE_APPROVAL_ACCESS_DENIED",
+                    "approverUserId"
+            );
+        }
+    }
+
+    private void validateRequestedAmount(
+            BigDecimal amount,
+            BigDecimal estimateTotal,
+            BigDecimal remainingInvoiceableAmount,
+            String field
+    ) {
+
+        BigDecimal safeAmount = money(amount);
+
+        if (safeAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    field + " must be greater than zero.",
+                    "ERR_ADVANCE_INVOICE_AMOUNT_NOT_POSITIVE",
+                    field
+            );
+        }
+
+        if (remainingInvoiceableAmount
+                .compareTo(BigDecimal.ZERO) <= 0) {
+
+            throw new ValidationException(
+                    "No remaining invoiceable amount is available "
+                            + "for this Estimate.",
+                    "ERR_NO_REMAINING_INVOICEABLE_AMOUNT",
+                    field
+            );
+        }
+
+        if (safeAmount.compareTo(
+                remainingInvoiceableAmount
+        ) > 0) {
+
+            throw new ValidationException(
+                    field
+                            + " exceeds the remaining invoiceable amount. "
+                            + "Requested/approved amount: ₹"
+                            + safeAmount
+                            + ", remaining invoiceable amount: ₹"
+                            + remainingInvoiceableAmount,
+                    "ERR_ADVANCE_INVOICE_AMOUNT_EXCEEDS_REMAINING",
+                    field
+            );
+        }
+
+        /*
+         * Normal minimum = 25% of Estimate total.
+         *
+         * When the final remaining balance is less than 25%,
+         * that exact smaller balance is allowed.
+         */
+        BigDecimal standardMinimum =
+                estimateTotal
+                        .multiply(
+                                MINIMUM_REQUEST_PERCENTAGE
+                        )
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+        BigDecimal effectiveMinimum =
+                standardMinimum.min(
+                        remainingInvoiceableAmount
+                );
+
+        if (safeAmount.compareTo(effectiveMinimum) < 0) {
+            throw new ValidationException(
+                    field
+                            + " must be at least ₹"
+                            + effectiveMinimum
+                            + ". The normal minimum is 25% of "
+                            + "the Estimate total; a smaller amount "
+                            + "is allowed only for the final balance.",
+                    "ERR_ADVANCE_INVOICE_AMOUNT_BELOW_MINIMUM",
+                    field
+            );
+        }
+    }
+
+    // =====================================================
+    // PURCHASE ORDER CONVERSION
+    // =====================================================
+
+    private OperationProjectResponseDto
+    validatePurchaseOrderConversionEligibility(
+            Estimate estimate,
+            UnbilledInvoice unbilled
+    ) {
+        // =====================================================
+        // 1. ESTIMATE AND UNBILLED VALIDATION
+        // =====================================================
+        if (estimate == null || estimate.getId() == null) {
+            throw new ValidationException(
+                    "Estimate is required for PURCHASE_ORDER conversion",
+                    "ERR_ESTIMATE_REQUIRED_FOR_PO_CONVERSION",
+                    "estimateId"
+            );
+        }
+
+        if (unbilled == null || unbilled.getId() == null) {
+            throw new ValidationException(
+                    "Existing Unbilled Invoice is required for "
+                            + "PURCHASE_ORDER conversion",
+                    "ERR_UNBILLED_REQUIRED_FOR_PO_CONVERSION",
+                    "estimateId"
+            );
+        }
+
+        if (unbilled.isCancelled()) {
+            throw new ValidationException(
+                    "The existing PURCHASE_ORDER Unbilled Invoice is cancelled",
+                    "ERR_PO_UNBILLED_CANCELLED",
+                    "unbilledId"
+            );
+        }
+
+        if (unbilled.getEstimate() == null
+                || unbilled.getEstimate().getId() == null
+                || !Objects.equals(
+                unbilled.getEstimate().getId(),
+                estimate.getId()
+        )) {
+            throw new ValidationException(
+                    "The existing Unbilled Invoice does not belong to "
+                            + "Estimate "
+                            + estimate.getEstimateNumber(),
+                    "ERR_PO_UNBILLED_ESTIMATE_MISMATCH",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 2. PO UNBILLED MUST BE APPROVED AND NOT CONVERTED
+        // =====================================================
+        if (unbilled.getStatus() != UnbilledStatus.APPROVED) {
+            throw new ValidationException(
+                    "The PURCHASE_ORDER Unbilled Invoice must first be "
+                            + "approved by Accounts. Current status: "
+                            + unbilled.getStatus(),
+                    "ERR_PO_UNBILLED_NOT_APPROVED",
+                    "unbilledId"
+            );
+        }
+
+        if (unbilled.isConvertedToAdvanceTaxInvoice()) {
+            throw new ValidationException(
+                    "The existing PURCHASE_ORDER Unbilled Invoice "
+                            + unbilled.getUnbilledNumber()
+                            + " has already been converted to an "
+                            + "Advance Tax Invoice.",
+                    "ERR_PO_ALREADY_CONVERTED_TO_ADVANCE_INVOICE",
+                    "unbilledId"
+            );
+        }
+
+        // =====================================================
+        // 3. FIRST ACTIVE RECEIPT MUST BE APPROVED ZERO-VALUE PO
+        // =====================================================
+        PaymentReceipt initialReceipt =
+                findInitialActivePaymentReceipt(
+                        unbilled
+                );
+
+        if (initialReceipt == null) {
+            throw new ValidationException(
+                    "Initial PURCHASE_ORDER receipt was not found for "
+                            + "Unbilled Invoice "
+                            + unbilled.getUnbilledNumber(),
+                    "ERR_INITIAL_PO_RECEIPT_NOT_FOUND",
+                    "unbilledId"
+            );
+        }
+
+        if (initialReceipt.getPaymentType() == null
+                || initialReceipt.getPaymentType().getCode() == null
+                || !"PURCHASE_ORDER".equalsIgnoreCase(
+                initialReceipt.getPaymentType()
+                        .getCode()
+                        .trim()
+        )) {
+            throw new ValidationException(
+                    "The first active receipt is not a PURCHASE_ORDER receipt",
+                    "ERR_INITIAL_PAYMENT_NOT_PURCHASE_ORDER",
+                    "paymentTypeId"
+            );
+        }
+
+        if (money(initialReceipt.getAmount())
+                .compareTo(BigDecimal.ZERO) != 0) {
+
+            throw new ValidationException(
+                    "Only an initial zero-value PURCHASE_ORDER can use "
+                            + "the project-completion Advance Tax Invoice flow. "
+                            + "Initial PO amount: ₹"
+                            + money(initialReceipt.getAmount()),
+                    "ERR_INITIAL_PO_AMOUNT_NOT_ZERO",
+                    "amount"
+            );
+        }
+
+        if (initialReceipt.getStatus()
+                != PaymentStatus.APPROVED) {
+
+            throw new ValidationException(
+                    "The initial PURCHASE_ORDER receipt must be approved "
+                            + "by Accounts. Current status: "
+                            + initialReceipt.getStatus(),
+                    "ERR_INITIAL_PO_RECEIPT_NOT_APPROVED",
+                    "paymentReceiptId"
+            );
+        }
+
+        // =====================================================
+        // 4. NO POSITIVE PAYMENT OR RECEIVED AMOUNT MAY EXIST
+        // =====================================================
+        if (hasActualPositivePayment(unbilled)) {
+            throw new ValidationException(
+                    "Advance Tax Invoice cannot be raised through the "
+                            + "completed PURCHASE_ORDER flow because an actual "
+                            + "positive payment already exists against Unbilled "
+                            + unbilled.getUnbilledNumber(),
+                    "ERR_ACTUAL_PAYMENT_ALREADY_EXISTS_FOR_PO",
+                    "unbilledId"
+            );
+        }
+
+        if (money(unbilled.getReceivedAmount())
+                .compareTo(BigDecimal.ZERO) != 0) {
+
+            throw new ValidationException(
+                    "Advance Tax Invoice cannot be raised because the "
+                            + "PURCHASE_ORDER Unbilled Invoice already has "
+                            + "an approved received amount of ₹"
+                            + money(unbilled.getReceivedAmount()),
+                    "ERR_PO_UNBILLED_RECEIVED_AMOUNT_NOT_ZERO",
+                    "unbilledId"
+            );
+        }
+
+        if (money(unbilled.getCurrentReceivedAmount())
+                .compareTo(BigDecimal.ZERO) != 0) {
+
+            throw new ValidationException(
+                    "Advance Tax Invoice cannot be raised because the "
+                            + "PURCHASE_ORDER Unbilled Invoice has a pending "
+                            + "received amount of ₹"
+                            + money(unbilled.getCurrentReceivedAmount()),
+                    "ERR_PO_UNBILLED_PENDING_AMOUNT_NOT_ZERO",
+                    "unbilledId"
+            );
+        }
+
+        // =====================================================
+        // 5. NO TAX INVOICE MAY ALREADY EXIST
+        // =====================================================
+        if (hasAnyNonCancelledInvoice(estimate)) {
+            throw new ValidationException(
+                    "A non-cancelled Tax Invoice already exists for Estimate "
+                            + estimate.getEstimateNumber(),
+                    "ERR_TAX_INVOICE_ALREADY_EXISTS_FOR_PO_ESTIMATE",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 6. EXISTING OPERATION PROJECT MUST BE BILLING-ELIGIBLE
+        // =====================================================
+        OperationProjectResponseDto project =
+                validatePoProjectBillingEligibility(
+                        unbilled
+                );
+
+        log.info(
+                "PURCHASE_ORDER conversion eligibility passed "
+                        + "| estimateId={} | estimateNumber={} "
+                        + "| unbilledId={} | unbilledNumber={} "
+                        + "| initialReceiptId={} | projectNo={} "
+                        + "| poBillingEligible={}",
+                estimate.getId(),
+                estimate.getEstimateNumber(),
+                unbilled.getId(),
+                unbilled.getUnbilledNumber(),
+                initialReceipt.getId(),
+                project != null
+                        ? project.getProjectNo()
+                        : null,
+                project != null
+                        ? project.getPoBillingEligible()
+                        : null
+        );
+
+        return project;
+    }
+
+    private PaymentReceipt findInitialActivePaymentReceipt(
+            UnbilledInvoice unbilled
+    ) {
+        if (unbilled == null
+                || unbilled.getPayments() == null
+                || unbilled.getPayments().isEmpty()) {
+
+            return null;
+        }
+
+        return unbilled.getPayments()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(payment -> !payment.isCancelled())
+                .filter(payment -> payment.getId() != null)
+                .min(
+                        Comparator.comparing(
+                                PaymentReceipt::getId
+                        )
+                )
+                .orElse(null);
+    }
+
+    private boolean hasActualPositivePayment(
+            UnbilledInvoice unbilled
+    ) {
+        if (unbilled == null
+                || unbilled.getPayments() == null
+                || unbilled.getPayments().isEmpty()) {
+
+            return false;
+        }
+
+        return unbilled.getPayments()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(payment -> !payment.isCancelled())
+                .filter(payment ->
+                        payment.getStatus() == PaymentStatus.PENDING
+                                || payment.getStatus()
+                                == PaymentStatus.APPROVED
+                )
+                .anyMatch(payment ->
+                        money(payment.getAmount())
+                                .compareTo(BigDecimal.ZERO) > 0
+                );
+    }
+
+    private boolean hasAnyNonCancelledInvoice(
+            Estimate estimate
+    ) {
+        if (estimate == null || estimate.getId() == null) {
+            return false;
+        }
+
+        Long invoiceCount =
+                entityManager.createQuery(
+                                """
+                                select count(invoice)
+                                from Invoice invoice
+                                where invoice.estimate.id = :estimateId
+                                  and invoice.isCancelled = false
+                                """,
+                                Long.class
+                        )
+                        .setParameter(
+                                "estimateId",
+                                estimate.getId()
+                        )
+                        .getSingleResult();
+
+        return invoiceCount != null
+                && invoiceCount > 0;
+    }
+
+    private OperationProjectResponseDto validatePoProjectBillingEligibility(
+            UnbilledInvoice unbilled
+    ) {
+
+        if (unbilled == null) {
+            throw new ValidationException(
+                    "Unbilled Invoice is required to verify the Operation Project",
+                    "ERR_UNBILLED_REQUIRED_FOR_PROJECT_VALIDATION",
+                    "unbilledNumber"
+            );
+        }
+
+        if (unbilled.getUnbilledNumber() == null
+                || unbilled.getUnbilledNumber().trim().isEmpty()) {
+
+            throw new ValidationException(
+                    "Unbilled number is required to verify the Operation Project",
+                    "ERR_UNBILLED_NUMBER_REQUIRED",
+                    "unbilledNumber"
+            );
+        }
+
+        String unbilledNumber =
+                unbilled.getUnbilledNumber().trim();
+
+        try {
+            ResponseEntity<OperationProjectResponseDto> response =
+                    operationFeignClient.getProjectByUnbilledNumber(
+                            unbilledNumber
+                    );
+
+            if (response == null
+                    || !response.getStatusCode().is2xxSuccessful()
+                    || response.getBody() == null) {
+
+                throw new ValidationException(
+                        "Operation Project details were not found for "
+                                + "Unbilled Invoice "
+                                + unbilledNumber,
+                        "ERR_OPERATION_PROJECT_NOT_FOUND",
+                        "unbilledNumber"
+                );
+            }
+
+            OperationProjectResponseDto project =
+                    response.getBody();
+
+            Boolean poBillingEligible =
+                    project.getPoBillingEligible();
+
+            log.info(
+                    "PURCHASE_ORDER project status received "
+                            + "| unbilledNumber={} | projectNo={} "
+                            + "| poBillingEligible={}",
+                    unbilledNumber,
+                    project.getProjectNo(),
+                    poBillingEligible
+            );
+
+            /*
+             * TEMPORARY BEHAVIOUR:
+             *
+             * true  -> allow
+             * null  -> temporarily allow
+             * false -> reject
+             *
+             * Operation Service currently returns null even when
+             * project.status_id is COMPLETED.
+             */
+            if (Boolean.FALSE.equals(poBillingEligible)) {
+
+                throw new ValidationException(
+                        "Advance Tax Invoice cannot be raised yet because "
+                                + "Operation Project "
+                                + (
+                                project.getProjectNo() != null
+                                        ? project.getProjectNo()
+                                        : ""
+                        )
+                                + " is not eligible for PURCHASE_ORDER billing. "
+                                + "Complete all required non-Certification "
+                                + "milestones first.",
+                        "ERR_PO_PROJECT_NOT_READY_FOR_TAX_INVOICE",
+                        "unbilledNumber"
+                );
+            }
+
+            if (poBillingEligible == null) {
+                log.warn(
+                        "TEMPORARY ATI PURCHASE_ORDER eligibility bypass "
+                                + "| poBillingEligible is null "
+                                + "| unbilledNumber={} | projectNo={}",
+                        unbilledNumber,
+                        project.getProjectNo()
+                );
+            }
+
+            log.info(
+                    "PURCHASE_ORDER project eligibility validation passed "
+                            + "| unbilledNumber={} | projectNo={} "
+                            + "| poBillingEligible={}",
+                    unbilledNumber,
+                    project.getProjectNo(),
+                    poBillingEligible
+            );
+
+            return project;
+
+        } catch (ValidationException exception) {
+            throw exception;
+
+        } catch (FeignException.NotFound exception) {
+
+            log.warn(
+                    "Operation Project not found "
+                            + "| unbilledNumber={} | status={}",
+                    unbilledNumber,
+                    exception.status()
+            );
+
+            throw new ValidationException(
+                    "Operation Project was not found for Unbilled Invoice "
+                            + unbilledNumber,
+                    "ERR_OPERATION_PROJECT_NOT_FOUND",
+                    "unbilledNumber"
+            );
+
+        } catch (FeignException exception) {
+
+            log.error(
+                    "Operation Service error while validating "
+                            + "PURCHASE_ORDER project eligibility "
+                            + "| unbilledNumber={} | status={} | error={}",
+                    unbilledNumber,
+                    exception.status(),
+                    exception.getMessage(),
+                    exception
+            );
+
+            throw new ValidationException(
+                    "Unable to verify PURCHASE_ORDER project eligibility "
+                            + "from Operation Service",
+                    "ERR_OPERATION_SERVICE_UNAVAILABLE",
+                    "unbilledNumber"
+            );
+
+        } catch (Exception exception) {
+
+            log.error(
+                    "Unexpected error while validating "
+                            + "PURCHASE_ORDER project eligibility "
+                            + "| unbilledNumber={}",
+                    unbilledNumber,
+                    exception
+            );
+
+            throw new ValidationException(
+                    "Unable to verify PURCHASE_ORDER project eligibility",
+                    "ERR_PO_PROJECT_ELIGIBILITY_VALIDATION_FAILED",
+                    "unbilledNumber"
+            );
+        }
+    }
+
+    // =====================================================
+    // AMOUNT QUERIES
+    // =====================================================
+
+    private BigDecimal getAlreadyInvoicedAdvanceAmount(
+            Long estimateId
+    ) {
+
+        BigDecimal value =
+                entityManager.createQuery(
+                                """
+                                select coalesce(sum(invoice.grandTotal), 0)
+                                from Invoice invoice
+                                where invoice.estimate.id = :estimateId
+                                  and invoice.invoiceOrigin =
+                                      com.account.domain.invoice.InvoiceOrigin.ADVANCE_TAX_INVOICE
+                                  and invoice.isCancelled = false
+                                """,
+                                BigDecimal.class
+                        )
+                        .setParameter(
+                                "estimateId",
+                                estimateId
+                        )
+                        .getSingleResult();
+
+        return money(value);
+    }
+
+    // =====================================================
+    // RESPONSE MAPPING
+    // =====================================================
+
+
+    private AdvanceTaxInvoiceResponseDto mapToResponse(
+            AdvanceTaxInvoiceRequest request,
+            String message
+    ) {
+
+        Invoice invoice = request.getInvoice();
+        Estimate estimate = request.getEstimate();
+
+        Organization organization =
+                organizationRepository
+                        .findTopOrganization()
+                        .orElse(null);
+
+        /*
+         * GST registration type priority:
+         *
+         * 1. Generated Invoice snapshot
+         * 2. Estimate GST snapshot
+         * 3. Current Company Unit value
+         * 4. REGISTERED fallback
+         */
+        GstRegistrationType gstRegistrationType =
+                invoice != null
+                        && invoice.getGstRegistrationType() != null
+                        ? invoice.getGstRegistrationType()
+
+                        : estimate != null
+                        && estimate.getGstRegistrationType() != null
+                        ? estimate.getGstRegistrationType()
+
+                        : estimate != null
+                        && estimate.getUnit() != null
+                        && estimate.getUnit().getGstRegistrationType() != null
+                        ? estimate.getUnit().getGstRegistrationType()
+
+                        : GstRegistrationType.REGISTERED;
+
+        List<InvoiceDetailDto.LineItemDto> responseLineItems =
+                resolveResponseLineItems(
+                        invoice,
+                        estimate
+                );
+
+        BigDecimal responseSubTotalExGst =
+                invoice != null
+                        ? money(invoice.getSubTotalExGst())
+                        : estimate != null
+                        ? money(estimate.getSubTotalExGst())
+                        : null;
+
+        BigDecimal responseTotalGstAmount =
+                invoice != null
+                        ? money(invoice.getTotalGstAmount())
+                        : estimate != null
+                        ? money(estimate.getTotalGstAmount())
+                        : null;
+
+        BigDecimal responseCgstAmount =
+                invoice != null
+                        ? money(invoice.getCgstAmount())
+                        : estimate != null
+                        ? money(estimate.getCgstAmount())
+                        : null;
+
+        BigDecimal responseSgstAmount =
+                invoice != null
+                        ? money(invoice.getSgstAmount())
+                        : estimate != null
+                        ? money(estimate.getSgstAmount())
+                        : null;
+
+        BigDecimal responseIgstAmount =
+                invoice != null
+                        ? money(invoice.getIgstAmount())
+                        : estimate != null
+                        ? money(estimate.getIgstAmount())
+                        : null;
+
+        BigDecimal responseGrandTotal =
+                invoice != null
+                        ? money(invoice.getGrandTotal())
+                        : estimate != null
+                        ? money(estimate.getGrandTotal())
+                        : null;
+
+        BigDecimal availableOutstandingAmount =
+                invoice != null
+                        ? money(invoice.getOutstandingAmount())
+                        .subtract(
+                                money(invoice.getPendingReceivedAmount())
+                        )
+                        .max(BigDecimal.ZERO)
+                        .setScale(
+                                2,
+                                RoundingMode.HALF_UP
+                        )
+                        : null;
+
+        return AdvanceTaxInvoiceResponseDto.builder()
+
+                // =====================================================
+                // REQUEST
+                // =====================================================
+
+                .requestId(request.getId())
+                .publicUuid(request.getPublicUuid())
+
+                .requestedAmount(request.getRequestedAmount())
+                .approvedAmount(request.getApprovedAmount())
+
+                .requestStatus(request.getStatus())
+
+                .requestRemarks(request.getRequestRemarks())
+                .reviewRemarks(request.getReviewRemarks())
+
+                .requestedByUserId(
+                        request.getRequestedBy() != null
+                                ? request.getRequestedBy().getId()
+                                : null
+                )
+                .requestedByName(
+                        resolveUserName(request.getRequestedBy())
+                )
+
+                .reviewedByUserId(
+                        request.getReviewedBy() != null
+                                ? request.getReviewedBy().getId()
+                                : null
+                )
+                .reviewedByName(
+                        resolveUserName(request.getReviewedBy())
+                )
+
+                .createdAt(request.getCreatedAt())
+                .reviewedAt(request.getReviewedAt())
+
+                // =====================================================
+                // ESTIMATE
+                // =====================================================
+
+                .estimateId(
+                        estimate != null
+                                ? estimate.getId()
+                                : null
+                )
+                .estimateNumber(
+                        estimate != null
+                                ? estimate.getEstimateNumber()
+                                : null
+                )
+                .estimateGrandTotal(
+                        estimate != null
+                                ? money(estimate.getGrandTotal())
+                                : null
+                )
+                .solutionId(
+                        estimate != null
+                                ? estimate.getSolutionId()
+                                : null
+                )
+                .solutionName(
+                        estimate != null
+                                ? estimate.getSolutionName()
+                                : null
+                )
+                .clientPoNumber(
+                        estimate != null
+                                ? estimate.getClientPoNumber()
+                                : null
+                )
+
+                // =====================================================
+                // COMPANY / UNIT / CONTACT
+                // =====================================================
+
+                .companyId(
+                        estimate != null
+                                && estimate.getCompany() != null
+                                ? estimate.getCompany().getId()
+                                : null
+                )
+                .companyName(
+                        estimate != null
+                                && estimate.getCompany() != null
+                                ? estimate.getCompany().getName()
+                                : null
+                )
+
+                .unitId(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getId()
+                                : null
+                )
+                .unitName(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getUnitName()
+                                : null
+                )
+                .unitGstNo(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getGstNo()
+                                : null
+                )
+
+                .unitAddressLine1(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getAddressLine1()
+                                : null
+                )
+                .unitAddressLine2(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getAddressLine2()
+                                : null
+                )
+                .unitCity(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getCity()
+                                : null
+                )
+                .unitState(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getState()
+                                : null
+                )
+                .unitCountry(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getCountry()
+                                : null
+                )
+                .unitPinCode(
+                        estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getPinCode()
+                                : null
+                )
+
+                .contactId(
+                        estimate != null
+                                && estimate.getContact() != null
+                                ? estimate.getContact().getId()
+                                : null
+                )
+                .contactName(
+                        estimate != null
+                                && estimate.getContact() != null
+                                ? estimate.getContact().getName()
+                                : null
+                )
+                .contactEmail(
+                        estimate != null
+                                && estimate.getContact() != null
+                                ? estimate.getContact().getEmails()
+                                : null
+                )
+
+                // =====================================================
+                // GENERATED INVOICE
+                // =====================================================
+
+                .invoiceGenerated(invoice != null)
+
+                .invoiceId(
+                        invoice != null
+                                ? invoice.getId()
+                                : null
+                )
+                .invoicePublicUuid(
+                        invoice != null
+                                ? invoice.getPublicUuid()
+                                : null
+                )
+                .invoiceNumber(
+                        invoice != null
+                                ? invoice.getInvoiceNumber()
+                                : null
+                )
+                .unbilledNumber(
+                        invoice != null
+                                && invoice.getUnbilledInvoice() != null
+                                ? invoice.getUnbilledInvoice()
+                                .getUnbilledNumber()
+                                : null
+                )
+                .invoiceOrigin(
+                        invoice != null
+                                ? invoice.getInvoiceOrigin()
+                                : null
+                )
+                .invoiceDate(
+                        invoice != null
+                                ? invoice.getInvoiceDate()
+                                : null
+                )
+                .currency(
+                        invoice != null
+                                ? invoice.getCurrency()
+                                : estimate != null
+                                ? estimate.getCurrency()
+                                : null
+                )
+                .invoiceStatus(
+                        invoice != null
+                                ? invoice.getStatus()
+                                : null
+                )
+                .placeOfSupplyStateCode(
+                        invoice != null
+                                ? invoice.getPlaceOfSupplyStateCode()
+                                : estimate != null
+                                ? estimate.getPlaceOfSupplyStateCode()
+                                : null
+                )
+
+                /*
+                 * buyerGstin represents the GST number used by the Invoice.
+                 *
+                 * Before Invoice generation:
+                 * Current Company Unit GST number is returned.
+                 *
+                 * After Invoice generation:
+                 * Persisted Invoice GST snapshot is returned.
+                 */
+                .buyerGstin(
+                        invoice != null
+                                ? invoice.getBuyerGstin()
+                                : estimate != null
+                                && estimate.getUnit() != null
+                                ? estimate.getUnit().getGstNo()
+                                : null
+                )
+                .sellerGstin(
+                        invoice != null
+                                ? invoice.getOrganizationGstNo()
+                                : organization != null
+                                ? organization.getGstNo()
+                                : null
+                )
+                .cancelled(
+                        invoice != null
+                                && invoice.isCancelled()
+                )
+
+                // =====================================================
+                // GST
+                // =====================================================
+
+                .gstRegistrationType(
+                        gstRegistrationType.name()
+                )
+                .gstApplicable(
+                        gstRegistrationType.isGstApplicable()
+                )
+                .zeroRatedSupply(
+                        gstRegistrationType.isZeroRated()
+                )
+
+                // =====================================================
+                // INVOICE / ESTIMATE FINANCIALS
+                // =====================================================
+
+                .subTotalExGst(responseSubTotalExGst)
+                .totalGstAmount(responseTotalGstAmount)
+
+                .cgstAmount(responseCgstAmount)
+                .sgstAmount(responseSgstAmount)
+                .igstAmount(responseIgstAmount)
+
+                .invoiceGrandTotal(responseGrandTotal)
+
+                // =====================================================
+                // PAYMENT STATUS
+                // =====================================================
+
+                .invoicePaymentStatus(
+                        invoice != null
+                                ? invoice.getPaymentStatus()
+                                : null
+                )
+                .receivedAmount(
+                        invoice != null
+                                ? money(invoice.getReceivedAmount())
+                                : null
+                )
+                .pendingReceivedAmount(
+                        invoice != null
+                                ? money(invoice.getPendingReceivedAmount())
+                                : null
+                )
+                .availableOutstandingAmount(
+                        availableOutstandingAmount
+                )
+                .outstandingAmount(
+                        invoice != null
+                                ? money(invoice.getOutstandingAmount())
+                                : null
+                )
+
+                // =====================================================
+                // E-INVOICE
+                // =====================================================
+
+                .irn(
+                        invoice != null
+                                ? invoice.getEInvoiceIrn()
+                                : null
+                )
+                .eInvoiceAckNo(
+                        invoice != null
+                                ? invoice.getEInvoiceAckNo()
+                                : null
+                )
+                .eInvoiceAckDate(
+                        invoice != null
+                                ? invoice.getEInvoiceAckDate()
+                                : null
+                )
+                .eInvoiceAttachmentUrl(
+                        invoice != null
+                                ? invoice.getEInvoiceAttachmentUrl()
+                                : null
+                )
+                .eInvoiceConfirmedAt(
+                        invoice != null
+                                ? invoice.getEInvoiceConfirmedAt()
+                                : null
+                )
+                .eInvoiceConfirmedByUserId(
+                        invoice != null
+                                && invoice.getEInvoiceConfirmedBy() != null
+                                ? invoice.getEInvoiceConfirmedBy().getId()
+                                : null
+                )
+                .eInvoiceConfirmedByName(
+                        invoice != null
+                                ? resolveUserName(
+                                invoice.getEInvoiceConfirmedBy()
+                        )
+                                : null
+                )
+                .eInvoiceRemarks(
+                        invoice != null
+                                ? invoice.getEInvoiceRemarks()
+                                : null
+                )
+
+                // =====================================================
+                // ORGANIZATION GENERAL DETAILS
+                // =====================================================
+
+                .organizationName(
+                        invoice != null
+                                ? invoice.getOrganizationName()
+                                : organization != null
+                                ? organization.getName()
+                                : null
+                )
+                .organizationAddressLine1(
+                        invoice != null
+                                ? invoice.getOrganizationAddressLine1()
+                                : organization != null
+                                ? organization.getAddressLine1()
+                                : null
+                )
+                .organizationAddressLine2(
+                        invoice != null
+                                ? invoice.getOrganizationAddressLine2()
+                                : organization != null
+                                ? organization.getAddressLine2()
+                                : null
+                )
+                .organizationCity(
+                        invoice != null
+                                ? invoice.getOrganizationCity()
+                                : organization != null
+                                ? organization.getCity()
+                                : null
+                )
+                .organizationState(
+                        invoice != null
+                                ? invoice.getOrganizationState()
+                                : organization != null
+                                ? organization.getState()
+                                : null
+                )
+                .organizationCountry(
+                        invoice != null
+                                ? invoice.getOrganizationCountry()
+                                : organization != null
+                                ? organization.getCountry()
+                                : null
+                )
+                .organizationPinCode(
+                        invoice != null
+                                ? invoice.getOrganizationPinCode()
+                                : organization != null
+                                ? organization.getPinCode()
+                                : null
+                )
+                .organizationGstNo(
+                        invoice != null
+                                ? invoice.getOrganizationGstNo()
+                                : organization != null
+                                ? organization.getGstNo()
+                                : null
+                )
+                .organizationPanNo(
+                        invoice != null
+                                ? invoice.getOrganizationPanNo()
+                                : organization != null
+                                ? organization.getPanNo()
+                                : null
+                )
+                .organizationCinNumber(
+                        invoice != null
+                                ? invoice.getOrganizationCinNumber()
+                                : organization != null
+                                ? organization.getCinNumber()
+                                : null
+                )
+                .organizationEmail(
+                        invoice != null
+                                ? invoice.getOrganizationEmail()
+                                : organization != null
+                                ? organization.getEmail()
+                                : null
+                )
+                .organizationPhone(
+                        invoice != null
+                                ? invoice.getOrganizationPhone()
+                                : organization != null
+                                ? organization.getPhone()
+                                : null
+                )
+                .organizationWebsite(
+                        invoice != null
+                                ? invoice.getOrganizationWebsite()
+                                : organization != null
+                                ? organization.getWebsite()
+                                : null
+                )
+                .organizationLogoUrl(
+                        invoice != null
+                                ? invoice.getOrganizationLogoUrl()
+                                : organization != null
+                                ? organization.getLogoUrl()
+                                : null
+                )
+
+                // =====================================================
+                // ORGANIZATION BANK DETAILS
+                // =====================================================
+
+                .organizationBankAccountPresent(
+                        organization != null
+                                ? organization.isBankAccountPresent()
+                                : null
+                )
+                .organizationAccountHolderName(
+                        organization != null
+                                ? organization.getAccountHolderName()
+                                : null
+                )
+                .organizationAccountNumber(
+                        organization != null
+                                ? organization.getAccountNo()
+                                : null
+                )
+                .organizationIfscCode(
+                        organization != null
+                                ? organization.getIfscCode()
+                                : null
+                )
+                .organizationSwiftCode(
+                        organization != null
+                                ? organization.getSwiftCode()
+                                : null
+                )
+                .organizationBankName(
+                        organization != null
+                                ? organization.getBankName()
+                                : null
+                )
+                .organizationBankBranch(
+                        organization != null
+                                ? organization.getBranch()
+                                : null
+                )
+                .organizationUpiId(
+                        organization != null
+                                ? organization.getUpiId()
+                                : null
+                )
+                .organizationPaymentPageLink(
+                        organization != null
+                                ? organization.getPaymentPageLink()
+                                : null
+                )
+
+                // =====================================================
+                // INVOICE AUDIT
+                // =====================================================
+
+                .invoiceCreatedByUserId(
+                        invoice != null
+                                && invoice.getCreatedBy() != null
+                                ? invoice.getCreatedBy().getId()
+                                : null
+                )
+                .invoiceCreatedByName(
+                        invoice != null
+                                ? resolveUserName(invoice.getCreatedBy())
+                                : null
+                )
+                .invoiceCreatedAt(
+                        invoice != null
+                                ? invoice.getCreatedAt()
+                                : null
+                )
+                .invoiceUpdatedAt(
+                        invoice != null
+                                ? invoice.getUpdatedAt()
+                                : null
+                )
+
+                // =====================================================
+                // LINE ITEMS
+                // =====================================================
+
+                .lineItems(responseLineItems)
+
+                .message(message)
+                .build();
+    }
+
+    /**
+     * Before Invoice generation, return Estimate line items.
+     * After Invoice generation, return the persisted Invoice line items.
+     */
+    private List<InvoiceDetailDto.LineItemDto> resolveResponseLineItems(
+            Invoice invoice,
+            Estimate estimate
+    ) {
+
+        if (invoice != null
+                && invoice.getLineItems() != null
+                && !invoice.getLineItems().isEmpty()) {
+
+            List<InvoiceDetailDto.LineItemDto> invoiceLineItems =
+                    new ArrayList<>();
+
+            for (InvoiceLineItem lineItem : invoice.getLineItems()) {
+
+                if (lineItem == null) {
+                    continue;
+                }
+
+                invoiceLineItems.add(
+                        mapInvoiceLineItemToResponse(lineItem)
+                );
+            }
+
+            sortResponseLineItems(invoiceLineItems);
+
+            return invoiceLineItems;
+        }
+
+        if (estimate != null
+                && estimate.getLineItems() != null
+                && !estimate.getLineItems().isEmpty()) {
+
+            List<InvoiceDetailDto.LineItemDto> estimateLineItems =
+                    new ArrayList<>();
+
+            for (EstimateLineItem lineItem : estimate.getLineItems()) {
+
+                if (lineItem == null) {
+                    continue;
+                }
+
+                estimateLineItems.add(
+                        mapEstimateLineItemToResponse(lineItem)
+                );
+            }
+
+            sortResponseLineItems(estimateLineItems);
+
+            return estimateLineItems;
+        }
+
+        return Collections.emptyList();
+    }
+
+    private InvoiceDetailDto.LineItemDto mapInvoiceLineItemToResponse(
+            InvoiceLineItem lineItem
+    ) {
+
+        InvoiceDetailDto.LineItemDto dto =
+                new InvoiceDetailDto.LineItemDto();
+
+        dto.setId(lineItem.getId());
+        dto.setSourceEstimateLineItemId(
+                lineItem.getSourceEstimateLineItemId()
+        );
+
+        dto.setItemName(lineItem.getItemName());
+        dto.setDescription(lineItem.getDescription());
+        dto.setHsnSacCode(lineItem.getHsnSacCode());
+        dto.setQuantity(lineItem.getQuantity());
+        dto.setUnit(lineItem.getUnit());
+
+        dto.setUnitPriceExGst(
+                money(lineItem.getUnitPriceExGst())
+        );
+        dto.setLineTotalExGst(
+                money(lineItem.getLineTotalExGst())
+        );
+        dto.setGstRate(
+                money(lineItem.getGstRate())
+        );
+        dto.setGstAmount(
+                money(lineItem.getGstAmount())
+        );
+        dto.setLineTotalWithGst(
+                money(lineItem.getLineTotalWithGst())
+        );
+
+        dto.setCgstAmount(
+                money(lineItem.getCgstAmount())
+        );
+        dto.setSgstAmount(
+                money(lineItem.getSgstAmount())
+        );
+        dto.setIgstAmount(
+                money(lineItem.getIgstAmount())
+        );
+
+        dto.setDisplayOrder(lineItem.getDisplayOrder());
+        dto.setCategoryCode(lineItem.getCategoryCode());
+        dto.setFeeType(lineItem.getFeeType());
+        dto.setIgstFlag(lineItem.isIgstFlag());
+
+        return dto;
+    }
+
+    private InvoiceDetailDto.LineItemDto mapEstimateLineItemToResponse(
+            EstimateLineItem lineItem
+    ) {
+
+        InvoiceDetailDto.LineItemDto dto =
+                new InvoiceDetailDto.LineItemDto();
+
+        BigDecimal gstAmount =
+                money(lineItem.getGstAmount());
+
+        boolean igstApplicable =
+                Boolean.TRUE.equals(
+                        lineItem.getIgstFlag()
+                );
+
+        BigDecimal cgstAmount = zeroMoney();
+        BigDecimal sgstAmount = zeroMoney();
+        BigDecimal igstAmount = zeroMoney();
+
+        if (gstAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            if (igstApplicable) {
+
+                igstAmount = gstAmount;
+
+            } else {
+
+                cgstAmount =
+                        gstAmount.divide(
+                                BigDecimal.valueOf(2),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+                sgstAmount =
+                        gstAmount
+                                .subtract(cgstAmount)
+                                .setScale(
+                                        2,
+                                        RoundingMode.HALF_UP
+                                );
+            }
+        }
+
+        /*
+         * There is no InvoiceLineItem ID while the request is PENDING.
+         * sourceEstimateLineItemId identifies the source Estimate line.
+         */
+        dto.setId(null);
+        dto.setSourceEstimateLineItemId(lineItem.getId());
+
+        dto.setItemName(lineItem.getItemName());
+        dto.setDescription(lineItem.getDescription());
+        dto.setHsnSacCode(lineItem.getHsnSacCode());
+        dto.setQuantity(lineItem.getQuantity());
+        dto.setUnit(lineItem.getUnit());
+
+        dto.setUnitPriceExGst(
+                money(lineItem.getUnitPriceExGst())
+        );
+        dto.setLineTotalExGst(
+                money(lineItem.getLineTotalExGst())
+        );
+        dto.setGstRate(
+                money(lineItem.getGstRate())
+        );
+        dto.setGstAmount(gstAmount);
+        dto.setLineTotalWithGst(
+                money(lineItem.getLineTotalWithGst())
+        );
+
+        dto.setCgstAmount(cgstAmount);
+        dto.setSgstAmount(sgstAmount);
+        dto.setIgstAmount(igstAmount);
+
+        dto.setDisplayOrder(lineItem.getDisplayOrder());
+        dto.setCategoryCode(lineItem.getCategoryCode());
+        dto.setFeeType(lineItem.getFeeType());
+        dto.setIgstFlag(igstApplicable);
+
+        return dto;
+    }
+
+    private void sortResponseLineItems(
+            List<InvoiceDetailDto.LineItemDto> lineItems
+    ) {
+
+        if (lineItems == null || lineItems.size() <= 1) {
+            return;
+        }
+
+        lineItems.sort(
+                Comparator.comparing(
+                        InvoiceDetailDto.LineItemDto::getDisplayOrder,
+                        Comparator.nullsLast(
+                                Comparator.naturalOrder()
+                        )
+                )
+        );
+    }
+
+    private String resolveUserName(
+            User user
+    ) {
+
+        if (user == null) {
+            return null;
+        }
+
+        if (user.getFullName() != null
+                && !user.getFullName().isBlank()) {
+
+            return user.getFullName();
+        }
+
+        return user.getEmail();
+    }
+
+    // =====================================================
+    // SMALL HELPERS
+    // =====================================================
+
+    private BigDecimal money(
+            BigDecimal value
+    ) {
+
+        return (
+                value == null
+                        ? BigDecimal.ZERO
+                        : value
+        ).setScale(
+                2,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    private String clean(
+            String value
+    ) {
+
+        if (value == null) {
+            return null;
+        }
+
+        String cleaned = value.trim();
+
+        return cleaned.isEmpty()
+                ? null
+                : cleaned;
+    }
+
+
+    private boolean belongsToAccountsDepartment(User user) {
+
+        if (user == null || user.getDepartment() == null) {
+            return false;
+        }
+
+        String department =
+                user.getDepartment().trim();
+
+        return "ACCOUNT".equalsIgnoreCase(department)
+                || "ACCOUNTS".equalsIgnoreCase(department);
+    }
+
+    private boolean belongsToSalesDepartment(User user) {
+
+        if (user == null || user.getDepartment() == null) {
+            return false;
+        }
+
+        String department =
+                user.getDepartment().trim();
+
+        return "SALE".equalsIgnoreCase(department)
+                || "SALES".equalsIgnoreCase(department);
+    }
+
+    private boolean hasAdminRole(User user) {
+
+        if (user == null || user.getUserRole() == null) {
+            return false;
+        }
+
+        return user.getUserRole()
+                .stream()
+                .filter(Objects::nonNull)
+                .filter(role -> !role.isDeleted())
+                .filter(role -> role.getName() != null)
+                .map(role -> role.getName().trim())
+                .anyMatch(roleName ->
+                        "ADMIN".equalsIgnoreCase(roleName)
+                                || "SUPER_ADMIN".equalsIgnoreCase(roleName)
+                );
+    }
+
+
+
+    @Override
+    @Transactional
+    public ConfirmAdvanceInvoiceResponseDto confirmEInvoiceAndCreateProject(
+            Long invoiceId,
+            ConfirmInvoiceEInvoiceRequestDto request
+    ) {
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+        if (invoiceId == null || invoiceId <= 0) {
+            throw new ValidationException(
+                    "Valid invoiceId is required",
+                    "ERR_ADVANCE_INVOICE_NOT_FOUND",
+                    "invoiceId"
+            );
+        }
+
+        if (request == null) {
+            throw new ValidationException(
+                    "Confirmation request is required",
+                    "ERR_E_INVOICE_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (request.getUserId() == null
+                || request.getUserId() <= 0) {
+
+            throw new ValidationException(
+                    "User ID is required",
+                    "ERR_USER_NOT_FOUND",
+                    "userId"
+            );
+        }
+
+        log.info(
+                "Advance Invoice confirmation started | invoiceId={} | userId={}",
+                invoiceId,
+                request.getUserId()
+        );
+
+        // =====================================================
+        // 2. FETCH INVOICE WITH PESSIMISTIC LOCK
+        // =====================================================
+        Invoice invoice = invoiceRepository
+                .findByIdForAdvanceEInvoiceConfirmation(invoiceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Advance Tax Invoice not found with ID: " + invoiceId,
+                        "ERR_ADVANCE_INVOICE_NOT_FOUND",
+                        "Invoice",
+                        invoiceId
+                ));
+
+        validateAdvanceInvoiceForConfirmation(invoice);
+
+        // =====================================================
+        // 3. AUTHORIZE USER
+        // =====================================================
+        User confirmedBy = getActiveUser(
+                request.getUserId(),
+                "userId"
+        );
+
+        validateAccountsOrAdminForEInvoice(confirmedBy);
+
+        // =====================================================
+        // 4. RESOLVE GST ROUTE
+        // =====================================================
+        GstRegistrationType gstType =
+                resolveAdvanceInvoiceGstRegistrationType(invoice);
+
+        boolean eInvoiceRequired =
+                isEInvoiceRequired(gstType);
+
+        String incomingIrn =
+                clean(request.getEInvoiceIrn());
+
+        log.info(
+                "Advance Invoice GST route resolved | "
+                        + "invoiceId={} | gstType={} | "
+                        + "eInvoiceRequired={} | incomingIrnPresent={}",
+                invoiceId,
+                gstType,
+                eInvoiceRequired,
+                hasText(incomingIrn)
+        );
+
+        // =====================================================
+        // 5. IDEMPOTENT PROCESSING
+        // =====================================================
+        if (isLocallyFinalized(invoice, eInvoiceRequired)) {
+
+            if (eInvoiceRequired
+                    && hasText(incomingIrn)
+                    && hasText(invoice.getEInvoiceIrn())
+                    && !invoice.getEInvoiceIrn()
+                    .equalsIgnoreCase(incomingIrn)) {
+
+                throw new ValidationException(
+                        "Advance Tax Invoice is already confirmed "
+                                + "with another IRN",
+                        "ERR_E_INVOICE_ALREADY_CONFIRMED_WITH_DIFFERENT_IRN",
+                        "eInvoiceIrn"
+                );
+            }
+
+            /*
+             * Ensure the Sales Invoice voucher exists.
+             * This is idempotent and will not create a duplicate.
+             */
+            postAdvanceInvoiceSalesVoucherExactlyOnce(
+                    invoice,
+                    invoice.getEstimate(),
+                    confirmedBy
+            );
+
+            return buildConfirmResponse(
+                    invoice,
+                    gstType,
+                    eInvoiceRequired,
+                    "Advance Tax Invoice was already processed. "
+                            + "Sales Voucher is available. "
+                            + "No Operation Project was created."
+            );
+        }
+
+        // =====================================================
+        // 6. REGISTERED / SEZ E-INVOICE CONFIRMATION
+        // =====================================================
+        if (eInvoiceRequired) {
+
+            validateConditionalEInvoiceFields(request);
+
+            if (invoiceRepository
+                    .existsByEInvoiceIrnExcludingInvoice(
+                            incomingIrn,
+                            invoice.getId()
+                    )) {
+
+                throw new ValidationException(
+                        "The supplied IRN is already assigned "
+                                + "to another active Invoice",
+                        "ERR_DUPLICATE_E_INVOICE_IRN",
+                        "eInvoiceIrn"
+                );
+            }
+
+            invoice.setEInvoiceIrn(incomingIrn);
+
+            invoice.setEInvoiceAckNo(
+                    clean(request.getEInvoiceAckNo())
+            );
+
+            invoice.setEInvoiceAckDate(
+                    request.getEInvoiceAckDate()
+            );
+
+            invoice.setEInvoiceAttachmentUrl(
+                    clean(request.getEInvoiceAttachmentUrl())
+            );
+
+            invoice.setEInvoiceConfirmedBy(confirmedBy);
+            invoice.setEInvoiceConfirmedAt(LocalDateTime.now());
+
+            invoice.setEInvoiceRemarks(
+                    clean(request.getRemarks())
+            );
+
+            invoice.setStatus(
+                    InvoiceStatus.E_INVOICE_CONFIRMED
+            );
+
+            log.info(
+                    "Advance Invoice e-invoice confirmed | "
+                            + "invoiceId={} | invoiceNumber={} | irn={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber(),
+                    maskIrn(incomingIrn)
+            );
+
+        } else {
+            // =====================================================
+            // 7. UNREGISTERED / INTERNATIONAL FINALIZATION
+            // =====================================================
+            invoice.setEInvoiceIrn(null);
+            invoice.setEInvoiceAckNo(null);
+            invoice.setEInvoiceAckDate(null);
+            invoice.setEInvoiceAttachmentUrl(null);
+            invoice.setEInvoiceConfirmedBy(null);
+            invoice.setEInvoiceConfirmedAt(null);
+            invoice.setEInvoiceRemarks(null);
+
+            invoice.setFinalizedAt(LocalDateTime.now());
+            invoice.setFinalizedBy(confirmedBy);
+
+            invoice.setFinalizationRemarks(
+                    clean(request.getRemarks())
+            );
+
+            invoice.setStatus(
+                    InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE
+            );
+
+            log.info(
+                    "E-invoice skipped for Advance Invoice | "
+                            + "invoiceId={} | gstType={}",
+                    invoice.getId(),
+                    gstType
+            );
+        }
+
+        // =====================================================
+        // 8. DO NOT CREATE/SYNCHRONIZE OPERATION PROJECT
+        // =====================================================
+        invoice.setUpdatedBy(confirmedBy);
+        invoice.setUpdatedAt(LocalDateTime.now());
+
+        /*
+         * This API does not create an Operation Project.
+         *
+         * Do not set:
+         * operationSynced = false
+         * operationSyncStatus = PENDING
+         * operationNextRetryAt
+         *
+         * Existing operation fields are left unchanged.
+         */
+
+        invoice = invoiceRepository.saveAndFlush(invoice);
+
+        // =====================================================
+        // 9. POST SALES VOUCHER EXACTLY ONCE
+        // =====================================================
+        postAdvanceInvoiceSalesVoucherExactlyOnce(
+                invoice,
+                invoice.getEstimate(),
+                confirmedBy
+        );
+
+        boolean voucherPosted =
+                accountingVoucherService.existsPostedVoucher(
+                        VoucherType.SALES_INVOICE,
+                        VoucherSourceType.INVOICE,
+                        invoice.getId()
+                );
+
+        if (!voucherPosted) {
+            throw new ValidationException(
+                    "Advance Tax Invoice was confirmed, but "
+                            + "the Sales Voucher could not be verified",
+                    "ERR_SALES_VOUCHER_POSTING_FAILED",
+                    "invoiceId"
+            );
+        }
+
+        // =====================================================
+        // 10. RESPONSE
+        // =====================================================
+        String message;
+
+        if (eInvoiceRequired) {
+            message =
+                    "Advance Tax Invoice e-invoice confirmed successfully. "
+                            + "Sales Voucher posted successfully. "
+                            + "No Operation Project was created.";
+        } else {
+            message =
+                    "E-invoice was not required for "
+                            + gstType
+                            + ". Advance Tax Invoice finalized successfully. "
+                            + "Sales Voucher posted successfully. "
+                            + "No Operation Project was created.";
+        }
+
+        return buildConfirmResponse(
+                invoice,
+                gstType,
+                eInvoiceRequired,
+                message
+        );
+    }
+
+    private void validateAdvanceInvoiceForConfirmation(Invoice invoice) {
+        if (invoice.isCancelled()) {
+            throw new ValidationException(
+                    "Cancelled Invoice cannot be confirmed",
+                    "ERR_CANNOT_CONFIRM_CANCELLED_INVOICE",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getInvoiceOrigin() != InvoiceOrigin.ADVANCE_TAX_INVOICE) {
+            throw new ValidationException(
+                    "This API supports only Advance Tax Invoices",
+                    "ERR_NOT_AN_ADVANCE_TAX_INVOICE",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getEstimate() == null) {
+            throw new ValidationException(
+                    "Estimate is missing from Advance Tax Invoice",
+                    "ERR_ADVANCE_INVOICE_ESTIMATE_MISSING",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getAdvanceTaxInvoiceRequest() == null
+                || invoice.getAdvanceTaxInvoiceRequest().getStatus()
+                != AdvanceTaxInvoiceRequestStatus.APPROVED) {
+
+            throw new ValidationException(
+                    "Advance Tax Invoice request must be APPROVED",
+                    "ERR_ADVANCE_REQUEST_NOT_APPROVED",
+                    "invoiceId"
+            );
+        }
+
+        if (money(invoice.getGrandTotal()).compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Advance Tax Invoice grand total must be greater than zero",
+                    "ERR_ADVANCE_INVOICE_AMOUNT_INVALID",
+                    "invoiceId"
+            );
+        }
+
+        if (invoice.getLineItems() == null || invoice.getLineItems().isEmpty()) {
+            throw new ValidationException(
+                    "Advance Tax Invoice line items are missing",
+                    "ERR_INVOICE_LINE_ITEMS_MISSING",
+                    "invoiceId"
+            );
+        }
+    }
+
+    private GstRegistrationType resolveAdvanceInvoiceGstRegistrationType(
+            Invoice invoice
+    ) {
+        if (invoice.getGstRegistrationType() != null) {
+            return invoice.getGstRegistrationType();
+        }
+
+        Estimate estimate = invoice.getEstimate();
+
+        if (estimate != null
+                && estimate.getUnit() != null
+                && estimate.getUnit().getGstRegistrationType() != null) {
+            return estimate.getUnit().getGstRegistrationType();
+        }
+
+        throw new ValidationException(
+                "GST registration type is missing on Invoice and Company Unit",
+                "ERR_GST_REGISTRATION_TYPE_MISSING",
+                "invoiceId"
+        );
+    }
+
+    private boolean isEInvoiceRequired(GstRegistrationType gstType) {
+        return gstType == GstRegistrationType.REGISTERED
+                || gstType == GstRegistrationType.SEZ;
+    }
+
+    private void validateConditionalEInvoiceFields(
+            ConfirmInvoiceEInvoiceRequestDto request
+    ) {
+        if (!hasText(request.getEInvoiceAttachmentUrl())) {
+            throw new ValidationException(
+                    "E-invoice attachment URL is required",
+                    "ERR_E_INVOICE_ATTACHMENT_REQUIRED",
+                    "eInvoiceAttachmentUrl"
+            );
+        }
+
+        if (!hasText(request.getEInvoiceIrn())) {
+            throw new ValidationException(
+                    "E-invoice IRN is required",
+                    "ERR_E_INVOICE_IRN_REQUIRED",
+                    "eInvoiceIrn"
+            );
+        }
+
+        if (!hasText(request.getEInvoiceAckNo())) {
+            throw new ValidationException(
+                    "E-invoice acknowledgement number is required",
+                    "ERR_E_INVOICE_ACK_NO_REQUIRED",
+                    "eInvoiceAckNo"
+            );
+        }
+
+        if (request.getEInvoiceAckDate() == null) {
+            throw new ValidationException(
+                    "E-invoice acknowledgement date is required",
+                    "ERR_E_INVOICE_ACK_DATE_REQUIRED",
+                    "eInvoiceAckDate"
+            );
+        }
+    }
+
+    private void validateAccountsOrAdminForEInvoice(User user) {
+        boolean accounts = user.getDepartment() != null
+                && "accounts".equalsIgnoreCase(user.getDepartment().trim());
+
+        boolean admin = user.getUserRole() != null
+                && user.getUserRole().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(role -> role.getName() != null
+                        && "ADMIN".equalsIgnoreCase(role.getName().trim()));
+
+        if (!accounts && !admin) {
+            throw new ValidationException(
+                    "Only Accounts or Admin users can confirm an e-invoice",
+                    "ERR_USER_NOT_AUTHORIZED_FOR_E_INVOICE",
+                    "userId"
+            );
+        }
+    }
+
+    private boolean isLocallyFinalized(
+            Invoice invoice,
+            boolean eInvoiceRequired
+    ) {
+        if (eInvoiceRequired) {
+            return invoice.getStatus() == InvoiceStatus.E_INVOICE_CONFIRMED
+                    && hasText(invoice.getEInvoiceIrn());
+        }
+
+        return invoice.getStatus() == InvoiceStatus.FINALIZED_WITHOUT_E_INVOICE
+                || invoice.getFinalizedAt() != null;
+    }
+
+    private void postAdvanceInvoiceSalesVoucherExactlyOnce(
+            Invoice invoice,
+            Estimate estimate,
+            User confirmedBy
+    ) {
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+        if (invoice == null || invoice.getId() == null) {
+            throw new ValidationException(
+                    "Invoice is required for Sales Voucher posting",
+                    "ERR_INVOICE_REQUIRED_FOR_VOUCHER",
+                    "invoiceId"
+            );
+        }
+
+        if (estimate == null || estimate.getId() == null) {
+            throw new ValidationException(
+                    "Estimate is required for Sales Voucher posting",
+                    "ERR_ESTIMATE_REQUIRED_FOR_VOUCHER",
+                    "estimateId"
+            );
+        }
+
+        // =====================================================
+        // 2. IDEMPOTENCY CHECK
+        // =====================================================
+        boolean voucherAlreadyPosted =
+                accountingVoucherService.existsPostedVoucher(
+                        VoucherType.SALES_INVOICE,
+                        VoucherSourceType.INVOICE,
+                        invoice.getId()
+                );
+
+        if (voucherAlreadyPosted) {
+            log.info(
+                    "Advance Invoice Sales Voucher already exists "
+                            + "| invoiceId={} | invoiceNumber={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber()
+            );
+            return;
+        }
+
+        try {
+            // =====================================================
+            // 3. RESOLVE CUSTOMER AND INCOME LEDGERS
+            // =====================================================
+            LedgerMaster customerLedger =
+                    getOrCreateCustomerLedgerFromEstimate(
+                            estimate,
+                            confirmedBy
+                    );
+
+            LedgerMaster serviceIncomeLedger =
+                    getOrCreateSystemLedger(
+                            LedgerType.SERVICE_INCOME,
+                            LedgerGroupType.SALES_ACCOUNTS,
+                            "Service Income",
+                            DebitCredit.CREDIT,
+                            confirmedBy
+                    );
+
+            // =====================================================
+            // 4. CALCULATE BALANCED ACCOUNTING AMOUNTS
+            // =====================================================
+            BalancedSalesVoucherAmounts amounts =
+                    calculateBalancedSalesVoucherAmounts(invoice);
+
+            List<AccountingVoucherEntryRequestDto> entries =
+                    new ArrayList<>();
+
+            // Customer / Sundry Debtor Dr.
+            entries.add(
+                    buildVoucherEntry(
+                            customerLedger.getId(),
+                            amounts.grandTotal(),
+                            BigDecimal.ZERO,
+                            "Customer receivable for Advance Tax Invoice "
+                                    + invoice.getInvoiceNumber()
+                    )
+            );
+
+            // Service Income Cr.
+            if (amounts.taxableAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                entries.add(
+                        buildVoucherEntry(
+                                serviceIncomeLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.taxableAmount(),
+                                "Service income for Advance Tax Invoice "
+                                        + invoice.getInvoiceNumber()
+                        )
+                );
+            }
+
+            // Output CGST Cr.
+            if (amounts.cgstAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                LedgerMaster cgstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.OUTPUT_CGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Output CGST",
+                                DebitCredit.CREDIT,
+                                confirmedBy
+                        );
+
+                entries.add(
+                        buildVoucherEntry(
+                                cgstLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.cgstAmount(),
+                                "Output CGST for "
+                                        + invoice.getInvoiceNumber()
+                        )
+                );
+            }
+
+            // Output SGST Cr.
+            if (amounts.sgstAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                LedgerMaster sgstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.OUTPUT_SGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Output SGST",
+                                DebitCredit.CREDIT,
+                                confirmedBy
+                        );
+
+                entries.add(
+                        buildVoucherEntry(
+                                sgstLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.sgstAmount(),
+                                "Output SGST for "
+                                        + invoice.getInvoiceNumber()
+                        )
+                );
+            }
+
+            // Output IGST Cr.
+            if (amounts.igstAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                LedgerMaster igstLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.OUTPUT_IGST,
+                                LedgerGroupType.DUTIES_AND_TAXES,
+                                "Output IGST",
+                                DebitCredit.CREDIT,
+                                confirmedBy
+                        );
+
+                entries.add(
+                        buildVoucherEntry(
+                                igstLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.igstAmount(),
+                                "Output IGST for "
+                                        + invoice.getInvoiceNumber()
+                        )
+                );
+            }
+
+            // =====================================================
+            // 5. FINAL VOUCHER BALANCE CHECK
+            // =====================================================
+            BigDecimal totalDebit =
+                    entries.stream()
+                            .map(AccountingVoucherEntryRequestDto::getDebitAmount)
+                            .map(this::money)
+                            .reduce(zeroMoney(), BigDecimal::add)
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal totalCredit =
+                    entries.stream()
+                            .map(AccountingVoucherEntryRequestDto::getCreditAmount)
+                            .map(this::money)
+                            .reduce(zeroMoney(), BigDecimal::add)
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            BigDecimal difference =
+                    totalDebit
+                            .subtract(totalCredit)
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            log.info(
+                    "Advance Invoice voucher calculation "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| grandTotal={} "
+                            + "| taxable={} "
+                            + "| cgst={} "
+                            + "| sgst={} "
+                            + "| igst={} "
+                            + "| totalDebit={} "
+                            + "| totalCredit={} "
+                            + "| difference={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber(),
+                    amounts.grandTotal(),
+                    amounts.taxableAmount(),
+                    amounts.cgstAmount(),
+                    amounts.sgstAmount(),
+                    amounts.igstAmount(),
+                    totalDebit,
+                    totalCredit,
+                    difference
+            );
+
+            for (int index = 0; index < entries.size(); index++) {
+                AccountingVoucherEntryRequestDto entry =
+                        entries.get(index);
+
+                log.info(
+                        "Advance Invoice voucher entry "
+                                + "| invoiceId={} "
+                                + "| entryIndex={} "
+                                + "| ledgerId={} "
+                                + "| debit={} "
+                                + "| credit={} "
+                                + "| narration={}",
+                        invoice.getId(),
+                        index,
+                        entry.getLedgerId(),
+                        entry.getDebitAmount(),
+                        entry.getCreditAmount(),
+                        entry.getNarration()
+                );
+            }
+
+            if (totalDebit.compareTo(totalCredit) != 0) {
+                throw new ValidationException(
+                        "Sales Voucher calculation is not balanced. "
+                                + "Total debit: ₹"
+                                + totalDebit
+                                + ", total credit: ₹"
+                                + totalCredit
+                                + ", difference: ₹"
+                                + difference,
+                        "ERR_ADVANCE_INVOICE_VOUCHER_NOT_BALANCED",
+                        "invoiceId"
+                );
+            }
+
+            // =====================================================
+            // 6. BUILD VOUCHER REQUEST
+            // =====================================================
+            AccountingVoucherRequestDto voucherRequest =
+                    AccountingVoucherRequestDto.builder()
+                            .voucherType(
+                                    VoucherType.SALES_INVOICE
+                            )
+                            .voucherDate(
+                                    invoice.getInvoiceDate() != null
+                                            ? invoice.getInvoiceDate()
+                                            : LocalDate.now()
+                            )
+                            .sourceType(
+                                    VoucherSourceType.INVOICE
+                            )
+                            .sourceId(
+                                    invoice.getId()
+                            )
+                            .narration(
+                                    "Advance Tax Invoice posted: "
+                                            + invoice.getInvoiceNumber()
+                            )
+                            .entries(entries)
+                            .build();
+
+            // =====================================================
+            // 7. CREATE ACCOUNTING VOUCHER
+            // =====================================================
+            accountingVoucherService.createVoucher(
+                    voucherRequest
+            );
+
+            log.info(
+                    "Advance Invoice Sales Voucher posted successfully "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| totalDebit={} "
+                            + "| totalCredit={}",
+                    invoice.getId(),
+                    invoice.getInvoiceNumber(),
+                    totalDebit,
+                    totalCredit
+            );
+
+        } catch (ValidationException exception) {
+            throw exception;
+
+        } catch (Exception exception) {
+            log.error(
+                    "Unable to post Advance Tax Invoice Sales Voucher "
+                            + "| invoiceId={} "
+                            + "| invoiceNumber={} "
+                            + "| error={}",
+                    invoice != null
+                            ? invoice.getId()
+                            : null,
+                    invoice != null
+                            ? invoice.getInvoiceNumber()
+                            : null,
+                    exception.getMessage(),
+                    exception
+            );
+
+            throw new ValidationException(
+                    "Unable to post Sales Voucher for Advance Tax Invoice",
+                    "ERR_SALES_VOUCHER_POSTING_FAILED",
+                    "invoiceId"
+            );
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AdvanceTaxInvoiceResponseDto> getAdvanceInvoicesByInvoiceId(
+            Long invoiceId,
+            Long userId
+    ) {
+
+        // =====================================================
+        // 1. BASIC VALIDATION
+        // =====================================================
+        if (invoiceId == null || invoiceId <= 0) {
+            throw new ValidationException(
+                    "Valid invoiceId is required",
+                    "ERR_INVOICE_ID_REQUIRED",
+                    "invoiceId"
+            );
+        }
+
+        if (userId == null || userId <= 0) {
+            throw new ValidationException(
+                    "Valid userId is required",
+                    "ERR_USER_ID_REQUIRED",
+                    "userId"
+            );
+        }
+
+        // =====================================================
+        // 2. VERIFY USER (simple existence + active check)
+        // =====================================================
+        getActiveUser(userId, "userId");
+
+        // =====================================================
+        // 3. FETCH INVOICE AND RESOLVE ESTIMATE
+        // =====================================================
+        Invoice invoice =
+                invoiceRepository.findById(invoiceId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Invoice not found with ID: " + invoiceId,
+                                        "INVOICE_NOT_FOUND",
+                                        "Invoice",
+                                        invoiceId
+                                )
+                        );
+
+        if (invoice.getEstimate() == null
+                || invoice.getEstimate().getId() == null) {
+
+            throw new ValidationException(
+                    "Estimate is missing from Invoice",
+                    "ERR_INVOICE_ESTIMATE_MISSING",
+                    "invoiceId"
+            );
+        }
+
+        Long estimateId = invoice.getEstimate().getId();
+
+        // =====================================================
+        // 4. FETCH ALL ADVANCE TAX INVOICE REQUESTS FOR THIS ESTIMATE
+        // =====================================================
+        List<AdvanceTaxInvoiceRequest> requests =
+                advanceTaxInvoiceRequestRepository
+                        .findAllByEstimateIdOrderByCreatedAtDesc(estimateId);
+
+        // =====================================================
+        // 5. MAP TO RESPONSE
+        // =====================================================
+        List<AdvanceTaxInvoiceResponseDto> responses =
+                new ArrayList<>();
+
+        for (AdvanceTaxInvoiceRequest request : requests) {
+            responses.add(mapToResponse(request, null));
+        }
+
+        log.info(
+                "Advance Tax Invoice requests fetched for Invoice "
+                        + "| invoiceId={} | estimateId={} | userId={} | count={}",
+                invoiceId,
+                estimateId,
+                userId,
+                responses.size()
+        );
+
+        return responses;
+    }
+
+    /**
+     * Produces voucher values that always satisfy:
+     *
+     * customer debit = service income credit + GST credits
+     *
+     * The Invoice grand total is treated as the authoritative receivable amount.
+     * A final GST component is derived as a balancing amount, preventing a one-paise
+     * mismatch caused by independently rounded CGST and SGST values.
+     */
+    private BalancedSalesVoucherAmounts calculateBalancedSalesVoucherAmounts(
+            Invoice invoice
+    ) {
+        if (invoice == null || invoice.getId() == null) {
+            throw new ValidationException(
+                    "Invoice is required for voucher calculation",
+                    "ERR_INVOICE_REQUIRED_FOR_VOUCHER_CALCULATION",
+                    "invoiceId"
+            );
+        }
+
+        BigDecimal grandTotal = money(invoice.getGrandTotal());
+        BigDecimal taxableAmount = money(invoice.getSubTotalExGst());
+
+        BigDecimal originalCgstAmount = money(invoice.getCgstAmount());
+        BigDecimal originalSgstAmount = money(invoice.getSgstAmount());
+        BigDecimal originalIgstAmount = money(invoice.getIgstAmount());
+        BigDecimal storedTotalGstAmount = money(invoice.getTotalGstAmount());
+
+        validateNonNegativeVoucherAmount(grandTotal, "grandTotal");
+        validateNonNegativeVoucherAmount(taxableAmount, "subTotalExGst");
+        validateNonNegativeVoucherAmount(originalCgstAmount, "cgstAmount");
+        validateNonNegativeVoucherAmount(originalSgstAmount, "sgstAmount");
+        validateNonNegativeVoucherAmount(originalIgstAmount, "igstAmount");
+        validateNonNegativeVoucherAmount(storedTotalGstAmount, "totalGstAmount");
+
+        if (grandTotal.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ValidationException(
+                    "Invoice grand total must be greater than zero",
+                    "ERR_INVALID_INVOICE_GRAND_TOTAL_FOR_VOUCHER",
+                    "grandTotal"
+            );
+        }
+
+        if (taxableAmount.compareTo(grandTotal) > 0) {
+            throw new ValidationException(
+                    "Invoice taxable amount cannot exceed the grand total. "
+                            + "Grand total: ₹"
+                            + grandTotal
+                            + ", taxable amount: ₹"
+                            + taxableAmount,
+                    "ERR_TAXABLE_AMOUNT_EXCEEDS_GRAND_TOTAL",
+                    "subTotalExGst"
+            );
+        }
+
+        BigDecimal componentGstTotal =
+                originalCgstAmount
+                        .add(originalSgstAmount)
+                        .add(originalIgstAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        /*
+         * Prefer the component total because those are the ledgers that will be
+         * posted. If component snapshots are absent, fall back to totalGstAmount.
+         */
+        BigDecimal referenceGstAmount =
+                componentGstTotal.compareTo(BigDecimal.ZERO) > 0
+                        ? componentGstTotal
+                        : storedTotalGstAmount;
+
+        if (componentGstTotal.compareTo(BigDecimal.ZERO) > 0
+                && storedTotalGstAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            BigDecimal gstSnapshotDifference =
+                    componentGstTotal
+                            .subtract(storedTotalGstAmount)
+                            .abs()
+                            .setScale(2, RoundingMode.HALF_UP);
+
+            if (gstSnapshotDifference
+                    .compareTo(MAX_VOUCHER_ROUNDING_DIFFERENCE) > 0) {
+
+                throw new ValidationException(
+                        "Invoice GST component total does not match total GST. "
+                                + "Component GST: ₹"
+                                + componentGstTotal
+                                + ", total GST: ₹"
+                                + storedTotalGstAmount
+                                + ", difference: ₹"
+                                + gstSnapshotDifference,
+                        "ERR_INVOICE_GST_COMPONENT_TOTAL_MISMATCH",
+                        "invoiceId"
+                );
+            }
+        }
+
+        BigDecimal originalCreditTotal =
+                taxableAmount
+                        .add(referenceGstAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal originalDifference =
+                grandTotal
+                        .subtract(originalCreditTotal)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        /*
+         * A difference such as ₹0.01 is a rounding issue. A larger difference is
+         * treated as corrupted or incomplete invoice financial data.
+         */
+        if (originalDifference.abs()
+                .compareTo(MAX_VOUCHER_ROUNDING_DIFFERENCE) > 0) {
+
+            throw new ValidationException(
+                    "Invoice financial values contain more than an allowable "
+                            + "rounding difference. Grand total: ₹"
+                            + grandTotal
+                            + ", taxable amount: ₹"
+                            + taxableAmount
+                            + ", component GST: ₹"
+                            + componentGstTotal
+                            + ", total GST: ₹"
+                            + storedTotalGstAmount
+                            + ", difference: ₹"
+                            + originalDifference,
+                    "ERR_INVOICE_FINANCIAL_VALUES_MISMATCH",
+                    "invoiceId"
+            );
+        }
+
+        boolean hasOriginalIgst =
+                originalIgstAmount.compareTo(BigDecimal.ZERO) > 0;
+
+        boolean hasOriginalLocalGst =
+                originalCgstAmount.compareTo(BigDecimal.ZERO) > 0
+                        || originalSgstAmount.compareTo(BigDecimal.ZERO) > 0;
+
+        if (hasOriginalIgst && hasOriginalLocalGst) {
+            throw new ValidationException(
+                    "Invoice cannot contain both IGST and CGST/SGST amounts",
+                    "ERR_MIXED_GST_COMPONENTS",
+                    "invoiceId"
+            );
+        }
+
+        BigDecimal totalGstToPost =
+                grandTotal
+                        .subtract(taxableAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal finalTaxableAmount = taxableAmount;
+        BigDecimal finalCgstAmount = zeroMoney();
+        BigDecimal finalSgstAmount = zeroMoney();
+        BigDecimal finalIgstAmount = zeroMoney();
+
+        if (referenceGstAmount.compareTo(BigDecimal.ZERO) == 0) {
+            /*
+             * No-GST invoice. Any paise difference between subtotal and total is
+             * absorbed into service income rather than creating a tax ledger entry.
+             */
+            finalTaxableAmount = grandTotal;
+
+        } else {
+            boolean igstRoute =
+                    hasOriginalIgst
+                            || (!hasOriginalLocalGst && isIgstInvoice(invoice));
+
+            if (igstRoute) {
+                /*
+                 * IGST is the single balancing tax component.
+                 */
+                finalIgstAmount = totalGstToPost;
+
+            } else {
+                /*
+                 * CGST is rounded first. SGST is the balancing component.
+                 *
+                 * Example:
+                 * total GST = 15.25
+                 * CGST      = 7.63
+                 * SGST      = 7.62
+                 */
+                finalCgstAmount =
+                        totalGstToPost.divide(
+                                BigDecimal.valueOf(2),
+                                2,
+                                RoundingMode.HALF_UP
+                        );
+
+                finalSgstAmount =
+                        totalGstToPost
+                                .subtract(finalCgstAmount)
+                                .setScale(2, RoundingMode.HALF_UP);
+            }
+        }
+
+        BigDecimal calculatedCreditTotal =
+                finalTaxableAmount
+                        .add(finalCgstAmount)
+                        .add(finalSgstAmount)
+                        .add(finalIgstAmount)
+                        .setScale(2, RoundingMode.HALF_UP);
+
+        if (grandTotal.compareTo(calculatedCreditTotal) != 0) {
+            throw new ValidationException(
+                    "Unable to balance Invoice voucher calculation. "
+                            + "Grand total: ₹"
+                            + grandTotal
+                            + ", calculated credit: ₹"
+                            + calculatedCreditTotal,
+                    "ERR_UNABLE_TO_BALANCE_INVOICE_VOUCHER",
+                    "invoiceId"
+            );
+        }
+
+        log.info(
+                "Balanced Advance Invoice voucher amounts calculated "
+                        + "| invoiceId={} "
+                        + "| grandTotal={} "
+                        + "| originalTaxable={} "
+                        + "| originalCgst={} "
+                        + "| originalSgst={} "
+                        + "| originalIgst={} "
+                        + "| storedTotalGst={} "
+                        + "| originalDifference={} "
+                        + "| finalTaxable={} "
+                        + "| finalCgst={} "
+                        + "| finalSgst={} "
+                        + "| finalIgst={}",
+                invoice.getId(),
+                grandTotal,
+                taxableAmount,
+                originalCgstAmount,
+                originalSgstAmount,
+                originalIgstAmount,
+                storedTotalGstAmount,
+                originalDifference,
+                finalTaxableAmount,
+                finalCgstAmount,
+                finalSgstAmount,
+                finalIgstAmount
+        );
+
+        return new BalancedSalesVoucherAmounts(
+                grandTotal,
+                finalTaxableAmount,
+                finalCgstAmount,
+                finalSgstAmount,
+                finalIgstAmount
+        );
+    }
+
+    /**
+     * Uses the persisted invoice line-item route only when the invoice-level tax
+     * components do not already identify IGST versus CGST/SGST.
+     */
+    private boolean isIgstInvoice(
+            Invoice invoice
+    ) {
+        if (invoice == null
+                || invoice.getLineItems() == null
+                || invoice.getLineItems().isEmpty()) {
+            return false;
+        }
+
+        return invoice.getLineItems()
+                .stream()
+                .filter(Objects::nonNull)
+                .anyMatch(InvoiceLineItem::isIgstFlag);
+    }
+
+    private void validateNonNegativeVoucherAmount(
+            BigDecimal amount,
+            String field
+    ) {
+        BigDecimal safeAmount = money(amount);
+
+        if (safeAmount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new ValidationException(
+                    field + " cannot be negative",
+                    "ERR_NEGATIVE_INVOICE_VOUCHER_AMOUNT",
+                    field
+            );
+        }
+    }
+
+    /**
+     * Immutable result of the balanced Sales Voucher calculation.
+     */
+    private record BalancedSalesVoucherAmounts(
+            BigDecimal grandTotal,
+            BigDecimal taxableAmount,
+            BigDecimal cgstAmount,
+            BigDecimal sgstAmount,
+            BigDecimal igstAmount
+    ) {
+    }
+
+    private LedgerMaster getOrCreateCustomerLedgerFromEstimate(
+            Estimate estimate,
+            User createdBy
+    ) {
+        if (estimate == null
+                || estimate.getCompany() == null
+                || estimate.getCompany().getId() == null) {
+            throw new ValidationException(
+                    "Company is required to resolve customer ledger",
+                    "ERR_COMPANY_REQUIRED_FOR_LEDGER",
+                    "companyId"
+            );
+        }
+
+        if (estimate.getUnit() == null
+                || estimate.getUnit().getId() == null) {
+            throw new ValidationException(
+                    "Company unit is required to resolve customer ledger",
+                    "ERR_COMPANY_UNIT_REQUIRED_FOR_LEDGER",
+                    "unitId"
+            );
+        }
+
+        Company company = estimate.getCompany();
+        CompanyUnit unit = estimate.getUnit();
+        Contact contact = estimate.getContact();
+
+        Long companyId = company.getId();
+        Long unitId = unit.getId();
+
+        /*
+         * IMPORTANT:
+         * A company/unit's customer-facing ledger may have been created as
+         * LedgerType.CUSTOMER (normal sales flow) OR LedgerType.CUSTOMER_ADVANCE
+         * (advance/PO flow). Both represent the SAME party ledger from an
+         * accounting point of view.
+         *
+         * Looking up CUSTOMER only causes a duplicate "Company - Unit" ledger
+         * to be silently created whenever the existing ledger happens to be
+         * CUSTOMER_ADVANCE, splitting that party's entries across two ledgers.
+         *
+         * Match on BOTH types so the Advance Tax Invoice voucher always posts
+         * into whichever party ledger already exists for this company/unit.
+         */
+        Optional<LedgerMaster> existing =
+                ledgerMasterRepository
+                        .findFirstByCompanyIdAndUnitIdAndLedgerTypeInAndDeletedFalse(
+                                companyId,
+                                unitId,
+                                List.of(
+                                        LedgerType.CUSTOMER,
+                                        LedgerType.CUSTOMER_ADVANCE
+                                )
+                        );
+
+        if (existing.isPresent()) {
+            LedgerMaster ledger = existing.get();
+
+            /*
+             * Do NOT overwrite ledger.setLedgerType(...) here.
+             * Preserve whatever type (CUSTOMER or CUSTOMER_ADVANCE) the
+             * ledger already has so existing ledger entries and reports
+             * for that ledger stay consistent.
+             */
+            ledger.setCompany(company);
+            ledger.setUnit(unit);
+            ledger.setContact(contact);
+            ledger.setGstNo(unit.getGstNo());
+            ledger.setPanNo(company.getPanNo());
+            ledger.setActive(true);
+            ledger.setDeleted(false);
+
+            if (createdBy != null) {
+                ledger.setUpdatedBy(createdBy);
+            }
+
+            return ledgerMasterRepository.save(ledger);
+        }
+
+        LedgerGroup debtors =
+                ledgerGroupRepository
+                        .findByGroupTypeAndDeletedFalse(
+                                LedgerGroupType.SUNDRY_DEBTORS
+                        )
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Sundry Debtors ledger group not found",
+                                        "SUNDRY_DEBTORS_GROUP_NOT_FOUND"
+                                )
+                        );
+
+        String companyName =
+                company.getName() != null
+                        && !company.getName().trim().isEmpty()
+                        ? company.getName().trim()
+                        : "Company-" + companyId;
+
+        String unitName =
+                unit.getUnitName() != null
+                        && !unit.getUnitName().trim().isEmpty()
+                        ? unit.getUnitName().trim()
+                        : "Unit-" + unitId;
+
+        LedgerMaster ledger = new LedgerMaster();
+
+        ledger.setLedgerName(
+                companyName + " - " + unitName
+        );
+
+        ledger.setLedgerCode(
+                generateLedgerCode("CUST")
+        );
+
+        /*
+         * No existing party ledger of either type was found, so a fresh
+         * CUSTOMER ledger is created — matching the original behaviour
+         * for genuinely new companies/units.
+         */
+        ledger.setLedgerType(LedgerType.CUSTOMER);
+        ledger.setLedgerGroup(debtors);
+
+        ledger.setCompany(company);
+        ledger.setUnit(unit);
+        ledger.setContact(contact);
+
+        ledger.setGstNo(unit.getGstNo());
+        ledger.setPanNo(company.getPanNo());
+
+        ledger.setOpeningBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setOpeningBalanceType(
+                DebitCredit.DEBIT
+        );
+
+        ledger.setCurrentBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setCurrentBalanceType(
+                DebitCredit.DEBIT
+        );
+
+        ledger.setSystemCreated(true);
+        ledger.setActive(true);
+        ledger.setDeleted(false);
+
+        if (createdBy != null) {
+            ledger.setCreatedBy(createdBy);
+            ledger.setUpdatedBy(createdBy);
+        }
+
+        return ledgerMasterRepository.save(ledger);
+    }
+
+    private ConfirmAdvanceInvoiceResponseDto buildConfirmResponse(
+            Invoice invoice,
+            GstRegistrationType gstType,
+            boolean eInvoiceRequired,
+            String message
+    ) {
+        boolean voucherPosted =
+                accountingVoucherService.existsPostedVoucher(
+                        VoucherType.SALES_INVOICE,
+                        VoucherSourceType.INVOICE,
+                        invoice.getId()
+                );
+
+        return ConfirmAdvanceInvoiceResponseDto.builder()
+                .invoiceId(invoice.getId())
+                .invoiceNumber(invoice.getInvoiceNumber())
+                .invoiceOrigin(invoice.getInvoiceOrigin())
+                .gstRegistrationType(gstType)
+                .eInvoiceRequired(eInvoiceRequired)
+                .eInvoiceConfirmed(
+                        eInvoiceRequired
+                                && invoice.getStatus()
+                                == InvoiceStatus.E_INVOICE_CONFIRMED
+                )
+                .eInvoiceIrn(
+                        eInvoiceRequired
+                                ? invoice.getEInvoiceIrn()
+                                : null
+                )
+                .eInvoiceAckNo(
+                        eInvoiceRequired
+                                ? invoice.getEInvoiceAckNo()
+                                : null
+                )
+                .eInvoiceAckDate(
+                        eInvoiceRequired
+                                ? invoice.getEInvoiceAckDate()
+                                : null
+                )
+                .salesVoucherPosted(voucherPosted)
+
+                /*
+                 * Normal Advance Tax Invoice: no Operation Project is created.
+                 * Completed PO conversion: the already-existing PO project is reused.
+                 */
+                .operationSynced(invoice.isOperationSynced())
+                .operationProjectNo(invoice.getOperationProjectNo())
+                .operationSyncStatus(
+                        hasText(invoice.getOperationProjectNo())
+                                ? "EXISTING_PROJECT_REUSED"
+                                : "NOT_APPLICABLE"
+                )
+
+                .message(message)
+                .build();
+    }
+
+    private String maskIrn(String irn) {
+        if (!hasText(irn) || irn.length() <= 8) {
+            return "********";
+        }
+        return irn.substring(0, 4)
+                + "..."
+                + irn.substring(irn.length() - 4);
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private AccountingVoucherEntryRequestDto buildVoucherEntry(
+            Long ledgerId,
+            BigDecimal debitAmount,
+            BigDecimal creditAmount,
+            String narration
+    ) {
+        if (ledgerId == null) {
+            throw new ValidationException(
+                    "Ledger ID is required for voucher entry",
+                    "ERR_VOUCHER_LEDGER_REQUIRED",
+                    "ledgerId"
+            );
+        }
+
+        BigDecimal safeDebitAmount = money(debitAmount);
+        BigDecimal safeCreditAmount = money(creditAmount);
+
+        if (safeDebitAmount.compareTo(BigDecimal.ZERO) < 0
+                || safeCreditAmount.compareTo(BigDecimal.ZERO) < 0) {
+
+            throw new ValidationException(
+                    "Voucher debit and credit amounts cannot be negative",
+                    "ERR_INVALID_VOUCHER_ENTRY_AMOUNT",
+                    "amount"
+            );
+        }
+
+        if (safeDebitAmount.compareTo(BigDecimal.ZERO) > 0
+                && safeCreditAmount.compareTo(BigDecimal.ZERO) > 0) {
+
+            throw new ValidationException(
+                    "A voucher entry cannot contain both debit and credit amounts",
+                    "ERR_VOUCHER_ENTRY_HAS_DEBIT_AND_CREDIT",
+                    "amount"
+            );
+        }
+
+        if (safeDebitAmount.compareTo(BigDecimal.ZERO) == 0
+                && safeCreditAmount.compareTo(BigDecimal.ZERO) == 0) {
+
+            throw new ValidationException(
+                    "Voucher entry must contain either a debit or credit amount",
+                    "ERR_EMPTY_VOUCHER_ENTRY",
+                    "amount"
+            );
+        }
+
+        return AccountingVoucherEntryRequestDto.builder()
+                .ledgerId(ledgerId)
+                .debitAmount(safeDebitAmount)
+                .creditAmount(safeCreditAmount)
+                .narration(clean(narration))
+                .build();
+    }
+
+    private LedgerMaster getOrCreateSystemLedger(
+            LedgerType ledgerType,
+            LedgerGroupType ledgerGroupType,
+            String ledgerName,
+            DebitCredit balanceType,
+            User createdBy
+    ) {
+        if (ledgerType == null) {
+            throw new ValidationException(
+                    "Ledger type is required",
+                    "ERR_LEDGER_TYPE_REQUIRED",
+                    "ledgerType"
+            );
+        }
+
+        if (ledgerGroupType == null) {
+            throw new ValidationException(
+                    "Ledger group type is required",
+                    "ERR_LEDGER_GROUP_TYPE_REQUIRED",
+                    "ledgerGroupType"
+            );
+        }
+
+        Optional<LedgerMaster> existingLedger =
+                ledgerMasterRepository.findByLedgerTypeAndDeletedFalse(
+                        ledgerType
+                );
+
+        if (existingLedger.isPresent()) {
+            LedgerMaster ledger = existingLedger.get();
+
+            if (!ledger.isActive()) {
+                ledger.setActive(true);
+                ledger.setUpdatedBy(createdBy);
+                ledger = ledgerMasterRepository.save(ledger);
+            }
+
+            log.debug(
+                    "System ledger reused | ledgerType={} | ledgerId={}",
+                    ledgerType,
+                    ledger.getId()
+            );
+
+            return ledger;
+        }
+
+        LedgerGroup ledgerGroup =
+                ledgerGroupRepository
+                        .findByGroupTypeAndDeletedFalse(
+                                ledgerGroupType
+                        )
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        ledgerGroupType
+                                                + " ledger group not found",
+                                        ledgerGroupType
+                                                + "_GROUP_NOT_FOUND"
+                                )
+                        );
+
+        LedgerMaster ledger = new LedgerMaster();
+
+        ledger.setLedgerName(
+                hasText(ledgerName)
+                        ? ledgerName.trim()
+                        : formatLedgerTypeName(ledgerType)
+        );
+
+        ledger.setLedgerCode(
+                generateSystemLedgerCode(ledgerType)
+        );
+
+        ledger.setLedgerType(ledgerType);
+        ledger.setLedgerGroup(ledgerGroup);
+
+        ledger.setOpeningBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setOpeningBalanceType(balanceType);
+
+        ledger.setCurrentBalance(
+                BigDecimal.ZERO.setScale(
+                        2,
+                        RoundingMode.HALF_UP
+                )
+        );
+
+        ledger.setCurrentBalanceType(balanceType);
+
+        ledger.setSystemCreated(true);
+        ledger.setActive(true);
+        ledger.setDeleted(false);
+
+        if (createdBy != null) {
+            ledger.setCreatedBy(createdBy);
+            ledger.setUpdatedBy(createdBy);
+        }
+
+        LedgerMaster savedLedger =
+                ledgerMasterRepository.save(ledger);
+
+        log.info(
+                "System ledger created | ledgerType={} | ledgerId={} | ledgerName={}",
+                ledgerType,
+                savedLedger.getId(),
+                savedLedger.getLedgerName()
+        );
+
+        return savedLedger;
+    }
+
+
+    private String generateSystemLedgerCode(
+            LedgerType ledgerType
+    ) {
+        String prefix = switch (ledgerType) {
+            case SERVICE_INCOME -> "LED-SERVICE-";
+            case OUTPUT_CGST -> "LED-OUT-CGST-";
+            case OUTPUT_SGST -> "LED-OUT-SGST-";
+            case OUTPUT_IGST -> "LED-OUT-IGST-";
+            case TDS_RECEIVABLE -> "LED-TDS-REC-";
+            case TDS_PAYABLE -> "LED-TDS-PAY-";
+            case INPUT_CGST -> "LED-IN-CGST-";
+            case INPUT_SGST -> "LED-IN-SGST-";
+            case INPUT_IGST -> "LED-IN-IGST-";
+            default -> "LED-SYS-";
+        };
+
+        String ledgerCode;
+
+        do {
+            ledgerCode =
+                    prefix
+                            + System.currentTimeMillis()
+                            + "-"
+                            + UUID.randomUUID()
+                            .toString()
+                            .substring(0, 6)
+                            .toUpperCase();
+
+        } while (
+                ledgerMasterRepository
+                        .existsByLedgerCodeIgnoreCase(
+                                ledgerCode
+                        )
+        );
+
+        return ledgerCode;
+    }
+
+    private String formatLedgerTypeName(
+            LedgerType ledgerType
+    ) {
+        if (ledgerType == null) {
+            return "System Ledger";
+        }
+
+        return Arrays.stream(
+                        ledgerType.name()
+                                .toLowerCase()
+                                .split("_")
+                )
+                .filter(word -> !word.isBlank())
+                .map(word ->
+                        Character.toUpperCase(
+                                word.charAt(0)
+                        ) + word.substring(1)
+                )
+                .reduce(
+                        (first, second) ->
+                                first + " " + second
+                )
+                .orElse("System Ledger");
+    }
+
+    private String generateLedgerCode(String prefix) {
+
+        String safePrefix =
+                prefix == null || prefix.trim().isEmpty()
+                        ? "SYS"
+                        : prefix.trim()
+                        .replaceAll("[^A-Za-z0-9]", "-")
+                        .toUpperCase();
+
+        String ledgerCode;
+
+        do {
+            ledgerCode =
+                    "LED-"
+                            + safePrefix
+                            + "-"
+                            + System.currentTimeMillis()
+                            + "-"
+                            + UUID.randomUUID()
+                            .toString()
+                            .substring(0, 6)
+                            .toUpperCase();
+
+        } while (
+                ledgerMasterRepository
+                        .existsByLedgerCodeIgnoreCase(ledgerCode)
+        );
+
+        return ledgerCode;
+    }
+
+    @Override
+    @Transactional
+    public AdvanceTaxInvoiceResponseDto rejectRequest(
+            Long requestId,
+            AdvanceTaxInvoiceRejectionRequestDto requestDto
+    ) {
+
+        // =====================================================
+        // 1. VALIDATE REQUEST ID
+        // =====================================================
+
+        if (requestId == null || requestId <= 0) {
+            throw new ValidationException(
+                    "Valid requestId is required",
+                    "ERR_ADVANCE_REQUEST_ID_REQUIRED",
+                    "requestId"
+            );
+        }
+
+        // =====================================================
+        // 2. VALIDATE REQUEST BODY
+        // =====================================================
+
+        if (requestDto == null) {
+            throw new ValidationException(
+                    "Rejection request is required",
+                    "ERR_ADVANCE_REJECTION_REQUEST_REQUIRED",
+                    "request"
+            );
+        }
+
+        if (requestDto.getRejectedByUserId() == null
+                || requestDto.getRejectedByUserId() <= 0) {
+
+            throw new ValidationException(
+                    "rejectedByUserId is required",
+                    "ERR_REJECTED_BY_USER_REQUIRED",
+                    "rejectedByUserId"
+            );
+        }
+
+        String rejectionReason =
+                clean(requestDto.getRejectionReason());
+
+        if (rejectionReason == null
+                || rejectionReason.isBlank()) {
+
+            throw new ValidationException(
+                    "Rejection reason is required",
+                    "ERR_ADVANCE_REJECTION_REASON_REQUIRED",
+                    "rejectionReason"
+            );
+        }
+
+        if (rejectionReason.length() > 1000) {
+            throw new ValidationException(
+                    "Rejection reason cannot exceed 1000 characters",
+                    "ERR_ADVANCE_REJECTION_REASON_TOO_LONG",
+                    "rejectionReason"
+            );
+        }
+
+        // =====================================================
+        // 3. FETCH AND LOCK REQUEST
+        // =====================================================
+
+        AdvanceTaxInvoiceRequest request =
+                advanceTaxInvoiceRequestRepository
+                        .findByIdForUpdate(requestId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Advance Tax Invoice request not found with ID: "
+                                                + requestId,
+                                        "ADVANCE_TAX_INVOICE_REQUEST_NOT_FOUND",
+                                        "AdvanceTaxInvoiceRequest",
+                                        requestId
+                                )
+                        );
+
+        // =====================================================
+        // 4. VALIDATE CURRENT STATUS
+        // =====================================================
+
+        if (request.getStatus()
+                != AdvanceTaxInvoiceRequestStatus.PENDING) {
+
+            throw new ValidationException(
+                    "Only PENDING Advance Tax Invoice requests can be rejected. "
+                            + "Current status: "
+                            + request.getStatus(),
+                    "ERR_ADVANCE_REQUEST_NOT_PENDING",
+                    "requestId"
+            );
+        }
+
+        /*
+         * Defensive validation.
+         *
+         * A PENDING request should not have an Invoice.
+         * Do not reject a request after Invoice generation.
+         */
+        if (request.getInvoice() != null) {
+            throw new ValidationException(
+                    "Advance Tax Invoice request cannot be rejected because "
+                            + "an Invoice has already been generated.",
+                    "ERR_ADVANCE_REJECTION_INVOICE_ALREADY_GENERATED",
+                    "requestId"
+            );
+        }
+
+        // =====================================================
+        // 5. AUTHORIZE REJECTING USER
+        // =====================================================
+
+        User rejectedBy =
+                getActiveUser(
+                        requestDto.getRejectedByUserId(),
+                        "rejectedByUserId"
+                );
+
+        /*
+         * Same authorization as approval:
+         * Accounts department or ADMIN role.
+         */
+        validateAccountsOrAdmin(rejectedBy);
+
+        // =====================================================
+        // 6. REJECT REQUEST
+        // =====================================================
+
+        request.setStatus(
+                AdvanceTaxInvoiceRequestStatus.REJECTED
+        );
+
+        /*
+         * approvedAmount remains null because no amount was approved.
+         */
+        request.setApprovedAmount(null);
+
+        request.setReviewedBy(rejectedBy);
+        request.setReviewedAt(LocalDateTime.now());
+        request.setReviewRemarks(rejectionReason);
+
+        AdvanceTaxInvoiceRequest savedRequest =
+                advanceTaxInvoiceRequestRepository
+                        .saveAndFlush(request);
+
+        // =====================================================
+        // 7. LOG REJECTION
+        // =====================================================
+
+        log.info(
+                "Advance Tax Invoice request rejected "
+                        + "| requestId={} "
+                        + "| estimateId={} "
+                        + "| estimateNumber={} "
+                        + "| requestedAmount={} "
+                        + "| rejectedByUserId={} "
+                        + "| rejectionReason={}",
+                savedRequest.getId(),
+                savedRequest.getEstimate() != null
+                        ? savedRequest.getEstimate().getId()
+                        : null,
+                savedRequest.getEstimate() != null
+                        ? savedRequest.getEstimate().getEstimateNumber()
+                        : null,
+                savedRequest.getRequestedAmount(),
+                rejectedBy.getId(),
+                rejectionReason
+        );
+
+        // =====================================================
+        // 8. RESPONSE
+        // =====================================================
+
+        return mapToResponse(
+                savedRequest,
+                "Advance Tax Invoice request rejected successfully."
+        );
+    }
+
+
+}

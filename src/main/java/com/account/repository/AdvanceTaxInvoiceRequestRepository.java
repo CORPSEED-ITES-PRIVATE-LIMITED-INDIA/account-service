@@ -1,0 +1,113 @@
+package com.account.repository;
+
+import com.account.domain.estimate.Estimate;
+import com.account.domain.invoice.AdvanceTaxInvoiceRequest;
+import com.account.domain.invoice.AdvanceTaxInvoiceRequestStatus;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface AdvanceTaxInvoiceRequestRepository
+        extends JpaRepository<AdvanceTaxInvoiceRequest, Long> {
+
+    boolean existsByEstimateAndStatus(
+            Estimate estimate,
+            AdvanceTaxInvoiceRequestStatus status
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("""
+            select request
+            from AdvanceTaxInvoiceRequest request
+            join fetch request.estimate estimate
+            left join fetch request.requestedBy
+            left join fetch request.reviewedBy
+            where request.id = :requestId
+            """)
+    Optional<AdvanceTaxInvoiceRequest> findByIdForUpdate(
+            @Param("requestId") Long requestId
+    );
+
+    @Query("""
+            select coalesce(sum(request.requestedAmount), 0)
+            from AdvanceTaxInvoiceRequest request
+            where request.estimate = :estimate
+              and request.status = :status
+            """)
+    BigDecimal sumAmountByEstimateAndStatus(
+            @Param("estimate") Estimate estimate,
+            @Param("status") AdvanceTaxInvoiceRequestStatus status
+    );
+
+    @Query("""
+            select request
+            from AdvanceTaxInvoiceRequest request
+            where (
+                :requestedByUserId is null
+                or request.requestedBy.id = :requestedByUserId
+            )
+            and (
+                :status is null
+                or request.status = :status
+            )
+            """)
+    Page<AdvanceTaxInvoiceRequest> findVisibleRequests(
+            @Param("requestedByUserId") Long requestedByUserId,
+            @Param("status") AdvanceTaxInvoiceRequestStatus status,
+            Pageable pageable
+    );
+
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    @Query("""
+            select request
+            from AdvanceTaxInvoiceRequest request
+            left join fetch request.invoice invoice
+            where request.id = (
+                select max(latestRequest.id)
+                from AdvanceTaxInvoiceRequest latestRequest
+                where latestRequest.estimate.id = :estimateId
+            )
+            """)
+    Optional<AdvanceTaxInvoiceRequest>
+    findLatestByEstimateForPaymentValidation(
+            @Param("estimateId") Long estimateId
+    );
+
+    @Query("""
+        select request
+        from AdvanceTaxInvoiceRequest request
+        left join fetch request.invoice invoice
+        left join fetch request.requestedBy
+        left join fetch request.reviewedBy
+        where request.estimate.id = :estimateId
+        order by request.createdAt desc
+        """)
+    List<AdvanceTaxInvoiceRequest> findAllByEstimateIdOrderByCreatedAtDesc(
+            @Param("estimateId") Long estimateId
+    );
+
+    @Query("""
+    select r from AdvanceTaxInvoiceRequest r
+    where (:requestedById is null or r.requestedBy.id = :requestedById)
+      and (:fromDate is null or r.createdAt >= :fromDateTime)
+      and (:toDate is null or r.createdAt <= :toDateTime)
+    order by r.createdAt desc
+    """)
+    List<AdvanceTaxInvoiceRequest> findRequestsForFeed(
+            @Param("requestedById") Long requestedById,
+            @Param("fromDateTime") LocalDateTime fromDateTime,
+            @Param("toDateTime") LocalDateTime toDateTime
+    );
+
+}

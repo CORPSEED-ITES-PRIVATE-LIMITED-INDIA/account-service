@@ -1,0 +1,327 @@
+package com.account.controller.invoice;
+
+import com.account.domain.status.InvoiceStatus;
+import com.account.dto.invoice.*;
+import com.account.dto.taxation.TaxationReportDto;
+import com.account.dto.taxation.TaxationReportRequest;
+import com.account.enm.InvoiceFeedFilter;
+import com.account.service.InvoiceFeedService;
+import com.account.service.InvoiceService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+import java.util.List;
+
+@Tag(name = "Invoices", description = "Operations for viewing generated tax invoices")
+@RestController
+@RequestMapping("/accountService/api/v1/invoices")
+@RequiredArgsConstructor
+@Validated
+public class InvoiceController {
+
+    private final InvoiceService invoiceService;
+    private final InvoiceFeedService invoiceFeedService;
+
+
+    @Operation(summary = "Get paginated list of tax invoices")
+    @GetMapping("/list")
+    public ResponseEntity<List<InvoiceSummaryDto>> getInvoicesList(
+            @RequestParam(value = "status", required = false) InvoiceStatus status,
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        List<InvoiceSummaryDto> invoices =
+                invoiceService.getInvoicesList(userId, status, page - 1, size);
+
+        return ResponseEntity.ok(invoices);
+    }
+
+    @Operation(summary = "Get count of tax invoices")
+    @GetMapping("/count")
+    public ResponseEntity<Long> getInvoicesCount(
+            @RequestParam(value = "status", required = false) InvoiceStatus status,
+            @RequestParam(value = "createdById", required = false) Long createdById
+    ) {
+        return ResponseEntity.ok(invoiceService.getInvoicesCount(createdById, status));
+    }
+
+
+    @Operation(summary = "Search invoices by invoice number and/or company name (partial match)")
+    @GetMapping("/search")
+    public ResponseEntity<List<InvoiceSummaryDto>> searchInvoices(
+            @RequestParam(value = "invoiceNumber", required = false) String invoiceNumber,
+            @RequestParam(value = "companyName", required = false) String companyName,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        List<InvoiceSummaryDto> result = invoiceService.searchInvoices(
+                invoiceNumber,
+                companyName,
+                page - 1,
+                size
+        );
+
+        return ResponseEntity.ok(result);
+    }
+
+    @Operation(summary = "Get count of invoices matching search criteria")
+    @GetMapping("/search/count")
+    public ResponseEntity<Long> countSearchInvoices(
+            @RequestParam(value = "invoiceNumber", required = false) String invoiceNumber,
+            @RequestParam(value = "companyName", required = false) String companyName
+    ) {
+        return ResponseEntity.ok(invoiceService.countSearchInvoices(invoiceNumber, companyName));
+    }
+
+
+        @GetMapping("/{id}")
+        @Operation(summary = "Get full detailed invoice by ID")
+        @ApiResponses({
+                @ApiResponse(responseCode = "200", description = "Invoice details"),
+                @ApiResponse(responseCode = "403", description = "Not authorized"),
+                @ApiResponse(responseCode = "404", description = "Invoice not found")
+        })
+        public ResponseEntity<InvoiceDetailDto> getInvoiceDetail(
+                @PathVariable Long id,
+                @RequestParam Long userId
+        ) {
+            InvoiceDetailDto detail = invoiceService.getInvoiceById(id, userId);
+            return ResponseEntity.ok(detail);
+        }
+
+    @PostMapping("/invoiceReport")
+    public ResponseEntity<InvoiceReportDto> invoiceReport(
+            @RequestBody InvoiceSearchRequest request
+    ) {
+        return ResponseEntity.ok(invoiceService.invoiceReport(request));
+    }
+
+    @GetMapping("/number/{invoiceNumber}")
+    @Operation(summary = "Get invoice by Invoice Number",
+            description = "Fetches full details of tax invoice using its unique number (e.g. INV-2026-00012345)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invoice found"),
+            @ApiResponse(responseCode = "404", description = "Invoice not found"),
+            @ApiResponse(responseCode = "403", description = "Access denied"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
+    })
+    public ResponseEntity<InvoiceDetailDto> getInvoiceByInvoiceNumber(
+            @PathVariable String invoiceNumber,
+            @RequestParam("userId") Long userId) {
+
+        InvoiceDetailDto dto = invoiceService.getInvoiceByInvoiceNumber(invoiceNumber, userId);
+        return ResponseEntity.ok(dto);
+    }
+
+    @PostMapping("/taxationReport")
+    public ResponseEntity<TaxationReportDto> taxationReport(
+            @RequestBody TaxationReportRequest request
+    ) {
+        return ResponseEntity.ok(invoiceService.taxationReport(request));
+    }
+
+
+
+    @GetMapping("/by-unbilled")
+    @Operation(
+            summary = "Get invoices by user and unbilled invoice",
+            description = "ADMIN can view all invoices. Normal user can view only invoices linked with their own unbilled invoices."
+    )
+    public ResponseEntity<List<InvoiceSummaryDto>> getInvoicesByUnbilled(
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long unbilledId,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        List<InvoiceSummaryDto> invoices = invoiceService.getInvoicesByUnbilled(
+                userId,
+                unbilledId,
+                page - 1,
+                size
+        );
+
+        return ResponseEntity.ok(invoices);
+    }
+
+
+    @GetMapping("/by-unbilled/count")
+    @Operation(
+            summary = "Get count of invoices by user and unbilled invoice",
+            description = "ADMIN count will include all invoices. Normal user count will include only own unbilled-linked invoices."
+    )
+    public ResponseEntity<Long> countInvoicesByUnbilled(
+            @RequestParam Long userId,
+            @RequestParam(required = false) Long unbilledId
+    ) {
+        return ResponseEntity.ok(
+                invoiceService.countInvoicesByUnbilled(userId, unbilledId)
+        );
+    }
+
+    @Operation(
+            summary = "Get invoice report",
+            description = "Returns generated tax invoices filtered by userId, createdByUserId, status, fromDate and toDate."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Invoice report returned successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid report filter parameters")
+    })
+    @GetMapping("/report")
+    public ResponseEntity<List<InvoiceSummaryDto>> getInvoiceReport(
+            @RequestParam(value = "userId")
+            Long userId,
+
+            @RequestParam(value = "createdByUserId", required = false)
+            Long createdByUserId,
+
+            @RequestParam(value = "status", required = false)
+            InvoiceStatus status,
+
+            @RequestParam(value = "fromDate", required = false)
+            String fromDate,
+
+            @RequestParam(value = "toDate", required = false)
+            String toDate
+    ) {
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        List<InvoiceSummaryDto> response = invoiceService.getInvoiceReport(
+                userId,
+                createdByUserId,
+                status,
+                parsedFromDate,
+                parsedToDate
+        );
+
+        return ResponseEntity.ok(response);
+    }
+
+    @Operation(
+            summary = "Get invoice report count",
+            description = "Returns count of invoices matching report filters."
+    )
+    @GetMapping("/report/count")
+    public ResponseEntity<Long> getInvoiceReportCount(
+            @RequestParam(value = "userId")
+            Long userId,
+
+            @RequestParam(value = "createdByUserId", required = false)
+            Long createdByUserId,
+
+            @RequestParam(value = "status", required = false)
+            InvoiceStatus status,
+
+            @RequestParam(value = "fromDate", required = false)
+            String fromDate,
+
+            @RequestParam(value = "toDate", required = false)
+            String toDate
+    ) {
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        return ResponseEntity.ok(
+                invoiceService.getInvoiceReportCount(
+                        userId,
+                        createdByUserId,
+                        status,
+                        parsedFromDate,
+                        parsedToDate
+                )
+        );
+    }
+
+    private LocalDate parseDate(String value, String fieldName) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (Exception e) {
+            throw new IllegalArgumentException(fieldName + " must be in yyyy-MM-dd format");
+        }
+    }
+
+
+    @PostMapping("/{invoiceId}/confirm-e-invoice")
+    @Operation(
+            summary = "Confirm GST e-invoice and create Operation project",
+            description = "Accounts uploads/confirms GST e-invoice details. After confirmation, " +
+                    "Operation project is created or payment is synced."
+    )
+    public ResponseEntity<InvoiceDetailDto> confirmEInvoiceAndCreateProject(
+            @PathVariable Long invoiceId,
+            @Valid @RequestBody ConfirmInvoiceEInvoiceRequestDto request
+    ) {
+        InvoiceDetailDto response = invoiceService.confirmEInvoiceAndCreateProject(invoiceId, request);
+        return ResponseEntity.ok(response);
+    }
+
+
+
+
+    @Operation(summary = "Get combined Invoice + Advance Tax Invoice request feed")
+    @GetMapping("/feed")
+    public ResponseEntity<List<InvoiceFeedItemDto>> getInvoiceFeed(
+            @RequestParam Long userId,
+            @RequestParam(required = false, defaultValue = "ALL") InvoiceFeedFilter filter,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("page and size must be positive");
+        }
+
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        List<InvoiceFeedItemDto> feed = invoiceFeedService.getFeed(
+                userId, filter, parsedFromDate, parsedToDate, page - 1, size
+        );
+
+        return ResponseEntity.ok(feed);
+    }
+
+    @Operation(summary = "Get count for the combined Invoice + Advance Tax Invoice request feed")
+    @GetMapping("/feed/count")
+    public ResponseEntity<Long> getInvoiceFeedCount(
+            @RequestParam Long userId,
+            @RequestParam(required = false, defaultValue = "ALL") InvoiceFeedFilter filter,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate
+    ) {
+        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
+        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        return ResponseEntity.ok(
+                invoiceFeedService.getFeedCount(userId, filter, parsedFromDate, parsedToDate)
+        );
+    }
+
+
+}

@@ -1,0 +1,30 @@
+package com.account.dto.company.response;
+
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Date;
+
+@Getter
+@Setter
+public class CompanyUnitResponseDto {
+
+    private Long id;
+    private String unitName;
+    private String addressLine1;
+    private String city;
+    private String state;
+    private String country;
+    private String pinCode;
+    private String gstNo;
+    private String gstRegistrationType;
+    private String status;
+    private String onboardingStatus;
+    private boolean accountsApproved;
+    private String accountsRemark;
+    private Date unitOpeningDate;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
+}
