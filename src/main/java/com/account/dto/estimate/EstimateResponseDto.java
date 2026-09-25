@@ -1,5 +1,6 @@
 package com.account.dto.estimate;
 
+import com.account.dto.OrganizationResponseDto;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -69,6 +70,8 @@ public class EstimateResponseDto {
     private CompanySummaryDto company;
     private CompanyUnitSummaryDto unit;
     private ClientSummaryDto client;
+    private OrganizationResponseDto organization;
+
 
 
     private Long paymentTypeId;
