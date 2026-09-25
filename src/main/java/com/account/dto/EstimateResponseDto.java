@@ -51,4 +51,6 @@ public class EstimateResponseDto {
         private String categoryCode;
         private String feeType;
     }
+
+
 }

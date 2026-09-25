@@ -1,6 +1,5 @@
 package com.account.dto.estimate;
 
-import jakarta.persistence.Column;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -69,6 +68,8 @@ public class EstimateResponseDto {
 
     private CompanySummaryDto company;
     private CompanyUnitSummaryDto unit;
+    private ClientSummaryDto client;
+
 
     private Long paymentTypeId;
     private String paymentTypeCode;
@@ -111,4 +112,6 @@ public class EstimateResponseDto {
         private String categoryCode;
         private String feeType;
     }
+
+
 }

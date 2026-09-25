@@ -895,6 +895,29 @@ public class EstimateServiceImpl implements EstimateService {
             );
             dto.setUnit(unitDto);
         }
+
+
+        // =====================================================
+// CLIENT / CONTACT SUMMARY
+// =====================================================
+        if (estimate.getContact() != null) {
+
+            Contact contact = estimate.getContact();
+
+            ClientSummaryDto clientDto = new ClientSummaryDto();
+
+            clientDto.setId(contact.getId());
+            clientDto.setTitle(contact.getTitle());
+            clientDto.setName(contact.getName());
+            clientDto.setEmail(contact.getEmails());
+            clientDto.setContactNo(contact.getContactNo());
+            clientDto.setWhatsappNo(contact.getWhatsappNo());
+            clientDto.setClientDesignation(contact.getClientDesignation());
+            clientDto.setDesignation(contact.getDesignation());
+
+            dto.setClient(clientDto);
+        }
+
         // Line items
         List<EstimateResponseDto.EstimateLineItemResponseDto> itemDtos = new ArrayList<>();
         if (estimate.getLineItems() != null) {
