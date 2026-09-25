@@ -886,46 +886,32 @@ public class EstimateServiceImpl implements EstimateService {
      */
     private EstimateResponseDto mapToResponseDto(Estimate estimate) {
 
-        EstimateResponseDto dto =
-                new EstimateResponseDto();
+        EstimateResponseDto dto = new EstimateResponseDto();
 
-        // ============================================
-        // ESTIMATE
-        // ============================================
+        // =====================================================
+        // 1. BASIC ESTIMATE DETAILS
+        // =====================================================
 
         dto.setId(estimate.getId());
-        dto.setLeadId(estimate.getLeadId());
         dto.setPublicUuid(estimate.getPublicUuid());
+
+        dto.setLeadId(estimate.getLeadId());
         dto.setProposalId(estimate.getProposalId());
         dto.setClientPoNumber(estimate.getClientPoNumber());
 
-        dto.setEstimateNumber(
-                estimate.getEstimateNumber()
-        );
-
+        dto.setEstimateNumber(estimate.getEstimateNumber());
         dto.setPerformanceInvoiceNumber(
                 estimate.getPerformanceInvoiceNumber()
         );
-
         dto.setPerformanceInvoiceFlag(
                 estimate.isPerformanceInvoiceFlag()
         );
 
-        dto.setEstimateDate(
-                estimate.getEstimateDate()
-        );
+        dto.setEstimateDate(estimate.getEstimateDate());
+        dto.setValidUntil(estimate.getValidUntil());
 
-        dto.setValidUntil(
-                estimate.getValidUntil()
-        );
-
-        dto.setSolutionName(
-                estimate.getSolutionName()
-        );
-
-        dto.setSolutionType(
-                estimate.getSolutionType()
-        );
+        dto.setSolutionName(estimate.getSolutionName());
+        dto.setSolutionType(estimate.getSolutionType());
 
         dto.setStatus(
                 estimate.getStatus() != null
@@ -933,14 +919,12 @@ public class EstimateServiceImpl implements EstimateService {
                         : null
         );
 
-        dto.setCurrency(
-                estimate.getCurrency()
-        );
+        dto.setCurrency(estimate.getCurrency());
 
 
-        // ============================================
-        // FINANCIAL
-        // ============================================
+        // =====================================================
+        // 2. FINANCIAL DETAILS
+        // =====================================================
 
         dto.setSubTotalExGst(
                 estimate.getSubTotalExGst()
@@ -967,23 +951,68 @@ public class EstimateServiceImpl implements EstimateService {
         );
 
 
-        // ============================================
-        // ORGANIZATION / CORPSEED
-        // ============================================
+        // =====================================================
+        // 3. NOTES / REVISION
+        // =====================================================
+
+        dto.setCustomerNotes(
+                estimate.getCustomerNotes()
+        );
+
+        dto.setInternalRemarks(
+                estimate.getInternalRemarks()
+        );
+
+        dto.setVersion(
+                estimate.getVersion()
+        );
+
+        dto.setRevisionReason(
+                estimate.getRevisionReason()
+        );
+
+
+        // =====================================================
+        // 4. AUDIT DETAILS
+        // =====================================================
+
+        dto.setCreatedAt(
+                estimate.getCreatedAt()
+        );
+
+        if (estimate.getCreatedBy() != null) {
+
+            dto.setCreatedById(
+                    estimate.getCreatedBy().getId()
+            );
+
+            dto.setCreatedByName(
+                    estimate.getCreatedBy().getFullName()
+            );
+        }
+
+
+        // =====================================================
+        // 5. ORGANIZATION / CORPSEED DETAILS
+        // =====================================================
 
         organizationRepository.findTopOrganization()
-                .ifPresent(organization ->
-                        dto.setOrganization(
-                                mapOrganizationToResponseDto(
-                                        organization
-                                )
-                        )
-                );
+                .ifPresent(organization -> {
+
+                    OrganizationResponseDto organizationDto =
+                            mapOrganizationToResponseDto(
+                                    organization
+                            );
+
+                    dto.setOrganization(
+                            organizationDto
+                    );
+                });
 
 
-        // ============================================
-        // COMPANY
-        // ============================================
+        // =====================================================
+        // 6. COMPANY DETAILS
+        // =====================================================
 
         if (estimate.getCompany() != null) {
 
@@ -1005,19 +1034,61 @@ public class EstimateServiceImpl implements EstimateService {
                     company.getPanNo()
             );
 
+            /*
+             * Company does not directly contain
+             * city/state/country in your current entity.
+             *
+             * We can use first active/non-deleted unit
+             * if required for company summary.
+             */
+            if (company.getUnits() != null
+                    && !company.getUnits().isEmpty()) {
+
+                CompanyUnit primaryUnit =
+                        company.getUnits()
+                                .stream()
+                                .filter(unit ->
+                                        unit != null
+                                                && !unit.isDeleted()
+                                )
+                                .findFirst()
+                                .orElse(null);
+
+                if (primaryUnit != null) {
+
+                    companyDto.setState(
+                            primaryUnit.getState()
+                    );
+
+                    companyDto.setCity(
+                            primaryUnit.getCity()
+                    );
+
+                    companyDto.setCountry(
+                            primaryUnit.getCountry()
+                    );
+
+                    companyDto.setPrimaryPinCode(
+                            primaryUnit.getPinCode()
+                    );
+                }
+            }
+
             companyDto.setOnboardingStatus(
                     company.getOnboardingStatus() != null
                             ? company.getOnboardingStatus().name()
                             : null
             );
 
-            dto.setCompany(companyDto);
+            dto.setCompany(
+                    companyDto
+            );
         }
 
 
-        // ============================================
-        // UNIT
-        // ============================================
+        // =====================================================
+        // 7. COMPANY UNIT DETAILS
+        // =====================================================
 
         if (estimate.getUnit() != null) {
 
@@ -1060,8 +1131,9 @@ public class EstimateServiceImpl implements EstimateService {
             );
 
             unitDto.setGstRegistrationType(
-                    unit.getEffectiveGstRegistrationType()
-                            .name()
+                    unit.getEffectiveGstRegistrationType() != null
+                            ? unit.getEffectiveGstRegistrationType().name()
+                            : null
             );
 
             unitDto.setStatus(
@@ -1074,19 +1146,26 @@ public class EstimateServiceImpl implements EstimateService {
                             : null
             );
 
-            dto.setUnit(unitDto);
+            dto.setUnit(
+                    unitDto
+            );
         }
 
 
-        // ============================================
-        // CLIENT / CONTACT
-        // ============================================
+        // =====================================================
+        // 8. CLIENT / CONTACT DETAILS
+        // =====================================================
 
         Contact contact =
                 estimate.getContact();
 
+        /*
+         * For old estimates where contact_id was not stored,
+         * use unit primary contact as fallback.
+         */
         if (contact == null
-                && estimate.getUnit() != null) {
+                && estimate.getUnit() != null
+                && estimate.getUnit().getPrimaryContact() != null) {
 
             contact =
                     estimate.getUnit()
@@ -1098,10 +1177,21 @@ public class EstimateServiceImpl implements EstimateService {
             ClientSummaryDto clientDto =
                     new ClientSummaryDto();
 
-            clientDto.setId(contact.getId());
-            clientDto.setTitle(contact.getTitle());
-            clientDto.setName(contact.getName());
-            clientDto.setEmail(contact.getEmails());
+            clientDto.setId(
+                    contact.getId()
+            );
+
+            clientDto.setTitle(
+                    contact.getTitle()
+            );
+
+            clientDto.setName(
+                    contact.getName()
+            );
+
+            clientDto.setEmail(
+                    contact.getEmails()
+            );
 
             clientDto.setContactNo(
                     contact.getContactNo()
@@ -1119,13 +1209,192 @@ public class EstimateServiceImpl implements EstimateService {
                     contact.getDesignation()
             );
 
-            dto.setClient(clientDto);
+            dto.setClient(
+                    clientDto
+            );
         }
 
-        // Continue existing line-item/payment mapping...
+
+        // =====================================================
+        // 9. ESTIMATE LINE ITEMS
+        // =====================================================
+
+        List<EstimateResponseDto.EstimateLineItemResponseDto>
+                itemDtos = new ArrayList<>();
+
+        if (estimate.getLineItems() != null
+                && !estimate.getLineItems().isEmpty()) {
+
+            for (EstimateLineItem item :
+                    estimate.getLineItems()) {
+
+                if (item == null) {
+                    continue;
+                }
+
+                EstimateResponseDto.EstimateLineItemResponseDto
+                        itemDto =
+                        new EstimateResponseDto
+                                .EstimateLineItemResponseDto();
+
+                itemDto.setId(
+                        item.getId()
+                );
+
+                itemDto.setSourceItemId(
+                        item.getSourceItemId()
+                );
+
+                itemDto.setItemName(
+                        item.getItemName()
+                );
+
+                itemDto.setDescription(
+                        item.getDescription()
+                );
+
+                itemDto.setHsnSacCode(
+                        item.getHsnSacCode()
+                );
+
+                itemDto.setQuantity(
+                        item.getQuantity()
+                );
+
+                itemDto.setUnit(
+                        item.getUnit()
+                );
+
+                itemDto.setUnitPriceExGst(
+                        item.getUnitPriceExGst()
+                );
+
+                itemDto.setGstRate(
+                        item.getGstRate()
+                );
+
+                itemDto.setIgstRate(
+                        item.getIgstRate()
+                );
+
+                itemDto.setCgstRate(
+                        item.getCgstRate()
+                );
+
+                itemDto.setSgstRate(
+                        item.getSgstRate()
+                );
+
+                itemDto.setIgstFlag(
+                        item.getIgstFlag()
+                );
+
+                itemDto.setLineTotalExGst(
+                        item.getLineTotalExGst()
+                );
+
+                itemDto.setGstAmount(
+                        item.getGstAmount()
+                );
+
+                itemDto.setDisplayOrder(
+                        item.getDisplayOrder()
+                );
+
+                itemDto.setCategoryCode(
+                        item.getCategoryCode()
+                );
+
+                itemDto.setFeeType(
+                        item.getFeeType()
+                );
+
+                itemDtos.add(
+                        itemDto
+                );
+            }
+        }
+
+        dto.setLineItems(
+                itemDtos
+        );
+
+
+        // =====================================================
+        // 10. PAYMENT TYPE DETAILS
+        // =====================================================
+
+        Optional<UnbilledInvoice> unbilledOpt =
+                unbilledInvoiceRepository
+                        .findTopByEstimateAndIsCancelledFalseOrderByCreatedAtDesc(
+                                estimate
+                        );
+
+        if (unbilledOpt.isPresent()) {
+
+            UnbilledInvoice unbilled =
+                    unbilledOpt.get();
+
+            /*
+             * Payment type should be returned only
+             * when approved payment has been received.
+             */
+            if (unbilled.getReceivedAmount() != null
+                    && unbilled.getReceivedAmount()
+                    .compareTo(BigDecimal.ZERO) > 0) {
+
+                if (unbilled.getPayments() != null
+                        && !unbilled.getPayments().isEmpty()) {
+
+                    PaymentReceipt receipt =
+                            unbilled.getPayments()
+                                    .get(0);
+
+                    if (receipt != null
+                            && receipt.getPaymentType() != null) {
+
+                        dto.setPaymentTypeId(
+                                receipt.getPaymentType()
+                                        .getId()
+                        );
+
+                        dto.setPaymentTypeCode(
+                                receipt.getPaymentType()
+                                        .getCode()
+                        );
+
+                    } else {
+
+                        dto.setPaymentTypeId(null);
+                        dto.setPaymentTypeCode(null);
+                    }
+
+                } else {
+
+                    dto.setPaymentTypeId(null);
+                    dto.setPaymentTypeCode(null);
+                }
+
+            } else {
+
+                dto.setPaymentTypeId(null);
+                dto.setPaymentTypeCode(null);
+            }
+
+        } else {
+
+            dto.setPaymentTypeId(null);
+            dto.setPaymentTypeCode(null);
+        }
+
+
+        // =====================================================
+        // 11. RETURN RESPONSE
+        // =====================================================
 
         return dto;
     }
+
     @Override
     public long getEstimatesCount(
             Long requestingUserId,
