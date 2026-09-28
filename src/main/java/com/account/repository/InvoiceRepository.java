@@ -52,14 +52,15 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
     );
 
     @Query("""
-        SELECT i
-        FROM Invoice i
-        LEFT JOIN i.unbilledInvoice u
-        LEFT JOIN u.company c
-        WHERE i.isCancelled = false
-          AND (:invoiceNumber IS NULL OR LOWER(i.invoiceNumber) LIKE LOWER(CONCAT('%', :invoiceNumber, '%')))
-          AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
-    """)
+    SELECT i
+    FROM Invoice i
+    LEFT JOIN i.unbilledInvoice u
+    LEFT JOIN u.company c
+    WHERE i.isCancelled = false
+      AND (:invoiceNumber IS NULL OR LOWER(i.invoiceNumber) LIKE LOWER(CONCAT('%', :invoiceNumber, '%')))
+      AND (:companyName IS NULL OR LOWER(c.name) LIKE LOWER(CONCAT('%', :companyName, '%')))
+    ORDER BY i.createdAt DESC
+""")
     Page<Invoice> searchInvoices(
             @Param("invoiceNumber") String invoiceNumber,
             @Param("companyName") String companyName,

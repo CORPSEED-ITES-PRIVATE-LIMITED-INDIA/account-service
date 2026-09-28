@@ -67,8 +67,9 @@ public class UnbilledInvoiceSummaryDto {
     private String gstNo;
     private Long searchCount;
 
-    private Long paymentReceiptId;
+    private String paymentTerm;
     private String paymentProof;
+    private Long paymentReceiptId;
     private String transactionReference;
     private String paymentMode;
     private LocalDate paymentDate;

@@ -37,6 +37,8 @@ public class UnbilledInvoiceDetailDto {
     private String solutionName;
     private String solutionType;
 
+    private String paymentTerm;
+
     private BigDecimal subTotalExGst;
     private BigDecimal totalGstAmount;
     private BigDecimal cgstAmount;

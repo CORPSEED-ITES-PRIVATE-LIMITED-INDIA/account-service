@@ -56,6 +56,7 @@ public class UnbilledServiceImpl implements UnbilledService {
     private final OperationFeignClient operationFeignClient;
     private final InvoiceRepository invoiceRepository;
     private final OrganizationRepository organizationRepository;
+    private final PaymentTypeRepository paymentTypeRepository;
 
     private final TdsRegistrationRepository tdsRegistrationRepository;
 
@@ -472,12 +473,14 @@ public class UnbilledServiceImpl implements UnbilledService {
         // ==================== PAYMENT RECEIPT DETAILS ====================
         PaymentReceipt receipt = getLatestActivePaymentReceipt(unbilled);
 
+
         if (receipt != null) {
             dto.setPaymentReceiptId(receipt.getId());
 
             if (receipt.getPaymentType() != null) {
                 dto.setPaymentTypeId(receipt.getPaymentType().getId());
                 dto.setPaymentTypeCode(receipt.getPaymentType().getCode());
+                dto.setPaymentTerm(receipt.getPaymentType().getName());
             } else {
                 dto.setPaymentTypeId(null);
                 dto.setPaymentTypeCode(null);

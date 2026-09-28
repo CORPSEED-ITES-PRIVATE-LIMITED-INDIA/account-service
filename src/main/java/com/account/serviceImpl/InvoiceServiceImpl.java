@@ -918,6 +918,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 
 				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
 				.estimateId(estimate != null ? estimate.getId() : null)
+				.paymentTerm(estimate != null ? estimate.getPaymentTerm() : null)
                 .clientPoNumber(estimate != null ? estimate.getClientPoNumber() : null)
 
 				.paymentTypeId(paymentTypeId)
@@ -985,6 +986,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 	}
 
 	@Override
+	@Transactional(readOnly = true)
 	public List<InvoiceSummaryDto> searchInvoices(
 			String invoiceNumber,
 			String companyName,
@@ -994,7 +996,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 		log.info("Searching invoices | invoiceNumber={}, companyName={}, page={}, size={}",
 				invoiceNumber, companyName, page, size);
 
-		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+		Pageable pageable = PageRequest.of(page, size);
 
 		Page<Invoice> pageResult = invoiceRepository.searchInvoices(
 				invoiceNumber != null && !invoiceNumber.trim().isEmpty() ? invoiceNumber.trim() : null,

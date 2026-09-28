@@ -21,6 +21,7 @@ public class InvoiceSummaryDto {
     private String invoiceNumber;
     private String unbilledNumber;
     private String estimateNumber;
+    private String paymentTerm;
 
     private Long paymentTypeId;
     private String paymentTypeCode;

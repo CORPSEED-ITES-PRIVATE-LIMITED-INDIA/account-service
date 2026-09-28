@@ -4061,6 +4061,8 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setStateCode(resolveStateCode(estimate, unit));
         dto.setAddress(buildUnitAddress(unit));
 
+        dto.setPaymentTerm(estimate.getPaymentTerm());
+
         dto.setInvoiceDate(unbilled.getCreatedAt() != null ? unbilled.getCreatedAt().toLocalDate() : null);
         dto.setCurrency(estimate != null ? estimate.getCurrency() : null);
         dto.setStatus(unbilled.getStatus());
@@ -7194,5 +7196,4 @@ public class PaymentServiceImpl implements PaymentService {
                 "estimateId"
         );
     }
-
 }
