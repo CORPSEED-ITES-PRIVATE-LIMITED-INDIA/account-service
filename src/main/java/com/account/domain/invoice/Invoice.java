@@ -76,17 +76,8 @@ public class Invoice {
     @Column(name = "invoice_number", nullable = false, unique = true, length = 32)
     private String invoiceNumber;
 
-    /**
-     * Direct Estimate link for both workflows.
-     *
-     * PAYMENT_APPROVAL invoice:
-     * estimate != null, unbilledInvoice != null
-     *
-     * ADVANCE_TAX_INVOICE:
-     * estimate != null, unbilledInvoice == null
-     */
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "estimate_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "estimate_id")
     private Estimate estimate;
 
     @Column(name = "solution_id")
