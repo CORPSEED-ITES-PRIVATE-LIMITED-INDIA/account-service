@@ -1,6 +1,7 @@
 package com.account.service;
 
 import com.account.domain.status.UnbilledStatus;
+import com.account.dto.RefundRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 
 import java.time.LocalDate;
@@ -35,4 +36,6 @@ public interface UnbilledService {
     void approveCancelUnbilled(Long adminUserId, Long id);
 
     void rejectCancelUnbilled(Long adminUserId, Long id, String reason);
+
+    UnbilledInvoiceSummaryDto issueRefund(String unbilledNumber, RefundRequestDto request);
 }

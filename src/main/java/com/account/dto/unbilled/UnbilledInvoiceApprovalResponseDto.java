@@ -4,7 +4,9 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Getter
 @Setter
@@ -50,6 +52,13 @@ public class UnbilledInvoiceApprovalResponseDto {
     private Double totalAmount;
 
     private Double paidAmount;
+
+    private boolean refundIssued;
+    private BigDecimal refundAmount;
+    private String refundReason;
+    private String refundAttachment;
+    private LocalDateTime refundedAt;
+    private String refundedByName;
 
     private Long paymentTypeId;
 

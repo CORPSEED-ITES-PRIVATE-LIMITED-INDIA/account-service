@@ -12,6 +12,7 @@ import com.account.domain.status.InvoiceStatus;
 import com.account.domain.status.TdsStatus;
 import com.account.domain.status.UnbilledStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
+import com.account.dto.RefundRequestDto;
 import com.account.dto.operationService.*;
 import com.account.dto.payment.TdsResponseDto;
 import com.account.dto.unbilled.*;
@@ -541,6 +542,12 @@ public class UnbilledServiceImpl implements UnbilledService {
         dto.setOrganizationPaymentPageLink(unbilled.getOrganizationPaymentPageLink());
         dto.setOrganizationBankAccountPresent(unbilled.getOrganizationBankAccountPresent());
 
+        dto.setRefundIssued(unbilled.isRefundIssued());
+        dto.setRefundAmount(unbilled.getRefundAmount());
+        dto.setRefundReason(unbilled.getRefundReason());
+        dto.setRefundedAt(unbilled.getRefundedAt());
+        dto.setRefundedByName(getUserDisplayName(unbilled.getRefundedBy()));
+
         User createdBy = unbilled.getCreatedBy();
         dto.setCreatedByName(getUserDisplayName(createdBy));
 
@@ -739,6 +746,36 @@ public class UnbilledServiceImpl implements UnbilledService {
     private String getUserDisplayName(User user) {
         if (user == null) return null;
         return user.getFullName() != null ? user.getFullName() : user.getEmail();
+    }
+
+    @Override
+    @Transactional
+    public UnbilledInvoiceSummaryDto issueRefund(String unbilledNumber, RefundRequestDto request) {
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findByUnbilledNumber(unbilledNumber)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with number: " + unbilledNumber,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledNumber
+                ));
+
+        User resolvedBy = userRepository.findById(request.getResolvedById())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: " + request.getResolvedById(),
+                        "USER_NOT_FOUND",
+                        "User",
+                        request.getResolvedById()
+                ));
+
+        unbilled.issueRefund(request.getRefundAmount(), request.getReason(), resolvedBy);
+
+        unbilled.setUpdatedBy(resolvedBy);
+        unbilled.setUpdatedAt(LocalDateTime.now());
+
+        unbilledInvoiceRepository.save(unbilled);
+
+        return mapToSummaryDto(unbilled);
     }
 
 

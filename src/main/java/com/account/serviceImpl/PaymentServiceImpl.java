@@ -57,6 +57,42 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * MERGED VERSION
+ * -----------------------------------------------------------------------
+ * This file merges two copies of PaymentServiceImpl that were supplied:
+ *
+ *  - "Version 1" contained a stricter (and, per the newer inline comments,
+ *    slightly incorrect) Advance Tax Invoice minimum-amount check, an
+ *    unbilledTotal calculation that used max(estimateTotal, invoiceOutstanding)
+ *    instead of the ATI outstanding alone, plus a large amount of dead/unused
+ *    private helper code (registerPaymentAgainstAdvanceInvoice,
+ *    validatePaymentRules, calculateTdsAmountIfRequired,
+ *    validateAdvanceInvoicePaymentRules, findExistingUnitLedger) that is never
+ *    invoked by the live registerPayment()/updateUnbilledInvoiceStatus() flow,
+ *    which uses the FinalPaymentMath engine exclusively.
+ *
+ *  - "Version 2" is the corrected/cleaned-up revision: it fixes the
+ *    unbilledTotal calculation (uses only the ATI outstanding, with an
+ *    explanatory comment), replaces the flawed strict minimum-amount
+ *    validation with a softer outstanding-only check (deferring the exact
+ *    settlement math to FinalPaymentMath, which already accounts for TDS),
+ *    and removes the dead code paths above.
+ *
+ * Resolution used for this merge:
+ *  - Base behavior = Version 2 (the corrected/cleaned revision), since it
+ *    contains the bug fixes and removes genuinely unreachable code.
+ *  - Restored from Version 1 (safe, additive, non-conflicting):
+ *      1) PAYMENT_CALCULATION_VERSION constant + the @PostConstruct
+ *         logPaymentCalculationVersion() startup log, useful for
+ *         observability and not present in Version 2.
+ *      2) Refund fields (refundIssued/refundAmount/refundReason/
+ *         refundAttachment/refundedAt/refundedByName) in mapToSummaryDto(),
+ *         which Version 2 had dropped but which map to real UnbilledInvoice
+ *         fields (isRefundIssued/getRefundAmount/etc.) and are needed for the
+ *         summary DTO to reflect refund status.
+ * -----------------------------------------------------------------------
+ */
 @Service
 public class PaymentServiceImpl implements PaymentService {
 
@@ -130,7 +166,16 @@ public class PaymentServiceImpl implements PaymentService {
                 advanceTaxInvoiceRequestRepository;
     }
 
-
+    @PostConstruct
+    public void logPaymentCalculationVersion() {
+        log.info(
+                "[PAYMENT-SERVICE-READY] calculationVersion={} | moneyScale={} | "
+                        + "tdsScale=0 | roundingMode={}",
+                PAYMENT_CALCULATION_VERSION,
+                MONEY_SCALE,
+                MONEY_ROUNDING
+        );
+    }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -2590,11 +2635,6 @@ public class PaymentServiceImpl implements PaymentService {
         // 2. INTERNATIONAL TRANSACTION RESTRICTION
         // =====================================================
 
-
-        // =====================================================
-// 2. INTERNATIONAL TRANSACTION RESTRICTION
-// =====================================================
-
         if (isInternationalTransaction(estimate, unbilled)) {
 
             /*
@@ -2897,7 +2937,6 @@ public class PaymentServiceImpl implements PaymentService {
                 savedTds.getStatus()
         );
     }
-
 
 
 
@@ -3335,6 +3374,7 @@ public class PaymentServiceImpl implements PaymentService {
             response.setCompanyId(company != null ? company.getId() : null);
             response.setCompanyUnitId(unit != null ? unit.getId() : null);
             response.setUnbilledNumber(unbilled.getUnbilledNumber());
+
             response.setAdvanceInvoiceNumber(unbilled.getAdvanceInvoiceNumber());
             response.setAdvanceInvoiceFlag(unbilled.isAdvanceInvoiceFlag());
             response.setEstimateNumber(estimate.getEstimateNumber());
@@ -3885,6 +3925,12 @@ public class PaymentServiceImpl implements PaymentService {
         dto.setStatus(unbilled.getStatus());
         dto.setCreatedAt(unbilled.getCreatedAt());
         dto.setApprovedAt(unbilled.getApprovedAt());
+        dto.setRefundIssued(unbilled.isRefundIssued());
+        dto.setRefundAmount(unbilled.getRefundAmount());
+        dto.setRefundReason(unbilled.getRefundReason());
+        dto.setRefundAttachment(unbilled.getRefundAttachment());
+        dto.setRefundedAt(unbilled.getRefundedAt());
+        dto.setRefundedByName(getUserDisplayName(unbilled.getRefundedBy()));
 
         User createdBy = unbilled.getCreatedBy();
         dto.setCreatedByName(getUserDisplayName(createdBy));

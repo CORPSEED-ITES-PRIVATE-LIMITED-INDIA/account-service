@@ -25,6 +25,13 @@ public class UnbilledInvoiceSummaryDto {
     private Long paymentTypeId;
     private String paymentTypeCode;
 
+    private boolean refundIssued;
+    private BigDecimal refundAmount;
+    private String refundReason;
+    private String refundAttachment;
+    private LocalDateTime refundedAt;
+    private String refundedByName;
+
 
     private String companyName;
     private Long companyId;

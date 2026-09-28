@@ -1,7 +1,6 @@
 package com.account.dto.estimate;
 
 import com.account.dto.OrganizationResponseDto;
-import jakarta.persistence.Column;
 import lombok.*;
 
 import java.math.BigDecimal;
@@ -30,11 +29,12 @@ public class EstimateResponseDto {
     private Long proposalId;
     private String clientPoNumber;
 
-
     // Human-readable estimate number
     private String estimateNumber;
     private String performanceInvoiceNumber;
     private boolean performanceInvoiceFlag;
+
+    private String paymentTerm;
 
     private LocalDate estimateDate;
     private LocalDate validUntil;
@@ -70,9 +70,9 @@ public class EstimateResponseDto {
 
     private CompanySummaryDto company;
     private CompanyUnitSummaryDto unit;
+
     private ClientSummaryDto client;
     private OrganizationResponseDto organization;
-
 
     private Long paymentTypeId;
     private String paymentTypeCode;
@@ -102,7 +102,7 @@ public class EstimateResponseDto {
         private BigDecimal unitPriceExGst;
         private BigDecimal gstRate;
 
-        private BigDecimal igstRate ;
+        private BigDecimal igstRate;
         private BigDecimal cgstRate;
         private BigDecimal sgstRate;
         private Boolean igstFlag;

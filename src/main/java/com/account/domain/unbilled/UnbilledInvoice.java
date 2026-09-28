@@ -386,6 +386,38 @@ public class UnbilledInvoice {
     )
     private String cancelAttachment;
 
+    @Column(
+            name = "refund_issued",
+            nullable = false
+    )
+    private boolean refundIssued = false;
+
+    @Column(
+            name = "refund_amount",
+            precision = 19,
+            scale = 3
+    )
+    private BigDecimal refundAmount;
+
+    @Column(
+            name = "refund_reason",
+            columnDefinition = "TEXT"
+    )
+    private String refundReason;
+
+    @Column(
+            name = "refund_attachment",
+            columnDefinition = "TEXT"
+    )
+    private String refundAttachment;
+
+    @Column(name = "refunded_at")
+    private LocalDateTime refundedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "refunded_by")
+    private User refundedBy;
+
     @PrePersist
     protected void onCreate() {
 
@@ -461,6 +493,20 @@ public class UnbilledInvoice {
                 .subtract(safeMoney(receivedAmount))
                 .max(BigDecimal.ZERO)
                 .setScale(MONEY_SCALE, ROUNDING_MODE);
+    }
+
+    public void issueRefund(BigDecimal amount, String reason, User resolvedBy) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Refund amount must be greater than zero");
+        }
+        if (refundIssued) {
+            throw new IllegalStateException("Refund has already been issued for this unbilled invoice");
+        }
+        this.refundIssued = true;
+        this.refundAmount = amount.setScale(MONEY_SCALE, ROUNDING_MODE);
+        this.refundReason = reason;
+        this.refundedAt = LocalDateTime.now();
+        this.refundedBy = resolvedBy;
     }
 
     /** Outstanding still available after pending payment reservations. */

@@ -576,4 +576,6 @@ ORDER BY u.createdAt DESC
     );
 
 
+    Optional<UnbilledInvoice> findByUnbilledNumber(String unbilledNumber);
+
 }

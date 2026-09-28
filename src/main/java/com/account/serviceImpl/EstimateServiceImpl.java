@@ -352,6 +352,9 @@ public class EstimateServiceImpl implements EstimateService {
                         : LocalDate.now()
         );
 
+        // Restored from V1: payment term must be persisted on the entity.
+        estimate.setPaymentTerm(requestDto.getPaymentTerm());
+
         estimate.setValidUntil(
                 requestDto.getValidUntil() != null
                         ? requestDto.getValidUntil()
@@ -909,6 +912,9 @@ public class EstimateServiceImpl implements EstimateService {
 
         dto.setEstimateDate(estimate.getEstimateDate());
         dto.setValidUntil(estimate.getValidUntil());
+
+        // Restored from V1: payment term must be surfaced in the response DTO.
+        dto.setPaymentTerm(estimate.getPaymentTerm());
 
         dto.setSolutionName(estimate.getSolutionName());
         dto.setSolutionType(estimate.getSolutionType());
@@ -1671,8 +1677,6 @@ public class EstimateServiceImpl implements EstimateService {
 
         boolean isAdmin = user.getUserRole().stream()
                 .anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getName()));
-
-//        System.out.println("user.getUserRole():  "+user.getUserRole());
 
         Specification<Estimate> spec = buildSpecification(request, isAdmin);
 

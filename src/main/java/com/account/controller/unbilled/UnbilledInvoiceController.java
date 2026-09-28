@@ -1,6 +1,7 @@
 package com.account.controller.unbilled;
 
 import com.account.domain.status.UnbilledStatus;
+import com.account.dto.RefundRequestDto;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.payment.GovernmentFeeResponseDto;
 import com.account.dto.payment.TdsResponseDto;
@@ -27,7 +28,10 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.List;
 
-@Tag(name = "Unbilled Invoices", description = "Operations related to unbilled / proforma / advance invoices (approval flow for accounts team)")
+@Tag(
+        name = "Unbilled Invoices",
+        description = "Operations related to unbilled / proforma / advance invoices (approval flow for accounts team)"
+)
 @RestController
 @RequestMapping("/accountService/api/v1/unbilled-invoices")
 @RequiredArgsConstructor
@@ -35,12 +39,12 @@ import java.util.List;
 public class UnbilledInvoiceController {
 
     private final PaymentService paymentService;
-
     private final UnbilledService unbilledService;
 
-    // ────────────────────────────────────────────────
-    //  Approve unbilled invoice (usually done by Accounts)
-    // ────────────────────────────────────────────────
+    // =========================================================
+    // APPROVE UNBILLED INVOICE
+    // =========================================================
+
     @Operation(
             summary = "Approve unbilled invoice",
             description = "Approves the unbilled invoice, changes status to APPROVED, " +
@@ -54,8 +58,13 @@ public class UnbilledInvoiceController {
     })
     @PostMapping("/{unbilledId}/updateStatus")
     public ResponseEntity<UnbilledInvoiceApprovalResponseDto> updateUnbilledInvoiceStatus(
-            @PathVariable @Parameter(description = "ID of the unbilled invoice") Long unbilledId,
-            @Valid @RequestBody UnbilledInvoiceApprovalRequestDto request) {
+            @PathVariable
+            @Parameter(description = "ID of the unbilled invoice")
+            Long unbilledId,
+
+            @Valid
+            @RequestBody
+            UnbilledInvoiceApprovalRequestDto request) {
 
         UnbilledInvoiceApprovalResponseDto response =
                 paymentService.updateUnbilledInvoiceStatus(unbilledId, request);
@@ -63,9 +72,45 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(response);
     }
 
+    // =========================================================
+    // ISSUE REFUND
+    // =========================================================
+
+    @Operation(
+            summary = "Issue refund for an unbilled invoice",
+            description = "Marks the unbilled invoice as refunded and records the refund amount and reason. " +
+                    "Looked up by unbilled number, not internal ID. Called when a legal request against this " +
+                    "unbilled invoice is resolved with outcome REFUND."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Refund recorded successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid refund amount or already refunded", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Unbilled invoice or user not found", content = @Content)
+    })
+    @PutMapping("/{unbilledNumber}/refund")
+    public ResponseEntity<UnbilledInvoiceSummaryDto> issueRefund(
+            @PathVariable
+            @Parameter(description = "Unbilled number, e.g. UNB-2026-00000190")
+            String unbilledNumber,
+
+            @Valid
+            @RequestBody
+            RefundRequestDto request) {
+
+        UnbilledInvoiceSummaryDto response =
+                unbilledService.issueRefund(unbilledNumber, request);
+
+        return ResponseEntity.ok(response);
+    }
+
+    // =========================================================
+    // LIST UNBILLED INVOICES
+    // =========================================================
+
     @Operation(
             summary = "Get list of unbilled invoices (paginated)",
-            description = "Returns a paginated list of unbilled invoices. Page numbering starts from 1. Default sorting: createdAt DESC."
+            description = "Returns a paginated list of unbilled invoices. " +
+                    "Page numbering starts from 1. Default sorting: createdAt DESC."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "List returned successfully"),
@@ -74,24 +119,38 @@ public class UnbilledInvoiceController {
     @GetMapping("/list")
     public ResponseEntity<List<UnbilledInvoiceSummaryDto>> getUnbilledInvoicesList(
             @RequestParam(value = "status", required = false)
-            @Parameter(description = "Filter by unbilled invoice status") UnbilledStatus status,
+            @Parameter(description = "Filter by unbilled invoice status")
+            UnbilledStatus status,
 
             @RequestParam(value = "userId", required = false)
-            @Parameter(description = "Filter by user who created or approved the record") Long userId,
+            @Parameter(description = "Filter by user who created or approved the record")
+            Long userId,
 
-            @RequestParam(value = "page", defaultValue = "1") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size
+            @RequestParam(value = "page", defaultValue = "1")
+            int page,
+
+            @RequestParam(value = "size", defaultValue = "10")
+            int size
     ) {
+
         if (page < 1 || size < 1) {
             throw new IllegalArgumentException("Page and size must be greater than 0");
         }
 
         List<UnbilledInvoiceSummaryDto> list =
-                unbilledService.getUnbilledInvoicesList(userId, status, page - 1, size);
+                unbilledService.getUnbilledInvoicesList(
+                        userId,
+                        status,
+                        page - 1,
+                        size
+                );
 
         return ResponseEntity.ok(list);
     }
 
+    // =========================================================
+    // COUNT UNBILLED INVOICES
+    // =========================================================
 
     @Operation(
             summary = "Get count of unbilled invoices",
@@ -104,15 +163,22 @@ public class UnbilledInvoiceController {
     @GetMapping("/count")
     public ResponseEntity<Long> getUnbilledInvoicesCount(
             @RequestParam(value = "status", required = false)
-            @Parameter(description = "Filter by unbilled invoice status") UnbilledStatus status,
+            @Parameter(description = "Filter by unbilled invoice status")
+            UnbilledStatus status,
 
             @RequestParam(value = "userId", required = false)
-            @Parameter(description = "Filter by user who created or approved the record") Long userId
+            @Parameter(description = "Filter by user who created or approved the record")
+            Long userId
     ) {
+
         long count = paymentService.getUnbilledInvoicesCount(userId, status);
+
         return ResponseEntity.ok(count);
     }
 
+    // =========================================================
+    // SEARCH UNBILLED INVOICES
+    // =========================================================
 
     @Operation(
             summary = "Search unbilled invoices by unbilled number and/or company name (paginated)",
@@ -122,15 +188,15 @@ public class UnbilledInvoiceController {
             @ApiResponse(responseCode = "200", description = "Search results returned successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid pagination or search parameters", content = @Content)
     })
-
     @PostMapping("/search")
     public ResponseEntity<List<UnbilledInvoiceSummaryDto>> searchUnbilledInvoices(
             @RequestBody UnbilledInvoiceSearchRequest request
     ) {
+
         int page = request.getPage();
         int size = request.getSize();
 
-        // Normalize page: frontend (1-based) → backend (0-based)
+        // Frontend page is 1-based, backend page is 0-based
         int normalizedPage = page - 1;
 
         List<UnbilledInvoiceSummaryDto> list =
@@ -145,6 +211,10 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(list);
     }
 
+    // =========================================================
+    // SEARCH COUNT
+    // =========================================================
+
     @Operation(
             summary = "Get count of unbilled invoices matching search criteria",
             description = "Returns the total number of unbilled invoices matching the optional search filters (unbilledNumber and/or companyName)"
@@ -156,14 +226,26 @@ public class UnbilledInvoiceController {
     @GetMapping("/search/count")
     public ResponseEntity<Long> countSearchUnbilledInvoices(
             @RequestParam(value = "unbilledNumber", required = false)
-            @Parameter(description = "Partial unbilled number to search for") String unbilledNumber,
+            @Parameter(description = "Partial unbilled number to search for")
+            String unbilledNumber,
 
             @RequestParam(value = "companyName", required = false)
-            @Parameter(description = "Partial company name to search for") String companyName
+            @Parameter(description = "Partial company name to search for")
+            String companyName
     ) {
-        long count = paymentService.countSearchUnbilledInvoices(unbilledNumber, companyName);
+
+        long count =
+                paymentService.countSearchUnbilledInvoices(
+                        unbilledNumber,
+                        companyName
+                );
+
         return ResponseEntity.ok(count);
     }
+
+    // =========================================================
+    // GET INVOICE DETAIL BY ID
+    // =========================================================
 
     @GetMapping("/{id}")
     @Operation(summary = "Get full detailed invoice by ID")
@@ -176,18 +258,17 @@ public class UnbilledInvoiceController {
             @PathVariable Long id,
             @RequestParam Long userId
     ) {
-        UnbilledInvoiceDetailDto unbilledInvoiceDetailDto = paymentService.getUnbilledInvoice(id, userId);
-        return ResponseEntity.ok(unbilledInvoiceDetailDto);
+
+        UnbilledInvoiceDetailDto response =
+                paymentService.getUnbilledInvoice(id, userId);
+
+        return ResponseEntity.ok(response);
     }
 
+    // =========================================================
+    // REQUEST UNBILLED CANCELLATION
+    // =========================================================
 
-    // ────────────────────────────────────────────────
-// Request unbilled cancellation
-// Account user will call this API.
-// It will NOT cancel the unbilled immediately.
-// It only marks the unbilled as CANCEL_REQUESTED
-// so admin can approve/reject the cancellation.
-// ────────────────────────────────────────────────
     @PutMapping("/cancel/request/{userId}/{id}")
     public ResponseEntity<?> requestCancelUnbilled(
             @PathVariable Long userId,
@@ -195,56 +276,88 @@ public class UnbilledInvoiceController {
             @RequestParam String reason,
             @RequestParam(required = false) String cancelAttachment
     ) {
-        unbilledService.requestCancelUnbilled(userId, id, reason, cancelAttachment);
-        return ResponseEntity.ok("Cancel request sent to admin successfully");
+
+        unbilledService.requestCancelUnbilled(
+                userId,
+                id,
+                reason,
+                cancelAttachment
+        );
+
+        return ResponseEntity.ok(
+                "Cancel request sent to admin successfully"
+        );
     }
 
+    // =========================================================
+    // APPROVE UNBILLED CANCELLATION
+    // =========================================================
 
-    // ────────────────────────────────────────────────
-// Approve unbilled cancellation
-// Admin will call this API.
-// Once approved, actual cancellation process will run:
-// unbilled, estimate, proposal, invoice, payment,
-// and operation project will be cancelled.
-// ────────────────────────────────────────────────
     @PutMapping("/cancel/approve/{adminUserId}/{id}")
     public ResponseEntity<?> approveCancelUnbilled(
             @PathVariable Long adminUserId,
             @PathVariable Long id
     ) {
-        unbilledService.approveCancelUnbilled(adminUserId, id);
-        return ResponseEntity.ok("Unbilled cancellation approved successfully");
+
+        unbilledService.approveCancelUnbilled(
+                adminUserId,
+                id
+        );
+
+        return ResponseEntity.ok(
+                "Unbilled cancellation approved successfully"
+        );
     }
 
+    // =========================================================
+    // REJECT UNBILLED CANCELLATION
+    // =========================================================
 
-    // ────────────────────────────────────────────────
-// Reject unbilled cancellation
-// Admin will call this API.
-// If rejected, unbilled will NOT be cancelled.
-// It will be marked as CANCEL_REJECTED
-// and visible back to account/user side.
-// ────────────────────────────────────────────────
     @PutMapping("/cancel/reject/{adminUserId}/{id}")
     public ResponseEntity<?> rejectCancelUnbilled(
             @PathVariable Long adminUserId,
             @PathVariable Long id,
             @RequestParam String reason
     ) {
-        unbilledService.rejectCancelUnbilled(adminUserId, id, reason);
-        return ResponseEntity.ok("Unbilled cancellation rejected successfully");
+
+        unbilledService.rejectCancelUnbilled(
+                adminUserId,
+                id,
+                reason
+        );
+
+        return ResponseEntity.ok(
+                "Unbilled cancellation rejected successfully"
+        );
     }
+
+    // =========================================================
+    // GET EXPENSES
+    // =========================================================
 
     @GetMapping("/getExpences/{userId}/{unbilledId}")
     public ResponseEntity<Page<OperationProjectActivityResponseDto>> getExpences(
             @PathVariable Long userId,
             @PathVariable Long unbilledId,
             Pageable pageable
-    ){
-        Page<OperationProjectActivityResponseDto> response  = paymentService.getExpences(userId, unbilledId, pageable);
+    ) {
 
-        return new ResponseEntity<>(response, HttpStatus.OK);
+        Page<OperationProjectActivityResponseDto> response =
+                paymentService.getExpences(
+                        userId,
+                        unbilledId,
+                        pageable
+                );
+
+        return new ResponseEntity<>(
+                response,
+                HttpStatus.OK
+        );
     }
 
+    // =========================================================
+    // APPROVE EXPENSE
+    // =========================================================
 
     @PutMapping("/approveExpense/{userId}/{unbilledId}/{expenseId}")
     public ResponseEntity<?> approveExpense(
@@ -254,49 +367,112 @@ public class UnbilledInvoiceController {
             @RequestParam String status
     ) {
 
-        paymentService.approveExpense(userId, unbilledId, expenseId, status);
+        paymentService.approveExpense(
+                userId,
+                unbilledId,
+                expenseId,
+                status
+        );
 
-        return new ResponseEntity<>("Expense approved successfully", HttpStatus.OK);
+        return new ResponseEntity<>(
+                "Expense approved successfully",
+                HttpStatus.OK
+        );
     }
 
+    // =========================================================
+    // CONVERT INTO ADI
+    // =========================================================
 
     @PostMapping("/convertIntoADI/{unbilledId}")
     public ResponseEntity<UnbilledInvoiceDetailDto> convertIntoADI(
             @PathVariable Long unbilledId,
             @RequestParam Long requestingUserId
-    ){
-        UnbilledInvoiceDetailDto dto = paymentService.convertIntoADI(unbilledId, requestingUserId);
+    ) {
+
+        UnbilledInvoiceDetailDto dto =
+                paymentService.convertIntoADI(
+                        unbilledId,
+                        requestingUserId
+                );
+
         return ResponseEntity.ok(dto);
     }
+
+    // =========================================================
+    // GOVERNMENT FEE
+    // =========================================================
 
     @GetMapping("/government-fee")
     public ResponseEntity<?> getGovernmentFee(
             @RequestParam(required = false) Long unbilledId,
-            @RequestParam(required = false) Long estimateId) {
+            @RequestParam(required = false) Long estimateId
+    ) {
+
         try {
-            GovernmentFeeResponseDto response = paymentService.getGovernmentFee(unbilledId, estimateId);
-            return new ResponseEntity<>(response, HttpStatus.OK);
+
+            GovernmentFeeResponseDto response =
+                    paymentService.getGovernmentFee(
+                            unbilledId,
+                            estimateId
+                    );
+
+            return new ResponseEntity<>(
+                    response,
+                    HttpStatus.OK
+            );
+
         } catch (ValidationException e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.BAD_REQUEST);
+
+            return new ResponseEntity<>(
+                    e.getMessage(),
+                    HttpStatus.BAD_REQUEST
+            );
+
         } catch (ResourceNotFoundException e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.NOT_FOUND);
+
+            return new ResponseEntity<>(
+                    e.getMessage(),
+                    HttpStatus.NOT_FOUND
+            );
+
         } catch (Exception e) {
-            return new ResponseEntity<>(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+
+            return new ResponseEntity<>(
+                    e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR
+            );
         }
     }
+
+    // =========================================================
+    // TDS
+    // =========================================================
 
     @GetMapping("/tds")
     public ResponseEntity<TdsResponseDto> getTds(
             @RequestParam(required = false) Long unbilledId,
-            @RequestParam(required = false) Long estimateId) {
+            @RequestParam(required = false) Long estimateId
+    ) {
 
-        TdsResponseDto response = paymentService.getTds(unbilledId, estimateId);
+        TdsResponseDto response =
+                paymentService.getTds(
+                        unbilledId,
+                        estimateId
+                );
+
         return ResponseEntity.ok(response);
     }
 
+    // =========================================================
+    // GET INVOICE BY UNBILLED NUMBER
+    // =========================================================
+
     @GetMapping("/number/{unbilledNumber}")
-    @Operation(summary = "Get unbilled invoice by Unbilled Number",
-            description = "Fetches full details of unbilled invoice using its unique number (e.g. UNB-2026-00001234)")
+    @Operation(
+            summary = "Get unbilled invoice by Unbilled Number",
+            description = "Fetches full details of unbilled invoice using its unique number (e.g. UNB-2026-00001234)"
+    )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Unbilled invoice found"),
             @ApiResponse(responseCode = "404", description = "Unbilled invoice not found"),
@@ -305,11 +481,21 @@ public class UnbilledInvoiceController {
     })
     public ResponseEntity<UnbilledInvoiceDetailDto> getUnbilledInvoiceByNumber(
             @PathVariable String unbilledNumber,
-            @RequestParam("userId") Long userId) {
+            @RequestParam("userId") Long userId
+    ) {
 
-        UnbilledInvoiceDetailDto dto = paymentService.getUnbilledInvoiceByNumber(unbilledNumber, userId);
+        UnbilledInvoiceDetailDto dto =
+                paymentService.getUnbilledInvoiceByNumber(
+                        unbilledNumber,
+                        userId
+                );
+
         return ResponseEntity.ok(dto);
     }
+
+    // =========================================================
+    // UNBILLED REPORT
+    // =========================================================
 
     @Operation(
             summary = "Get unbilled invoice report",
@@ -322,22 +508,31 @@ public class UnbilledInvoiceController {
     @GetMapping("/report")
     public ResponseEntity<List<UnbilledInvoiceSummaryDto>> getUnbilledReport(
             @RequestParam(value = "userId", required = false)
-            @Parameter(description = "Logged-in/requesting user ID. Example: Praveen account user ID") Long userId,
+            @Parameter(description = "Logged-in/requesting user ID")
+            Long userId,
 
             @RequestParam(value = "createdByUserId", required = false)
-            @Parameter(description = "Filter by user who created the unbilled invoice. Example: Dhruv/Rahul/Rajeev user ID") Long createdByUserId,
+            @Parameter(description = "Filter by user who created the unbilled invoice")
+            Long createdByUserId,
 
             @RequestParam(value = "status", required = false)
-            @Parameter(description = "Filter by unbilled invoice status") UnbilledStatus status,
+            @Parameter(description = "Filter by unbilled invoice status")
+            UnbilledStatus status,
 
             @RequestParam(value = "fromDate", required = false)
-            @Parameter(description = "Report start date in yyyy-MM-dd format") String fromDate,
+            @Parameter(description = "Report start date in yyyy-MM-dd format")
+            String fromDate,
 
             @RequestParam(value = "toDate", required = false)
-            @Parameter(description = "Report end date in yyyy-MM-dd format") String toDate
+            @Parameter(description = "Report end date in yyyy-MM-dd format")
+            String toDate
     ) {
-        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
-        LocalDate parsedToDate = parseDate(toDate, "toDate");
+
+        LocalDate parsedFromDate =
+                parseDate(fromDate, "fromDate");
+
+        LocalDate parsedToDate =
+                parseDate(toDate, "toDate");
 
         List<UnbilledInvoiceSummaryDto> response =
                 unbilledService.getUnbilledReport(
@@ -350,6 +545,11 @@ public class UnbilledInvoiceController {
 
         return ResponseEntity.ok(response);
     }
+
+    // =========================================================
+    // UNBILLED REPORT COUNT
+    // =========================================================
+
     @Operation(
             summary = "Get unbilled invoice report count",
             description = "Returns total count of unbilled invoices matching userId, createdByUserId, status, fromDate and toDate filters."
@@ -361,47 +561,65 @@ public class UnbilledInvoiceController {
     @GetMapping("/report/count")
     public ResponseEntity<Long> getUnbilledReportCount(
             @RequestParam(value = "userId", required = false)
-            @Parameter(description = "Logged-in/requesting user ID. Example: Praveen account user ID") Long userId,
+            @Parameter(description = "Logged-in/requesting user ID")
+            Long userId,
 
             @RequestParam(value = "createdByUserId", required = false)
-            @Parameter(description = "Filter by user who created the unbilled invoice. Example: Dhruv/Rahul/Rajeev user ID") Long createdByUserId,
+            @Parameter(description = "Filter by user who created the unbilled invoice")
+            Long createdByUserId,
 
             @RequestParam(value = "status", required = false)
-            @Parameter(description = "Filter by unbilled invoice status") UnbilledStatus status,
+            @Parameter(description = "Filter by unbilled invoice status")
+            UnbilledStatus status,
 
             @RequestParam(value = "fromDate", required = false)
-            @Parameter(description = "Report start date in yyyy-MM-dd format") String fromDate,
+            @Parameter(description = "Report start date in yyyy-MM-dd format")
+            String fromDate,
 
             @RequestParam(value = "toDate", required = false)
-            @Parameter(description = "Report end date in yyyy-MM-dd format") String toDate
+            @Parameter(description = "Report end date in yyyy-MM-dd format")
+            String toDate
     ) {
-        LocalDate parsedFromDate = parseDate(fromDate, "fromDate");
-        LocalDate parsedToDate = parseDate(toDate, "toDate");
 
-        long count = unbilledService.getUnbilledReportCount(
-                userId,
-                createdByUserId,
-                status,
-                parsedFromDate,
-                parsedToDate
-        );
+        LocalDate parsedFromDate =
+                parseDate(fromDate, "fromDate");
+
+        LocalDate parsedToDate =
+                parseDate(toDate, "toDate");
+
+        long count =
+                unbilledService.getUnbilledReportCount(
+                        userId,
+                        createdByUserId,
+                        status,
+                        parsedFromDate,
+                        parsedToDate
+                );
 
         return ResponseEntity.ok(count);
     }
 
+    // =========================================================
+    // DATE PARSER
+    // =========================================================
 
     private LocalDate parseDate(String date, String fieldName) {
+
         if (date == null || date.trim().isEmpty()) {
             return null;
         }
 
         try {
+
             return LocalDate.parse(date.trim());
+
         } catch (Exception e) {
+
             throw new IllegalArgumentException(
-                    fieldName + " must be in yyyy-MM-dd format. Invalid value: " + date
+                    fieldName +
+                            " must be in yyyy-MM-dd format. Invalid value: " +
+                            date
             );
         }
     }
-
 }

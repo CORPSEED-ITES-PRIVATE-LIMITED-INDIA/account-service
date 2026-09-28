@@ -125,8 +125,12 @@ public class Estimate {
     @Column(name = "estimate_date", nullable = false)
     private LocalDate estimateDate = LocalDate.now();
 
+
     @Column(name = "valid_until")
     private LocalDate validUntil;
+
+    @Column(name = "payment_term")
+    private String paymentTerm;
 
     @Column(name = "solution_id")
     private Long solutionId;

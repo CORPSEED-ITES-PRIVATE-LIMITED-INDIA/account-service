@@ -23,6 +23,8 @@ public class EstimateCreationRequestDto {
 
     private String clientPoNumber;
 
+    private String paymentTerm;
+
 
     private Long contactId; // Optional
 

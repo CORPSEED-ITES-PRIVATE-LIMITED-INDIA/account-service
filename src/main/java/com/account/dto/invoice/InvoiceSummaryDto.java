@@ -85,4 +85,11 @@ public class InvoiceSummaryDto {
     private String gstRegistrationType;
     private Boolean gstApplicable;
     private Boolean zeroRatedSupply;
+
+    private boolean refundIssued;
+    private BigDecimal refundAmount;
+    private String refundReason;
+    private String refundAttachment;
+    private LocalDateTime refundedAt;
+    private String refundedByName;
 }
