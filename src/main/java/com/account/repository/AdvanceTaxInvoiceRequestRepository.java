@@ -68,7 +68,7 @@ public interface AdvanceTaxInvoiceRequestRepository
             Pageable pageable
     );
 
-    @Lock(LockModeType.PESSIMISTIC_READ)
+    // No lock here. This method is only reading the latest request for validation.
     @Query("""
             select request
             from AdvanceTaxInvoiceRequest request
@@ -79,35 +79,34 @@ public interface AdvanceTaxInvoiceRequestRepository
                 where latestRequest.estimate.id = :estimateId
             )
             """)
-    Optional<AdvanceTaxInvoiceRequest>
-    findLatestByEstimateForPaymentValidation(
+    Optional<AdvanceTaxInvoiceRequest> findLatestByEstimateForPaymentValidation(
             @Param("estimateId") Long estimateId
     );
 
     @Query("""
-        select request
-        from AdvanceTaxInvoiceRequest request
-        left join fetch request.invoice invoice
-        left join fetch request.requestedBy
-        left join fetch request.reviewedBy
-        where request.estimate.id = :estimateId
-        order by request.createdAt desc
-        """)
+            select request
+            from AdvanceTaxInvoiceRequest request
+            left join fetch request.invoice invoice
+            left join fetch request.requestedBy
+            left join fetch request.reviewedBy
+            where request.estimate.id = :estimateId
+            order by request.createdAt desc
+            """)
     List<AdvanceTaxInvoiceRequest> findAllByEstimateIdOrderByCreatedAtDesc(
             @Param("estimateId") Long estimateId
     );
 
     @Query("""
-    select r from AdvanceTaxInvoiceRequest r
-    where (:requestedById is null or r.requestedBy.id = :requestedById)
-      and (:fromDate is null or r.createdAt >= :fromDateTime)
-      and (:toDate is null or r.createdAt <= :toDateTime)
-    order by r.createdAt desc
-    """)
+            select r
+            from AdvanceTaxInvoiceRequest r
+            where (:requestedById is null or r.requestedBy.id = :requestedById)
+              and (:fromDateTime is null or r.createdAt >= :fromDateTime)
+              and (:toDateTime is null or r.createdAt <= :toDateTime)
+            order by r.createdAt desc
+            """)
     List<AdvanceTaxInvoiceRequest> findRequestsForFeed(
             @Param("requestedById") Long requestedById,
             @Param("fromDateTime") LocalDateTime fromDateTime,
             @Param("toDateTime") LocalDateTime toDateTime
     );
-
 }
