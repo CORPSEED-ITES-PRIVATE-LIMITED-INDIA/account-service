@@ -580,6 +580,7 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
             VendorPaymentApprovalRequestDto request,
             CalculatedAmounts amounts
     ) {
+
         BigDecimal bankPaymentAmount = requiredPositiveMoney(
                 request.getBankPaymentAmount(),
                 "Bank payment amount must be greater than zero",
@@ -589,6 +590,7 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
 
         if (request.getBankLedgerId() == null
                 || request.getBankLedgerId() <= 0) {
+
             throw new ValidationException(
                     "Bank/Cash ledger ID is required for payment release",
                     "ERR_BANK_LEDGER_REQUIRED",
@@ -598,6 +600,7 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
 
         if (request.getPaymentReleasedByOperationUserId() == null
                 || request.getPaymentReleasedByOperationUserId() <= 0) {
+
             throw new ValidationException(
                     "Payment released by Operation user ID is required",
                     "ERR_PAYMENT_RELEASE_USER_REQUIRED",
@@ -606,6 +609,7 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
         }
 
         if (request.getPaymentDate() == null) {
+
             throw new ValidationException(
                     "Payment date is required",
                     "ERR_PAYMENT_DATE_REQUIRED",
@@ -614,6 +618,7 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
         }
 
         if (!hasText(request.getPaymentMode())) {
+
             throw new ValidationException(
                     "Payment mode is required",
                     "ERR_PAYMENT_MODE_REQUIRED",
@@ -621,40 +626,82 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
             );
         }
 
-        assertAmountEquals(
-                "bank payment amount",
-                amounts.vendorNetPayableAmount(),
-                bankPaymentAmount,
-                "paymentApproval.bankPaymentAmount"
-        );
+        /*
+         * Partial payment is allowed.
+         *
+         * Example:
+         * Vendor payable = 6490
+         * Bank payment   = 5500
+         *
+         * VALID because 5500 <= 6490.
+         */
+        BigDecimal vendorNetPayable =
+                money(amounts.vendorNetPayableAmount());
 
-        BigDecimal settlement = money(
-                bankPaymentAmount.add(amounts.tdsAmount())
-        );
+        if (bankPaymentAmount.compareTo(vendorNetPayable) > 0) {
 
-        assertAmountEquals(
-                "settlement amount",
-                amounts.grossInvoiceAmount(),
-                settlement,
-                "paymentApproval.settlementAmount"
-        );
-
-        if (request.getSettlementAmount() == null) {
             throw new ValidationException(
-                    "Settlement amount is required for payment release",
-                    "ERR_SETTLEMENT_AMOUNT_REQUIRED",
+                    "Bank payment amount cannot exceed vendor net payable amount. "
+                            + "Vendor net payable: "
+                            + vendorNetPayable
+                            + ", bank payment amount: "
+                            + bankPaymentAmount,
+                    "ERR_BANK_PAYMENT_EXCEEDS_VENDOR_PAYABLE",
+                    "paymentApproval.bankPaymentAmount"
+            );
+        }
+
+        /*
+         * Settlement for this release:
+         *
+         * Bank paid + TDS deducted
+         */
+        BigDecimal settlementAmount =
+                money(
+                        bankPaymentAmount.add(
+                                amounts.tdsAmount()
+                        )
+                );
+
+        /*
+         * Settlement cannot exceed gross invoice.
+         *
+         * But it CAN be lower for partial payments.
+         */
+        BigDecimal grossInvoiceAmount =
+                money(amounts.grossInvoiceAmount());
+
+        if (settlementAmount.compareTo(grossInvoiceAmount) > 0) {
+
+            throw new ValidationException(
+                    "Settlement amount cannot exceed gross invoice amount. "
+                            + "Gross invoice amount: "
+                            + grossInvoiceAmount
+                            + ", settlement amount: "
+                            + settlementAmount,
+                    "ERR_VENDOR_SETTLEMENT_EXCEEDS_GROSS",
                     "paymentApproval.settlementAmount"
             );
         }
 
-        assertAmountEquals(
-                "supplied settlement amount",
-                amounts.grossInvoiceAmount(),
-                request.getSettlementAmount(),
-                "paymentApproval.settlementAmount"
-        );
-    }
+        /*
+         * Operation sends:
+         *
+         * settlementAmount = actual bank payment + TDS
+         *
+         * Validate against THAT value,
+         * not against complete gross invoice.
+         */
+        if (request.getSettlementAmount() != null) {
 
+            assertAmountEquals(
+                    "supplied settlement amount",
+                    settlementAmount,
+                    request.getSettlementAmount(),
+                    "paymentApproval.settlementAmount"
+            );
+        }
+    }
     // =====================================================================
     // ACCOUNTING POSTING
     // =====================================================================
