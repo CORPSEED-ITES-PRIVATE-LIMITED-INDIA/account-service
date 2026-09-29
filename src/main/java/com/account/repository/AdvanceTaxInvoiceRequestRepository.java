@@ -96,17 +96,5 @@ public interface AdvanceTaxInvoiceRequestRepository
             @Param("estimateId") Long estimateId
     );
 
-    @Query("""
-            select r
-            from AdvanceTaxInvoiceRequest r
-            where (:requestedById is null or r.requestedBy.id = :requestedById)
-              and (:fromDateTime is null or r.createdAt >= :fromDateTime)
-              and (:toDateTime is null or r.createdAt <= :toDateTime)
-            order by r.createdAt desc
-            """)
-    List<AdvanceTaxInvoiceRequest> findRequestsForFeed(
-            @Param("requestedById") Long requestedById,
-            @Param("fromDateTime") LocalDateTime fromDateTime,
-            @Param("toDateTime") LocalDateTime toDateTime
-    );
+
 }
