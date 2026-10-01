@@ -40,7 +40,7 @@ import java.util.Optional;
 public class ExternalVendorServiceImpl implements ExternalVendorService {
 
     private static final int MONEY_SCALE = 0;
-    private static final int RATE_SCALE = 0;
+    private static final int RATE_SCALE = 2;
 
     private static final RoundingMode ROUNDING =
             RoundingMode.HALF_UP;
@@ -51,7 +51,7 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                     ROUNDING
             );
 
-    private static final BigDecimal HUNDRED =
+    private static final BigDecimal HUNDRED=
             new BigDecimal("100");
 
     private static final String PURCHASE_LEDGER_CODE=
@@ -222,8 +222,7 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
          *   Dr Input CGST/SGST/IGST    GST
          *       Cr Vendor              gross invoice
          *
-         * PAYMENT
-         *   Dr Vendor                  gross invoice
+         PAYMENT   Dr Vendor                  gross invoice
          *       Cr Bank/Cash           actual bank amount
          *       Cr TDS Payable         TDS withheld
          *
@@ -757,9 +756,11 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                             );
 
                     sgstAmount =
-                            money(
-                                    totalGstAmount.subtract(cgstAmount)
-                            );
+                            totalGstAmount.subtract(cgstAmount)
+                                    .setScale(
+                                            MONEY_SCALE,
+                                            ROUNDING
+                                    );
                 } else if ("INTER_STATE".equals(supplyType)) {
                     igstAmount = totalGstAmount;
                 } else {
@@ -2128,8 +2129,14 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             BigDecimal amount,
             BigDecimal percentage
     ) {
+
+        if (amount == null || percentage == null) {
+            return ZERO;
+        }
+
         BigDecimal calculatedAmount =
-                amount.multiply(percentage)
+                money(amount)
+                        .multiply(rate(percentage))
                         .divide(
                                 HUNDRED,
                                 8,
