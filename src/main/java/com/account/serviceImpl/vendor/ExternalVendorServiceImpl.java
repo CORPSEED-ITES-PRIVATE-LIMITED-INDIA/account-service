@@ -39,25 +39,34 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class ExternalVendorServiceImpl implements ExternalVendorService {
 
+    private static final int MONEY_SCALE = 0;
+    private static final int RATE_SCALE = 0;
+
+    private static final RoundingMode ROUNDING =
+            RoundingMode.HALF_UP;
+
     private static final BigDecimal ZERO =
-            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal.ZERO.setScale(
+                    MONEY_SCALE,
+                    ROUNDING
+            );
 
     private static final BigDecimal HUNDRED =
             new BigDecimal("100");
 
-    private static final String PURCHASE_LEDGER_CODE =
+    private static final String PURCHASE_LEDGER_CODE=
             "LED-PROC-PURCHASE";
 
-    private static final String INPUT_CGST_LEDGER_CODE =
+    private static final String INPUT_CGST_LEDGER_CODE=
             "LED-INPUT-CGST";
 
-    private static final String INPUT_SGST_LEDGER_CODE =
+    private static final String INPUT_SGST_LEDGER_CODE=
             "LED-INPUT-SGST";
 
-    private static final String INPUT_IGST_LEDGER_CODE =
+    private static final String INPUT_IGST_LEDGER_CODE=
             "LED-INPUT-IGST";
 
-    private static final String TDS_PAYABLE_LEDGER_CODE =
+    private static final String TDS_PAYABLE_LEDGER_CODE=
             "LED-TDS-PAYABLE";
 
     private final ExternalVendorRepository externalVendorRepository;
@@ -743,16 +752,14 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                     cgstAmount =
                             totalGstAmount.divide(
                                     new BigDecimal("2"),
-                                    2,
-                                    RoundingMode.HALF_UP
+                                    MONEY_SCALE,
+                                    ROUNDING
                             );
 
                     sgstAmount =
-                            totalGstAmount.subtract(cgstAmount)
-                                    .setScale(
-                                            2,
-                                            RoundingMode.HALF_UP
-                                    );
+                            money(
+                                    totalGstAmount.subtract(cgstAmount)
+                            );
                 } else if ("INTER_STATE".equals(supplyType)) {
                     igstAmount = totalGstAmount;
                 } else {
@@ -773,8 +780,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
         }
 
         BigDecimal grossInvoiceAmount =
-                price.add(totalGstAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                money(
+                        price.add(totalGstAmount)
+                );
 
         boolean tdsActive = Boolean.TRUE.equals(request.getTdsActive());
         BigDecimal tdsPercentage = rate(request.getTdsPercentage());
@@ -799,8 +807,9 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
         }
 
         BigDecimal vendorNetPayableAmount =
-                grossInvoiceAmount.subtract(tdsAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                money(
+                        grossInvoiceAmount.subtract(tdsAmount)
+                );
 
         if (vendorNetPayableAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException(
@@ -1761,8 +1770,8 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                         BigDecimal::add
                 )
                 .setScale(
-                        2,
-                        RoundingMode.HALF_UP
+                        MONEY_SCALE,
+                        ROUNDING
                 );
     }
 
@@ -1790,8 +1799,8 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                         BigDecimal::add
                 )
                 .setScale(
-                        2,
-                        RoundingMode.HALF_UP
+                        MONEY_SCALE,
+                        ROUNDING
                 );
     }
 
@@ -1819,8 +1828,8 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
                         BigDecimal::add
                 )
                 .setScale(
-                        2,
-                        RoundingMode.HALF_UP
+                        MONEY_SCALE,
+                        ROUNDING
                 );
     }
 
@@ -2119,12 +2128,15 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
             BigDecimal amount,
             BigDecimal percentage
     ) {
-        return amount.multiply(percentage)
-                .divide(
-                        HUNDRED,
-                        2,
-                        RoundingMode.HALF_UP
-                );
+        BigDecimal calculatedAmount =
+                amount.multiply(percentage)
+                        .divide(
+                                HUNDRED,
+                                8,
+                                ROUNDING
+                        );
+
+        return money(calculatedAmount);
     }
 
     private BigDecimal money(
@@ -2133,8 +2145,8 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
         return value == null
                 ? ZERO
                 : value.setScale(
-                2,
-                RoundingMode.HALF_UP
+                MONEY_SCALE,
+                ROUNDING
         );
     }
 
@@ -2143,12 +2155,12 @@ public class ExternalVendorServiceImpl implements ExternalVendorService {
     ) {
         return value == null
                 ? BigDecimal.ZERO.setScale(
-                4,
-                RoundingMode.HALF_UP
+                RATE_SCALE,
+                ROUNDING
         )
                 : value.setScale(
-                4,
-                RoundingMode.HALF_UP
+                RATE_SCALE,
+                ROUNDING
         );
     }
 
