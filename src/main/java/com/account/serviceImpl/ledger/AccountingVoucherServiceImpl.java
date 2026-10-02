@@ -33,7 +33,7 @@ import java.util.Objects;
 @Slf4j
 public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
-    private static final int MONEY_SCALE = 2;
+    private static final int MONEY_SCALE = 3;
     private static final RoundingMode ROUNDING_MODE = RoundingMode.HALF_UP;
 
     private final AccountingVoucherRepository accountingVoucherRepository;
@@ -895,5 +895,3 @@ public class AccountingVoucherServiceImpl implements AccountingVoucherService {
 
 
 }
-
-

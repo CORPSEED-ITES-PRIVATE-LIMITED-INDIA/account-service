@@ -21,8 +21,16 @@ import java.util.Locale;
 @Component
 public class RegisteredPaymentCalculator {
 
+    private static final int MONEY_SCALE = 2;
+    private static final int TAX_SCALE = 3;
+    private static final int GST_SCALE = 3;
+
     private static final BigDecimal ZERO =
-            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    private static final BigDecimal TAX_ZERO =
+            BigDecimal.ZERO.setScale(TAX_SCALE, RoundingMode.HALF_UP);
+    private static final BigDecimal GST_ZERO =
+            BigDecimal.ZERO.setScale(GST_SCALE, RoundingMode.HALF_UP);
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     private static final BigDecimal TWO = new BigDecimal("2.00");
     private static final BigDecimal TEN = new BigDecimal("10.00");
@@ -37,8 +45,8 @@ public class RegisteredPaymentCalculator {
 
         String paymentType = normalizeType(input.getPaymentTypeCode());
         BigDecimal bank = money(input.getActualBankAmount());
-        BigDecimal totalTaxable = money(input.getTotalTaxableAmount());
-        BigDecimal totalGst = money(input.getTotalGstAmount());
+        BigDecimal totalTaxable = taxMoney(input.getTotalTaxableAmount());
+        BigDecimal totalGst = gstMoney(input.getTotalGstAmount());
         BigDecimal totalInvoice = money(input.getTotalInvoiceAmount());
         BigDecimal outstanding = money(input.getOutstandingAmount());
         BigDecimal approved = money(input.getApprovedAmount());
@@ -215,13 +223,13 @@ public class RegisteredPaymentCalculator {
                 .multiply(HUNDRED)
                 .divide(
                         HUNDRED.add(gstPercentage),
-                        2,
+                        TAX_SCALE,
                         RoundingMode.HALF_UP
                 );
 
         BigDecimal remainingGst = outstanding
                 .subtract(remainingTaxable)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(GST_SCALE, RoundingMode.HALF_UP);
 
         BigDecimal currentTds = ZERO;
 
@@ -346,13 +354,13 @@ public class RegisteredPaymentCalculator {
                 .multiply(HUNDRED)
                 .divide(
                         HUNDRED.add(gstPercentage),
-                        2,
+                        TAX_SCALE,
                         RoundingMode.HALF_UP
                 );
 
         BigDecimal gst = bank
                 .subtract(taxable)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(GST_SCALE, RoundingMode.HALF_UP);
 
         return new Breakup(
                 taxable,
@@ -392,7 +400,7 @@ public class RegisteredPaymentCalculator {
                 );
 
         BigDecimal taxable =
-                rawTaxable.setScale(2, RoundingMode.HALF_UP);
+                rawTaxable.setScale(TAX_SCALE, RoundingMode.HALF_UP);
 
         BigDecimal tds = rawTaxable
                 .multiply(tdsPercentage)
@@ -404,7 +412,7 @@ public class RegisteredPaymentCalculator {
 
         BigDecimal gst = settlement
                 .subtract(taxable)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(GST_SCALE, RoundingMode.HALF_UP);
 
         return new Breakup(
                 taxable,
@@ -535,8 +543,8 @@ public class RegisteredPaymentCalculator {
             BigDecimal gst,
             BigDecimal total
     ) {
-        taxable = money(taxable);
-        gst = money(gst);
+        taxable = taxMoney(taxable);
+        gst = gstMoney(gst);
         total = money(total);
 
         if (taxable.compareTo(BigDecimal.ZERO) <= 0
@@ -552,14 +560,20 @@ public class RegisteredPaymentCalculator {
 
         BigDecimal exactTotal = taxable
                 .add(gst)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(TAX_SCALE, RoundingMode.HALF_UP);
+
+        /*
+         * Compatibility comparison only. GST itself remains stored at 3 dp.
+         */
+        BigDecimal exactTotalForComparison = exactTotal
+                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         BigDecimal roundedHeaderTotal = exactTotal
                 .setScale(0, RoundingMode.HALF_UP)
-                .setScale(2, RoundingMode.HALF_UP);
+                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
 
         boolean exactMatch =
-                total.compareTo(exactTotal) == 0;
+                total.compareTo(exactTotalForComparison) == 0;
 
         boolean roundedHeaderMatch =
                 total.compareTo(roundedHeaderTotal) == 0;
@@ -719,8 +733,8 @@ public class RegisteredPaymentCalculator {
                 .tdsAmount(breakup.tdsAmount)
                 .settlementAmount(breakup.settlementAmount)
                 .effectiveGstPercentage(rate(gstPercentage))
-                .totalEstimateTaxableAmount(money(input.getTotalTaxableAmount()))
-                .totalEstimateGstAmount(money(input.getTotalGstAmount()))
+                .totalEstimateTaxableAmount(taxMoney(input.getTotalTaxableAmount()))
+                .totalEstimateGstAmount(gstMoney(input.getTotalGstAmount()))
                 .totalEstimateAmount(money(input.getTotalInvoiceAmount()))
                 .totalAllowedTds(totalAllowedTds)
                 .alreadyUsedTds(alreadyUsedTds)
@@ -782,7 +796,19 @@ public class RegisteredPaymentCalculator {
     private BigDecimal money(BigDecimal value) {
         return value == null
                 ? ZERO
-                : value.setScale(2, RoundingMode.HALF_UP);
+                : value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal taxMoney(BigDecimal value) {
+        return value == null
+                ? TAX_ZERO
+                : value.setScale(TAX_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal gstMoney(BigDecimal value) {
+        return value == null
+                ? GST_ZERO
+                : value.setScale(GST_SCALE, RoundingMode.HALF_UP);
     }
 
     private BigDecimal rate(BigDecimal value) {

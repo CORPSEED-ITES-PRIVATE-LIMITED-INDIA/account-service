@@ -21,7 +21,10 @@ import java.util.List;
         uniqueConstraints = {
                 @UniqueConstraint(
                         name = "uk_voucher_source_type_source_id",
-                        columnNames = {"source_type", "source_id"}
+                        columnNames = {
+                                "source_type",
+                                "source_id"
+                        }
                 )
         },
         indexes = {
@@ -30,12 +33,30 @@ import java.util.List;
                         columnList = "voucher_number",
                         unique = true
                 ),
-                @Index(name = "idx_voucher_type", columnList = "voucher_type"),
-                @Index(name = "idx_voucher_date", columnList = "voucher_date"),
-                @Index(name = "idx_voucher_status", columnList = "status"),
-                @Index(name = "idx_voucher_project_id", columnList = "project_id"),
-                @Index(name = "idx_voucher_client_company_id", columnList = "client_company_id"),
-                @Index(name = "idx_voucher_party_ledger_id", columnList = "party_ledger_id")
+                @Index(
+                        name = "idx_voucher_type",
+                        columnList = "voucher_type"
+                ),
+                @Index(
+                        name = "idx_voucher_date",
+                        columnList = "voucher_date"
+                ),
+                @Index(
+                        name = "idx_voucher_status",
+                        columnList = "status"
+                ),
+                @Index(
+                        name = "idx_voucher_project_id",
+                        columnList = "project_id"
+                ),
+                @Index(
+                        name = "idx_voucher_client_company_id",
+                        columnList = "client_company_id"
+                ),
+                @Index(
+                        name = "idx_voucher_party_ledger_id",
+                        columnList = "party_ledger_id"
+                )
         }
 )
 @EntityListeners(AuditingEntityListener.class)
@@ -50,66 +71,147 @@ public class AccountingVoucher {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "voucher_number", nullable = false, unique = true, length = 50)
+    @Column(
+            name = "voucher_number",
+            nullable = false,
+            unique = true,
+            length = 50
+    )
     private String voucherNumber;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "voucher_type", nullable = false, length = 50)
+    @Column(
+            name = "voucher_type",
+            nullable = false,
+            length = 50
+    )
     private VoucherType voucherType;
 
-    @Column(name = "voucher_date", nullable = false)
+    @Column(
+            name = "voucher_date",
+            nullable = false
+    )
     private LocalDate voucherDate;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "source_type", nullable = false, length = 50)
+    @Column(
+            name = "source_type",
+            nullable = false,
+            length = 50
+    )
     private VoucherSourceType sourceType;
 
-    @Column(name = "source_id", nullable = false)
+    @Column(
+            name = "source_id",
+            nullable = false
+    )
     private Long sourceId;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 30)
+    @Column(
+            name = "status",
+            nullable = false,
+            length = 30
+    )
     private VoucherStatus status;
 
-    @Column(name = "total_debit", precision = 15, scale = 2, nullable = false)
+    /*
+     * IMPORTANT:
+     *
+     * Voucher totals now support 3 decimal places.
+     *
+     * This is necessary because voucher entries may contain:
+     *
+     * GST       = 18.125
+     * CGST      = 9.063
+     * SGST      = 9.062
+     * Round Off = -0.200
+     *
+     * We must not force those amounts back to 2 decimals.
+     */
+    @Column(
+            name = "total_debit",
+            precision = 15,
+            scale = 3,
+            nullable = false
+    )
     private BigDecimal totalDebit;
 
-    @Column(name = "total_credit", precision = 15, scale = 2, nullable = false)
+    @Column(
+            name = "total_credit",
+            precision = 15,
+            scale = 3,
+            nullable = false
+    )
     private BigDecimal totalCredit;
 
-    @Column(name = "narration", columnDefinition = "TEXT")
+    @Column(
+            name = "narration",
+            columnDefinition = "TEXT"
+    )
     private String narration;
 
-    // Operation/project snapshot. These values must remain visible even if
-    // project/client master data changes later.
+    // =========================================================
+    // OPERATION / PROJECT SNAPSHOT
+    // =========================================================
+
+    /*
+     * These values must remain visible even if
+     * project/client master data changes later.
+     */
     @Column(name = "project_id")
     private Long projectId;
 
-    @Column(name = "project_no", length = 100)
+    @Column(
+            name = "project_no",
+            length = 100
+    )
     private String projectNo;
 
-    @Column(name = "project_name", length = 255)
+    @Column(
+            name = "project_name",
+            length = 255
+    )
     private String projectName;
 
     @Column(name = "client_company_id")
     private Long clientCompanyId;
 
-    @Column(name = "client_company_name", length = 255)
+    @Column(
+            name = "client_company_name",
+            length = 255
+    )
     private String clientCompanyName;
 
     @Column(name = "client_unit_id")
     private Long clientUnitId;
 
-    @Column(name = "client_unit_name", length = 255)
+    @Column(
+            name = "client_unit_name",
+            length = 255
+    )
     private String clientUnitName;
 
-    @Column(name = "expense_paid_by", length = 30)
+    @Column(
+            name = "expense_paid_by",
+            length = 30
+    )
     private String expensePaidBy;
 
-    // Customer/party ledger displayed on the debit note.
+    // =========================================================
+    // PARTY LEDGER
+    // =========================================================
+
+    /*
+     * Customer/party ledger displayed on debit note.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "party_ledger_id")
     private LedgerMaster partyLedger;
+
+    // =========================================================
+    // VOUCHER ENTRIES
+    // =========================================================
 
     @OneToMany(
             mappedBy = "voucher",
@@ -117,11 +219,19 @@ public class AccountingVoucher {
             orphanRemoval = true
     )
     @Builder.Default
-    private List<AccountingVoucherEntry> entries = new ArrayList<>();
+    private List<AccountingVoucherEntry> entries =
+            new ArrayList<>();
+
+    // =========================================================
+    // AUDIT
+    // =========================================================
 
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by", updatable = false)
+    @JoinColumn(
+            name = "created_by",
+            updatable = false
+    )
     private User createdBy;
 
     @LastModifiedBy
@@ -130,49 +240,98 @@ public class AccountingVoucher {
     private User updatedBy;
 
     @CreatedDate
-    @Column(name = "created_at", updatable = false)
+    @Column(
+            name = "created_at",
+            updatable = false
+    )
     private LocalDateTime createdAt;
 
     @LastModifiedDate
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    // =========================================================
+    // PRE PERSIST
+    // =========================================================
+
     @PrePersist
     protected void onCreate() {
+
         if (voucherDate == null) {
-            voucherDate = LocalDate.now();
+            voucherDate =
+                    LocalDate.now();
         }
+
         if (status == null) {
-            status = VoucherStatus.POSTED;
+            status =
+                    VoucherStatus.POSTED;
         }
+
         if (totalDebit == null) {
-            totalDebit = BigDecimal.ZERO;
+            totalDebit =
+                    BigDecimal.ZERO;
         }
+
         if (totalCredit == null) {
-            totalCredit = BigDecimal.ZERO;
+            totalCredit =
+                    BigDecimal.ZERO;
         }
     }
 
-    public void addEntry(AccountingVoucherEntry entry) {
+    // =========================================================
+    // ENTRY MANAGEMENT
+    // =========================================================
+
+    public void addEntry(
+            AccountingVoucherEntry entry
+    ) {
+
         if (entry == null) {
             return;
         }
+
         entries.add(entry);
+
         entry.setVoucher(this);
     }
 
+    // =========================================================
+    // TOTAL CALCULATION
+    // =========================================================
+
     public void calculateTotals() {
-        totalDebit = entries.stream()
-                .map(AccountingVoucherEntry::getDebitAmount)
-                .filter(value -> value != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        totalCredit = entries.stream()
-                .map(AccountingVoucherEntry::getCreditAmount)
-                .filter(value -> value != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        totalDebit =
+                entries.stream()
+                        .map(
+                                AccountingVoucherEntry::getDebitAmount
+                        )
+                        .filter(
+                                value -> value != null
+                        )
+                        .reduce(
+                                BigDecimal.ZERO,
+                                BigDecimal::add
+                        );
 
+        totalCredit =
+                entries.stream()
+                        .map(
+                                AccountingVoucherEntry::getCreditAmount
+                        )
+                        .filter(
+                                value -> value != null
+                        )
+                        .reduce(
+                                BigDecimal.ZERO,
+                                BigDecimal::add
+                        );
+
+        /*
+         * Existing validation unchanged.
+         */
         if (totalDebit.compareTo(totalCredit) != 0) {
+
             throw new IllegalStateException(
                     "Voucher debit and credit amounts must be equal"
             );

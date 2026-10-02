@@ -1,6 +1,5 @@
 package com.account.service.ledger;
 
-import com.account.domain.ledger.AccountingVoucherEntry;
 import com.account.domain.ledger.LedgerGroupType;
 import com.account.domain.ledger.LedgerType;
 import com.account.dto.ledger.LedgerMasterRequestDto;
@@ -9,9 +8,7 @@ import com.account.dto.ledger.LedgerStatementResponseDto;
 import org.springframework.data.domain.Page;
 
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 public interface LedgerMasterService {
 

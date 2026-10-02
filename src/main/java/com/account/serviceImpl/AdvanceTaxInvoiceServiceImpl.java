@@ -65,6 +65,14 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
     private static final BigDecimal MAX_VOUCHER_ROUNDING_DIFFERENCE =
             new BigDecimal("0.05");
 
+    /**
+     * Invoice/Estimate headers are rounded to the nearest whole rupee.
+     * Therefore a document-level round-off can legitimately be up to 50 paise.
+     * This adjustment is posted separately and is never absorbed into GST.
+     */
+    private static final BigDecimal MAX_DOCUMENT_ROUND_OFF_DIFFERENCE =
+            new BigDecimal("0.500");
+
     private final AdvanceTaxInvoiceRequestRepository
             advanceTaxInvoiceRequestRepository;
 
@@ -1783,37 +1791,37 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
 
         BigDecimal responseSubTotalExGst =
                 invoice != null
-                        ? money(invoice.getSubTotalExGst())
+                        ? taxMoney(invoice.getSubTotalExGst())
                         : estimate != null
-                        ? money(estimate.getSubTotalExGst())
+                        ? taxMoney(estimate.getSubTotalExGst())
                         : null;
 
         BigDecimal responseTotalGstAmount =
                 invoice != null
-                        ? money(invoice.getTotalGstAmount())
+                        ? gstMoney(invoice.getTotalGstAmount())
                         : estimate != null
-                        ? money(estimate.getTotalGstAmount())
+                        ? gstMoney(estimate.getTotalGstAmount())
                         : null;
 
         BigDecimal responseCgstAmount =
                 invoice != null
-                        ? money(invoice.getCgstAmount())
+                        ? gstMoney(invoice.getCgstAmount())
                         : estimate != null
-                        ? money(estimate.getCgstAmount())
+                        ? gstMoney(estimate.getCgstAmount())
                         : null;
 
         BigDecimal responseSgstAmount =
                 invoice != null
-                        ? money(invoice.getSgstAmount())
+                        ? gstMoney(invoice.getSgstAmount())
                         : estimate != null
-                        ? money(estimate.getSgstAmount())
+                        ? gstMoney(estimate.getSgstAmount())
                         : null;
 
         BigDecimal responseIgstAmount =
                 invoice != null
-                        ? money(invoice.getIgstAmount())
+                        ? gstMoney(invoice.getIgstAmount())
                         : estimate != null
-                        ? money(estimate.getIgstAmount())
+                        ? gstMoney(estimate.getIgstAmount())
                         : null;
 
         BigDecimal responseGrandTotal =
@@ -2457,29 +2465,29 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         dto.setUnit(lineItem.getUnit());
 
         dto.setUnitPriceExGst(
-                money(lineItem.getUnitPriceExGst())
+                taxMoney(lineItem.getUnitPriceExGst())
         );
         dto.setLineTotalExGst(
-                money(lineItem.getLineTotalExGst())
+                taxMoney(lineItem.getLineTotalExGst())
         );
         dto.setGstRate(
-                money(lineItem.getGstRate())
+                rateMoney(lineItem.getGstRate())
         );
         dto.setGstAmount(
-                money(lineItem.getGstAmount())
+                gstMoney(lineItem.getGstAmount())
         );
         dto.setLineTotalWithGst(
-                money(lineItem.getLineTotalWithGst())
+                taxMoney(lineItem.getLineTotalWithGst())
         );
 
         dto.setCgstAmount(
-                money(lineItem.getCgstAmount())
+                gstMoney(lineItem.getCgstAmount())
         );
         dto.setSgstAmount(
-                money(lineItem.getSgstAmount())
+                gstMoney(lineItem.getSgstAmount())
         );
         dto.setIgstAmount(
-                money(lineItem.getIgstAmount())
+                gstMoney(lineItem.getIgstAmount())
         );
 
         dto.setDisplayOrder(lineItem.getDisplayOrder());
@@ -2498,16 +2506,16 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 new InvoiceDetailDto.LineItemDto();
 
         BigDecimal gstAmount =
-                money(lineItem.getGstAmount());
+                gstMoney(lineItem.getGstAmount());
 
         boolean igstApplicable =
                 Boolean.TRUE.equals(
                         lineItem.getIgstFlag()
                 );
 
-        BigDecimal cgstAmount = zeroMoney();
-        BigDecimal sgstAmount = zeroMoney();
-        BigDecimal igstAmount = zeroMoney();
+        BigDecimal cgstAmount = zeroGstMoney();
+        BigDecimal sgstAmount = zeroGstMoney();
+        BigDecimal igstAmount = zeroGstMoney();
 
         if (gstAmount.compareTo(BigDecimal.ZERO) > 0) {
 
@@ -2520,7 +2528,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                 cgstAmount =
                         gstAmount.divide(
                                 BigDecimal.valueOf(2),
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
@@ -2528,7 +2536,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                         gstAmount
                                 .subtract(cgstAmount)
                                 .setScale(
-                                        2,
+                                        3,
                                         RoundingMode.HALF_UP
                                 );
             }
@@ -2548,17 +2556,17 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         dto.setUnit(lineItem.getUnit());
 
         dto.setUnitPriceExGst(
-                money(lineItem.getUnitPriceExGst())
+                taxMoney(lineItem.getUnitPriceExGst())
         );
         dto.setLineTotalExGst(
-                money(lineItem.getLineTotalExGst())
+                taxMoney(lineItem.getLineTotalExGst())
         );
         dto.setGstRate(
-                money(lineItem.getGstRate())
+                rateMoney(lineItem.getGstRate())
         );
         dto.setGstAmount(gstAmount);
         dto.setLineTotalWithGst(
-                money(lineItem.getLineTotalWithGst())
+                taxMoney(lineItem.getLineTotalWithGst())
         );
 
         dto.setCgstAmount(cgstAmount);
@@ -2622,6 +2630,72 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                         : value
         ).setScale(
                 2,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    /**
+     * Taxable and line monetary values retain three decimal places.
+     */
+    private BigDecimal taxMoney(
+            BigDecimal value
+    ) {
+        return (
+                value == null
+                        ? BigDecimal.ZERO
+                        : value
+        ).setScale(
+                3,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    /**
+     * GST/CGST/SGST/IGST values retain three decimal places.
+     * Document round-off must never be merged into these amounts.
+     */
+    private BigDecimal gstMoney(
+            BigDecimal value
+    ) {
+        return (
+                value == null
+                        ? BigDecimal.ZERO
+                        : value
+        ).setScale(
+                3,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    private BigDecimal rateMoney(
+            BigDecimal value
+    ) {
+        return (
+                value == null
+                        ? BigDecimal.ZERO
+                        : value
+        ).setScale(
+                3,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    private BigDecimal accountingMoney(
+            BigDecimal value
+    ) {
+        return taxMoney(value);
+    }
+
+    private BigDecimal zeroGstMoney() {
+        return BigDecimal.ZERO.setScale(
+                3,
+                RoundingMode.HALF_UP
+        );
+    }
+
+    private BigDecimal zeroAccountingMoney() {
+        return BigDecimal.ZERO.setScale(
+                3,
                 RoundingMode.HALF_UP
         );
     }
@@ -3187,6 +3261,19 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             BalancedSalesVoucherAmounts amounts =
                     calculateBalancedSalesVoucherAmounts(invoice);
 
+            LedgerMaster roundOffLedger = null;
+
+            if (amounts.roundOffAmount().compareTo(BigDecimal.ZERO) != 0) {
+                roundOffLedger =
+                        getOrCreateSystemLedger(
+                                LedgerType.ROUND_OFF,
+                                LedgerGroupType.INDIRECT_EXPENSES,
+                                "Round Off",
+                                DebitCredit.DEBIT,
+                                confirmedBy
+                        );
+            }
+
             List<AccountingVoucherEntryRequestDto> entries =
                     new ArrayList<>();
 
@@ -3289,26 +3376,60 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             }
 
             // =====================================================
+            // DOCUMENT ROUND-OFF
+            // =====================================================
+            /*
+             * IMPORTANT:
+             * Taxable/GST values above remain exactly as stored at 3 decimals.
+             * Any whole-rupee document difference is posted separately to the
+             * ROUND_OFF ledger with a reason.
+             */
+            if (roundOffLedger != null
+                    && amounts.roundOffAmount().compareTo(BigDecimal.ZERO) > 0) {
+
+                entries.add(
+                        buildVoucherEntry(
+                                roundOffLedger.getId(),
+                                BigDecimal.ZERO,
+                                amounts.roundOffAmount(),
+                                buildRoundOffNarration(invoice, amounts)
+                        )
+                );
+
+            } else if (roundOffLedger != null
+                    && amounts.roundOffAmount().compareTo(BigDecimal.ZERO) < 0) {
+
+                entries.add(
+                        buildVoucherEntry(
+                                roundOffLedger.getId(),
+                                amounts.roundOffAmount().abs(),
+                                BigDecimal.ZERO,
+                                buildRoundOffNarration(invoice, amounts)
+                        )
+                );
+            }
+
+            // =====================================================
             // 5. FINAL VOUCHER BALANCE CHECK
             // =====================================================
             BigDecimal totalDebit =
                     entries.stream()
                             .map(AccountingVoucherEntryRequestDto::getDebitAmount)
-                            .map(this::money)
-                            .reduce(zeroMoney(), BigDecimal::add)
-                            .setScale(2, RoundingMode.HALF_UP);
+                            .map(this::accountingMoney)
+                            .reduce(zeroAccountingMoney(), BigDecimal::add)
+                            .setScale(3, RoundingMode.HALF_UP);
 
             BigDecimal totalCredit =
                     entries.stream()
                             .map(AccountingVoucherEntryRequestDto::getCreditAmount)
-                            .map(this::money)
-                            .reduce(zeroMoney(), BigDecimal::add)
-                            .setScale(2, RoundingMode.HALF_UP);
+                            .map(this::accountingMoney)
+                            .reduce(zeroAccountingMoney(), BigDecimal::add)
+                            .setScale(3, RoundingMode.HALF_UP);
 
             BigDecimal difference =
                     totalDebit
                             .subtract(totalCredit)
-                            .setScale(2, RoundingMode.HALF_UP);
+                            .setScale(3, RoundingMode.HALF_UP);
 
             log.info(
                     "Advance Invoice voucher calculation "
@@ -3391,6 +3512,10 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                             .narration(
                                     "Advance Tax Invoice posted: "
                                             + invoice.getInvoiceNumber()
+                                            + (amounts.roundOffAmount()
+                                            .compareTo(BigDecimal.ZERO) != 0
+                                            ? " | " + buildRoundOffNarration(invoice, amounts)
+                                            : " | No document round-off; GST unchanged")
                             )
                             .entries(entries)
                             .build();
@@ -3547,13 +3672,18 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             );
         }
 
+        /*
+         * Grand total remains the authoritative receivable amount.
+         * Taxable and GST snapshots remain at three decimals.
+         * The difference is DOCUMENT ROUND-OFF and is posted separately.
+         */
         BigDecimal grandTotal = money(invoice.getGrandTotal());
-        BigDecimal taxableAmount = money(invoice.getSubTotalExGst());
+        BigDecimal taxableAmount = taxMoney(invoice.getSubTotalExGst());
 
-        BigDecimal originalCgstAmount = money(invoice.getCgstAmount());
-        BigDecimal originalSgstAmount = money(invoice.getSgstAmount());
-        BigDecimal originalIgstAmount = money(invoice.getIgstAmount());
-        BigDecimal storedTotalGstAmount = money(invoice.getTotalGstAmount());
+        BigDecimal originalCgstAmount = gstMoney(invoice.getCgstAmount());
+        BigDecimal originalSgstAmount = gstMoney(invoice.getSgstAmount());
+        BigDecimal originalIgstAmount = gstMoney(invoice.getIgstAmount());
+        BigDecimal storedTotalGstAmount = gstMoney(invoice.getTotalGstAmount());
 
         validateNonNegativeVoucherAmount(grandTotal, "grandTotal");
         validateNonNegativeVoucherAmount(taxableAmount, "subTotalExGst");
@@ -3570,32 +3700,11 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             );
         }
 
-        if (taxableAmount.compareTo(grandTotal) > 0) {
-            throw new ValidationException(
-                    "Invoice taxable amount cannot exceed the grand total. "
-                            + "Grand total: ₹"
-                            + grandTotal
-                            + ", taxable amount: ₹"
-                            + taxableAmount,
-                    "ERR_TAXABLE_AMOUNT_EXCEEDS_GRAND_TOTAL",
-                    "subTotalExGst"
-            );
-        }
-
         BigDecimal componentGstTotal =
                 originalCgstAmount
                         .add(originalSgstAmount)
                         .add(originalIgstAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
-
-        /*
-         * Prefer the component total because those are the ledgers that will be
-         * posted. If component snapshots are absent, fall back to totalGstAmount.
-         */
-        BigDecimal referenceGstAmount =
-                componentGstTotal.compareTo(BigDecimal.ZERO) > 0
-                        ? componentGstTotal
-                        : storedTotalGstAmount;
+                        .setScale(3, RoundingMode.HALF_UP);
 
         if (componentGstTotal.compareTo(BigDecimal.ZERO) > 0
                 && storedTotalGstAmount.compareTo(BigDecimal.ZERO) > 0) {
@@ -3604,7 +3713,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
                     componentGstTotal
                             .subtract(storedTotalGstAmount)
                             .abs()
-                            .setScale(2, RoundingMode.HALF_UP);
+                            .setScale(3, RoundingMode.HALF_UP);
 
             if (gstSnapshotDifference
                     .compareTo(MAX_VOUCHER_ROUNDING_DIFFERENCE) > 0) {
@@ -3623,35 +3732,36 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             }
         }
 
-        BigDecimal originalCreditTotal =
+        BigDecimal referenceGstAmount =
+                componentGstTotal.compareTo(BigDecimal.ZERO) > 0
+                        ? componentGstTotal
+                        : storedTotalGstAmount;
+
+        BigDecimal rawInvoiceTotal =
                 taxableAmount
                         .add(referenceGstAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
-        BigDecimal originalDifference =
+        BigDecimal roundOffAmount =
                 grandTotal
-                        .subtract(originalCreditTotal)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .subtract(rawInvoiceTotal)
+                        .setScale(3, RoundingMode.HALF_UP);
 
-        /*
-         * A difference such as ₹0.01 is a rounding issue. A larger difference is
-         * treated as corrupted or incomplete invoice financial data.
-         */
-        if (originalDifference.abs()
-                .compareTo(MAX_VOUCHER_ROUNDING_DIFFERENCE) > 0) {
+        if (roundOffAmount.abs()
+                .compareTo(MAX_DOCUMENT_ROUND_OFF_DIFFERENCE) > 0) {
 
             throw new ValidationException(
                     "Invoice financial values contain more than an allowable "
-                            + "rounding difference. Grand total: ₹"
+                            + "document round-off difference. Grand total: ₹"
                             + grandTotal
                             + ", taxable amount: ₹"
                             + taxableAmount
-                            + ", component GST: ₹"
-                            + componentGstTotal
-                            + ", total GST: ₹"
-                            + storedTotalGstAmount
-                            + ", difference: ₹"
-                            + originalDifference,
+                            + ", GST: ₹"
+                            + referenceGstAmount
+                            + ", raw total: ₹"
+                            + rawInvoiceTotal
+                            + ", round-off: ₹"
+                            + roundOffAmount,
                     "ERR_INVOICE_FINANCIAL_VALUES_MISMATCH",
                     "invoiceId"
             );
@@ -3672,110 +3782,114 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             );
         }
 
-        BigDecimal totalGstToPost =
-                grandTotal
-                        .subtract(taxableAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+        BigDecimal finalCgstAmount = zeroGstMoney();
+        BigDecimal finalSgstAmount = zeroGstMoney();
+        BigDecimal finalIgstAmount = zeroGstMoney();
 
-        BigDecimal finalTaxableAmount = taxableAmount;
-        BigDecimal finalCgstAmount = zeroMoney();
-        BigDecimal finalSgstAmount = zeroMoney();
-        BigDecimal finalIgstAmount = zeroMoney();
+        if (componentGstTotal.compareTo(BigDecimal.ZERO) > 0) {
+            /* Preserve the exact persisted GST components. */
+            finalCgstAmount = originalCgstAmount;
+            finalSgstAmount = originalSgstAmount;
+            finalIgstAmount = originalIgstAmount;
 
-        if (referenceGstAmount.compareTo(BigDecimal.ZERO) == 0) {
+        } else if (storedTotalGstAmount.compareTo(BigDecimal.ZERO) > 0) {
             /*
-             * No-GST invoice. Any paise difference between subtotal and total is
-             * absorbed into service income rather than creating a tax ledger entry.
+             * Legacy snapshot protection: if only total GST exists, derive the
+             * route without changing total GST. SGST receives the remainder so
+             * CGST + SGST remains exactly equal to stored total GST.
              */
-            finalTaxableAmount = grandTotal;
-
-        } else {
-            boolean igstRoute =
-                    hasOriginalIgst
-                            || (!hasOriginalLocalGst && isIgstInvoice(invoice));
+            boolean igstRoute = isIgstInvoice(invoice);
 
             if (igstRoute) {
-                /*
-                 * IGST is the single balancing tax component.
-                 */
-                finalIgstAmount = totalGstToPost;
-
+                finalIgstAmount = storedTotalGstAmount;
             } else {
-                /*
-                 * CGST is rounded first. SGST is the balancing component.
-                 *
-                 * Example:
-                 * total GST = 15.25
-                 * CGST      = 7.63
-                 * SGST      = 7.62
-                 */
                 finalCgstAmount =
-                        totalGstToPost.divide(
+                        storedTotalGstAmount.divide(
                                 BigDecimal.valueOf(2),
-                                2,
+                                3,
                                 RoundingMode.HALF_UP
                         );
 
                 finalSgstAmount =
-                        totalGstToPost
+                        storedTotalGstAmount
                                 .subtract(finalCgstAmount)
-                                .setScale(2, RoundingMode.HALF_UP);
+                                .setScale(3, RoundingMode.HALF_UP);
             }
         }
 
-        BigDecimal calculatedCreditTotal =
-                finalTaxableAmount
-                        .add(finalCgstAmount)
+        BigDecimal gstToPost =
+                finalCgstAmount
                         .add(finalSgstAmount)
                         .add(finalIgstAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(3, RoundingMode.HALF_UP);
 
-        if (grandTotal.compareTo(calculatedCreditTotal) != 0) {
+        BigDecimal rawCreditTotal =
+                taxableAmount
+                        .add(gstToPost)
+                        .setScale(3, RoundingMode.HALF_UP);
+
+        BigDecimal calculatedDebitTotal =
+                grandTotal
+                        .add(
+                                roundOffAmount.compareTo(BigDecimal.ZERO) < 0
+                                        ? roundOffAmount.abs()
+                                        : BigDecimal.ZERO
+                        )
+                        .setScale(3, RoundingMode.HALF_UP);
+
+        BigDecimal calculatedCreditTotal =
+                rawCreditTotal
+                        .add(
+                                roundOffAmount.compareTo(BigDecimal.ZERO) > 0
+                                        ? roundOffAmount
+                                        : BigDecimal.ZERO
+                        )
+                        .setScale(3, RoundingMode.HALF_UP);
+
+        if (calculatedDebitTotal.compareTo(calculatedCreditTotal) != 0) {
             throw new ValidationException(
-                    "Unable to balance Invoice voucher calculation. "
-                            + "Grand total: ₹"
-                            + grandTotal
-                            + ", calculated credit: ₹"
-                            + calculatedCreditTotal,
+                    "Unable to balance Invoice voucher calculation without altering GST. "
+                            + "Debit total: ₹"
+                            + calculatedDebitTotal
+                            + ", credit total: ₹"
+                            + calculatedCreditTotal
+                            + ", round-off: ₹"
+                            + roundOffAmount,
                     "ERR_UNABLE_TO_BALANCE_INVOICE_VOUCHER",
                     "invoiceId"
             );
         }
 
         log.info(
-                "Balanced Advance Invoice voucher amounts calculated "
+                "Advance Invoice voucher amounts calculated without GST mutation "
                         + "| invoiceId={} "
                         + "| grandTotal={} "
-                        + "| originalTaxable={} "
-                        + "| originalCgst={} "
-                        + "| originalSgst={} "
-                        + "| originalIgst={} "
-                        + "| storedTotalGst={} "
-                        + "| originalDifference={} "
-                        + "| finalTaxable={} "
-                        + "| finalCgst={} "
-                        + "| finalSgst={} "
-                        + "| finalIgst={}",
+                        + "| rawInvoiceTotal={} "
+                        + "| taxable={} "
+                        + "| cgst={} "
+                        + "| sgst={} "
+                        + "| igst={} "
+                        + "| totalGst={} "
+                        + "| roundOff={}",
                 invoice.getId(),
                 grandTotal,
+                rawInvoiceTotal,
                 taxableAmount,
-                originalCgstAmount,
-                originalSgstAmount,
-                originalIgstAmount,
-                storedTotalGstAmount,
-                originalDifference,
-                finalTaxableAmount,
                 finalCgstAmount,
                 finalSgstAmount,
-                finalIgstAmount
+                finalIgstAmount,
+                gstToPost,
+                roundOffAmount
         );
 
         return new BalancedSalesVoucherAmounts(
                 grandTotal,
-                finalTaxableAmount,
+                taxableAmount,
                 finalCgstAmount,
                 finalSgstAmount,
-                finalIgstAmount
+                finalIgstAmount,
+                rawInvoiceTotal,
+                roundOffAmount
         );
     }
 
@@ -3802,7 +3916,7 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             BigDecimal amount,
             String field
     ) {
-        BigDecimal safeAmount = money(amount);
+        BigDecimal safeAmount = accountingMoney(amount);
 
         if (safeAmount.compareTo(BigDecimal.ZERO) < 0) {
             throw new ValidationException(
@@ -3821,7 +3935,9 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             BigDecimal taxableAmount,
             BigDecimal cgstAmount,
             BigDecimal sgstAmount,
-            BigDecimal igstAmount
+            BigDecimal igstAmount,
+            BigDecimal rawInvoiceTotal,
+            BigDecimal roundOffAmount
     ) {
     }
 
@@ -4057,6 +4173,34 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
         return value != null && !value.trim().isEmpty();
     }
 
+    private String buildRoundOffNarration(
+            Invoice invoice,
+            BalancedSalesVoucherAmounts amounts
+    ) {
+        BigDecimal adjustment = accountingMoney(amounts.roundOffAmount());
+
+        if (adjustment.compareTo(BigDecimal.ZERO) == 0) {
+            return "No document round-off applied; GST unchanged";
+        }
+
+        String direction =
+                adjustment.compareTo(BigDecimal.ZERO) > 0
+                        ? "UP"
+                        : "DOWN";
+
+        return "Advance Tax Invoice "
+                + (invoice != null ? invoice.getInvoiceNumber() : "")
+                + " rounded "
+                + direction
+                + " from ₹"
+                + accountingMoney(amounts.rawInvoiceTotal())
+                + " to ₹"
+                + accountingMoney(amounts.grandTotal())
+                + " using HALF_UP; round-off adjustment="
+                + adjustment
+                + "; GST/CGST/SGST/IGST unchanged";
+    }
+
     private AccountingVoucherEntryRequestDto buildVoucherEntry(
             Long ledgerId,
             BigDecimal debitAmount,
@@ -4071,8 +4215,8 @@ public class AdvanceTaxInvoiceServiceImpl implements AdvanceTaxInvoiceService {
             );
         }
 
-        BigDecimal safeDebitAmount = money(debitAmount);
-        BigDecimal safeCreditAmount = money(creditAmount);
+        BigDecimal safeDebitAmount = accountingMoney(debitAmount);
+        BigDecimal safeCreditAmount = accountingMoney(creditAmount);
 
         if (safeDebitAmount.compareTo(BigDecimal.ZERO) < 0
                 || safeCreditAmount.compareTo(BigDecimal.ZERO) < 0) {

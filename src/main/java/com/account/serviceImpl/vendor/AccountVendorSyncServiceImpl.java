@@ -68,6 +68,7 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
     private static final String LOG = "[ACCOUNT-VENDOR-SYNC]";
 
     private static final int MONEY_SCALE = 2;
+    private static final int DOCUMENT_SCALE = 0;
     private static final int RATE_SCALE = 4;
     private static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
 
@@ -91,6 +92,9 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
 
     private static final String TDS_PAYABLE_LEDGER_CODE =
             "LED-TDS-PAYABLE";
+
+    private static final String ROUND_OFF_LEDGER_CODE =
+            "LED-PROC-ROUND-OFF";
 
     private final AccountingVoucherService accountingVoucherService;
     private final AccountingVoucherRepository accountingVoucherRepository;
@@ -216,7 +220,7 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
     /**
      * Recomputes the accounting snapshot from the base amount and rates.
      * Operation Service still performs its own calculation, but Account Service
-     * refuses to post a voucher unless both calculations match exactly at 2 dp.
+     * refuses to post a voucher unless both calculations match the same monetary precision and document-rounding policy.
      */
     private CalculatedAmounts validateAndCalculateSnapshot(
             VendorPaymentApprovalRequestDto request,
@@ -362,9 +366,25 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
             }
         }
 
-        BigDecimal grossInvoiceAmount = money(
+        /*
+         * Preserve the exact taxable + GST value first.
+         * GST itself is never changed for document round-off.
+         */
+        BigDecimal rawGrossInvoiceAmount = money(
                 price.add(totalGstAmount)
         );
+
+        /*
+         * Only the final document/vendor liability is rounded to a whole rupee.
+         * Example: 123.20 -> 123.00, roundOffAmount = -0.20.
+         */
+        BigDecimal grossInvoiceAmount = rawGrossInvoiceAmount
+                .setScale(DOCUMENT_SCALE, ROUNDING)
+                .setScale(MONEY_SCALE, ROUNDING);
+
+        BigDecimal roundOffAmount = grossInvoiceAmount
+                .subtract(rawGrossInvoiceAmount)
+                .setScale(MONEY_SCALE, ROUNDING);
 
         boolean tdsActive = Boolean.TRUE.equals(
                 request.getTdsActive()
@@ -465,7 +485,9 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
                 sgstAmount,
                 igstAmount,
                 totalGstAmount,
+                rawGrossInvoiceAmount,
                 grossInvoiceAmount,
+                roundOffAmount,
                 tdsAmount,
                 vendorNetPayableAmount
         );
@@ -751,6 +773,16 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
         )
                 : null;
 
+        LedgerMaster roundOffLedger = amounts.roundOffAmount().compareTo(ZERO) != 0
+                ? getOrCreateSystemLedger(
+                LedgerType.ROUND_OFF,
+                LedgerGroupType.INDIRECT_EXPENSES,
+                "Procurement Round Off",
+                ROUND_OFF_LEDGER_CODE,
+                DebitCredit.DEBIT
+        )
+                : null;
+
         AccountingVoucherResponseDto invoiceVoucher =
                 findPostedVoucherResponse(
                         VoucherSourceType.PROCUREMENT_VENDOR_INVOICE,
@@ -803,6 +835,33 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
                                 "Input IGST on procurement purchase"
                         )
                 );
+            }
+
+            /*
+             * Document round-off is posted separately.
+             * Taxable and GST values above remain unchanged.
+             *
+             * roundOff > 0  => rounded total is higher  => Dr Round Off
+             * roundOff < 0  => rounded total is lower   => Cr Round Off
+             */
+            if (roundOffLedger != null) {
+                if (amounts.roundOffAmount().compareTo(ZERO) > 0) {
+                    entries.add(
+                            debit(
+                                    roundOffLedger.getId(),
+                                    amounts.roundOffAmount(),
+                                    buildRoundOffNarration(amounts)
+                            )
+                    );
+                } else {
+                    entries.add(
+                            credit(
+                                    roundOffLedger.getId(),
+                                    amounts.roundOffAmount().abs(),
+                                    buildRoundOffNarration(amounts)
+                            )
+                    );
+                }
             }
 
             entries.add(
@@ -1047,6 +1106,36 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
                 sumVoucherDebitByLedgerType(
                         voucher,
                         LedgerType.INPUT_IGST
+                ),
+                "voucher.entries"
+        );
+
+        BigDecimal expectedRoundOffDebit =
+                amounts.roundOffAmount().compareTo(ZERO) > 0
+                        ? amounts.roundOffAmount()
+                        : ZERO;
+
+        BigDecimal expectedRoundOffCredit =
+                amounts.roundOffAmount().compareTo(ZERO) < 0
+                        ? amounts.roundOffAmount().abs()
+                        : ZERO;
+
+        assertAmountEquals(
+                "round-off debit",
+                expectedRoundOffDebit,
+                sumVoucherDebitByLedgerType(
+                        voucher,
+                        LedgerType.ROUND_OFF
+                ),
+                "voucher.entries"
+        );
+
+        assertAmountEquals(
+                "round-off credit",
+                expectedRoundOffCredit,
+                sumVoucherCreditByLedgerType(
+                        voucher,
+                        LedgerType.ROUND_OFF
                 ),
                 "voucher.entries"
         );
@@ -1931,8 +2020,45 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
                 + amounts.price()
                 + " | GST="
                 + amounts.totalGstAmount()
-                + " | gross="
-                + amounts.grossInvoiceAmount();
+                + " | rawGross="
+                + amounts.rawGrossInvoiceAmount()
+                + " | roundedGross="
+                + amounts.grossInvoiceAmount()
+                + " | roundOff="
+                + amounts.roundOffAmount()
+                + " | roundOffReason="
+                + roundOffReason(amounts.roundOffAmount());
+    }
+
+    private String buildRoundOffNarration(
+            CalculatedAmounts amounts
+    ) {
+        return "Procurement document round-off | rawGross="
+                + amounts.rawGrossInvoiceAmount()
+                + " | roundedGross="
+                + amounts.grossInvoiceAmount()
+                + " | adjustment="
+                + amounts.roundOffAmount()
+                + " | reason="
+                + roundOffReason(amounts.roundOffAmount())
+                + " | GST retained="
+                + amounts.totalGstAmount();
+    }
+
+    private String roundOffReason(
+            BigDecimal roundOffAmount
+    ) {
+        BigDecimal value = money(roundOffAmount);
+
+        if (value.compareTo(ZERO) > 0) {
+            return "Final gross rounded UP to nearest whole rupee; GST unchanged";
+        }
+
+        if (value.compareTo(ZERO) < 0) {
+            return "Final gross rounded DOWN to nearest whole rupee; GST unchanged";
+        }
+
+        return "No document round-off required; GST unchanged";
     }
 
     private String buildPaymentNarration(
@@ -2175,7 +2301,9 @@ public class AccountVendorSyncServiceImpl implements AccountVendorSyncService {
             BigDecimal sgstAmount,
             BigDecimal igstAmount,
             BigDecimal totalGstAmount,
+            BigDecimal rawGrossInvoiceAmount,
             BigDecimal grossInvoiceAmount,
+            BigDecimal roundOffAmount,
             BigDecimal tdsAmount,
             BigDecimal vendorNetPayableAmount
     ) {

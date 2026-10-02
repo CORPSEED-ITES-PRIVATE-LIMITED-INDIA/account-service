@@ -19,12 +19,32 @@ import java.time.LocalDateTime;
 @Table(
         name = "ledger_master",
         indexes = {
-                @Index(name = "idx_ledger_name_unique", columnList = "ledger_name", unique = true),
-                @Index(name = "idx_ledger_code_unique", columnList = "ledger_code", unique = true),
-                @Index(name = "idx_ledger_type", columnList = "ledger_type"),
-                @Index(name = "idx_ledger_company_id", columnList = "company_id"),
-                @Index(name = "idx_ledger_unit_id", columnList = "unit_id"),
-                @Index(name = "idx_ledger_group_id", columnList = "ledger_group_id")
+                @Index(
+                        name = "idx_ledger_name_unique",
+                        columnList = "ledger_name",
+                        unique = true
+                ),
+                @Index(
+                        name = "idx_ledger_code_unique",
+                        columnList = "ledger_code",
+                        unique = true
+                ),
+                @Index(
+                        name = "idx_ledger_type",
+                        columnList = "ledger_type"
+                ),
+                @Index(
+                        name = "idx_ledger_company_id",
+                        columnList = "company_id"
+                ),
+                @Index(
+                        name = "idx_ledger_unit_id",
+                        columnList = "unit_id"
+                ),
+                @Index(
+                        name = "idx_ledger_group_id",
+                        columnList = "ledger_group_id"
+                )
         }
 )
 @EntityListeners(AuditingEntityListener.class)
@@ -39,22 +59,45 @@ public class LedgerMaster {
     private Long id;
 
     // Example: NESTLE INDIA LTD - NOIDA UNIT
-    @Column(name = "ledger_name", nullable = false, unique = true, length = 255)
+    @Column(
+            name = "ledger_name",
+            nullable = false,
+            unique = true,
+            length = 255
+    )
     private String ledgerName;
 
     // Example: LED-CUST-000001
-    @Column(name = "ledger_code", nullable = false, unique = true, length = 50)
+    @Column(
+            name = "ledger_code",
+            nullable = false,
+            unique = true,
+            length = 50
+    )
     private String ledgerCode;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "ledger_type", nullable = false, length = 50)
+    @Column(
+            name = "ledger_type",
+            nullable = false,
+            length = 50
+    )
     private LedgerType ledgerType;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "ledger_group_id", nullable = true)
+    @ManyToOne(
+            fetch = FetchType.LAZY,
+            optional = false
+    )
+    @JoinColumn(
+            name = "ledger_group_id",
+            nullable = true
+    )
     private LedgerGroup ledgerGroup;
 
-    // For customer/vendor ledgers
+    // =========================================================
+    // CUSTOMER / VENDOR LEDGER
+    // =========================================================
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;
@@ -67,46 +110,105 @@ public class LedgerMaster {
     @JoinColumn(name = "contact_id")
     private Contact contact;
 
-    // GST/PAN details for party ledger
-    @Column(name = "gst_no", length = 15)
+    // =========================================================
+    // GST / PAN DETAILS
+    // =========================================================
+
+    @Column(
+            name = "gst_no",
+            length = 15
+    )
     private String gstNo;
 
-    @Column(name = "pan_no", length = 20)
+    @Column(
+            name = "pan_no",
+            length = 20
+    )
     private String panNo;
 
-    // Bank ledger fields
-    @Column(name = "bank_name", length = 100)
+    // =========================================================
+    // BANK LEDGER
+    // =========================================================
+
+    @Column(
+            name = "bank_name",
+            length = 100
+    )
     private String bankName;
 
-    @Column(name = "account_holder_name", length = 150)
+    @Column(
+            name = "account_holder_name",
+            length = 150
+    )
     private String accountHolderName;
 
-    @Column(name = "account_number", length = 50)
+    @Column(
+            name = "account_number",
+            length = 50
+    )
     private String accountNumber;
 
-    @Column(name = "ifsc_code", length = 20)
+    @Column(
+            name = "ifsc_code",
+            length = 20
+    )
     private String ifscCode;
 
-    @Column(name = "branch_name", length = 100)
+    @Column(
+            name = "branch_name",
+            length = 100
+    )
     private String branchName;
 
-    // Opening balance
-    @Column(name = "opening_balance", precision = 15, scale = 2, nullable = false)
-    private BigDecimal openingBalance = BigDecimal.ZERO;
+    // =========================================================
+    // OPENING BALANCE
+    // =========================================================
+
+    /*
+     * scale changed from 2 to 3.
+     *
+     * This ensures GST and round-off postings do not lose
+     * their third decimal when reflected in ledger balances.
+     */
+    @Column(
+            name = "opening_balance",
+            precision = 15,
+            scale = 3,
+            nullable = false
+    )
+    private BigDecimal openingBalance =
+            BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "opening_balance_type", length = 10)
+    @Column(
+            name = "opening_balance_type",
+            length = 10
+    )
     private DebitCredit openingBalanceType;
 
-    // Current balance for fast dashboard/listing
-    @Column(name = "current_balance", precision = 15, scale = 2, nullable = false)
-    private BigDecimal currentBalance = BigDecimal.ZERO;
+    // =========================================================
+    // CURRENT BALANCE
+    // =========================================================
+
+    @Column(
+            name = "current_balance",
+            precision = 15,
+            scale = 3,
+            nullable = false
+    )
+    private BigDecimal currentBalance =
+            BigDecimal.ZERO;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "current_balance_type", length = 10)
+    @Column(
+            name = "current_balance_type",
+            length = 10
+    )
     private DebitCredit currentBalanceType;
 
-    // true for auto-created Nestle customer ledger / customer advance ledger
+    /*
+     * true for auto-created customer/vendor/system ledgers.
+     */
     @Column(nullable = false)
     private boolean systemCreated = false;
 
@@ -116,9 +218,16 @@ public class LedgerMaster {
     @Column(nullable = false)
     private boolean deleted = false;
 
+    // =========================================================
+    // AUDITING
+    // =========================================================
+
     @CreatedBy
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "created_by", updatable = false)
+    @JoinColumn(
+            name = "created_by",
+            updatable = false
+    )
     private User createdBy;
 
     @LastModifiedBy

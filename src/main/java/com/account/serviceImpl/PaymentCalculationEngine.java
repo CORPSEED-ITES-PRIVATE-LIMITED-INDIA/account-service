@@ -19,8 +19,18 @@ public class PaymentCalculationEngine {
     private static final Logger log =
             LogManager.getLogger(PaymentCalculationEngine.class);
 
+    private static final int MONEY_SCALE = 2;
+    private static final int TAX_SCALE = 3;
+    private static final int GST_SCALE = 3;
+
     private static final BigDecimal ZERO =
-            BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+            BigDecimal.ZERO.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+
+    private static final BigDecimal TAX_ZERO =
+            BigDecimal.ZERO.setScale(TAX_SCALE, RoundingMode.HALF_UP);
+
+    private static final BigDecimal GST_ZERO =
+            BigDecimal.ZERO.setScale(GST_SCALE, RoundingMode.HALF_UP);
 
     private static final BigDecimal HUNDRED =
             new BigDecimal("100");
@@ -126,7 +136,7 @@ public class PaymentCalculationEngine {
                 money(request.getBankAmount());
 
         BigDecimal totalTaxableAmount =
-                money(request.getTotalTaxableAmount());
+                taxMoney(request.getTotalTaxableAmount());
 
         BigDecimal totalGstAmount =
                 resolveTotalGstAmount(
@@ -361,7 +371,7 @@ public class PaymentCalculationEngine {
                         .tdsActive(tdsActive)
 
                         .enteredTaxableAmount(
-                                money(values.currentTaxableAmount)
+                                taxMoney(values.currentTaxableAmount)
                         )
 
                         .actualBankAmount(
@@ -369,11 +379,11 @@ public class PaymentCalculationEngine {
                         )
 
                         .currentTaxableAmount(
-                                money(values.currentTaxableAmount)
+                                taxMoney(values.currentTaxableAmount)
                         )
 
                         .currentGstAmount(
-                                money(values.currentGstAmount)
+                                gstMoney(values.currentGstAmount)
                         )
 
                         .tdsPercentage(
@@ -602,7 +612,7 @@ public class PaymentCalculationEngine {
                 rate(tdsPercentage);
 
         BigDecimal safeTotalTaxableAmount =
-                money(totalTaxableAmount);
+                taxMoney(totalTaxableAmount);
 
         BigDecimal safeOutstandingAmount =
                 money(outstandingAmount);
@@ -1071,19 +1081,19 @@ public class PaymentCalculationEngine {
         BigDecimal calculatedTotal =
                 taxableAmount
                         .add(gstAmount)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(TAX_SCALE, RoundingMode.HALF_UP);
 
         BigDecimal difference =
                 invoiceAmount
                         .subtract(calculatedTotal)
                         .abs()
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(TAX_SCALE, RoundingMode.HALF_UP);
 
         /*
          * A ₹1 difference is tolerated because Estimate grand total
          * may be rounded at the header.
          */
-        if (difference.compareTo(new BigDecimal("1.00")) > 0) {
+        if (difference.compareTo(new BigDecimal("1.000")) > 0) {
             log.warn(
                     "[PAYMENT-INVOICE-COMPOSITION-WARNING] traceId={} | "
                             + "taxable={} | gst={} | calculatedTotal={} | "
@@ -1208,7 +1218,7 @@ public class PaymentCalculationEngine {
         if (request.getTotalGstAmount() != null) {
 
             BigDecimal resolvedGstAmount =
-                    money(request.getTotalGstAmount());
+                    gstMoney(request.getTotalGstAmount());
 
             log.info(
                     "[PAYMENT-GST-AMOUNT-RESOLVED] traceId={} | "
@@ -1233,7 +1243,7 @@ public class PaymentCalculationEngine {
                 invoiceAmount
                         .subtract(totalTaxableAmount)
                         .max(BigDecimal.ZERO)
-                        .setScale(2, RoundingMode.HALF_UP);
+                        .setScale(GST_SCALE, RoundingMode.HALF_UP);
 
         log.info(
                 "[PAYMENT-GST-AMOUNT-RESOLVED] traceId={} | "
@@ -1325,7 +1335,27 @@ public class PaymentCalculationEngine {
     private BigDecimal money(BigDecimal value) {
         return value == null
                 ? ZERO
-                : value.setScale(2, RoundingMode.HALF_UP);
+                : value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * Taxable values are preserved at three decimals.
+     * This does not change payment/TDS settlement logic.
+     */
+    private BigDecimal taxMoney(BigDecimal value) {
+        return value == null
+                ? TAX_ZERO
+                : value.setScale(TAX_SCALE, RoundingMode.HALF_UP);
+    }
+
+    /**
+     * GST is always preserved at three decimals and is never rounded
+     * to a whole rupee or forced through the two-decimal payment helper.
+     */
+    private BigDecimal gstMoney(BigDecimal value) {
+        return value == null
+                ? GST_ZERO
+                : value.setScale(GST_SCALE, RoundingMode.HALF_UP);
     }
 
     private BigDecimal rate(BigDecimal value) {
