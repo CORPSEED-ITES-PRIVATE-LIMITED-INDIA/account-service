@@ -2890,20 +2890,25 @@ public class ProjectExpenseAccountingServiceImpl
     ) {
 
         log.info(
-                "[GOVERNMENT-FEE-VOUCHER-LIST] page={} | size={}",
+                "[GOVERNMENT-FEE-DEBIT-NOTE-LIST] page={} | size={}",
                 pageable.getPageNumber(),
                 pageable.getPageSize()
         );
 
         Page<AccountingVoucher> vouchers =
-                accountingVoucherRepository.findBySourceTypeInAndStatus(
-                        GOVERNMENT_FEE_VOUCHER_SOURCE_TYPES,
-                        VoucherStatus.POSTED,
-                        pageable
-                );
+                accountingVoucherRepository
+                        .findByVoucherTypeAndSourceTypeAndStatus(
+                                VoucherType.DEBIT_NOTE,
+                                VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL,
+                                VoucherStatus.POSTED,
+                                pageable
+                        );
 
-        return vouchers.map(this::mapGovernmentFeeVoucherListItem);
+        return vouchers.map(
+                this::mapGovernmentFeeVoucherListItem
+        );
     }
+
 
     private GovernmentExpenseVoucherListItemDto
     mapGovernmentFeeVoucherListItem(AccountingVoucher voucher) {

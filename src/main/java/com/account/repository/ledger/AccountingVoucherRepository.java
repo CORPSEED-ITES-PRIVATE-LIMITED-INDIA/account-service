@@ -49,8 +49,10 @@
 
 
 
-        Page<AccountingVoucher> findBySourceTypeInAndStatus(
-                Collection<VoucherSourceType> sourceTypes,
+
+        Page<AccountingVoucher> findByVoucherTypeAndSourceTypeAndStatus(
+                VoucherType voucherType,
+                VoucherSourceType sourceType,
                 VoucherStatus status,
                 Pageable pageable
         );
