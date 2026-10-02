@@ -332,6 +332,35 @@ public class UnbilledInvoiceController {
         );
     }
 
+    // =========================================================
+    // CANCELLATION REQUESTS - ADMIN VIEW
+    // =========================================================
+
+    @GetMapping("/cancel/requests")
+    public ResponseEntity<List<UnbilledInvoiceSummaryDto>> getCancelRequests(
+            @RequestParam Long adminUserId,
+            @RequestParam(value = "page", defaultValue = "1") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size
+    ) {
+
+        if (page < 1 || size < 1) {
+            throw new IllegalArgumentException("Page and size must be greater than 0");
+        }
+
+        return ResponseEntity.ok(
+                unbilledService.getCancelRequests(adminUserId, page - 1, size)
+        );
+    }
+
+    @GetMapping("/cancel/requests/count")
+    public ResponseEntity<Long> getCancelRequestsCount(
+            @RequestParam Long adminUserId
+    ) {
+        return ResponseEntity.ok(
+                unbilledService.getCancelRequestsCount(adminUserId)
+        );
+    }
+
     @PutMapping("/{unbilledNumber}/cancel-with-estimate")
     public ResponseEntity<Void> cancelUnbilledWithEstimate(
             @PathVariable String unbilledNumber,

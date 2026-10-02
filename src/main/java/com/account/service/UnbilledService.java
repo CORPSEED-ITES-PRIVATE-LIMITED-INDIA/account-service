@@ -41,4 +41,13 @@ public interface UnbilledService {
     UnbilledInvoiceSummaryDto issueRefund(String unbilledNumber, RefundRequestDto request);
 
     void cancelUnbilledWithEstimate(String unbilledNumber, CancelUnbilledAndEstimateRequestDto req);
+
+    List<UnbilledInvoiceSummaryDto> getCancelRequests(
+            Long adminUserId,
+            int page,
+            int size
+    );
+
+    /** ADMIN only. Number of pending cancellation requests. */
+    long getCancelRequestsCount(Long adminUserId);
 }
