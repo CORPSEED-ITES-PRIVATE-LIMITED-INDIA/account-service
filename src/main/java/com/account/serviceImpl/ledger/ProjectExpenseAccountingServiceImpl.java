@@ -4,6 +4,7 @@ import com.account.domain.Contact;
 import com.account.domain.User;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
+import com.account.domain.invoice.Invoice;
 import com.account.domain.ledger.AccountingVoucher;
 import com.account.domain.ledger.AccountingVoucherEntry;
 import com.account.domain.ledger.DebitCredit;
@@ -65,6 +66,7 @@ public class ProjectExpenseAccountingServiceImpl
     private final CompanyRepository companyRepository;
     private final CompanyUnitRepository companyUnitRepository;
     private final ContactRepository contactRepository;
+    private final InvoiceRepository invoiceRepository;
 
     private static final String GOVERNMENT_FEE_CLIENT_ADVANCE_CODE =
             "LED-GOV-FEE-ADV";
@@ -638,40 +640,19 @@ public class ProjectExpenseAccountingServiceImpl
                 request.getClientPaymentBankLedgerId()
         );
 
-        /*
-         * =========================================================
-         * NEW CLIENT_TO_COMPANY REQUIREMENT
-         * =========================================================
-         *
-         * Keep all existing flows unchanged except the CLIENT_TO_COMPANY
-         * accrual representation.
-         *
-         * STEP 3A - Receipt:
-         *      Dr Bank
-         *      Cr Customer
-         *
-         * STEP 3B - Customer Debit Note / Government-fee accrual:
-         *      Dr Customer
-         *      Cr Government Fee Receivable
-         *
-         * IMPORTANT:
-         *      - Government Fee Receivable gets CREDIT only from this flow.
-         *      - Government Fee Payable is NOT touched in Step 3 for this flow.
-         *      - The same existing PROJECT_EXPENSE_GOVT_FEE_ACCRUAL source type
-         *        is reused so Step 4 and Step 5 continue to work unchanged.
-         *      - No new VoucherSourceType is introduced.
-         *
-         * STEP 5 remains unchanged:
-         *      Dr Government Fee Payable
-         *      Cr Payment Bank
-         * =========================================================
-         */
+        // =========================================================
+        // 1. CHECK EXISTING RECEIPT
+        // =========================================================
 
         Optional<AccountingVoucher> existingReceipt =
                 findPostedVoucher(
                         VoucherSourceType.PROJECT_EXPENSE_CLIENT_RECEIPT,
                         request.getOperationExpenseId()
                 );
+
+        // =========================================================
+        // 2. CHECK EXISTING ACCRUAL / DEBIT NOTE
+        // =========================================================
 
         Optional<AccountingVoucher> existingAccrual =
                 findPostedVoucher(
@@ -685,10 +666,18 @@ public class ProjectExpenseAccountingServiceImpl
                         "existingAccrualPresent={} | existingAccrualId={}",
                 request.getOperationExpenseId(),
                 existingReceipt.isPresent(),
-                existingReceipt.map(AccountingVoucher::getId).orElse(null),
+                existingReceipt
+                        .map(AccountingVoucher::getId)
+                        .orElse(null),
                 existingAccrual.isPresent(),
-                existingAccrual.map(AccountingVoucher::getId).orElse(null)
+                existingAccrual
+                        .map(AccountingVoucher::getId)
+                        .orElse(null)
         );
+
+        // =========================================================
+        // 3. VALIDATE EXISTING AMOUNTS
+        // =========================================================
 
         validateExistingVoucherAmount(
                 existingReceipt,
@@ -702,27 +691,38 @@ public class ProjectExpenseAccountingServiceImpl
                 "Existing government-fee accrual amount differs from the approved amount"
         );
 
+        // =========================================================
+        // 4. RESOLVE APPROVER
+        // =========================================================
+
         User approver =
                 resolveApprover(
                         request.getApprovedByUserId()
                 );
 
-        /*
-         * Reuse the receiving ledger from an already-posted receipt when
-         * possible. Otherwise resolve it from the request exactly as before.
-         */
+        // =========================================================
+        // 5. RESOLVE RECEIVING BANK / CASH LEDGER
+        // =========================================================
+
         LedgerMaster receivingLedger =
                 existingReceipt
-                        .map(voucher -> resolveVoucherLedgerBySide(
-                                voucher,
-                                DebitCredit.DEBIT,
-                                "Existing client receipt voucher does not contain a debit receiving ledger"
-                        ))
-                        .orElseGet(() -> resolveReceivingLedger(request, approver));
+                        .map(voucher ->
+                                resolveVoucherLedgerBySide(
+                                        voucher,
+                                        DebitCredit.DEBIT,
+                                        "Existing client receipt voucher does not contain a debit receiving ledger"
+                                )
+                        )
+                        .orElseGet(() ->
+                                resolveReceivingLedger(
+                                        request,
+                                        approver
+                                )
+                        );
 
         log.info(
-                "[ACC-RECEIVING-LEDGER-RESOLVED] operationExpenseId={} | ledgerId={} | ledgerCode={} | " +
-                        "ledgerName={} | ledgerType={} | active={}",
+                "[ACC-RECEIVING-LEDGER-RESOLVED] operationExpenseId={} | " +
+                        "ledgerId={} | ledgerCode={} | ledgerName={} | ledgerType={} | active={}",
                 request.getOperationExpenseId(),
                 receivingLedger.getId(),
                 receivingLedger.getLedgerCode(),
@@ -731,33 +731,45 @@ public class ProjectExpenseAccountingServiceImpl
                 receivingLedger.isActive()
         );
 
-        /*
-         * Reuse the customer ledger from an existing receipt. If no receipt
-         * exists yet, use the existing customer-ledger resolution unchanged.
-         */
+        // =========================================================
+        // 6. RESOLVE CUSTOMER LEDGER
+        // =========================================================
+
         LedgerMaster customerLedger =
                 existingReceipt
-                        .map(voucher -> resolveVoucherLedgerByType(
-                                voucher,
-                                LedgerType.CUSTOMER,
-                                DebitCredit.CREDIT,
-                                "Existing client receipt voucher does not contain a CUSTOMER credit entry. " +
-                                        "Cancel/reverse the old receipt voucher and repost the government-fee approval."
-                        ))
-                        .orElseGet(() -> resolveCompanyFundedCustomerLedger(request, approver));
+                        .map(voucher ->
+                                resolveVoucherLedgerByType(
+                                        voucher,
+                                        LedgerType.CUSTOMER,
+                                        DebitCredit.CREDIT,
+                                        "Existing client receipt voucher does not contain a CUSTOMER credit entry. " +
+                                                "Cancel/reverse the old receipt voucher and repost the government-fee approval."
+                                )
+                        )
+                        .orElseGet(() ->
+                                resolveCompanyFundedCustomerLedger(
+                                        request,
+                                        approver
+                                )
+                        );
 
         log.info(
-                "[ACC-CUSTOMER-LEDGER-RESOLVED] operationExpenseId={} | ledgerId={} | ledgerCode={} | ledgerName={}",
+                "[ACC-CUSTOMER-LEDGER-RESOLVED] operationExpenseId={} | " +
+                        "ledgerId={} | ledgerCode={} | ledgerName={}",
                 request.getOperationExpenseId(),
                 customerLedger.getId(),
                 customerLedger.getLedgerCode(),
                 customerLedger.getLedgerName()
         );
 
-        /*
-         * Keep the system payable ledger available for Step 5, but DO NOT
-         * post a Step-3 credit to it for CLIENT_TO_COMPANY.
-         */
+        // =========================================================
+        // 7. GOVERNMENT FEE PAYABLE
+        //
+        // Required for Step 5.
+        // No Step-3 posting is made to this ledger for
+        // CLIENT_TO_COMPANY.
+        // =========================================================
+
         LedgerMaster payableLedger =
                 getOrCreateSystemLedger(
                         LedgerType.GOVERNMENT_FEE_PAYABLE,
@@ -769,13 +781,17 @@ public class ProjectExpenseAccountingServiceImpl
                 );
 
         log.info(
-                "[ACC-PAYABLE-LEDGER-RESOLVED-NO-STEP3-POSTING] operationExpenseId={} | " +
-                        "ledgerId={} | ledgerCode={} | ledgerName={}",
+                "[ACC-PAYABLE-LEDGER-RESOLVED-NO-STEP3-POSTING] " +
+                        "operationExpenseId={} | ledgerId={} | ledgerCode={} | ledgerName={}",
                 request.getOperationExpenseId(),
                 payableLedger.getId(),
                 payableLedger.getLedgerCode(),
                 payableLedger.getLedgerName()
         );
+
+        // =========================================================
+        // 8. GOVERNMENT FEE RECEIVABLE
+        // =========================================================
 
         LedgerMaster receivableLedger =
                 getOrCreateSystemLedger(
@@ -788,24 +804,30 @@ public class ProjectExpenseAccountingServiceImpl
                 );
 
         log.info(
-                "[ACC-RECEIVABLE-LEDGER-RESOLVED] operationExpenseId={} | ledgerId={} | ledgerCode={} | ledgerName={}",
+                "[ACC-RECEIVABLE-LEDGER-RESOLVED] operationExpenseId={} | " +
+                        "ledgerId={} | ledgerCode={} | ledgerName={}",
                 request.getOperationExpenseId(),
                 receivableLedger.getId(),
                 receivableLedger.getLedgerCode(),
                 receivableLedger.getLedgerName()
         );
 
+        // =========================================================
+        // 9. AMOUNT
+        // =========================================================
+
         BigDecimal amount =
                 money(
                         request.getApprovedAmount()
                 );
 
-        /*
-         * ENTRY A - UNCHANGED
-         *
-         * Dr Bank
-         * Cr Customer
-         */
+        // =========================================================
+        // 10. RECEIPT VOUCHER
+        //
+        // Dr Bank
+        // Cr Customer
+        // =========================================================
+
         AccountingVoucher receiptVoucher =
                 existingReceipt.orElseGet(() ->
                         createClientReceiptVoucher(
@@ -817,7 +839,8 @@ public class ProjectExpenseAccountingServiceImpl
                 );
 
         log.info(
-                "[ACC-CLIENT-RECEIPT-READY] operationExpenseId={} | voucherId={} | voucherNumber={} | " +
+                "[ACC-CLIENT-RECEIPT-READY] operationExpenseId={} | " +
+                        "voucherId={} | voucherNumber={} | " +
                         "debitBankLedgerId={} | creditCustomerLedgerId={} | amount={}",
                 request.getOperationExpenseId(),
                 receiptVoucher.getId(),
@@ -827,20 +850,30 @@ public class ProjectExpenseAccountingServiceImpl
                 amount
         );
 
-        /*
-         * ENTRY B - NEW REQUIRED SHAPE
-         *
-         * Dr Customer
-         * Cr Government Fee Receivable
-         *
-         * This voucher itself is the Step-3 accrual marker by using the
-         * EXISTING PROJECT_EXPENSE_GOVT_FEE_ACCRUAL source type.
-         * Therefore no extra Dr Receivable / Cr Payable journal is created.
-         */
+        // =========================================================
+        // 11. DEBIT NOTE / GOVERNMENT FEE ACCRUAL
+        //
+        // Dr Customer
+        // Cr Government Fee Receivable
+        //
+        // IMPORTANT:
+        // PROJECT_EXPENSE_GOVT_FEE_ACCRUAL remains the source type.
+        // This keeps Step 4 and Step 5 unchanged.
+        // =========================================================
+
         AccountingVoucher accrualVoucher;
 
         if (existingAccrual.isPresent()) {
-            AccountingVoucher existingVoucher = existingAccrual.get();
+
+            AccountingVoucher existingVoucher =
+                    existingAccrual.get();
+
+            // =====================================================
+            // NEW REQUIRED SHAPE
+            //
+            // Dr Customer
+            // Cr Government Fee Receivable
+            // =====================================================
 
             boolean newRequiredShape =
                     hasVoucherEntry(
@@ -848,11 +881,19 @@ public class ProjectExpenseAccountingServiceImpl
                             LedgerType.CUSTOMER,
                             DebitCredit.DEBIT
                     )
-                            && hasVoucherEntry(
-                            existingVoucher,
-                            LedgerType.GOVERNMENT_FEE_RECEIVABLE,
-                            DebitCredit.CREDIT
-                    );
+                            &&
+                            hasVoucherEntry(
+                                    existingVoucher,
+                                    LedgerType.GOVERNMENT_FEE_RECEIVABLE,
+                                    DebitCredit.CREDIT
+                            );
+
+            // =====================================================
+            // LEGACY SHAPE
+            //
+            // Dr Government Fee Receivable
+            // Cr Government Fee Payable
+            // =====================================================
 
             boolean legacyShape =
                     hasVoucherEntry(
@@ -860,18 +901,22 @@ public class ProjectExpenseAccountingServiceImpl
                             LedgerType.GOVERNMENT_FEE_RECEIVABLE,
                             DebitCredit.DEBIT
                     )
-                            && hasVoucherEntry(
-                            existingVoucher,
-                            LedgerType.GOVERNMENT_FEE_PAYABLE,
-                            DebitCredit.CREDIT
-                    );
+                            &&
+                            hasVoucherEntry(
+                                    existingVoucher,
+                                    LedgerType.GOVERNMENT_FEE_PAYABLE,
+                                    DebitCredit.CREDIT
+                            );
 
             if (newRequiredShape) {
-                accrualVoucher = existingVoucher;
+
+                accrualVoucher =
+                        existingVoucher;
 
                 log.info(
-                        "[ACC-CLIENT-ACCRUAL-ALREADY-POSTED-NEW-SHAPE] operationExpenseId={} | " +
-                                "voucherId={} | voucherNumber={} | DR_CUSTOMER={} | CR_RECEIVABLE={} | amount={}",
+                        "[ACC-CLIENT-ACCRUAL-ALREADY-POSTED-NEW-SHAPE] " +
+                                "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
+                                "DR_CUSTOMER={} | CR_RECEIVABLE={} | amount={}",
                         request.getOperationExpenseId(),
                         accrualVoucher.getId(),
                         accrualVoucher.getVoucherNumber(),
@@ -879,21 +924,23 @@ public class ProjectExpenseAccountingServiceImpl
                         receivableLedger.getId(),
                         amount
                 );
+
             } else if (legacyShape) {
+
                 /*
-                 * Do not mutate/repost old accounting. Existing historical
-                 * vouchers remain exactly as they were posted.
+                 * Do not modify historical accounting.
                  */
-                LedgerMaster legacyPayableLedger = resolveVoucherLedgerByType(
-                        existingVoucher,
-                        LedgerType.GOVERNMENT_FEE_PAYABLE,
-                        DebitCredit.CREDIT,
-                        "Existing legacy accrual voucher does not contain Government Fee Payable credit entry"
-                );
+                LedgerMaster legacyPayableLedger =
+                        resolveVoucherLedgerByType(
+                                existingVoucher,
+                                LedgerType.GOVERNMENT_FEE_PAYABLE,
+                                DebitCredit.CREDIT,
+                                "Existing legacy accrual voucher does not contain Government Fee Payable credit entry"
+                        );
 
                 log.warn(
-                        "[ACC-CLIENT-ACCRUAL-LEGACY-SHAPE-PRESERVED] operationExpenseId={} | " +
-                                "voucherId={} | voucherNumber={} | " +
+                        "[ACC-CLIENT-ACCRUAL-LEGACY-SHAPE-PRESERVED] " +
+                                "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
                                 "reason=historical-voucher-not-mutated",
                         request.getOperationExpenseId(),
                         existingVoucher.getId(),
@@ -910,14 +957,25 @@ public class ProjectExpenseAccountingServiceImpl
                         customerLedger,
                         legacyPayableLedger
                 );
+
             } else {
+
                 throw new ValidationException(
                         "Existing government-fee accrual voucher has an unsupported ledger-entry structure",
                         "ERR_GOVERNMENT_FEE_ACCRUAL_STRUCTURE_MISMATCH",
                         "operationExpenseId"
                 );
             }
+
         } else {
+
+            // =====================================================
+            // CREATE ONLY THE REQUIRED DEBIT NOTE
+            //
+            // Dr Customer
+            // Cr Government Fee Receivable
+            // =====================================================
+
             accrualVoucher =
                     createClientGovernmentFeeCustomerDebitNote(
                             request,
@@ -928,8 +986,8 @@ public class ProjectExpenseAccountingServiceImpl
         }
 
         log.info(
-                "[ACC-CLIENT-ACCRUAL-READY-NEW-REQUIREMENT] operationExpenseId={} | " +
-                        "voucherId={} | voucherNumber={} | " +
+                "[ACC-CLIENT-ACCRUAL-READY-NEW-REQUIREMENT] " +
+                        "operationExpenseId={} | voucherId={} | voucherNumber={} | " +
                         "debitCustomerLedgerId={} | creditReceivableLedgerId={} | " +
                         "payableStep3Posting=false | amount={}",
                 request.getOperationExpenseId(),
@@ -940,12 +998,15 @@ public class ProjectExpenseAccountingServiceImpl
                 amount
         );
 
+        // =========================================================
+        // 12. COMPLETE
+        // =========================================================
+
         log.info(
                 "[CLIENT-FUNDED-GOVERNMENT-FEE-POSTED] " +
-                        "operationExpenseId={} | " +
-                        "receiptVoucherId={} | accrualVoucherId={} | " +
-                        "customerLedgerId={} | receivableLedgerId={} | " +
-                        "payableLedgerId={} | amount={}",
+                        "operationExpenseId={} | receiptVoucherId={} | " +
+                        "accrualVoucherId={} | customerLedgerId={} | " +
+                        "receivableLedgerId={} | payableLedgerId={} | amount={}",
                 request.getOperationExpenseId(),
                 receiptVoucher.getId(),
                 accrualVoucher.getId(),
@@ -2897,7 +2958,7 @@ public class ProjectExpenseAccountingServiceImpl
 
         Page<AccountingVoucher> vouchers =
                 accountingVoucherRepository
-                        .findByVoucherTypeAndSourceTypeAndStatus(
+                        .findDistinctGovernmentFeeDebitNotes(
                                 VoucherType.DEBIT_NOTE,
                                 VoucherSourceType.PROJECT_EXPENSE_GOVT_FEE_ACCRUAL,
                                 VoucherStatus.POSTED,
@@ -2909,19 +2970,71 @@ public class ProjectExpenseAccountingServiceImpl
         );
     }
 
-
     private GovernmentExpenseVoucherListItemDto
     mapGovernmentFeeVoucherListItem(AccountingVoucher voucher) {
 
-        AccountingVoucher contextVoucher = resolveContextVoucher(voucher);
-        LedgerMaster partyLedger = resolvePartyLedgerFromVoucher(
-                contextVoucher
-        );
+        AccountingVoucher contextVoucher =
+                resolveContextVoucher(voucher);
+
+        LedgerMaster partyLedger =
+                resolvePartyLedgerFromVoucher(
+                        contextVoucher
+                );
+
         Long clientCompanyId =
                 resolveClientCompanyId(
                         contextVoucher,
                         partyLedger
                 );
+
+        // =====================================================
+        // SOLUTION DETAILS
+        // =====================================================
+
+        Invoice projectInvoice =
+                resolveInvoiceByProjectNo(
+                        contextVoucher
+                );
+
+        Long solutionId = null;
+        String solutionName = null;
+
+        if (projectInvoice != null) {
+
+            solutionId =
+                    projectInvoice.getSolutionId();
+
+            solutionName =
+                    projectInvoice.getSolutionName();
+
+            /*
+             * Fallback to Estimate snapshot if Invoice
+             * solution details are missing.
+             */
+            if (projectInvoice.getEstimate() != null) {
+
+                if (solutionId == null) {
+
+                    solutionId =
+                            projectInvoice
+                                    .getEstimate()
+                                    .getSolutionId();
+                }
+
+                if (solutionName == null
+                        || solutionName.trim().isEmpty()) {
+
+                    solutionName =
+                            projectInvoice
+                                    .getEstimate()
+                                    .getSolutionName();
+                }
+            }
+        }
+
+        // =====================================================
+        // CLIENT UNIT
+        // =====================================================
 
         Long clientUnitId =
                 resolveClientUnitId(
@@ -2932,18 +3045,26 @@ public class ProjectExpenseAccountingServiceImpl
         Company clientCompany = null;
 
         if (clientCompanyId != null) {
-            clientCompany = companyRepository
-                    .findById(clientCompanyId)
-                    .orElse(null);
+
+            clientCompany =
+                    companyRepository
+                            .findById(clientCompanyId)
+                            .orElse(null);
         }
 
         CompanyUnit clientUnit = null;
 
         if (clientUnitId != null) {
-            clientUnit = companyUnitRepository
-                    .findById(clientUnitId)
-                    .orElse(null);
+
+            clientUnit =
+                    companyUnitRepository
+                            .findById(clientUnitId)
+                            .orElse(null);
         }
+
+        // =====================================================
+        // CLIENT CONTACT
+        // =====================================================
 
         Contact clientContact = null;
 
@@ -2955,39 +3076,96 @@ public class ProjectExpenseAccountingServiceImpl
                                     clientUnitId
                             );
 
-            if (contacts != null && !contacts.isEmpty()) {
-                clientContact = contacts.get(0);
+            if (contacts != null
+                    && !contacts.isEmpty()) {
+
+                clientContact =
+                        contacts.get(0);
             }
         }
 
+        // =====================================================
+        // ORGANIZATION
+        // =====================================================
 
+        Organization organization =
+                organizationRepository
+                        .findTopOrganization()
+                        .orElse(null);
 
-        // Same single-organization lookup pattern used in InvoiceServiceImpl
-        Organization organization = organizationRepository
-                .findTopOrganization()
-                .orElse(null);
+        // =====================================================
+        // RESPONSE
+        // =====================================================
 
         return GovernmentExpenseVoucherListItemDto.builder()
-                .voucherId(voucher.getId())
-                .voucherNumber(voucher.getVoucherNumber())
-                .voucherType(voucher.getVoucherType())
-                .voucherDate(voucher.getVoucherDate())
-                .operationExpenseId(voucher.getSourceId())
-                .sourceType(voucher.getSourceType())
-                .status(voucher.getStatus())
-                .projectId(contextVoucher.getProjectId())
-                .projectNo(contextVoucher.getProjectNo())
-                .projectName(contextVoucher.getProjectName())
+
+                // ================================
+                // VOUCHER
+                // ================================
+
+                .voucherId(
+                        voucher.getId()
+                )
+
+                .voucherNumber(
+                        voucher.getVoucherNumber()
+                )
+
+                .voucherType(
+                        voucher.getVoucherType()
+                )
+
+                .voucherDate(
+                        voucher.getVoucherDate()
+                )
+
+                .operationExpenseId(
+                        voucher.getSourceId()
+                )
+
+                .sourceType(
+                        voucher.getSourceType()
+                )
+
+                .status(
+                        voucher.getStatus()
+                )
+
+                // ================================
+                // PROJECT
+                // ================================
+
+                .projectId(
+                        contextVoucher.getProjectId()
+                )
+
+                .projectNo(
+                        contextVoucher.getProjectNo()
+                )
+
+                .projectName(
+                        contextVoucher.getProjectName()
+                )
+
+                // ================================
+                // SOLUTION
+                // ================================
+
+                .solutionId(
+                        solutionId
+                )
+
+                .solutionName(
+                        solutionName
+                )
+
+                // ================================
+                // CLIENT COMPANY
+                // ================================
+
                 .clientCompanyId(
-                        resolveClientCompanyId(contextVoucher, partyLedger)
+                        clientCompanyId
                 )
-                .clientCompanyName(
-                        resolveClientCompanyName(contextVoucher, partyLedger)
-                )
-                .clientUnitId(
-                        resolveClientUnitId(contextVoucher, partyLedger)
-                )
-                .clientCompanyId(clientCompanyId)
 
                 .clientCompanyName(
                         resolveClientCompanyName(
@@ -2996,7 +3174,13 @@ public class ProjectExpenseAccountingServiceImpl
                         )
                 )
 
-                .clientUnitId(clientUnitId)
+                // ================================
+                // CLIENT UNIT
+                // ================================
+
+                .clientUnitId(
+                        clientUnitId
+                )
 
                 .clientUnitName(
                         resolveClientUnitName(
@@ -3005,9 +3189,9 @@ public class ProjectExpenseAccountingServiceImpl
                         )
                 )
 
-// ========================================
-// CONTACT
-// ========================================
+                // ================================
+                // CONTACT
+                // ================================
 
                 .clientContactName(
                         clientContact != null
@@ -3027,10 +3211,9 @@ public class ProjectExpenseAccountingServiceImpl
                                 : null
                 )
 
-// ========================================
-// CLIENT ADDRESS
-// Address should come from selected unit
-// ========================================
+                // ================================
+                // CLIENT ADDRESS
+                // ================================
 
                 .clientAddressLine1(
                         clientUnit != null
@@ -3079,83 +3262,149 @@ public class ProjectExpenseAccountingServiceImpl
                                 ? clientCompany.getPanNo()
                                 : null
                 )
-                .expensePaidBy(contextVoucher.getExpensePaidBy())
-                .partyLedgerId(
-                        partyLedger != null ? partyLedger.getId() : null
+
+                // ================================
+                // LEDGER
+                // ================================
+
+                .expensePaidBy(
+                        contextVoucher.getExpensePaidBy()
                 )
+
+                .partyLedgerId(
+                        partyLedger != null
+                                ? partyLedger.getId()
+                                : null
+                )
+
                 .partyLedgerCode(
                         partyLedger != null
                                 ? partyLedger.getLedgerCode()
                                 : null
                 )
+
                 .partyLedgerName(
                         partyLedger != null
                                 ? partyLedger.getLedgerName()
                                 : null
                 )
-                .amount(voucher.getTotalDebit())
-                .totalDebit(voucher.getTotalDebit())
-                .totalCredit(voucher.getTotalCredit())
-                .narration(voucher.getNarration())
-                .entries(mapVoucherEntries(voucher))
-                .createdAt(voucher.getCreatedAt())
-                // ---- Organization / letterhead details ----
-                .organizationName(
-                        organization != null ? organization.getName() : null
+
+                // ================================
+                // AMOUNT
+                // ================================
+
+                .amount(
+                        voucher.getTotalDebit()
                 )
+
+                .totalDebit(
+                        voucher.getTotalDebit()
+                )
+
+                .totalCredit(
+                        voucher.getTotalCredit()
+                )
+
+                .narration(
+                        voucher.getNarration()
+                )
+
+                .entries(
+                        mapVoucherEntries(voucher)
+                )
+
+                .createdAt(
+                        voucher.getCreatedAt()
+                )
+
+                // ================================
+                // ORGANIZATION
+                // ================================
+
+                .organizationName(
+                        organization != null
+                                ? organization.getName()
+                                : null
+                )
+
                 .organizationAddressLine1(
                         organization != null
                                 ? organization.getAddressLine1()
                                 : null
                 )
+
                 .organizationAddressLine2(
                         organization != null
                                 ? organization.getAddressLine2()
                                 : null
                 )
+
                 .organizationCity(
-                        organization != null ? organization.getCity() : null
+                        organization != null
+                                ? organization.getCity()
+                                : null
                 )
+
                 .organizationState(
-                        organization != null ? organization.getState() : null
+                        organization != null
+                                ? organization.getState()
+                                : null
                 )
+
                 .organizationCountry(
                         organization != null
                                 ? organization.getCountry()
                                 : null
                 )
+
                 .organizationPinCode(
                         organization != null
                                 ? organization.getPinCode()
                                 : null
                 )
+
                 .organizationGstNo(
-                        organization != null ? organization.getGstNo() : null
+                        organization != null
+                                ? organization.getGstNo()
+                                : null
                 )
+
                 .organizationPanNo(
-                        organization != null ? organization.getPanNo() : null
+                        organization != null
+                                ? organization.getPanNo()
+                                : null
                 )
+
                 .organizationCinNumber(
                         organization != null
                                 ? organization.getCinNumber()
                                 : null
                 )
+
                 .organizationEmail(
-                        organization != null ? organization.getEmail() : null
+                        organization != null
+                                ? organization.getEmail()
+                                : null
                 )
+
                 .organizationPhone(
-                        organization != null ? organization.getPhone() : null
+                        organization != null
+                                ? organization.getPhone()
+                                : null
                 )
+
                 .organizationWebsite(
                         organization != null
                                 ? organization.getWebsite()
                                 : null
                 )
+
                 .organizationLogoUrl(
                         organization != null
                                 ? organization.getLogoUrl()
                                 : null
                 )
+
                 .build();
     }
 
@@ -3628,6 +3877,30 @@ public class ProjectExpenseAccountingServiceImpl
         );
 
         return voucher;
+    }
+
+
+    private Invoice resolveInvoiceByProjectNo(
+            AccountingVoucher voucher
+    ) {
+
+        if (voucher == null) {
+            return null;
+        }
+
+        String projectNo = clean(
+                voucher.getProjectNo()
+        );
+
+        if (projectNo == null) {
+            return null;
+        }
+
+        return invoiceRepository
+                .findFirstByOperationProjectNoAndIsCancelledFalseOrderByIdDesc(
+                        projectNo
+                )
+                .orElse(null);
     }
 
 

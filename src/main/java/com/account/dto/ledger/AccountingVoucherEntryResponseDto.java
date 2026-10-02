@@ -29,4 +29,7 @@ public class AccountingVoucherEntryResponseDto {
     private String narration;
 
     private Integer displayOrder;
+
+    private Long solutionId;
+    private String solutionName;
 }

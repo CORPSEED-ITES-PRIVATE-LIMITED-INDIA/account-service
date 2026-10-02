@@ -30,6 +30,9 @@ public class GovernmentExpenseVoucherListItemDto {
     private String projectNo;
     private String projectName;
 
+    private Long solutionId;
+    private String solutionName;
+
     // Primary contact
     private String clientContactName;
     private String clientEmail;

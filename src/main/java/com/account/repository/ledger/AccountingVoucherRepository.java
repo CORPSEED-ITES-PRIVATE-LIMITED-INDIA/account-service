@@ -8,6 +8,8 @@
     import org.springframework.data.domain.Pageable;
     import org.springframework.data.jpa.repository.JpaRepository;
     import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+    import org.springframework.data.jpa.repository.Query;
+    import org.springframework.data.repository.query.Param;
 
     import java.util.Collection;
     import java.util.Optional;
@@ -54,6 +56,21 @@
                 VoucherType voucherType,
                 VoucherSourceType sourceType,
                 VoucherStatus status,
+                Pageable pageable
+        );
+
+
+        @Query("""
+        SELECT DISTINCT v
+        FROM AccountingVoucher v
+        WHERE v.voucherType = :voucherType
+          AND v.sourceType = :sourceType
+          AND v.status = :status
+        """)
+        Page<AccountingVoucher> findDistinctGovernmentFeeDebitNotes(
+                @Param("voucherType") VoucherType voucherType,
+                @Param("sourceType") VoucherSourceType sourceType,
+                @Param("status") VoucherStatus status,
                 Pageable pageable
         );
 
