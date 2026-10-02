@@ -49,27 +49,6 @@ public class AdvanceInvoiceOperationSyncService {
     private final InvoiceRepository invoiceRepository;
     private final OperationFeignClient operationFeignClient;
 
-    @Async
-    public void synchronizeAfterCommit(
-            Long invoiceId,
-            Long confirmedByUserId
-    ) {
-        try {
-            synchronize(
-                    invoiceId,
-                    confirmedByUserId
-            );
-
-        } catch (Exception ex) {
-
-            log.error(
-                    "Advance Invoice asynchronous Operation sync failed | invoiceId={} | error={}",
-                    invoiceId,
-                    safeError(ex),
-                    ex
-            );
-        }
-    }
 
     @Transactional(
             propagation = Propagation.REQUIRES_NEW
