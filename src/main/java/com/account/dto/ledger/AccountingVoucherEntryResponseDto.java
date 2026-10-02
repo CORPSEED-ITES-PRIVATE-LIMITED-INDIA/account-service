@@ -30,6 +30,4 @@ public class AccountingVoucherEntryResponseDto {
 
     private Integer displayOrder;
 
-    private Long solutionId;
-    private String solutionName;
 }
