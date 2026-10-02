@@ -12,6 +12,7 @@ import com.account.domain.status.InvoiceStatus;
 import com.account.domain.status.TdsStatus;
 import com.account.domain.status.UnbilledStatus;
 import com.account.domain.unbilled.UnbilledInvoice;
+import com.account.dto.CancelUnbilledAndEstimateRequestDto;
 import com.account.dto.RefundRequestDto;
 import com.account.dto.operationService.*;
 import com.account.dto.payment.TdsResponseDto;
@@ -37,6 +38,7 @@ import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
@@ -978,6 +980,45 @@ public class UnbilledServiceImpl implements UnbilledService {
     }
 
 
+    @Override
+    @Transactional
+    public void cancelUnbilledWithEstimate(String unbilledNumber,
+                                           CancelUnbilledAndEstimateRequestDto req) {
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository
+                .findByUnbilledNumber(unbilledNumber.trim())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled invoice not found: " + unbilledNumber, "UNBILLED_NOT_FOUND"));
+
+        User user = userRepository.findByIdAndNotDeleted(req.getCancelledByUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found", "USER_NOT_FOUND"));
+
+        LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata"));
+        String reason = req.getReason() != null ? req.getReason() : "Cancelled due to legal refund";
+
+        // Unbilled (skip if already cancelled, so retries are safe)
+        if (!unbilled.isCancelled()) {
+            unbilled.setCancelled(true);
+            unbilled.setStatus(UnbilledStatus.CANCELLED);
+            unbilled.setRejectionReason(reason);
+            unbilled.setUpdatedBy(user);
+            unbilled.setUpdatedAt(now);
+            unbilledInvoiceRepository.save(unbilled);
+        }
+
+        // Estimate
+        Estimate estimate = unbilled.getEstimate();
+        if (estimate != null && !estimate.isCancelled()) {
+            estimate.setCancelled(true);
+            estimate.setStatus(EstimateStatus.CANCELLED);
+            estimate.setRejectionReason(reason);
+            estimate.setRejectedAt(now);
+            estimate.setRejectedBy(user);
+            estimate.setUpdatedBy(user);
+            estimate.setRevisionReason("Cancelled - legal refund");
+            estimateRepository.save(estimate);
+        }
+    }
 
 
 

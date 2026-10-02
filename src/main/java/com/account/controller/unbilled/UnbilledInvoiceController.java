@@ -1,6 +1,7 @@
 package com.account.controller.unbilled;
 
 import com.account.domain.status.UnbilledStatus;
+import com.account.dto.CancelUnbilledAndEstimateRequestDto;
 import com.account.dto.RefundRequestDto;
 import com.account.dto.operationService.OperationProjectActivityResponseDto;
 import com.account.dto.payment.GovernmentFeeResponseDto;
@@ -329,6 +330,14 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(
                 "Unbilled cancellation rejected successfully"
         );
+    }
+
+    @PutMapping("/{unbilledNumber}/cancel-with-estimate")
+    public ResponseEntity<Void> cancelUnbilledWithEstimate(
+            @PathVariable String unbilledNumber,
+            @Valid @RequestBody CancelUnbilledAndEstimateRequestDto request) {
+        unbilledService.cancelUnbilledWithEstimate(unbilledNumber, request);
+        return ResponseEntity.ok().build();
     }
 
     // =========================================================

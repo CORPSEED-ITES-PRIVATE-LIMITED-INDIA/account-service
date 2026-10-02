@@ -1,6 +1,7 @@
 package com.account.service;
 
 import com.account.domain.status.UnbilledStatus;
+import com.account.dto.CancelUnbilledAndEstimateRequestDto;
 import com.account.dto.RefundRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
 
@@ -38,4 +39,6 @@ public interface UnbilledService {
     void rejectCancelUnbilled(Long adminUserId, Long id, String reason);
 
     UnbilledInvoiceSummaryDto issueRefund(String unbilledNumber, RefundRequestDto request);
+
+    void cancelUnbilledWithEstimate(String unbilledNumber, CancelUnbilledAndEstimateRequestDto req);
 }
