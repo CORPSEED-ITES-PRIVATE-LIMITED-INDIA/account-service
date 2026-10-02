@@ -43,6 +43,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
+import com.account.exception.AccessDeniedException;
+import com.account.service.UnbilledCancellationVoucherService;
+import com.account.exception.AccessDeniedException;
+import com.account.service.UnbilledCancellationVoucherService;
+
 
 @Service
 @RequiredArgsConstructor
@@ -59,7 +64,7 @@ public class UnbilledServiceImpl implements UnbilledService {
     private final InvoiceRepository invoiceRepository;
     private final OrganizationRepository organizationRepository;
     private final PaymentTypeRepository paymentTypeRepository;
-
+    private final UnbilledCancellationVoucherService unbilledCancellationVoucherService;
     private final TdsRegistrationRepository tdsRegistrationRepository;
 
     private final LeadFeignClient leadFeignClient;
@@ -189,6 +194,33 @@ public class UnbilledServiceImpl implements UnbilledService {
                 );
     }
 
+    private User requireAdmin(Long userId) {
+
+        if (userId == null) {
+            throw new AccessDeniedException(
+                    "Admin user id is required",
+                    "ACCESS_DENIED_ADMIN_ONLY"
+            );
+        }
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User not found with ID: " + userId,
+                        "USER_NOT_FOUND",
+                        "User",
+                        userId
+                ));
+
+        if (user.isDeleted() || !user.isActive() || !hasAdminRole(user)) {
+            throw new AccessDeniedException(
+                    "Only ADMIN can perform this action",
+                    "ACCESS_DENIED_ADMIN_ONLY"
+            );
+        }
+
+        return user;
+    }
+
 
     @Override
     @Transactional
@@ -239,13 +271,7 @@ public class UnbilledServiceImpl implements UnbilledService {
     @Transactional
     public void rejectCancelUnbilled(Long adminUserId, Long unbilledId, String reason) {
 
-        User admin = userRepository.findById(adminUserId)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Admin user not found with ID: " + adminUserId,
-                        "USER_NOT_FOUND",
-                        "User",
-                        adminUserId
-                ));
+        User admin = requireAdmin(adminUserId);
 
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -273,10 +299,11 @@ public class UnbilledServiceImpl implements UnbilledService {
 
         unbilledInvoiceRepository.save(unbilled);
     }
-
     @Override
     @Transactional
     public void approveCancelUnbilled(Long adminUserId, Long unbilledId) {
+
+        User admin = requireAdmin(adminUserId);
 
         UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -296,10 +323,13 @@ public class UnbilledServiceImpl implements UnbilledService {
         String reason = unbilled.getRejectionReason();
         String attachment = unbilled.getCancelAttachment();
 
-        // This calls your existing full cancellation logic
+        // 1. Post the credit note voucher FIRST (tax invoices are still active;
+        //    if it fails nothing external has been touched and everything rolls back)
+        unbilledCancellationVoucherService.postCreditNoteVoucher(unbilled, admin);
+
+        // 2. Existing full cancellation logic
         cancelUnbilled(adminUserId, unbilledId, reason, attachment);
     }
-
     @Override
     public List<UnbilledInvoiceSummaryDto> getUnbilledInvoicesList(
             Long userId,
@@ -1020,6 +1050,32 @@ public class UnbilledServiceImpl implements UnbilledService {
         }
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<UnbilledInvoiceSummaryDto> getCancelRequests(
+            Long adminUserId,
+            int page,
+            int size
+    ) {
+        requireAdmin(adminUserId);
 
+        // null userId = no creator/approver filter, so the admin sees every request
+        return getUnbilledInvoicesList(
+                null,
+                UnbilledStatus.CANCEL_REQUESTED,
+                page,
+                size
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public long getCancelRequestsCount(Long adminUserId) {
+        requireAdmin(adminUserId);
+
+        return unbilledInvoiceRepository.countByStatusAndIsCancelledFalse(
+                UnbilledStatus.CANCEL_REQUESTED
+        );
+    }
 
 }

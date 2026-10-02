@@ -4390,12 +4390,30 @@ public class PaymentServiceImpl implements PaymentService {
                 userId != null ? userId : "all",
                 status != null ? status : "all");
 
-        if (userId != null && status != null) {
-            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(userId, userId, status);
-        } else if (userId != null) {
-            return unbilledInvoiceRepository.countByCreatedByIdOrApprovedByIdAndIsCancelledFalse(userId, userId);
-        } else if (status != null) {
-            return unbilledInvoiceRepository.countByStatusAndIsCancelledFalse(status);
+        User user = userId != null
+                ? userRepository.findById(userId).orElse(null)
+                : null;
+
+        boolean unrestricted = user != null
+                && user.isActive()
+                && !user.isDeleted()
+                && (belongsToAccountsDepartment(user) || hasAdminRole(user));
+
+        Long effectiveUserId = unrestricted ? null : userId;
+        UnbilledStatus effectiveStatus =
+                status == UnbilledStatus.ALL ? null : status;
+
+        if (effectiveUserId != null && effectiveStatus != null) {
+            return unbilledInvoiceRepository
+                    .countByCreatedByIdOrApprovedByIdAndStatusAndIsCancelledFalse(
+                            effectiveUserId, effectiveUserId, effectiveStatus);
+        } else if (effectiveUserId != null) {
+            return unbilledInvoiceRepository
+                    .countByCreatedByIdOrApprovedByIdAndIsCancelledFalse(
+                            effectiveUserId, effectiveUserId);
+        } else if (effectiveStatus != null) {
+            return unbilledInvoiceRepository
+                    .countByStatusAndIsCancelledFalse(effectiveStatus);
         } else {
             return unbilledInvoiceRepository.count();
         }
