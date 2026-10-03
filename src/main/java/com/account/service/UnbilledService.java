@@ -4,6 +4,7 @@ import com.account.domain.status.UnbilledStatus;
 import com.account.dto.CancelUnbilledAndEstimateRequestDto;
 import com.account.dto.RefundRequestDto;
 import com.account.dto.unbilled.UnbilledInvoiceSummaryDto;
+import com.account.dto.unbilled.UnbilledProjectCompletionDto;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -50,4 +51,10 @@ public interface UnbilledService {
 
     /** ADMIN only. Number of pending cancellation requests. */
     long getCancelRequestsCount(Long adminUserId);
+
+    /** ADMIN only. Project completion details for a cancellation request. */
+    UnbilledProjectCompletionDto getProjectCompletionForCancellation(
+            Long adminUserId,
+            Long unbilledId
+    );
 }

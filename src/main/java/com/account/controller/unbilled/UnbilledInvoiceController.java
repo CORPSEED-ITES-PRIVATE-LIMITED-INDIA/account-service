@@ -637,6 +637,19 @@ public class UnbilledInvoiceController {
         return ResponseEntity.ok(count);
     }
 
+    @Operation(
+            summary = "Project completion for a cancellation request (ADMIN only)"
+    )
+    @GetMapping("/cancel/project-completion/{adminUserId}/{id}")
+    public ResponseEntity<UnbilledProjectCompletionDto> getProjectCompletionForCancellation(
+            @PathVariable Long adminUserId,
+            @PathVariable Long id
+    ) {
+        return ResponseEntity.ok(
+                unbilledService.getProjectCompletionForCancellation(adminUserId, id)
+        );
+    }
+
     // =========================================================
     // DATE PARSER
     // =========================================================

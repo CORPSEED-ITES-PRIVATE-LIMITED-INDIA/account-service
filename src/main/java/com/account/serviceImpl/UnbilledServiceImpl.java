@@ -18,6 +18,7 @@ import com.account.dto.operationService.*;
 import com.account.dto.payment.TdsResponseDto;
 import com.account.dto.unbilled.*;
 import com.account.exception.ResourceNotFoundException;
+import com.account.exception.ValidationException;
 import com.account.feignClient.OperationFeignClient;
 import com.account.repository.*;
 import com.account.service.InvoiceService;
@@ -42,6 +43,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 import com.account.exception.AccessDeniedException;
 import com.account.service.UnbilledCancellationVoucherService;
@@ -221,6 +224,54 @@ public class UnbilledServiceImpl implements UnbilledService {
         return user;
     }
 
+    /**
+     * Blocks a cancellation request when the linked project is already
+     * 100% complete or its Certification milestone is completed.
+     * A missing project (404) means no project exists yet, so nothing blocks.
+     */
+    private void validateProjectAllowsCancellation(UnbilledInvoice unbilled) {
+
+        try {
+            ResponseEntity<ProjectCancellationEligibilityDto> response =
+                    operationFeignClient.getCancellationEligibility(
+                            unbilled.getUnbilledNumber()
+                    );
+
+            ProjectCancellationEligibilityDto eligibility = response.getBody();
+
+            if (response.getStatusCode().is2xxSuccessful()
+                    && eligibility != null
+                    && !eligibility.isCancellationAllowed()) {
+
+                throw new ValidationException(
+                        eligibility.getBlockReason() != null
+                                ? eligibility.getBlockReason()
+                                : "Cancellation is not allowed because the project is complete",
+                        "ERR_PROJECT_COMPLETED_CANCELLATION_NOT_ALLOWED"
+                );
+            }
+
+        } catch (FeignException.NotFound ex) {
+            log.info(
+                    "No project found for unbilled, cancellation check skipped | unbilled={}",
+                    unbilled.getUnbilledNumber()
+            );
+
+        } catch (FeignException ex) {
+            log.error(
+                    "Operation service error while checking cancellation eligibility | unbilled={} | status={} | message={}",
+                    unbilled.getUnbilledNumber(),
+                    ex.status(),
+                    ex.getMessage()
+            );
+
+            throw new ValidationException(
+                    "Could not verify project completion status. Please try again.",
+                    "ERR_PROJECT_STATUS_CHECK_FAILED"
+            );
+        }
+    }
+
 
     @Override
     @Transactional
@@ -249,6 +300,8 @@ public class UnbilledServiceImpl implements UnbilledService {
         if (unbilled.getStatus() == UnbilledStatus.CANCEL_REQUESTED) {
             throw new IllegalStateException("Cancel request already pending for admin approval");
         }
+
+        validateProjectAllowsCancellation(unbilled);
 
         String finalReason = reason != null && !reason.trim().isEmpty()
                 ? reason.trim()
@@ -1060,14 +1113,17 @@ public class UnbilledServiceImpl implements UnbilledService {
         requireAdmin(adminUserId);
 
         // null userId = no creator/approver filter, so the admin sees every request
-        return getUnbilledInvoicesList(
+        List<UnbilledInvoiceSummaryDto> rows = getUnbilledInvoicesList(
                 null,
                 UnbilledStatus.CANCEL_REQUESTED,
                 page,
                 size
         );
-    }
 
+        enrichWithProjectCompletion(rows);
+
+        return rows;
+    }
     @Override
     @Transactional(readOnly = true)
     public long getCancelRequestsCount(Long adminUserId) {
@@ -1076,6 +1132,139 @@ public class UnbilledServiceImpl implements UnbilledService {
         return unbilledInvoiceRepository.countByStatusAndIsCancelledFalse(
                 UnbilledStatus.CANCEL_REQUESTED
         );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UnbilledProjectCompletionDto getProjectCompletionForCancellation(
+            Long adminUserId,
+            Long unbilledId
+    ) {
+        requireAdmin(adminUserId);
+
+        UnbilledInvoice unbilled = unbilledInvoiceRepository.findById(unbilledId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Unbilled not found with ID: " + unbilledId,
+                        "UNBILLED_NOT_FOUND",
+                        "UnbilledInvoice",
+                        unbilledId
+                ));
+
+        try {
+            ResponseEntity<ProjectCancellationEligibilityDto> response =
+                    operationFeignClient.getCancellationEligibility(
+                            unbilled.getUnbilledNumber()
+                    );
+
+            ProjectCancellationEligibilityDto eligibility = response.getBody();
+
+            if (!response.getStatusCode().is2xxSuccessful() || eligibility == null) {
+                return UnbilledProjectCompletionDto.builder()
+                        .projectFound(false)
+                        .cancellationAllowed(true)
+                        .build();
+            }
+
+            return UnbilledProjectCompletionDto.builder()
+                    .projectFound(true)
+                    .projectId(eligibility.getProjectId())
+                    .projectNo(eligibility.getProjectNo())
+                    .projectStatus(eligibility.getProjectStatus())
+                    .milestoneCompletionPercentage(eligibility.getMilestoneCompletionPercentage())
+                    .totalMilestones(eligibility.getTotalMilestones())
+                    .completedMilestones(eligibility.getCompletedMilestones())
+                    .certificationMilestonePresent(eligibility.isCertificationMilestonePresent())
+                    .certificationCompleted(eligibility.isCertificationCompleted())
+                    .cancellationAllowed(eligibility.isCancellationAllowed())
+                    .blockReason(eligibility.getBlockReason())
+                    .build();
+
+        } catch (FeignException.NotFound ex) {
+            // project not created yet
+            return UnbilledProjectCompletionDto.builder()
+                    .projectFound(false)
+                    .cancellationAllowed(true)
+                    .build();
+
+        } catch (FeignException ex) {
+            log.error(
+                    "Operation service error while loading project completion | unbilled={} | status={} | message={}",
+                    unbilled.getUnbilledNumber(),
+                    ex.status(),
+                    ex.getMessage()
+            );
+
+            throw new ValidationException(
+                    "Could not load project completion. Please try again.",
+                    "ERR_PROJECT_STATUS_CHECK_FAILED"
+            );
+        }
+    }
+
+    /**
+     * One batch call to Operation for the whole page. If Operation is
+     * unreachable the list still loads; the completion fields stay null.
+     */
+    private void enrichWithProjectCompletion(List<UnbilledInvoiceSummaryDto> rows) {
+
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+
+        List<String> unbilledNumbers = rows.stream()
+                .map(UnbilledInvoiceSummaryDto::getUnbilledNumber)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (unbilledNumbers.isEmpty()) {
+            return;
+        }
+
+        try {
+            ResponseEntity<List<ProjectCancellationEligibilityDto>> response =
+                    operationFeignClient.getCancellationEligibilityBatch(unbilledNumbers);
+
+            List<ProjectCancellationEligibilityDto> body = response.getBody();
+
+            if (!response.getStatusCode().is2xxSuccessful() || body == null) {
+                return;
+            }
+
+            Map<String, ProjectCancellationEligibilityDto> byUnbilledNumber =
+                    body.stream()
+                            .filter(e -> e != null && e.getUnbilledNumber() != null)
+                            .collect(Collectors.toMap(
+                                    ProjectCancellationEligibilityDto::getUnbilledNumber,
+                                    e -> e,
+                                    (first, second) -> first
+                            ));
+
+            for (UnbilledInvoiceSummaryDto row : rows) {
+                ProjectCancellationEligibilityDto eligibility =
+                        byUnbilledNumber.get(row.getUnbilledNumber());
+
+                if (eligibility == null) {
+                    continue; // no project for this unbilled yet
+                }
+
+                row.setProjectCompletionPercentage(
+                        eligibility.getMilestoneCompletionPercentage()
+                );
+                row.setProjectCertificationCompleted(
+                        eligibility.isCertificationCompleted()
+                );
+                row.setProjectCancellationAllowed(
+                        eligibility.isCancellationAllowed()
+                );
+            }
+
+        } catch (Exception ex) {
+            log.warn(
+                    "Could not load project completion for cancellation requests: {}",
+                    ex.getMessage()
+            );
+        }
     }
 
 }

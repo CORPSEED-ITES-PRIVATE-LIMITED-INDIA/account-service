@@ -1,6 +1,11 @@
 package com.account.serviceImpl;
 
+import com.account.domain.Contact;
 import com.account.domain.User;
+import com.account.domain.company.Company;
+import com.account.domain.creditNote.CreditNote;
+import com.account.domain.creditNote.CreditNoteInvoiceDetail;
+import com.account.domain.creditNote.CreditNoteStatus;
 import com.account.domain.estimate.Estimate;
 import com.account.domain.invoice.Invoice;
 import com.account.domain.ledger.DebitCredit;
@@ -13,6 +18,7 @@ import com.account.domain.unbilled.UnbilledInvoice;
 import com.account.dto.ledger.AccountingVoucherEntryRequestDto;
 import com.account.dto.ledger.AccountingVoucherRequestDto;
 import com.account.exception.ValidationException;
+import com.account.repository.CreditNoteRepository;
 import com.account.service.LedgerResolverService;
 import com.account.service.UnbilledCancellationVoucherService;
 import com.account.service.ledger.AccountingVoucherService;
@@ -25,10 +31,29 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
+/**
+ * Runs when an ADMIN approves an unbilled cancellation request.
+ *
+ * 1. Creates an APPROVED CreditNote record (visible in the credit notes list)
+ * 2. Posts the CREDIT_NOTE accounting voucher to the ledgers
+ *
+ *   Dr Sales Return / Credit Note      (taxable part)
+ *   Dr Output CGST / SGST / IGST       (GST reversal)
+ *   Cr Customer ledger                 (received amount)
+ *
+ * Both run inside the approval transaction (MANDATORY): if either fails, the
+ * cancellation is rolled back with it.
+ *
+ * NOTE: this class must not depend on CreditNoteService. CreditNoteServiceImpl
+ * depends on UnbilledService, which depends on this class, so that would be a
+ * circular dependency.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -36,6 +61,7 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
 
     private final AccountingVoucherService accountingVoucherService;
     private final LedgerResolverService ledgerResolverService;
+    private final CreditNoteRepository creditNoteRepository;
 
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
@@ -52,7 +78,7 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
         BigDecimal credit = money(unbilled.getReceivedAmount());
 
         if (credit.compareTo(BigDecimal.ZERO) <= 0) {
-            log.info("Nothing received, credit note voucher skipped | unbilled={}",
+            log.info("Nothing received, credit note and voucher skipped | unbilled={}",
                     unbilled.getUnbilledNumber());
             return;
         }
@@ -117,7 +143,26 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
             );
         }
 
+        // ============================================================
+        // 1. CREATE THE APPROVED CREDIT NOTE RECORD
+        // ============================================================
+        CreditNote creditNote = createApprovedCreditNote(unbilled, admin, credit, invoices);
+
+        // ============================================================
+        // 2. POST THE LEDGER VOUCHER
+        // ============================================================
         String ref = unbilled.getUnbilledNumber();
+
+        Estimate unbilledEstimate = unbilled.getEstimate();
+        String serviceName =
+                unbilledEstimate != null
+                        && unbilledEstimate.getSolutionName() != null
+                        && !unbilledEstimate.getSolutionName().isBlank()
+                        ? unbilledEstimate.getSolutionName().trim()
+                        : null;
+        String serviceSuffix = serviceName != null ? " | Service: " + serviceName : "";
+        String cnRef = creditNote.getCreditNoteNumber();
+
         List<AccountingVoucherEntryRequestDto> entries = new ArrayList<>();
 
         // Dr Sales Return
@@ -130,18 +175,18 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
                     admin
             );
             entries.add(entry(salesReturn, taxable, zero(),
-                    "Sales return on cancellation of " + ref));
+                    "Sales return booked for credit note " + cnRef + " (" + ref + ")" + serviceSuffix));
         }
 
         // Dr Output GST (reversal)
-        addGst(entries, LedgerType.OUTPUT_CGST, "Output CGST", cgst, admin, ref);
-        addGst(entries, LedgerType.OUTPUT_SGST, "Output SGST", sgst, admin, ref);
-        addGst(entries, LedgerType.OUTPUT_IGST, "Output IGST", igst, admin, ref);
+        addGst(entries, LedgerType.OUTPUT_CGST, "Output CGST", cgst, admin, cnRef, ref, serviceSuffix);
+        addGst(entries, LedgerType.OUTPUT_SGST, "Output SGST", sgst, admin, cnRef, ref, serviceSuffix);
+        addGst(entries, LedgerType.OUTPUT_IGST, "Output IGST", igst, admin, cnRef, ref, serviceSuffix);
 
         // Cr Customer
         LedgerMaster customer = ledgerResolverService.customerLedger(unbilled, admin);
         entries.add(entry(customer, zero(), credit,
-                "Credit note on cancellation of " + ref));
+                "Credit note " + cnRef + " on cancellation of " + ref + serviceSuffix));
 
         accountingVoucherService.createVoucher(
                 AccountingVoucherRequestDto.builder()
@@ -149,14 +194,156 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
                         .voucherDate(LocalDate.now())
                         .sourceType(VoucherSourceType.UNBILLED_CANCELLATION)
                         .sourceId(unbilled.getId())
-                        .narration("Credit note voucher on cancellation approval: " + ref)
+                        .narration("Credit note " + cnRef
+                                + " approved on cancellation of " + ref + serviceSuffix)
                         .entries(entries)
                         .build()
         );
 
-        log.info("Cancellation credit note voucher posted | unbilled={} | credit={} | taxable={} | cgst={} | sgst={} | igst={}",
-                ref, credit, taxable, cgst, sgst, igst);
+        log.info("Cancellation credit note approved and voucher posted | creditNote={} | unbilled={} | service={} | credit={} | taxable={} | cgst={} | sgst={} | igst={}",
+                cnRef, ref, serviceName, credit, taxable, cgst, sgst, igst);
     }
+
+    // ================================================================
+    // CREDIT NOTE RECORD
+    // ================================================================
+
+    private CreditNote createApprovedCreditNote(
+            UnbilledInvoice unbilled,
+            User admin,
+            BigDecimal refundAmount,
+            List<Invoice> invoices
+    ) {
+        Estimate estimate = unbilled.getEstimate();
+        Company company = unbilled.getCompany();
+        Contact contact = unbilled.getContact();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        // updatedBy still holds the user who raised the cancellation request
+        // (cancelUnbilled has not run yet); fall back to the admin.
+        User createdBy = unbilled.getUpdatedBy() != null ? unbilled.getUpdatedBy() : admin;
+
+        String attachment = unbilled.getCancelAttachment() != null
+                ? unbilled.getCancelAttachment()
+                : "";
+
+        String reason = unbilled.getRejectionReason() != null
+                && !unbilled.getRejectionReason().isBlank()
+                ? unbilled.getRejectionReason().trim()
+                : "Unbilled cancellation approved by admin";
+
+        String remarks = "Auto-approved with unbilled cancellation approval";
+
+        CreditNote creditNote = CreditNote.builder()
+                .creditNoteNumber(generateCreditNoteNumber())
+                .unbilledInvoice(unbilled)
+                .estimate(estimate)
+                .company(company)
+                .contact(contact)
+                .unbilledNumber(unbilled.getUnbilledNumber())
+                .estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
+                .proposalNumber(null)
+                .companyName(company != null ? company.getName() : null)
+                .contactName(contact != null ? contact.getName() : null)
+                .attachment(attachment)
+                .totalAmount(nz(unbilled.getTotalAmount()))
+                .receivedAmount(nz(unbilled.getReceivedAmount()))
+                .currentReceivedAmount(nz(unbilled.getCurrentReceivedAmount()))
+                .outstandingAmount(nz(unbilled.getOutstandingAmount()))
+                // whole received amount is credited back, nothing stays as open credit
+                .creditAmount(BigDecimal.ZERO)
+                .refundAmount(refundAmount)
+                .utilizedCreditAmount(BigDecimal.ZERO)
+                .remainingCreditAmount(BigDecimal.ZERO)
+                .status(CreditNoteStatus.APPROVED)
+                .reason(reason)
+                .createdBy(createdBy)
+                .createdAt(now)
+                .updatedAt(now)
+
+                // ORGANIZATION / SELLER SNAPSHOT (copied from unbilled)
+                .organizationName(unbilled.getOrganizationName())
+                .organizationAddressLine1(unbilled.getOrganizationAddressLine1())
+                .organizationAddressLine2(unbilled.getOrganizationAddressLine2())
+                .organizationCity(unbilled.getOrganizationCity())
+                .organizationState(unbilled.getOrganizationState())
+                .organizationCountry(unbilled.getOrganizationCountry())
+                .organizationPinCode(unbilled.getOrganizationPinCode())
+                .organizationGstNo(unbilled.getOrganizationGstNo())
+                .organizationPanNo(unbilled.getOrganizationPanNo())
+                .organizationCinNumber(unbilled.getOrganizationCinNumber())
+                .organizationEmail(unbilled.getOrganizationEmail())
+                .organizationPhone(unbilled.getOrganizationPhone())
+                .organizationWebsite(unbilled.getOrganizationWebsite())
+                .organizationLogoUrl(unbilled.getOrganizationLogoUrl())
+
+                // ORGANIZATION BANK SNAPSHOT (copied from unbilled)
+                .organizationBankAccountPresent(unbilled.getOrganizationBankAccountPresent())
+                .organizationAccountHolderName(unbilled.getOrganizationAccountHolderName())
+                .organizationAccountNumber(unbilled.getOrganizationAccountNumber())
+                .organizationIfscCode(unbilled.getOrganizationIfscCode())
+                .organizationSwiftCode(unbilled.getOrganizationSwiftCode())
+                .organizationBankName(unbilled.getOrganizationBankName())
+                .organizationBankBranch(unbilled.getOrganizationBankBranch())
+                .organizationUpiId(unbilled.getOrganizationUpiId())
+                .organizationPaymentPageLink(unbilled.getOrganizationPaymentPageLink())
+                .build();
+
+        // Approval trail (same fields the sales flow fills across its two stages)
+        creditNote.setAccountApprovedBy(admin);
+        creditNote.setAccountApprovedAt(now);
+        creditNote.setAccountApprovalRemarks(remarks);
+        creditNote.setApprovedBy(admin);
+        creditNote.setApprovedAt(now);
+        creditNote.setApprovalRemarks(remarks);
+
+        for (Invoice invoice : invoices) {
+            CreditNoteInvoiceDetail detail = CreditNoteInvoiceDetail.builder()
+                    .creditNote(creditNote)
+                    .invoiceId(invoice.getId())
+                    .invoiceNumber(invoice.getInvoiceNumber())
+                    .invoiceDate(invoice.getInvoiceDate())
+                    .invoiceGrandTotal(invoice.getGrandTotal())
+                    .invoiceGstAmount(invoice.getTotalGstAmount())
+                    .invoiceCgstAmount(invoice.getCgstAmount())
+                    .invoiceSgstAmount(invoice.getSgstAmount())
+                    .invoiceIgstAmount(invoice.getIgstAmount())
+                    .invoiceStatus(invoice.getStatus() != null ? invoice.getStatus().name() : null)
+                    .build();
+
+            creditNote.getInvoiceDetails().add(detail);
+        }
+
+        CreditNote saved = creditNoteRepository.save(creditNote);
+
+        log.info("Approved credit note created for cancellation | creditNoteId={} | creditNoteNumber={} | unbilled={}",
+                saved.getId(), saved.getCreditNoteNumber(), unbilled.getUnbilledNumber());
+
+        return saved;
+    }
+
+    // same numbering as CreditNoteServiceImpl.generateCreditNoteNumber
+    private String generateCreditNoteNumber() {
+
+        String dateTimePart = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+
+        long count = creditNoteRepository.count() + 1;
+
+        String number = String.format("CN-%s-%06d", dateTimePart, count);
+
+        while (creditNoteRepository.existsByCreditNoteNumber(number)) {
+            count++;
+            number = String.format("CN-%s-%06d", dateTimePart, count);
+        }
+
+        return number;
+    }
+
+    // ================================================================
+    // HELPERS
+    // ================================================================
 
     private void addGst(
             List<AccountingVoucherEntryRequestDto> entries,
@@ -164,7 +351,9 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
             String name,
             BigDecimal amount,
             User admin,
-            String ref
+            String cnRef,
+            String ref,
+            String serviceSuffix
     ) {
         if (amount.compareTo(BigDecimal.ZERO) > 0) {
             LedgerMaster ledger = ledgerResolverService.systemLedger(
@@ -174,7 +363,8 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
                     DebitCredit.CREDIT,
                     admin
             );
-            entries.add(entry(ledger, amount, zero(), name + " reversed for " + ref));
+            entries.add(entry(ledger, amount, zero(),
+                    name + " reversed for credit note " + cnRef + " (" + ref + ")" + serviceSuffix));
         }
     }
 
@@ -197,6 +387,10 @@ public class UnbilledCancellationVoucherServiceImpl implements UnbilledCancellat
                 .map(getter)
                 .map(this::money)
                 .reduce(zero(), BigDecimal::add);
+    }
+
+    private BigDecimal nz(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 
     private BigDecimal money(BigDecimal value) {

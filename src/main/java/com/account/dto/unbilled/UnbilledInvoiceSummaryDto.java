@@ -84,6 +84,10 @@ public class UnbilledInvoiceSummaryDto {
     private Boolean gstApplicable;
     private Boolean zeroRatedSupply;
 
+    private Integer projectCompletionPercentage;   // null = no project / unavailable
+    private Boolean projectCertificationCompleted;
+    private Boolean projectCancellationAllowed;
+
 
     // =====================================================
     // ORGANIZATION / SELLER SNAPSHOT

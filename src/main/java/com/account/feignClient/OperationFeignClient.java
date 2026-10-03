@@ -51,6 +51,16 @@ public interface OperationFeignClient {
             @PathVariable String unbilledNumber
     );
 
+    @GetMapping("/operationService/api/projects/cancellation-eligibility/{unbilledNumber}")
+    ResponseEntity<ProjectCancellationEligibilityDto> getCancellationEligibility(
+            @PathVariable("unbilledNumber") String unbilledNumber
+    );
+
+    @PostMapping("/operationService/api/projects/cancellation-eligibility/batch")
+    ResponseEntity<List<ProjectCancellationEligibilityDto>> getCancellationEligibilityBatch(
+            @RequestBody List<String> unbilledNumbers
+    );
+
     @PutMapping("/operationService/api/projects/{projectId}/activities/approveExpense/{userId}/{expenseId}")
     ResponseEntity<?> approveExpense(
             @PathVariable("projectId") Long projectId,

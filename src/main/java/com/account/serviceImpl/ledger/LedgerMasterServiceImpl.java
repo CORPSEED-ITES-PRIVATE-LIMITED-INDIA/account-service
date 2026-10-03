@@ -52,6 +52,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
     private final AccountingVoucherEntryRepository accountingVoucherEntryRepository;
     private final InvoiceRepository invoiceRepository;
     private final UserRepository userRepository;
+    private final UnbilledInvoiceRepository unbilledInvoiceRepository;
 
 
 
@@ -1309,8 +1310,11 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
         List<LedgerTransactionResponseDto> allRows = new ArrayList<>();
 
+
         Map<Long, Invoice> invoiceCache = new HashMap<>();
         Map<Long, List<AccountingVoucherEntry>> otherEntriesCache = new HashMap<>();
+
+        Map<Long, String> serviceNameCache = new HashMap<>();
 
         for (AccountingVoucherEntry entry : entries) {
 
@@ -1351,7 +1355,7 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
 
             String serviceName = salesInvoice != null
                     ? clean(salesInvoice.getSolutionName())
-                    : null;
+                    : resolveCancellationServiceName(voucher, serviceNameCache);
 
             String receiptBankName = isReceiptVoucher(voucher)
                     ? resolveReceiptBankName(ledger, voucher, otherEntriesCache)
@@ -1733,6 +1737,32 @@ public class LedgerMasterServiceImpl implements LedgerMasterService {
         invoiceCache.put(invoiceId, invoice);
 
         return Optional.ofNullable(invoice);
+    }
+
+    private String resolveCancellationServiceName(
+            AccountingVoucher voucher,
+            Map<Long, String> serviceNameCache
+    ) {
+        if (voucher == null
+                || voucher.getSourceType() != VoucherSourceType.UNBILLED_CANCELLATION
+                || voucher.getSourceId() == null) {
+            return null;
+        }
+
+        Long unbilledId = voucher.getSourceId();
+
+        if (serviceNameCache.containsKey(unbilledId)) {
+            return serviceNameCache.get(unbilledId);
+        }
+
+        String serviceName = unbilledInvoiceRepository.findById(unbilledId)
+                .map(unbilled -> unbilled.getEstimate() != null
+                        ? clean(unbilled.getEstimate().getSolutionName())
+                        : null)
+                .orElse(null);
+
+        serviceNameCache.put(unbilledId, serviceName);
+        return serviceName;
     }
 
     private boolean isSalesInvoiceVoucher(AccountingVoucher voucher) {
