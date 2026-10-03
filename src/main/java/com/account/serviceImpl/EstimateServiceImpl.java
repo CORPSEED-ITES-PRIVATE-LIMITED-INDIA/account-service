@@ -901,6 +901,7 @@ public class EstimateServiceImpl implements EstimateService {
         dto.setLeadId(estimate.getLeadId());
         dto.setProposalId(estimate.getProposalId());
         dto.setClientPoNumber(estimate.getClientPoNumber());
+        dto.setPaymentTerm(estimate.getPaymentTerm());
 
         dto.setEstimateNumber(estimate.getEstimateNumber());
         dto.setPerformanceInvoiceNumber(

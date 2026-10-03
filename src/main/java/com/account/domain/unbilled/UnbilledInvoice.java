@@ -258,6 +258,7 @@ public class UnbilledInvoice {
 
     @Column(name = "organization_payment_page_link", length = 500)
     private String organizationPaymentPageLink;
+
     @Column(
             name = "total_amount",
             precision = 19,

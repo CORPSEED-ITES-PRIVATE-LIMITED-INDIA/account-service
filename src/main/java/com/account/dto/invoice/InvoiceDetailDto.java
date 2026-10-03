@@ -59,6 +59,10 @@ public class InvoiceDetailDto {
     private Long solutionId;
     private String solutionName;
 
+    private String paymentTerm;
+    private String clientPoNumber;
+
+
     // =====================================================
     // FINANCIALS
     // =====================================================

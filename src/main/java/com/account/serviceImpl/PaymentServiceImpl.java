@@ -4055,6 +4055,7 @@ public class PaymentServiceImpl implements PaymentService {
         // NEW DETAILS
         dto.setEmail(contact != null ? contact.getEmails() : null);
         dto.setEmail(firstEmail(contact));
+        dto.setClientPONumber(estimate.getClientPoNumber());
 
         dto.setGstNo(unit != null ? unit.getGstNo() : null);
         dto.setStateName(unit != null ? unit.getState() : null);

@@ -33,6 +33,7 @@ import com.account.repository.ledger.LedgerMasterRepository;
 import com.account.service.InvoiceService;
 import com.account.service.ledger.AccountingVoucherService;
 import feign.FeignException;
+import jakarta.persistence.Column;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Tuple;
@@ -1434,6 +1435,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setPublicUuid(invoice.getPublicUuid());
 		dto.setInvoiceNumber(invoice.getInvoiceNumber());
 
+		dto.setPaymentTerm(estimate.getPaymentTerm());
+		dto.setClientPoNumber(estimate.getClientPoNumber());
+
 		dto.setUnbilledNumber(
 				unbilled != null
 						? unbilled.getUnbilledNumber()
@@ -1543,6 +1547,18 @@ public class InvoiceServiceImpl implements InvoiceService {
 		dto.setOrganizationPhone(invoice.getOrganizationPhone());
 		dto.setOrganizationWebsite(invoice.getOrganizationWebsite());
 		dto.setOrganizationLogoUrl(invoice.getOrganizationLogoUrl());
+
+
+		dto.setOrganizationBankAccountPresent(unbilled.getOrganizationBankAccountPresent());
+		dto.setOrganizationAccountHolderName(unbilled.getOrganizationAccountHolderName());
+		dto.setOrganizationAccountNo(unbilled.getOrganizationAccountNumber());
+		dto.setOrganizationIfscCode(unbilled.getOrganizationIfscCode());
+		dto.setOrganizationSwiftCode(unbilled.getOrganizationSwiftCode());
+		dto.setOrganizationBankName(unbilled.getOrganizationBankName());
+		dto.setOrganizationBankBranch(unbilled.getOrganizationBankBranch());
+		dto.setOrganizationUpiId(unbilled.getOrganizationUpiId());
+		dto.setOrganizationPaymentPageLink(unbilled.getOrganizationPaymentPageLink());
+
 
 
 
