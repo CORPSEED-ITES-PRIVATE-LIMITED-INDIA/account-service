@@ -1,33 +1,56 @@
 package com.account.config;
 
-import com.account.domain.company.CompanyUnit;
 import com.account.domain.Contact;
+import com.account.domain.company.CompanyUnit;
 import com.account.domain.estimate.Estimate;
-import com.account.domain.estimate.EstimateLineItem;
+import com.account.exception.ResourceNotFoundException;
 import com.account.repository.ContactRepository;
+import com.account.repository.EstimateRepository;
+import com.account.serviceImpl.email.EstimateEmailComposer;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.HtmlUtils;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
-import java.math.BigDecimal;
-import java.time.format.DateTimeFormatter;
+import java.io.UnsupportedEncodingException;
 import java.util.*;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class EmailServiceImpl {
 
+    private static final Logger log = LogManager.getLogger(EmailServiceImpl.class);
+
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "^[A-Z0-9._%+'-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$",
+            Pattern.CASE_INSENSITIVE
+    );
+
     @Value("${spring.mail.username}")
     private String fromEmail;
+
+    /**
+     * Sender for estimate emails. Defaults to the SMTP login because Zoho
+     * rejects a From address that isn't the mailbox itself or one of its aliases.
+     */
+    @Value("${app.mail.estimate-from:${spring.mail.username}}")
+    private String estimateFromAddress;
+
+    @Value("${app.mail.estimate-from-name:Corpseed}")
+    private String estimateFromName;
 
     @Autowired
     private JavaMailSender javaMailSender;
@@ -36,12 +59,13 @@ public class EmailServiceImpl {
     private TemplateEngine templateEngine;
 
     private final ContactRepository contactRepository;
+    private final EstimateRepository estimateRepository;
+    private final EstimateEmailComposer estimateEmailComposer;
 
-    private static final Pattern EMAIL_PATTERN = Pattern.compile(
-            "^[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}$",
-            Pattern.CASE_INSENSITIVE
-    );
 
+    // =====================================================================
+    // GENERIC SENDERS (unchanged)
+    // =====================================================================
 
     public void sendEmail(String[] emailTo, String[] ccPersons, String[] bccPersons) {
         try {
@@ -101,12 +125,21 @@ public class EmailServiceImpl {
         }
     }
 
+
+    // =====================================================================
+    // ESTIMATE EMAIL
+    // =====================================================================
+
     /**
-     * Main method for estimate sending.
-     * Fetches all contacts by estimate.unit.id, extracts all emails, and sends dynamic HTML email.
+     * Sends the estimate email to the estimate's own contact (first, so it
+     * becomes the "primary" sent-to email) followed by every active contact
+     * of the estimate's company unit.
      *
-     * @param estimate estimate entity
-     * @return all valid unique recipient emails used for sending
+     * Must run inside the caller's transaction (sendEstimateToClient is
+     * @Transactional) because the composer reads lazy associations.
+     *
+     * @return recipients actually used, or an empty list when no valid email
+     *         exists (EstimateServiceImpl then raises ERR_NO_EMAIL as a 400).
      */
     public List<String> sendEstimateEmailToUnitContacts(Estimate estimate) {
         if (estimate == null) {
@@ -118,138 +151,141 @@ public class EmailServiceImpl {
             throw new IllegalArgumentException("Estimate has no company unit linked");
         }
 
-        List<Contact> contacts = contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
-
-        if (contacts == null || contacts.isEmpty()) {
-            throw new IllegalArgumentException("No contacts found for company unit id: " + unit.getId());
+        List<String> recipients = resolveEstimateRecipients(estimate, unit);
+        if (recipients.isEmpty()) {
+            log.warn("No valid recipient emails | estimate={} | unitId={}",
+                    estimate.getEstimateNumber(), unit.getId());
+            return List.of();
         }
 
-        List<String> recipientEmails = extractValidEmailsFromContacts(contacts);
+        // byte[] pdf = estimatePdfService.generate(estimate);   // hook for Estimate_<no>.pdf
+        byte[] pdf = null;
 
-        if (recipientEmails.isEmpty()) {
-            throw new IllegalArgumentException("No valid email addresses found for contacts of company unit id: " + unit.getId());
-        }
-
-        Context context = buildEstimateEmailContext(estimate, unit, contacts);
-
-        String subject = buildEstimateSubject(estimate);
-        String html = templateEngine.process("estimate-email-template", context);
+        EstimateEmailComposer.EstimateEmail email =
+                estimateEmailComposer.compose(estimate, pdf != null);
 
         try {
             MimeMessage mimeMessage = javaMailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
 
-            helper.setFrom(fromEmail);
-            helper.setTo(recipientEmails.toArray(new String[0]));
-            helper.setSubject(subject);
-            helper.setText(html, true);
+            helper.setFrom(estimateFromAddress, estimateFromName);
+            helper.setTo(recipients.toArray(new String[0]));
+            if (email.replyTo() != null) {
+                helper.setReplyTo(email.replyTo());      // replies reach the account manager
+            }
+            helper.setSubject(email.subject());
+            helper.setText(email.plainTextBody(), email.htmlBody());   // text + HTML alternative
+
+            if (pdf != null) {
+                helper.addAttachment(
+                        "Estimate_" + estimate.getEstimateNumber() + ".pdf",
+                        new ByteArrayResource(pdf),
+                        "application/pdf");
+            }
 
             javaMailSender.send(mimeMessage);
-            return recipientEmails;
 
-        } catch (MessagingException e) {
+            log.info("Estimate email sent | estimate={} | to={} | subject={}",
+                    estimate.getEstimateNumber(), recipients, email.subject());
+
+            return recipients;
+
+        } catch (MessagingException | UnsupportedEncodingException | MailException e) {
+            log.error("Failed to send estimate email | estimate={} | error={}",
+                    estimate.getEstimateNumber(), e.getMessage(), e);
+            // Throwing rolls back sendEstimateToClient, so the estimate stays DRAFT.
             throw new RuntimeException("Failed to send estimate email", e);
         }
     }
 
-    private String buildEstimateSubject(Estimate estimate) {
-        String estimateNumber = estimate.getEstimateNumber() != null ? estimate.getEstimateNumber() : "N/A";
-        String solutionName = estimate.getSolutionName() != null ? estimate.getSolutionName() : "Estimate";
-        return "Estimate " + estimateNumber + " - " + solutionName;
+    /**
+     * Renders the estimate email exactly as the client would receive it,
+     * using live data from the database, without sending anything.
+     * A small banner at the top shows the From / To / Subject that would be used.
+     */
+    @Transactional(readOnly = true)
+    public String previewEstimateEmail(Long estimateId) {
+        Estimate estimate = estimateRepository.findById(estimateId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Estimate not found with id: " + estimateId, "ESTIMATE_NOT_FOUND"));
+
+        List<String> recipients = estimate.getUnit() != null
+                ? resolveEstimateRecipients(estimate, estimate.getUnit())
+                : List.of();
+
+        EstimateEmailComposer.EstimateEmail email = estimateEmailComposer.compose(estimate, false);
+
+        String banner = """
+                <div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.6;background:#fffbe6;\
+                border-bottom:1px solid #e6d58a;padding:12px 16px;color:#333;">
+                <strong>PREVIEW &ndash; not sent</strong><br>
+                From: %s &lt;%s&gt;<br>
+                To: %s<br>
+                Reply-To: %s<br>
+                Subject: %s
+                </div>
+                """.formatted(
+                HtmlUtils.htmlEscape(estimateFromName),
+                HtmlUtils.htmlEscape(estimateFromAddress),
+                recipients.isEmpty()
+                        ? "<span style='color:#b00020'>no valid email found on this unit's contacts</span>"
+                        : HtmlUtils.htmlEscape(String.join(", ", recipients)),
+                HtmlUtils.htmlEscape(email.replyTo() != null ? email.replyTo() : "-"),
+                HtmlUtils.htmlEscape(email.subject()));
+
+        return email.htmlBody().replaceFirst("(?i)(<body[^>]*>)", "$1" + java.util.regex.Matcher.quoteReplacement(banner));
     }
 
-    private Context buildEstimateEmailContext(Estimate estimate,
-                                              CompanyUnit unit,
-                                              List<Contact> contacts) {
-        Context context = new Context();
+    /**
+     * Recipient order (first one is saved as estimate.sentToEmail):
+     *   1. the contact chosen on the estimate
+     *   2. the unit's primary contact, then secondary contact
+     *   3. every other active contact of the unit (primary/secondary flags first)
+     * Contacts with deleteStatus = true or isDeleted = true are skipped.
+     */
+    private List<String> resolveEstimateRecipients(Estimate estimate, CompanyUnit unit) {
+        List<Contact> ordered = new ArrayList<>();
 
-        String companyName = estimate.getCompany() != null ? safe(estimate.getCompany().getName()) : "Valued Client";
-        String unitName = safe(unit.getUnitName());
-        String unitAddress = buildUnitAddress(unit);
-        String recipientNames = buildRecipientNames(contacts);
+        ordered.add(estimate.getContact());
+        ordered.add(unit.getPrimaryContact());
+        ordered.add(unit.getSecondaryContact());
 
-        String estimateDate = estimate.getEstimateDate() != null
-                ? estimate.getEstimateDate().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
-                : "N/A";
-
-        String validUntil = estimate.getValidUntil() != null
-                ? estimate.getValidUntil().format(DateTimeFormatter.ofPattern("dd-MM-yyyy"))
-                : "N/A";
-
-        BigDecimal subtotal = nvl(estimate.getSubTotalExGst());
-        BigDecimal totalGst = nvl(estimate.getTotalGstAmount());
-        BigDecimal cgst = nvl(estimate.getCgstAmount());
-        BigDecimal sgst = nvl(estimate.getSgstAmount());
-        BigDecimal igst = nvl(estimate.getIgstAmount());
-        BigDecimal grandTotal = nvl(estimate.getGrandTotal());
-
-        List<Map<String, Object>> lineItemRows = new ArrayList<>();
-        if (estimate.getLineItems() != null) {
-            int srNo = 1;
-            for (EstimateLineItem item : estimate.getLineItems()) {
-                if (item == null) {
-                    continue;
-                }
-
-                Map<String, Object> row = new HashMap<>();
-                row.put("srNo", srNo++);
-                row.put("itemName", safe(item.getItemName()));
-                row.put("description", safe(item.getDescription()));
-                row.put("quantity", item.getQuantity() != null ? item.getQuantity() : 0);
-                row.put("unit", safe(item.getUnit()));
-                row.put("unitPriceExGst", formatMoney(item.getUnitPriceExGst()));
-                row.put("gstRate", item.getGstRate() != null ? item.getGstRate() : BigDecimal.ZERO);
-                row.put("lineTotalExGst", formatMoney(item.getLineTotalExGst()));
-                row.put("gstAmount", formatMoney(item.getGstAmount()));
-                lineItemRows.add(row);
-            }
+        List<Contact> unitContacts =
+                contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
+        if (unitContacts != null) {
+            unitContacts.stream()
+                    .filter(Objects::nonNull)
+                    .sorted(Comparator
+                            .comparing((Contact c) -> !c.isPrimaryForUnit())
+                            .thenComparing(c -> !c.isSecondaryForUnit()))
+                    .forEach(ordered::add);
         }
 
-        context.setVariable("recipientNames", recipientNames);
-        context.setVariable("companyName", companyName);
-        context.setVariable("unitName", unitName);
-        context.setVariable("unitAddress", unitAddress);
+        List<Contact> active = ordered.stream()
+                .filter(Objects::nonNull)
+                .filter(c -> !c.isDeleted() && !c.isDeleteStatus())
+                .toList();
 
-        context.setVariable("estimateNumber", safe(estimate.getEstimateNumber()));
-        context.setVariable("estimateDate", estimateDate);
-        context.setVariable("validUntil", validUntil);
-        context.setVariable("solutionName", safe(estimate.getSolutionName()));
-        context.setVariable("solutionType", safe(estimate.getSolutionType()));
-        context.setVariable("customerNotes", safe(estimate.getCustomerNotes()));
-
-        context.setVariable("lineItems", lineItemRows);
-
-        context.setVariable("subTotalExGst", formatMoney(subtotal));
-        context.setVariable("totalGstAmount", formatMoney(totalGst));
-        context.setVariable("cgstAmount", formatMoney(cgst));
-        context.setVariable("sgstAmount", formatMoney(sgst));
-        context.setVariable("igstAmount", formatMoney(igst));
-        context.setVariable("grandTotal", formatMoney(grandTotal));
-
-        context.setVariable("currency", safe(estimate.getCurrency()));
-        context.setVariable("createdByName",
-                estimate.getCreatedBy() != null ? safe(estimate.getCreatedBy().getFullName()) : "Accounts Team");
-
-        return context;
+        return extractValidEmailsFromContacts(active);
     }
 
+    /**
+     * Contact.emails may be comma/semicolon/space separated or a JSON array
+     * string. Output is lower-cased, validated and deduplicated in order.
+     */
     private List<String> extractValidEmailsFromContacts(List<Contact> contacts) {
         Set<String> uniqueEmails = new LinkedHashSet<>();
 
         for (Contact contact : contacts) {
-            if (contact == null || contact.getEmails() == null || contact.getEmails().trim().isEmpty()) {
+            if (contact == null || contact.getEmails() == null || contact.getEmails().isBlank()) {
                 continue;
             }
 
-            String[] splitEmails = contact.getEmails().split(",");
-            for (String email : splitEmails) {
-                if (email == null) {
-                    continue;
-                }
-
-                String cleaned = email.trim();
-                if (!cleaned.isEmpty() && isValidEmail(cleaned)) {
-                    uniqueEmails.add(cleaned);
+            String normalized = contact.getEmails().replaceAll("[\\[\\]\"]", " ");
+            for (String raw : normalized.split("[,;\\s]+")) {
+                String email = raw.trim().toLowerCase(Locale.ROOT);
+                if (!email.isEmpty() && isValidEmail(email)) {
+                    uniqueEmails.add(email);
                 }
             }
         }
@@ -257,62 +293,9 @@ public class EmailServiceImpl {
         return new ArrayList<>(uniqueEmails);
     }
 
-    private String buildRecipientNames(List<Contact> contacts) {
-        List<String> names = contacts.stream()
-                .filter(Objects::nonNull)
-                .map(Contact::getName)
-                .filter(Objects::nonNull)
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .distinct()
-                .collect(Collectors.toList());
-
-        if (names.isEmpty()) {
-            return "Sir/Madam";
-        }
-
-        return String.join(", ", names);
-    }
-
-    private String buildUnitAddress(CompanyUnit unit) {
-        List<String> parts = new ArrayList<>();
-
-        if (unit.getAddressLine1() != null && !unit.getAddressLine1().trim().isEmpty()) {
-            parts.add(unit.getAddressLine1().trim());
-        }
-        if (unit.getAddressLine2() != null && !unit.getAddressLine2().trim().isEmpty()) {
-            parts.add(unit.getAddressLine2().trim());
-        }
-        if (unit.getCity() != null && !unit.getCity().trim().isEmpty()) {
-            parts.add(unit.getCity().trim());
-        }
-        if (unit.getState() != null && !unit.getState().trim().isEmpty()) {
-            parts.add(unit.getState().trim());
-        }
-        if (unit.getCountry() != null && !unit.getCountry().trim().isEmpty()) {
-            parts.add(unit.getCountry().trim());
-        }
-        if (unit.getPinCode() != null && !unit.getPinCode().trim().isEmpty()) {
-            parts.add(unit.getPinCode().trim());
-        }
-
-        return String.join(", ", parts);
-    }
-
     private boolean isValidEmail(String email) {
         return EMAIL_PATTERN.matcher(email).matches();
     }
 
-    private BigDecimal nvl(BigDecimal value) {
-        return value != null ? value : BigDecimal.ZERO;
-    }
 
-    private String formatMoney(BigDecimal value) {
-        BigDecimal safeValue = value != null ? value : BigDecimal.ZERO;
-        return safeValue.setScale(2, java.math.RoundingMode.HALF_UP).toPlainString();
-    }
-
-    private String safe(String value) {
-        return value != null ? value : "";
-    }
 }

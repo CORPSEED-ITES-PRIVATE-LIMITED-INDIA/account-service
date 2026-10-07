@@ -1,266 +1,264 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<!--
+    Corpseed – Estimate email (client-facing cover note)
+    Location: src/main/resources/templates/estimate-email-template.html
+    Variables are filled by EstimateEmailComposer. Layout is table-based with
+    inline styles so it renders consistently in Gmail, Outlook and mobile mail apps.
+-->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Estimate Email</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="x-apple-disable-message-reformatting">
+    <title th:text="${subject}">Estimate EST-2026-000458 for EPR Registration – Corpseed</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f6f8;
-            margin: 0;
-            padding: 0;
-            color: #222;
+        @media only screen and (max-width: 620px) {
+            .container { width: 100% !important; }
+            .px { padding-left: 20px !important; padding-right: 20px !important; }
+            .label-col { width: 110px !important; }
         }
-
-        .wrapper {
-            width: 100%;
-            background: #f4f6f8;
-            padding: 24px 0;
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: #ffffff;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-        }
-
-        .header {
-            background: #1f3c88;
-            color: #ffffff;
-            padding: 24px 32px;
-        }
-
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-
-        .header p {
-            margin: 6px 0 0;
-            font-size: 14px;
-            opacity: 0.95;
-        }
-
-        .content {
-            padding: 32px;
-        }
-
-        .greeting {
-            font-size: 15px;
-            margin-bottom: 20px;
-        }
-
-        .section-title {
-            margin-top: 28px;
-            margin-bottom: 12px;
-            font-size: 18px;
-            color: #1f3c88;
-            border-bottom: 2px solid #e8edf7;
-            padding-bottom: 8px;
-        }
-
-        .meta-table, .line-table, .total-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 12px;
-        }
-
-        .meta-table td {
-            padding: 10px 12px;
-            border: 1px solid #e6e6e6;
-            font-size: 14px;
-            vertical-align: top;
-        }
-
-        .meta-label {
-            background: #f8fafc;
-            font-weight: bold;
-            width: 220px;
-        }
-
-        .line-table th, .line-table td {
-            border: 1px solid #e6e6e6;
-            padding: 10px;
-            text-align: left;
-            font-size: 14px;
-        }
-
-        .line-table th {
-            background: #1f3c88;
-            color: #fff;
-        }
-
-        .total-table td {
-            border: 1px solid #e6e6e6;
-            padding: 10px 12px;
-            font-size: 14px;
-        }
-
-        .total-label {
-            text-align: right;
-            font-weight: bold;
-            background: #f8fafc;
-            width: 75%;
-        }
-
-        .grand-total td {
-            font-size: 16px;
-            font-weight: bold;
-            background: #eef4ff;
-        }
-
-        .notes-box {
-            margin-top: 12px;
-            padding: 14px;
-            background: #f8fafc;
-            border-left: 4px solid #1f3c88;
-            font-size: 14px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-        }
-
-        .footer {
-            padding: 24px 32px;
-            background: #f8fafc;
-            font-size: 14px;
-            color: #555;
-        }
-
-        .footer strong {
-            color: #1f3c88;
-        }
+        a { color: #1f3c88; }
     </style>
 </head>
-<body>
-<div class="wrapper">
-    <div class="container">
+<body style="margin:0; padding:0; background-color:#f4f6f8; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
 
-        <div class="header">
-            <h1>Estimate Details</h1>
-            <p>Please find the estimate details below for your review.</p>
-        </div>
-
-        <div class="content">
-            <div class="greeting">
-                Dear <span th:text="${recipientNames}">Client</span>,
-                <br><br>
-                Greetings from our Corpseed.
-                <br><br>
-                Please find below the estimate prepared for your review and confirmation.
-            </div>
-
-            <div class="section-title">Estimate Summary</div>
-            <table class="meta-table">
-                <tr>
-                    <td class="meta-label">Estimate Number</td>
-                    <td th:text="${estimateNumber}">EST-0001</td>
-                </tr>
-                <tr>
-                    <td class="meta-label">Estimate Date</td>
-                    <td th:text="${estimateDate}">01-04-2026</td>
-                </tr>
-                <tr>
-                    <td class="meta-label">Valid Until</td>
-                    <td th:text="${validUntil}">30-04-2026</td>
-                </tr>
-                <tr>
-                    <td class="meta-label">Company</td>
-                    <td th:text="${companyName}">Company Name</td>
-                </tr>
-                <tr>
-                    <td class="meta-label">Unit</td>
-                    <td th:text="${unitName}">Unit Name</td>
-                </tr>
-                <tr>
-                    <td class="meta-label">Unit Address</td>
-                    <td th:text="${unitAddress}">Address</td>
-                </tr>
-                <tr>
-                    <td class="meta-label">Solution Name</td>
-                    <td th:text="${solutionName}">Solution Name</td>
-                </tr>
-                <tr>
-                    <td class="meta-label">Solution Type</td>
-                    <td th:text="${solutionType}">Solution Type</td>
-                </tr>
-            </table>
-
-            <div class="section-title">Line Items</div>
-            <table class="line-table">
-                <thead>
-                <tr>
-                    <th>Sr. No.</th>
-                    <th>Item Name</th>
-                    <th>Description</th>
-                    <th>Qty</th>
-                    <th>Unit</th>
-                    <th>Unit Price (Ex GST)</th>
-                    <th>GST %</th>
-                    <th>Line Total (Ex GST)</th>
-                    <th>GST Amount</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr th:each="item : ${lineItems}">
-                    <td th:text="${item.srNo}">1</td>
-                    <td th:text="${item.itemName}">Item</td>
-                    <td th:text="${item.description}">Description</td>
-                    <td th:text="${item.quantity}">1</td>
-                    <td th:text="${item.unit}">NOS</td>
-                    <td th:text="${currency + ' ' + item.unitPriceExGst}">INR 100.00</td>
-                    <td th:text="${item.gstRate}">18</td>
-                    <td th:text="${currency + ' ' + item.lineTotalExGst}">INR 100.00</td>
-                    <td th:text="${currency + ' ' + item.gstAmount}">INR 18.00</td>
-                </tr>
-                </tbody>
-            </table>
-
-            <div class="section-title">Amount Summary</div>
-            <table class="total-table">
-                <tr>
-                    <td class="total-label">Sub Total (Ex GST)</td>
-                    <td th:text="${currency + ' ' + subTotalExGst}">INR 1000.00</td>
-                </tr>
-                <tr>
-                    <td class="total-label">Total GST Amount</td>
-                    <td th:text="${currency + ' ' + totalGstAmount}">INR 180.00</td>
-                </tr>
-                <tr>
-                    <td class="total-label">CGST Amount</td>
-                    <td th:text="${currency + ' ' + cgstAmount}">INR 90.00</td>
-                </tr>
-                <tr>
-                    <td class="total-label">SGST Amount</td>
-                    <td th:text="${currency + ' ' + sgstAmount}">INR 90.00</td>
-                </tr>
-                <tr>
-                    <td class="total-label">IGST Amount</td>
-                    <td th:text="${currency + ' ' + igstAmount}">INR 0.00</td>
-                </tr>
-                <tr class="grand-total">
-                    <td class="total-label">Grand Total</td>
-                    <td th:text="${currency + ' ' + grandTotal}">INR 1180.00</td>
-                </tr>
-            </table>
-
-            <div th:if="${customerNotes != null and !#strings.isEmpty(customerNotes)}">
-                <div class="section-title">Notes</div>
-                <div class="notes-box" th:text="${customerNotes}">
-                    Customer note here
-                </div>
-            </div>
-        </div>
-
-        <div class="footer">
-            Regards,<br>
-            <strong th:text="${createdByName}">Accounts Team</strong><br>
-            Corpseed
-        </div>
-
-    </div>
+<!-- Inbox preview text (hidden in the body) -->
+<div style="display:none; max-height:0; overflow:hidden; mso-hide:all; font-size:1px; line-height:1px; color:#f4f6f8;"
+     th:text="|${serviceName}: ${amountTotal}, valid until ${validUntil}|">
+    EPR Registration: ₹35,400, valid until 21 Oct 2026
 </div>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f8;">
+    <tr>
+        <td align="center" style="padding:24px 12px;">
+
+            <table role="presentation" class="container" width="600" cellpadding="0" cellspacing="0" border="0"
+                   style="width:600px; max-width:600px; background-color:#ffffff; border:1px solid #e3e8ef; border-radius:8px;">
+
+                <!-- ============ HEADER ============ -->
+                <tr>
+                    <td class="px" style="padding:22px 32px; border-bottom:3px solid #1f3c88;">
+                        <img th:if="${orgLogoUrl != null}" th:src="${orgLogoUrl}" th:alt="${orgName}"
+                             src="" alt="Corpseed" height="34" style="display:block; height:34px; border:0; outline:none;">
+                        <div th:unless="${orgLogoUrl != null}" th:text="${orgName}"
+                             style="font-family:Arial,Helvetica,sans-serif; font-size:22px; font-weight:bold; color:#1f3c88;">
+                            Corpseed
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- ============ REVISED NOTICE ============ -->
+                <tr th:if="${revised}">
+                    <td class="px" style="padding:12px 32px; background-color:#fff7e6; border-bottom:1px solid #f3d9a6;
+                                          font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#6b4300;">
+                        <strong>Revised estimate.</strong>
+                        This version replaces the estimate we shared earlier. Please use this one going forward.
+                    </td>
+                </tr>
+
+                <!-- ============ GREETING ============ -->
+                <tr>
+                    <td class="px" style="padding:28px 32px 8px; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.6; color:#222222;">
+                        <p style="margin:0 0 16px;">Dear <span th:text="${clientName}">Rahul Sharma</span>,</p>
+                        <p style="margin:0;">
+                            Thank you for choosing <span th:text="${orgName}">Corpseed</span>.
+                            Please find <span th:text="${hasAttachment} ? 'attached' : 'below'">below</span>
+                            our estimate for <strong th:text="${serviceName}">EPR Registration – Plastic Packaging</strong>
+                            for <strong th:text="${companyName}">ABC Polymers Pvt. Ltd.</strong>
+                        </p>
+                    </td>
+                </tr>
+
+                <!-- ============ ESTIMATE SUMMARY ============ -->
+                <tr>
+                    <td class="px" style="padding:20px 32px 8px;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                               style="border:1px solid #e3e8ef; border-radius:6px; font-family:Arial,Helvetica,sans-serif; font-size:14px; color:#222222;">
+                            <tr>
+                                <td colspan="2" style="padding:12px 16px; background-color:#f5f8fd; border-bottom:1px solid #e3e8ef;
+                                                       font-size:15px; font-weight:bold; color:#1f3c88; border-radius:6px 6px 0 0;">
+                                    Estimate summary
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="label-col" style="padding:10px 16px; width:140px; color:#5b6573; border-bottom:1px solid #eef1f5;">Estimate No.</td>
+                                <td style="padding:10px 16px; font-weight:bold; border-bottom:1px solid #eef1f5;" th:text="${estimateNumber}">EST-2026-000458</td>
+                            </tr>
+                            <tr>
+                                <td class="label-col" style="padding:10px 16px; color:#5b6573; border-bottom:1px solid #eef1f5;">Date</td>
+                                <td style="padding:10px 16px; border-bottom:1px solid #eef1f5;" th:text="${issueDate}">07 Oct 2026</td>
+                            </tr>
+                            <tr>
+                                <td class="label-col" style="padding:10px 16px; color:#5b6573; border-bottom:1px solid #eef1f5;">Service</td>
+                                <td style="padding:10px 16px; border-bottom:1px solid #eef1f5;" th:text="${serviceName}">EPR Registration – Plastic Packaging</td>
+                            </tr>
+                            <tr th:if="${paymentTerm != null}">
+                                <td class="label-col" style="padding:10px 16px; color:#5b6573; border-bottom:1px solid #eef1f5;">Payment terms</td>
+                                <td style="padding:10px 16px; border-bottom:1px solid #eef1f5;" th:text="${paymentTerm}">100% advance</td>
+                            </tr>
+                            <tr>
+                                <td class="label-col" style="padding:12px 16px; color:#5b6573; border-bottom:1px solid #eef1f5;">Total amount</td>
+                                <td style="padding:12px 16px; border-bottom:1px solid #eef1f5;">
+                                    <span th:text="${amountTotal}" style="font-size:18px; font-weight:bold; color:#1f3c88;">₹35,400</span>
+                                    <span th:text="${amountTotalNote}" style="font-size:13px; color:#5b6573;">(inclusive of GST)</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="label-col" style="padding:10px 16px; color:#5b6573;">Valid until</td>
+                                <td style="padding:10px 16px; font-weight:bold;" th:text="${validUntil}">21 Oct 2026</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <!-- ============ VIEW ONLINE ============ -->
+                <tr th:if="${documentLink != null}">
+                    <td class="px" style="padding:20px 32px 4px;">
+                        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td style="background-color:#1f3c88; border-radius:6px;">
+                                    <a th:href="${documentLink}" href="#" target="_blank"
+                                       style="display:inline-block; padding:12px 26px; font-family:Arial,Helvetica,sans-serif; font-size:15px;
+                                              font-weight:bold; color:#ffffff; text-decoration:none; border-radius:6px;">
+                                        View estimate online
+                                    </a>
+                                </td>
+                            </tr>
+                        </table>
+                        <p style="margin:10px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.5; color:#7a8594;">
+                            If the button doesn't work, open this link:
+                            <a th:href="${documentLink}" th:text="${documentLink}" href="#" style="color:#1f3c88; word-break:break-all;">https://…</a>
+                        </p>
+                    </td>
+                </tr>
+
+                <!-- ============ AMOUNT BREAKUP ============ -->
+                <tr th:if="${lineItems != null and !lineItems.isEmpty()}">
+                    <td class="px" style="padding:24px 32px 8px;">
+                        <div style="font-family:Arial,Helvetica,sans-serif; font-size:16px; font-weight:bold; color:#1f3c88; margin:0 0 8px;">
+                            Amount breakup
+                        </div>
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                               style="font-family:Arial,Helvetica,sans-serif; font-size:14px; color:#222222; border-collapse:collapse;">
+                            <tr>
+                                <th align="left" style="padding:8px 0; border-bottom:2px solid #e3e8ef; font-size:13px; font-weight:bold; color:#5b6573;">Item</th>
+                                <th align="right" style="padding:8px 0; border-bottom:2px solid #e3e8ef; font-size:13px; font-weight:bold; color:#5b6573;">Amount (ex GST)</th>
+                            </tr>
+                            <tr th:each="item : ${lineItems}">
+                                <td style="padding:10px 12px 10px 0; border-bottom:1px solid #eef1f5; vertical-align:top;">
+                                    <div th:text="${item.name}" style="font-weight:bold;">Professional fee</div>
+                                    <div th:if="${item.description != null}" th:text="${item.description}"
+                                         style="font-size:12px; line-height:1.5; color:#7a8594; margin-top:2px;">Application filing and follow-up</div>
+                                    <div th:text="|Qty ${item.quantity}, GST ${item.gstRate}|"
+                                         style="font-size:12px; color:#7a8594; margin-top:2px;">Qty 1, GST 18%</div>
+                                </td>
+                                <td align="right" style="padding:10px 0; border-bottom:1px solid #eef1f5; vertical-align:top; white-space:nowrap;"
+                                    th:text="${item.amount}">₹30,000.00</td>
+                            </tr>
+                            <tr>
+                                <td align="right" style="padding:10px 12px 4px 0; color:#5b6573;">Sub total (ex GST)</td>
+                                <td align="right" style="padding:10px 0 4px; white-space:nowrap;" th:text="${subTotal}">₹30,000.00</td>
+                            </tr>
+                            <tr th:each="row : ${taxRows}">
+                                <td align="right" style="padding:4px 12px 4px 0; color:#5b6573;" th:text="${row.label}">IGST</td>
+                                <td align="right" style="padding:4px 0; white-space:nowrap;" th:text="${row.amount}">₹5,400.00</td>
+                            </tr>
+                            <tr>
+                                <td align="right" style="padding:10px 12px 0 0; border-top:2px solid #e3e8ef; font-weight:bold;">Total</td>
+                                <td align="right" style="padding:10px 0 0; border-top:2px solid #e3e8ef; font-size:16px; font-weight:bold; color:#1f3c88; white-space:nowrap;"
+                                    th:text="${amountTotal}">₹35,400</td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <!-- ============ CUSTOMER NOTES ============ -->
+                <tr th:if="${customerNotes != null}">
+                    <td class="px" style="padding:20px 32px 0;">
+                        <div th:text="${customerNotes}"
+                             style="padding:12px 16px; background-color:#f5f8fd; border-left:4px solid #1f3c88;
+                                    font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.6; color:#333333; white-space:pre-wrap;">
+                            Customer note here
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- ============ WHAT HAPPENS NEXT ============ -->
+                <tr>
+                    <td class="px" style="padding:26px 32px 4px; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.6; color:#222222;">
+                        <div style="font-size:16px; font-weight:bold; color:#1f3c88; margin:0 0 10px;">What happens next</div>
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                                <td width="30" valign="top" style="padding:2px 0 10px; font-weight:bold; color:#1f3c88;">1.</td>
+                                <td valign="top" style="padding:2px 0 10px;">
+                                    Review the estimate and reply to this email<span th:if="${acceptOnline}">, or click <strong>Accept</strong> on the online estimate,</span> to confirm.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td width="30" valign="top" style="padding:2px 0 10px; font-weight:bold; color:#1f3c88;">2.</td>
+                                <td valign="top" style="padding:2px 0 10px;">
+                                    We will share the document checklist and start work as soon as we receive your confirmation and advance payment.
+                                </td>
+                            </tr>
+                            <tr>
+                                <td width="30" valign="top" style="padding:2px 0 10px; font-weight:bold; color:#1f3c88;">3.</td>
+                                <td valign="top" style="padding:2px 0 10px;">
+                                    Your account manager will keep you updated at every stage until the approval or certificate is issued.
+                                </td>
+                            </tr>
+                        </table>
+                        <p style="margin:6px 0 0; font-size:13px; line-height:1.5; color:#5b6573;" th:text="${govtFeeNote}">
+                            Please note that government fees, timelines and approvals are set by the respective authority and may change.
+                        </p>
+                    </td>
+                </tr>
+
+                <!-- ============ ACCOUNT MANAGER ============ -->
+                <tr th:if="${accountManagerName != null}">
+                    <td class="px" style="padding:20px 32px 4px;">
+                        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                               style="background-color:#f5f8fd; border-radius:6px;">
+                            <tr>
+                                <td style="padding:14px 16px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.7; color:#222222;">
+                                    Questions, or want to discuss the scope? Contact your account manager:<br>
+                                    <strong th:text="${accountManagerName}">Priya Verma</strong>
+                                    <span th:if="${accountManagerPhone != null}"> |
+                                        <a th:href="|tel:${accountManagerPhoneHref}|" th:text="${accountManagerPhone}" href="#"
+                                           style="color:#1f3c88; text-decoration:none;">+91 98765 43210</a>
+                                    </span>
+                                    <span th:if="${accountManagerEmail != null}"> |
+                                        <a th:href="|mailto:${accountManagerEmail}|" th:text="${accountManagerEmail}" href="#"
+                                           style="color:#1f3c88; text-decoration:none;">priya@corpseed.com</a>
+                                    </span>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+
+                <!-- ============ SIGN-OFF ============ -->
+                <tr>
+                    <td class="px" style="padding:22px 32px 28px; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:1.6; color:#222222;">
+                        Warm regards,<br>
+                        <strong>Team <span th:text="${orgName}">Corpseed</span></strong><br>
+                        <a th:if="${orgWebsite != null}" th:href="${orgWebsiteHref}" th:text="${orgWebsite}" href="#"
+                           style="color:#1f3c88; text-decoration:none;">www.corpseed.com</a>
+                    </td>
+                </tr>
+
+                <!-- ============ FOOTER ============ -->
+                <tr>
+                    <td class="px" style="padding:16px 32px; background-color:#f8fafc; border-top:1px solid #e3e8ef; border-radius:0 0 8px 8px;
+                                          font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.6; color:#7a8594;">
+                        <span th:text="${orgName}">Corpseed</span><span th:if="${orgGstNo != null}">, GSTIN <span th:text="${orgGstNo}">09AAAAA0000A1Z5</span></span><br>
+                        <span th:if="${orgAddress != null}" th:text="${orgAddress}">Noida, Uttar Pradesh</span>
+                    </td>
+                </tr>
+
+            </table>
+
+        </td>
+    </tr>
+</table>
 </body>
 </html>

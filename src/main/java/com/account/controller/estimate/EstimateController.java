@@ -1,5 +1,6 @@
 package com.account.controller.estimate;
 
+import com.account.config.EmailServiceImpl;
 import com.account.dto.EstimateCreationRequestDto;
 import com.account.dto.company.request.CompanyUnitProjectOverviewRequestDto;
 import com.account.dto.company.response.CompanyUnitProjectOverviewResponseDto;
@@ -30,6 +31,8 @@ import java.util.List;
 public class EstimateController {
 
     private final EstimateService estimateService;
+    private final EmailServiceImpl emailService;
+
 
     @Operation(summary = "Create a new estimate")
     @ApiResponses({
@@ -324,6 +327,19 @@ public class EstimateController {
         return ResponseEntity.ok(response);
     }
 
+
+    /**
+     * Open in a browser:
+     *   http://localhost:9002/accountService/api/v1/estimates/{estimateId}/email-preview
+     *
+     * Shows the estimate email filled with live database data plus the
+     * From / To / Subject that would be used. Nothing is sent.
+     */
+    @Operation(summary = "Preview the estimate email (rendered from DB, not sent)")
+    @GetMapping(value = "/{estimateId}/email-preview", produces = "text/html;charset=UTF-8")
+    public ResponseEntity<String> previewEstimateEmail(@PathVariable Long estimateId) {
+        return ResponseEntity.ok(emailService.previewEstimateEmail(estimateId));
+    }
 
 
 
