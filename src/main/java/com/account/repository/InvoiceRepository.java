@@ -506,4 +506,14 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long>, JpaSpec
             String operationProjectNo
     );
 
+    /**
+     * Used by the public "View invoice" link: /public/invoices/{uuid}/pdf
+     */
+    @Query("""
+        SELECT i FROM Invoice i
+        WHERE i.publicUuid = :publicUuid
+          AND i.isCancelled = false
+        """)
+    Optional<Invoice> findByPublicUuidAndIsCancelledFalse(@Param("publicUuid") String publicUuid);
+
 }

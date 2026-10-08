@@ -1,6 +1,7 @@
 
 package com.account.serviceImpl;
 
+import com.account.config.EmailServiceImpl;
 import com.account.domain.*;
 import com.account.domain.company.Company;
 import com.account.domain.company.CompanyUnit;
@@ -46,6 +47,8 @@ import org.springframework.data.domain.*;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -73,6 +76,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 	private final AccountingVoucherService accountingVoucherService;
 	private final LedgerMasterRepository ledgerMasterRepository;
 	private final LedgerGroupRepository ledgerGroupRepository;
+
+	/** Sends the client invoice email (same contact logic as estimates). */
+	private final EmailServiceImpl emailServiceImpl;
 
 
 	/**
@@ -661,6 +667,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 				invoiceLines.size()
 		);
 
+		// Client email goes out after commit (REGISTERED / SEZ wait for e-invoice).
+		sendInvoiceEmailAfterCommit(savedInvoice);
+
 		return savedInvoice;
 	}
 
@@ -920,7 +929,7 @@ public class InvoiceServiceImpl implements InvoiceService {
 				.estimateNumber(estimate != null ? estimate.getEstimateNumber() : null)
 				.estimateId(estimate != null ? estimate.getId() : null)
 				.paymentTerm(estimate != null ? estimate.getPaymentTerm() : null)
-                .clientPoNumber(estimate != null ? estimate.getClientPoNumber() : null)
+				.clientPoNumber(estimate != null ? estimate.getClientPoNumber() : null)
 
 				.paymentTypeId(paymentTypeId)
 				.paymentTypeCode(paymentTypeCode)
@@ -2529,7 +2538,45 @@ public class InvoiceServiceImpl implements InvoiceService {
 				unbilled.getUnbilledNumber()
 		);
 
+		// Client email goes out after commit (REGISTERED / SEZ wait for e-invoice).
+		sendInvoiceEmailAfterCommit(savedInvoice);
+
 		return toDetailDto(savedInvoice);
+	}
+
+	/**
+	 * Sends the invoice email to the client's contacts AFTER the current
+	 * transaction commits, so an email/SMTP failure can never roll back the
+	 * invoice, the Sales Invoice voucher or the Operation project.
+	 * EmailServiceImpl skips REGISTERED / SEZ invoices until the e-invoice is confirmed.
+	 */
+	private void sendInvoiceEmailAfterCommit(Invoice invoice) {
+		if (invoice == null || invoice.getId() == null) {
+			return;
+		}
+		Long invoiceId = invoice.getId();
+
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(
+					new TransactionSynchronization() {
+						@Override
+						public void afterCommit() {
+							try {
+								emailServiceImpl.sendInvoiceEmailAfterCommit(invoiceId);
+							} catch (Exception e) {
+								log.error("Invoice email after commit failed | invoiceId={} | error={}",
+										invoiceId, e.getMessage(), e);
+							}
+						}
+					}
+			);
+		} else {
+			try {
+				emailServiceImpl.sendInvoiceEmailAfterCommit(invoiceId);
+			} catch (Exception e) {
+				log.error("Invoice email failed | invoiceId={} | error={}", invoiceId, e.getMessage(), e);
+			}
+		}
 	}
 
 	private boolean hasText(String value) {
@@ -3711,6 +3758,9 @@ public class InvoiceServiceImpl implements InvoiceService {
 				savedInvoice.getOutstandingAmount(),
 				invoiceLines.size()
 		);
+
+		// Client email goes out after commit (REGISTERED / SEZ wait for e-invoice).
+		sendInvoiceEmailAfterCommit(savedInvoice);
 
 		return savedInvoice;
 	}

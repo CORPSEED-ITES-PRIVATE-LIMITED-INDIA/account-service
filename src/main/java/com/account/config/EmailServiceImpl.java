@@ -3,10 +3,16 @@ package com.account.config;
 import com.account.domain.Contact;
 import com.account.domain.company.CompanyUnit;
 import com.account.domain.estimate.Estimate;
+import com.account.domain.invoice.Invoice;
 import com.account.exception.ResourceNotFoundException;
+import com.account.exception.ValidationException;
 import com.account.repository.ContactRepository;
 import com.account.repository.EstimateRepository;
+import com.account.repository.InvoiceRepository;
 import com.account.serviceImpl.email.EstimateEmailComposer;
+import com.account.serviceImpl.email.InvoiceDocumentSupport;
+import com.account.serviceImpl.email.InvoiceEmailComposer;
+import com.account.serviceImpl.email.InvoicePdfService;
 import com.account.serviceImpl.pdf.EstimatePdfService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -20,6 +26,7 @@ import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.HtmlUtils;
 import org.thymeleaf.TemplateEngine;
@@ -62,6 +69,27 @@ public class EmailServiceImpl {
     @Value("${app.estimate.pdf.required:true}")
     private boolean pdfRequired;
 
+    // ---------- Invoice sender ----------
+
+    /** Must be the SMTP mailbox or one of its aliases (Zoho rule). */
+    @Value("${app.mail.invoice-from:${spring.mail.username}}")
+    private String invoiceFromAddress;
+
+    @Value("${app.mail.invoice-from-name:Corpseed Accounts}")
+    private String invoiceFromName;
+
+    /** Where "reply to this email" goes. Blank = replies go to the From address. */
+    @Value("${app.mail.invoice-reply-to:}")
+    private String invoiceReplyTo;
+
+    /** Optional copy to accounts, e.g. accounts@corpseed.com (comma separated). */
+    @Value("${app.mail.invoice-bcc:}")
+    private String invoiceBcc;
+
+    /** Switch automatic invoice emails off (manual send still works). */
+    @Value("${app.invoice.auto-send-email:true}")
+    private boolean invoiceAutoSendEnabled;
+
     @Autowired
     private JavaMailSender javaMailSender;
 
@@ -72,6 +100,10 @@ public class EmailServiceImpl {
     private final EstimateRepository estimateRepository;
     private final EstimateEmailComposer estimateEmailComposer;
     private final EstimatePdfService estimatePdfService;
+
+    private final InvoiceRepository invoiceRepository;
+    private final InvoiceEmailComposer invoiceEmailComposer;
+    private final InvoicePdfService invoicePdfService;
 
 
     // =====================================================================
@@ -138,7 +170,7 @@ public class EmailServiceImpl {
 
 
     // =====================================================================
-    // ESTIMATE EMAIL
+    // ESTIMATE EMAIL (unchanged)
     // =====================================================================
 
     /**
@@ -262,29 +294,212 @@ public class EmailServiceImpl {
         return email.htmlBody().replaceFirst("(?i)(<body[^>]*>)", "$1" + Matcher.quoteReplacement(banner));
     }
 
+
+    // =====================================================================
+    // INVOICE EMAIL (same recipient logic as the estimate email)
+    // =====================================================================
+
     /**
-     * Recipient order (first one is saved as estimate.sentToEmail):
-     *   1. the contact chosen on the estimate
+     * Called by InvoiceServiceImpl AFTER the invoice transaction commits:
+     *  - payment-first invoice generated (UNREGISTERED / INTERNATIONAL)
+     *  - e-invoice confirmed (REGISTERED / SEZ)
+     *  - Advance Tax Invoice generated
+     *
+     * Runs in its own transaction and never throws, so an SMTP problem
+     * can't undo the invoice, voucher or Operation project. REGISTERED / SEZ
+     * invoices are skipped until the e-invoice is confirmed.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    public void sendInvoiceEmailAfterCommit(Long invoiceId) {
+        if (!invoiceAutoSendEnabled || invoiceId == null) {
+            return;
+        }
+        try {
+            Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+            if (invoice == null) {
+                log.warn("Invoice email skipped, invoice not found | invoiceId={}", invoiceId);
+                return;
+            }
+            if (!InvoiceDocumentSupport.isReadyToSend(invoice)) {
+                log.info("Invoice email waiting for e-invoice confirmation | invoice={} | status={}",
+                        invoice.getInvoiceNumber(), invoice.getStatus());
+                return;
+            }
+
+            List<String> sent = sendInvoiceEmailToUnitContacts(invoice);
+            if (sent.isEmpty()) {
+                log.warn("Invoice email NOT sent, no valid client email | invoice={}",
+                        invoice.getInvoiceNumber());
+            }
+        } catch (Exception e) {
+            log.error("Automatic invoice email failed | invoiceId={} | error={}",
+                    invoiceId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Manual send / resend from the UI. Errors go back to the caller as 400s.
+     *
+     * @return recipients the email was sent to
+     */
+    @Transactional(readOnly = true)
+    public List<String> sendInvoiceToClient(Long invoiceId) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Invoice not found with id: " + invoiceId, "INVOICE_NOT_FOUND"));
+
+        if (invoice.isCancelled()) {
+            throw new ValidationException("Cancelled invoices can't be sent", "ERR_INVOICE_CANCELLED");
+        }
+        if (!InvoiceDocumentSupport.isReadyToSend(invoice)) {
+            throw new ValidationException(
+                    "Confirm the e-invoice (IRN) before sending this invoice to the client",
+                    "ERR_E_INVOICE_NOT_CONFIRMED");
+        }
+
+        List<String> sent = sendInvoiceEmailToUnitContacts(invoice);
+        if (sent.isEmpty()) {
+            throw new ValidationException("No valid emails found to send invoice", "ERR_NO_EMAIL");
+        }
+        return sent;
+    }
+
+    /**
+     * Sends the invoice email with Invoice_<no>.pdf attached to the invoice's
+     * contact first, then every active contact of the unit (same order as estimates).
+     * Must run inside a transaction (reads lazy associations).
+     *
+     * @return recipients used, or an empty list when no valid email exists.
+     */
+    public List<String> sendInvoiceEmailToUnitContacts(Invoice invoice) {
+        if (invoice == null) {
+            throw new IllegalArgumentException("Invoice is required");
+        }
+
+        CompanyUnit unit = InvoiceDocumentSupport.unit(invoice);
+        List<String> recipients = resolveRecipients(InvoiceDocumentSupport.contact(invoice), unit);
+        if (recipients.isEmpty()) {
+            log.warn("No valid recipient emails | invoice={} | unitId={}",
+                    invoice.getInvoiceNumber(), unit != null ? unit.getId() : null);
+            return List.of();
+        }
+
+        // A GST invoice email must carry the invoice, so a PDF failure stops the send.
+        byte[] pdf = invoicePdfService.generate(invoice);
+
+        InvoiceEmailComposer.InvoiceEmail email = invoiceEmailComposer.compose(invoice, true);
+
+        try {
+            MimeMessage mimeMessage = javaMailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+
+            helper.setFrom(invoiceFromAddress, invoiceFromName);
+            helper.setTo(recipients.toArray(new String[0]));
+            if (InvoiceDocumentSupport.hasText(invoiceReplyTo)) {
+                helper.setReplyTo(invoiceReplyTo.trim());
+            }
+            if (InvoiceDocumentSupport.hasText(invoiceBcc)) {
+                helper.setBcc(invoiceBcc.trim().split("\\s*[,;]\\s*"));
+            }
+            helper.setSubject(email.subject());
+            helper.setText(email.plainTextBody(), email.htmlBody());
+            helper.addAttachment(
+                    InvoiceDocumentSupport.fileName(invoice),
+                    new ByteArrayResource(pdf),
+                    "application/pdf");
+
+            javaMailSender.send(mimeMessage);
+
+            log.info("Invoice email sent | invoice={} | to={} | subject={}",
+                    invoice.getInvoiceNumber(), recipients, email.subject());
+
+            return recipients;
+
+        } catch (MessagingException | UnsupportedEncodingException | MailException e) {
+            log.error("Failed to send invoice email | invoice={} | error={}",
+                    invoice.getInvoiceNumber(), e.getMessage(), e);
+            throw new RuntimeException("Failed to send invoice email", e);
+        }
+    }
+
+    /** The invoice email as the client would see it, not sent. */
+    @Transactional(readOnly = true)
+    public String previewInvoiceEmail(Long invoiceId) {
+        Invoice invoice = invoiceRepository.findById(invoiceId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Invoice not found with id: " + invoiceId, "INVOICE_NOT_FOUND"));
+
+        List<String> recipients = resolveRecipients(
+                InvoiceDocumentSupport.contact(invoice), InvoiceDocumentSupport.unit(invoice));
+
+        InvoiceEmailComposer.InvoiceEmail email = invoiceEmailComposer.compose(invoice, true);
+
+        String status = InvoiceDocumentSupport.isReadyToSend(invoice)
+                ? "Ready to send"
+                : "Waiting for e-invoice confirmation (will not be sent yet)";
+
+        String banner = """
+                <div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.6;background:#fffbe6;\
+                border-bottom:1px solid #e6d58a;padding:12px 16px;color:#333;">
+                <strong>PREVIEW &ndash; not sent</strong><br>
+                From: %s &lt;%s&gt;<br>
+                To: %s<br>
+                Reply-To: %s<br>
+                Subject: %s<br>
+                Attachment: %s<br>
+                Status: %s
+                </div>
+                """.formatted(
+                HtmlUtils.htmlEscape(invoiceFromName),
+                HtmlUtils.htmlEscape(invoiceFromAddress),
+                recipients.isEmpty()
+                        ? "<span style='color:#b00020'>no valid email found on this client's contacts</span>"
+                        : HtmlUtils.htmlEscape(String.join(", ", recipients)),
+                HtmlUtils.htmlEscape(InvoiceDocumentSupport.hasText(invoiceReplyTo) ? invoiceReplyTo : invoiceFromAddress),
+                HtmlUtils.htmlEscape(email.subject()),
+                HtmlUtils.htmlEscape(InvoiceDocumentSupport.fileName(invoice)),
+                HtmlUtils.htmlEscape(status));
+
+        return email.htmlBody().replaceFirst("(?i)(<body[^>]*>)", "$1" + Matcher.quoteReplacement(banner));
+    }
+
+
+    // =====================================================================
+    // RECIPIENTS (shared by estimate and invoice)
+    // =====================================================================
+
+    /** Estimate recipients: same rules as before, now via the shared method. */
+    private List<String> resolveEstimateRecipients(Estimate estimate, CompanyUnit unit) {
+        return resolveRecipients(estimate.getContact(), unit);
+    }
+
+    /**
+     * Recipient order (first one is the "primary" recipient):
+     *   1. the contact chosen on the document
      *   2. the unit's primary contact, then secondary contact
      *   3. every other active contact of the unit (primary/secondary flags first)
      * Contacts with deleteStatus = true or isDeleted = true are skipped.
      */
-    private List<String> resolveEstimateRecipients(Estimate estimate, CompanyUnit unit) {
+    private List<String> resolveRecipients(Contact preferredContact, CompanyUnit unit) {
         List<Contact> ordered = new ArrayList<>();
+        ordered.add(preferredContact);
 
-        ordered.add(estimate.getContact());
-        ordered.add(unit.getPrimaryContact());
-        ordered.add(unit.getSecondaryContact());
+        if (unit != null) {
+            ordered.add(unit.getPrimaryContact());
+            ordered.add(unit.getSecondaryContact());
 
-        List<Contact> unitContacts =
-                contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
-        if (unitContacts != null) {
-            unitContacts.stream()
-                    .filter(Objects::nonNull)
-                    .sorted(Comparator
-                            .comparing((Contact c) -> !c.isPrimaryForUnit())
-                            .thenComparing(c -> !c.isSecondaryForUnit()))
-                    .forEach(ordered::add);
+            if (unit.getId() != null) {
+                List<Contact> unitContacts =
+                        contactRepository.findByCompanyUnitIdAndDeleteStatusFalse(unit.getId());
+                if (unitContacts != null) {
+                    unitContacts.stream()
+                            .filter(Objects::nonNull)
+                            .sorted(Comparator
+                                    .comparing((Contact c) -> !c.isPrimaryForUnit())
+                                    .thenComparing(c -> !c.isSecondaryForUnit()))
+                            .forEach(ordered::add);
+                }
+            }
         }
 
         List<Contact> active = ordered.stream()
@@ -322,4 +537,7 @@ public class EmailServiceImpl {
     private boolean isValidEmail(String email) {
         return EMAIL_PATTERN.matcher(email).matches();
     }
+
+
+
 }
