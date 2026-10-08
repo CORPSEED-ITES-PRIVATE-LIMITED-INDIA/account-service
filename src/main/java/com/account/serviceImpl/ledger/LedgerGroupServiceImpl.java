@@ -18,10 +18,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -351,6 +348,92 @@ public class LedgerGroupServiceImpl implements LedgerGroupService {
                 )
                 .reduce((first, second) -> first + " " + second)
                 .orElse(groupType.name());
+    }
+
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<LedgerGroupResponseDto> createMultipleLedgerGroups(
+            List<LedgerGroupRequestDto> requests
+    ) {
+
+        if (requests == null || requests.isEmpty()) {
+            throw new ValidationException(
+                    "At least one ledger group is required",
+                    "ERR_LEDGER_GROUP_LIST_EMPTY",
+                    "requests"
+            );
+        }
+
+        List<LedgerGroupResponseDto> responses = new ArrayList<>();
+
+        Set<String> names = new HashSet<>();
+        Set<LedgerGroupType> groupTypes = new HashSet<>();
+
+        // Validate complete batch before saving
+        for (LedgerGroupRequestDto request : requests) {
+
+            validateRequest(request);
+
+            String normalizedName = normalizeName(request.getName());
+
+            String nameKey = normalizedName.toLowerCase(Locale.ROOT);
+
+            if (!names.add(nameKey)) {
+                throw new ValidationException(
+                        "Duplicate ledger group name in request: " + normalizedName,
+                        "ERR_DUPLICATE_LEDGER_GROUP_NAME_IN_BATCH",
+                        "name"
+                );
+            }
+
+            if (!groupTypes.add(request.getGroupType())) {
+                throw new ValidationException(
+                        "Duplicate ledger group type in request: "
+                                + request.getGroupType(),
+                        "ERR_DUPLICATE_LEDGER_GROUP_TYPE_IN_BATCH",
+                        "groupType"
+                );
+            }
+
+            if (ledgerGroupRepository.existsByNameIgnoreCase(normalizedName)) {
+                throw new ValidationException(
+                        "Ledger group already exists with name: " + normalizedName,
+                        "ERR_LEDGER_GROUP_DUPLICATE",
+                        "name"
+                );
+            }
+
+            if (ledgerGroupRepository.existsByGroupType(request.getGroupType())) {
+                throw new ValidationException(
+                        "Ledger group already exists for type: "
+                                + request.getGroupType(),
+                        "ERR_LEDGER_GROUP_TYPE_DUPLICATE",
+                        "groupType"
+                );
+            }
+        }
+
+        // Save only after all validation passes
+        for (LedgerGroupRequestDto request : requests) {
+
+            LedgerGroup ledgerGroup = LedgerGroup.builder()
+                    .name(normalizeName(request.getName()))
+                    .groupType(request.getGroupType())
+                    .description(clean(request.getDescription()))
+                    .systemDefault(Boolean.TRUE.equals(request.getSystemDefault()))
+                    .active(request.getActive() == null || request.getActive())
+                    .deleted(false)
+                    .build();
+
+            LedgerGroup saved = ledgerGroupRepository.save(ledgerGroup);
+
+            responses.add(mapToResponse(saved));
+        }
+
+        ledgerGroupRepository.flush();
+
+        return responses;
     }
 
 

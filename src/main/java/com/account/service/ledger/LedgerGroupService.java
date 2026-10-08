@@ -29,4 +29,11 @@ public interface LedgerGroupService {
     void deleteLedgerGroup(Long id);
 
     Map<String, Object> getLedgerGroupTypeByGroupId(Long id);
+
+    List<LedgerGroupResponseDto> createMultipleLedgerGroups(List<LedgerGroupRequestDto> requests);
+
+
+
+
+
 }

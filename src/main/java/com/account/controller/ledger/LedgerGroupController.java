@@ -123,6 +123,20 @@ public class LedgerGroupController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/bulk")
+    @Operation(summary = "Create multiple ledger groups")
+    public ResponseEntity<List<LedgerGroupResponseDto>> createMultipleLedgerGroups(
+            @Valid @RequestBody List<@Valid LedgerGroupRequestDto> requests
+    ) {
+
+        List<LedgerGroupResponseDto> response =
+                ledgerGroupService.createMultipleLedgerGroups(requests);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(response);
+    }
+
 
 
 }
