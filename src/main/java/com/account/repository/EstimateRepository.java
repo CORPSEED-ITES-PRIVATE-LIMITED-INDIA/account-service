@@ -59,5 +59,20 @@ public interface EstimateRepository extends JpaRepository<Estimate, Long>, JpaSp
     Optional<Estimate> findByEstimateNumberAndIsDeletedFalse(@Param("estimateNumber") String estimateNumber);
 
 
+    /**
+     * Used by the public "View estimate online" link: /public/estimates/{uuid}/pdf
+     */
+    @Query("""
+        SELECT e FROM Estimate e
+        WHERE e.publicUuid = :publicUuid
+          AND e.isDeleted = false
+        """)
+    Optional<Estimate> findByPublicUuidAndIsDeletedFalse(@Param("publicUuid") String publicUuid);
+
+
+
+
+
+
 
 }

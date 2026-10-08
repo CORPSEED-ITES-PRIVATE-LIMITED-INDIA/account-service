@@ -4,11 +4,10 @@ import com.account.domain.Contact;
 import com.account.domain.Organization;
 import com.account.domain.User;
 import com.account.domain.estimate.Estimate;
-import com.account.domain.estimate.EstimateLineItem;
 import com.account.repository.OrganizationRepository;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.thymeleaf.ITemplateEngine;
@@ -25,21 +24,25 @@ import java.util.stream.Stream;
 
 /**
  * Builds the client-facing estimate email (subject, HTML body, plain-text body
- * and reply-to) following the "Corpseed Estimate & Invoice Notification
- * Templates" spec. Recipient selection stays in EmailServiceImpl.
+ * and reply-to) exactly as per the "Estimate email" spec:
+ *
+ *   Subject: Estimate {{estimate_no}} for {{service_name}} – Corpseed
+ *   Attachment: Estimate_{{estimate_no}}.pdf
+ *
+ * Recipient selection stays in EmailServiceImpl.
  *
  * IMPORTANT: call this inside an open transaction. It reads lazy associations
- * (company, unit, contacts, line items, createdBy). sendEstimateToClient(...)
- * is already @Transactional, so calling it from there is safe. If you ever move
- * sending to @Async, compose the email before handing off.
+ * (company, unit, contacts, createdBy).
  */
 @Component
 @RequiredArgsConstructor
 public class EstimateEmailComposer {
 
+    private static final Logger log = LogManager.getLogger(EstimateEmailComposer.class);
+
     public static final String TEMPLATE_NAME = "estimate-email-template";
 
-    private static final DateTimeFormatter DATE_FMT =
+    public static final DateTimeFormatter DATE_FMT =
             DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.ENGLISH);
 
     private static final Pattern EMAIL_PATTERN =
@@ -52,11 +55,32 @@ public class EstimateEmailComposer {
     private final ITemplateEngine templateEngine;
     private final OrganizationRepository organizationRepository;
 
-    /** Base URL of the public estimate page, e.g. https://app.corpseed.com/estimate/view */
-    @Value("${app.estimate.public-view-url:}")
-    private String publicViewBaseUrl;
+    /** Brand used in subject, greeting and sign-off ("Team Corpseed"). */
+    @Value("${app.mail.brand-name:Corpseed}")
+    private String brandName;
 
-    /** Set true only once the public estimate page has an "Accept" button. */
+    /** Website shown under the sign-off. */
+    @Value("${app.mail.brand-website:www.corpseed.com}")
+    private String brandWebsite;
+
+    /**
+     * Public page for the estimate. Either:
+     *   https://app.corpseed.com/estimate/view            -> /{uuid} is appended
+     *   https://app.corpseed.com/estimate/{uuid}/view     -> {uuid} is replaced
+     * Leave blank to fall back to the backend PDF link below.
+     */
+    @Value("${app.estimate.public-view-url:}")
+    private String publicViewUrl;
+
+    /**
+     * Public base URL of THIS backend, e.g. https://api.corpseed.com
+     * Used when public-view-url is blank: link becomes
+     * {base}/public/estimates/{uuid}/pdf (served by EstimatePublicController).
+     */
+    @Value("${app.public-base-url:}")
+    private String publicBaseUrl;
+
+    /** Set true only when the public estimate page has an "Accept" button. */
     @Value("${app.estimate.online-accept-enabled:false}")
     private boolean onlineAcceptEnabled;
 
@@ -82,6 +106,32 @@ public class EstimateEmailComposer {
         );
     }
 
+    /** Public link to the estimate, or null if no URL is configured. */
+    public String buildDocumentLink(String publicUuid) {
+        String uuid = trimToNull(publicUuid);
+        if (uuid == null) {
+            return null;
+        }
+
+        String viewUrl = trimToNull(publicViewUrl);
+        if (viewUrl != null) {
+            if (viewUrl.contains("{uuid}")) {
+                return viewUrl.replace("{uuid}", uuid);
+            }
+            return (viewUrl.endsWith("/") ? viewUrl : viewUrl + "/") + uuid;
+        }
+
+        String base = trimToNull(publicBaseUrl);
+        if (base != null) {
+            return (base.endsWith("/") ? base.substring(0, base.length() - 1) : base)
+                    + "/public/estimates/" + uuid + "/pdf";
+        }
+
+        log.warn("Estimate link not added to email: set app.estimate.public-view-url "
+                + "or app.public-base-url in application.properties");
+        return null;
+    }
+
     // =====================================================
     // TEMPLATE VARIABLES
     // =====================================================
@@ -90,36 +140,27 @@ public class EstimateEmailComposer {
         Map<String, Object> v = new LinkedHashMap<>();
 
         String currency = estimate.getCurrency();
-        boolean revised = estimate.getVersion() != null && estimate.getVersion() > 1;
         boolean zeroRated = estimate.isZeroRatedSupply();
 
-        // ---------- Organization ----------
-        String orgName = firstNonBlank(org != null ? org.getName() : null, "Corpseed");
-        String orgWebsite = org != null ? trimToNull(org.getWebsite()) : null;
+        // ---------- Brand ----------
+        String orgName = firstNonBlank(brandName, "Corpseed");
+        String website = firstNonBlank(brandWebsite,
+                org != null ? firstNonBlank(org.getWebsite(), "www.corpseed.com") : "www.corpseed.com");
 
         v.put("orgName", orgName);
-        v.put("orgLogoUrl", org != null ? trimToNull(org.getLogoUrl()) : null);
-        v.put("orgWebsite", orgWebsite);
-        v.put("orgWebsiteHref", toHref(orgWebsite));
-        v.put("orgGstNo", org != null ? trimToNull(org.getGstNo()) : null);
-        v.put("orgAddress", org != null ? joinNonBlank(", ",
-                org.getAddressLine1(), org.getAddressLine2(), org.getCity(),
-                org.getState(), org.getPinCode()) : null);
+        v.put("orgWebsite", stripScheme(website));
+        v.put("orgWebsiteHref", toHref(website));
 
         // ---------- Estimate ----------
         String estimateNo = estimate.getEstimateNumber();
         String serviceName = firstNonBlank(estimate.getSolutionName(), "our services");
 
-        v.put("subject", (revised ? "Revised " : "") + "Estimate " + estimateNo
-                + " for " + serviceName + " – " + orgName);
-        v.put("revised", revised);
+        v.put("subject", "Estimate " + estimateNo + " for " + serviceName + " – " + orgName);
         v.put("hasAttachment", hasPdfAttachment);
         v.put("estimateNumber", estimateNo);
         v.put("serviceName", serviceName);
         v.put("issueDate", formatDate(estimate.getEstimateDate()));
         v.put("validUntil", formatDate(estimate.getValidUntil()));
-        v.put("paymentTerm", trimToNull(estimate.getPaymentTerm()));
-        v.put("customerNotes", trimToNull(estimate.getCustomerNotes()));
         v.put("govtFeeNote", GOVT_FEE_NOTE);
 
         // ---------- Client ----------
@@ -129,12 +170,9 @@ public class EstimateEmailComposer {
                 ? firstNonBlank(estimate.getCompany().getName(), "your company")
                 : "your company");
 
-        // ---------- Amounts ----------
+        // ---------- Amount ----------
         v.put("amountTotal", money(estimate.getGrandTotal(), currency, false));
         v.put("amountTotalNote", zeroRated ? "(zero-rated, no GST)" : "(inclusive of GST)");
-        v.put("subTotal", money(estimate.getSubTotalExGst(), currency, true));
-        v.put("lineItems", buildLineRows(estimate, currency));
-        v.put("taxRows", buildTaxRows(estimate, currency, zeroRated));
 
         // ---------- Online link ----------
         String documentLink = buildDocumentLink(estimate.getPublicUuid());
@@ -144,9 +182,8 @@ public class EstimateEmailComposer {
         // ---------- Account manager ----------
         User manager = estimate.getCreatedBy();
         String managerName = manager != null ? trimToNull(manager.getFullName()) : null;
-        // ASSUMPTION: User has getEmail(). Rename if your field differs.
         String managerEmail = manager != null ? validEmailOrNull(manager.getEmail()) : null;
-        // TODO: replace with the manager's own mobile if User has one (e.g. manager.getContactNo()).
+        // Uses the company phone. If User has its own mobile field, use that here instead.
         String managerPhone = org != null ? trimToNull(org.getPhone()) : null;
 
         v.put("accountManagerName", managerName);
@@ -157,66 +194,12 @@ public class EstimateEmailComposer {
         return v;
     }
 
-    private List<LineRow> buildLineRows(Estimate estimate, String currency) {
-        if (estimate.getLineItems() == null) {
-            return List.of();
-        }
-        return estimate.getLineItems().stream()
-                .filter(Objects::nonNull)
-                .sorted(Comparator.comparing(EstimateLineItem::getDisplayOrder,
-                        Comparator.nullsLast(Comparator.naturalOrder())))
-                .map(item -> new LineRow(
-                        firstNonBlank(item.getItemName(), "Item"),
-                        trimToNull(item.getDescription()),
-                        item.getQuantity() != null ? item.getQuantity() : 1,
-                        percent(item.getGstRate()),
-                        money(item.getLineTotalExGst(), currency, true)
-                ))
-                .toList();
-    }
-
-    private List<AmountRow> buildTaxRows(Estimate estimate, String currency, boolean zeroRated) {
-        List<AmountRow> rows = new ArrayList<>();
-
-        if (zeroRated) {
-            rows.add(new AmountRow(
-                    estimate.isSezSupply()
-                            ? "GST (zero-rated SEZ supply)"
-                            : "GST (zero-rated export of services)",
-                    money(BigDecimal.ZERO, currency, true)));
-        } else {
-            if (isPositive(estimate.getCgstAmount())) {
-                rows.add(new AmountRow("CGST", money(estimate.getCgstAmount(), currency, true)));
-            }
-            if (isPositive(estimate.getSgstAmount())) {
-                rows.add(new AmountRow("SGST", money(estimate.getSgstAmount(), currency, true)));
-            }
-            if (isPositive(estimate.getIgstAmount())) {
-                rows.add(new AmountRow("IGST", money(estimate.getIgstAmount(), currency, true)));
-            }
-            if (rows.isEmpty()) {
-                rows.add(new AmountRow("GST", money(estimate.getTotalGstAmount(), currency, true)));
-            }
-        }
-
-        BigDecimal roundOff = estimate.getRoundOffAmount();
-        if (roundOff != null && roundOff.setScale(2, RoundingMode.HALF_UP).signum() != 0) {
-            rows.add(new AmountRow("Round off", money(roundOff, currency, true)));
-        }
-        return rows;
-    }
-
     // =====================================================
-    // PLAIN-TEXT ALTERNATIVE (mirrors the spec's text layout;
-    // multipart text+HTML improves deliverability)
+    // PLAIN-TEXT ALTERNATIVE (same wording as the spec)
     // =====================================================
 
     private String buildPlainText(Map<String, Object> v) {
         StringBuilder sb = new StringBuilder();
-
-        if (Boolean.TRUE.equals(v.get("revised"))) {
-            sb.append("REVISED ESTIMATE: this version replaces the estimate we shared earlier.\n\n");
-        }
 
         sb.append("Dear ").append(v.get("clientName")).append(",\n\n")
                 .append("Thank you for choosing ").append(v.get("orgName")).append(". Please find ")
@@ -227,11 +210,8 @@ public class EstimateEmailComposer {
                 .append("Estimate summary\n")
                 .append("Estimate No.:   ").append(v.get("estimateNumber")).append('\n')
                 .append("Date:           ").append(v.get("issueDate")).append('\n')
-                .append("Service:        ").append(v.get("serviceName")).append('\n');
-        if (v.get("paymentTerm") != null) {
-            sb.append("Payment terms:  ").append(v.get("paymentTerm")).append('\n');
-        }
-        sb.append("Total amount:   ").append(v.get("amountTotal")).append(' ')
+                .append("Service:        ").append(v.get("serviceName")).append('\n')
+                .append("Total amount:   ").append(v.get("amountTotal")).append(' ')
                 .append(v.get("amountTotalNote")).append('\n')
                 .append("Valid until:    ").append(v.get("validUntil")).append("\n\n");
 
@@ -241,7 +221,7 @@ public class EstimateEmailComposer {
 
         sb.append("What happens next\n")
                 .append("1. Review the estimate and reply to this email")
-                .append(Boolean.TRUE.equals(v.get("acceptOnline")) ? ", or click \"Accept\" on the online estimate," : "")
+                .append(Boolean.TRUE.equals(v.get("acceptOnline")) ? " or click \"Accept\" on the online estimate" : "")
                 .append(" to confirm.\n")
                 .append("2. We will share the document checklist and start work as soon as we receive ")
                 .append("your confirmation and advance payment.\n")
@@ -258,18 +238,16 @@ public class EstimateEmailComposer {
                     .append("\n\n");
         }
 
-        sb.append("Warm regards,\nTeam ").append(v.get("orgName")).append('\n');
-        if (v.get("orgWebsite") != null) {
-            sb.append(v.get("orgWebsite")).append('\n');
-        }
+        sb.append("Warm regards,\nTeam ").append(v.get("orgName")).append('\n')
+                .append(v.get("orgWebsite")).append('\n');
         return sb.toString();
     }
 
     // =====================================================
-    // HELPERS
+    // HELPERS (public static ones are reused by EstimatePdfService)
     // =====================================================
 
-    private static Contact resolveContact(Estimate estimate) {
+    public static Contact resolveContact(Estimate estimate) {
         if (estimate.getContact() != null) {
             return estimate.getContact();
         }
@@ -285,34 +263,14 @@ public class EstimateEmailComposer {
         return EMAIL_PATTERN.matcher(e).matches() ? e : null;
     }
 
-    private String buildDocumentLink(String publicUuid) {
-        String base = trimToNull(publicViewBaseUrl);
-        if (base == null || trimToNull(publicUuid) == null) {
-            return null;
-        }
-        return (base.endsWith("/") ? base : base + "/") + publicUuid;
-    }
-
-    private static String formatDate(LocalDate date) {
+    public static String formatDate(LocalDate date) {
         return date != null ? date.format(DATE_FMT) : "-";
-    }
-
-    private static String percent(BigDecimal rate) {
-        if (rate == null) {
-            return "0%";
-        }
-        return rate.stripTrailingZeros().toPlainString() + "%";
-    }
-
-    private static boolean isPositive(BigDecimal value) {
-        return value != null && value.signum() > 0;
     }
 
     /**
      * Indian digit grouping: 35400 -> ₹35,400 ; 1234567.5 -> ₹12,34,567.50
-     * (java.text.DecimalFormat cannot do lakh/crore grouping on its own.)
      */
-    static String money(BigDecimal amount, String currency, boolean withPaise) {
+    public static String money(BigDecimal amount, String currency, boolean withPaise) {
         BigDecimal v = (amount == null ? BigDecimal.ZERO : amount)
                 .setScale(withPaise ? 2 : 0, RoundingMode.HALF_UP);
 
@@ -353,7 +311,11 @@ public class EstimateEmailComposer {
         return website.matches("(?i)^https?://.*") ? website : "https://" + website;
     }
 
-    private static String trimToNull(String s) {
+    private static String stripScheme(String website) {
+        return website == null ? null : website.replaceFirst("(?i)^https?://", "").replaceAll("/+$", "");
+    }
+
+    public static String trimToNull(String s) {
         if (s == null) {
             return null;
         }
@@ -361,12 +323,12 @@ public class EstimateEmailComposer {
         return t.isEmpty() ? null : t;
     }
 
-    private static String firstNonBlank(String value, String fallback) {
+    public static String firstNonBlank(String value, String fallback) {
         String t = trimToNull(value);
         return t != null ? t : fallback;
     }
 
-    private static String joinNonBlank(String separator, String... parts) {
+    public static String joinNonBlank(String separator, String... parts) {
         String joined = Stream.of(parts)
                 .map(EstimateEmailComposer::trimToNull)
                 .filter(Objects::nonNull)
@@ -375,26 +337,8 @@ public class EstimateEmailComposer {
     }
 
     // =====================================================
-    // VIEW MODELS
-    // (plain getters, not records, so Thymeleaf/SpEL resolves item.name etc.)
+    // RESULT
     // =====================================================
-
-    @Getter
-    @AllArgsConstructor
-    public static class LineRow {
-        private final String name;
-        private final String description;
-        private final int quantity;
-        private final String gstRate;
-        private final String amount;
-    }
-
-    @Getter
-    @AllArgsConstructor
-    public static class AmountRow {
-        private final String label;
-        private final String amount;
-    }
 
     public record EstimateEmail(
             String subject,

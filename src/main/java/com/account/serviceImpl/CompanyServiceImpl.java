@@ -78,6 +78,14 @@ public class CompanyServiceImpl implements CompanyService {
         this.operationFeignClient = operationFeignClient;
     }
 
+    /** Shared company PAN validation for all create flows. */
+    private String requirePan(String rawPan) {
+        if (!StringUtils.hasText(rawPan)) {
+            throw new ValidationException("PAN number is required", "ERR_PAN_REQUIRED");
+        }
+        return rawPan.trim().toUpperCase(Locale.ROOT);
+    }
+
     // =========================================================
     // CREATE COMPANY (manual ID + timestamps)
     // =========================================================
@@ -98,11 +106,9 @@ public class CompanyServiceImpl implements CompanyService {
         if (companyRepository.existsByNameIgnoreCaseAndIsDeletedFalse(name))
             throw new ValidationException("Company name exists", "ERR_DUPLICATE_COMPANY_NAME");
 
-        String panNo = null;
-        if (StringUtils.hasText(dto.getPanNo())) {
-            panNo = dto.getPanNo().trim().toUpperCase();
-            if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo))
-                throw new ValidationException("PAN exists", "ERR_DUPLICATE_PAN");
+        String panNo = requirePan(dto.getPanNo());
+        if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo)) {
+            throw new ValidationException("PAN exists", "ERR_DUPLICATE_PAN");
         }
 
         String gstNo = null;
@@ -1152,7 +1158,11 @@ public class CompanyServiceImpl implements CompanyService {
         company.setUuid(StringUtils.hasText(dto.getUuid()) ? dto.getUuid() : UUID.randomUUID().toString());
 
         company.setName(dto.getName().trim());
-        company.setPanNo(normalizeUnique(dto.getPanNo()));
+        String migrationPanNo = requirePan(dto.getPanNo());
+        if (companyRepository.existsByPanNoAndIsDeletedFalse(migrationPanNo)) {
+            throw new ValidationException("PAN already exists", "ERR_DUPLICATE_PAN");
+        }
+        company.setPanNo(migrationPanNo);
         company.setEstablishDate(dto.getEstablishDate());
 
         company.setIndustry(dto.getIndustry());
@@ -1513,33 +1523,10 @@ public class CompanyServiceImpl implements CompanyService {
                 );
             }
 
-            // Validate PAN only for new company
-            String panNo = null;
-
-            if (StringUtils.hasText(request.getPanNo())) {
-
-                panNo = request.getPanNo()
-                        .trim()
-                        .toUpperCase();
-
-                logger.info(
-                        "Checking PAN uniqueness: {}",
-                        panNo
-                );
-
-                if (companyRepository
-                        .existsByPanNoAndIsDeletedFalse(panNo)) {
-
-                    logger.error(
-                            "Duplicate PAN found: {}",
-                            panNo
-                    );
-
-                    throw new ValidationException(
-                            "PAN already exists",
-                            "ERR_DUPLICATE_PAN"
-                    );
-                }
+            // PAN is mandatory even for a company created through service synchronization.
+            String panNo = requirePan(request.getPanNo());
+            if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo)) {
+                throw new ValidationException("PAN already exists", "ERR_DUPLICATE_PAN");
             }
 
             company = new Company();
@@ -1587,11 +1574,26 @@ public class CompanyServiceImpl implements CompanyService {
         } else {
 
             logger.info(
-                    "Found existing company - ID: {}, Name: {}, PAN: {}",
+                    "Found existing company - ID: {}, Name: {}",
                     company.getId(),
-                    company.getName(),
-                    company.getPanNo()
+                    company.getName()
             );
+
+            // Repair a legacy Account company without PAN only when the Lead Service
+            // supplies a PAN. Never allow two microservices to silently disagree.
+            if (!StringUtils.hasText(company.getPanNo())) {
+                String panNo = requirePan(request.getPanNo());
+                if (companyRepository.existsByPanNoAndIsDeletedFalse(panNo)) {
+                    throw new ValidationException("PAN already exists", "ERR_DUPLICATE_PAN");
+                }
+                company.setPanNo(panNo);
+            } else if (StringUtils.hasText(request.getPanNo())
+                    && !company.getPanNo().trim().equalsIgnoreCase(requirePan(request.getPanNo()))) {
+                throw new ValidationException(
+                        "Company PAN differs between Lead Service and Account Service",
+                        "ERR_PAN_SERVICE_MISMATCH"
+                );
+            }
 
             if (StringUtils.hasText(request.getRating())) {
                 company.setRating(

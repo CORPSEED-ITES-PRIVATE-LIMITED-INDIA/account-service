@@ -7,6 +7,7 @@ import com.account.exception.ResourceNotFoundException;
 import com.account.repository.ContactRepository;
 import com.account.repository.EstimateRepository;
 import com.account.serviceImpl.email.EstimateEmailComposer;
+import com.account.serviceImpl.pdf.EstimatePdfService;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +27,7 @@ import org.thymeleaf.context.Context;
 
 import java.io.UnsupportedEncodingException;
 import java.util.*;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
@@ -52,6 +54,14 @@ public class EmailServiceImpl {
     @Value("${app.mail.estimate-from-name:Corpseed}")
     private String estimateFromName;
 
+    /**
+     * true  -> if the PDF can't be generated, the email is NOT sent and the
+     *          estimate stays DRAFT (recommended: the email promises an attachment).
+     * false -> the email is sent without the PDF and says "Please find below".
+     */
+    @Value("${app.estimate.pdf.required:true}")
+    private boolean pdfRequired;
+
     @Autowired
     private JavaMailSender javaMailSender;
 
@@ -61,6 +71,7 @@ public class EmailServiceImpl {
     private final ContactRepository contactRepository;
     private final EstimateRepository estimateRepository;
     private final EstimateEmailComposer estimateEmailComposer;
+    private final EstimatePdfService estimatePdfService;
 
 
     // =====================================================================
@@ -131,12 +142,11 @@ public class EmailServiceImpl {
     // =====================================================================
 
     /**
-     * Sends the estimate email to the estimate's own contact (first, so it
-     * becomes the "primary" sent-to email) followed by every active contact
-     * of the estimate's company unit.
+     * Sends the estimate email (with Estimate_<no>.pdf attached) to the
+     * estimate's own contact first, then every active contact of the unit.
      *
      * Must run inside the caller's transaction (sendEstimateToClient is
-     * @Transactional) because the composer reads lazy associations.
+     * @Transactional) because the composer and PDF service read lazy associations.
      *
      * @return recipients actually used, or an empty list when no valid email
      *         exists (EstimateServiceImpl then raises ERR_NO_EMAIL as a 400).
@@ -158,8 +168,8 @@ public class EmailServiceImpl {
             return List.of();
         }
 
-        // byte[] pdf = estimatePdfService.generate(estimate);   // hook for Estimate_<no>.pdf
-        byte[] pdf = null;
+        // ---------- PDF attachment ----------
+        byte[] pdf = generatePdf(estimate);
 
         EstimateEmailComposer.EstimateEmail email =
                 estimateEmailComposer.compose(estimate, pdf != null);
@@ -178,15 +188,15 @@ public class EmailServiceImpl {
 
             if (pdf != null) {
                 helper.addAttachment(
-                        "Estimate_" + estimate.getEstimateNumber() + ".pdf",
+                        EstimatePdfService.fileName(estimate),
                         new ByteArrayResource(pdf),
                         "application/pdf");
             }
 
             javaMailSender.send(mimeMessage);
 
-            log.info("Estimate email sent | estimate={} | to={} | subject={}",
-                    estimate.getEstimateNumber(), recipients, email.subject());
+            log.info("Estimate email sent | estimate={} | to={} | pdfAttached={} | subject={}",
+                    estimate.getEstimateNumber(), recipients, pdf != null, email.subject());
 
             return recipients;
 
@@ -198,10 +208,24 @@ public class EmailServiceImpl {
         }
     }
 
+    private byte[] generatePdf(Estimate estimate) {
+        try {
+            return estimatePdfService.generate(estimate);
+        } catch (Exception e) {
+            log.error("Estimate PDF generation failed | estimate={} | error={}",
+                    estimate.getEstimateNumber(), e.getMessage(), e);
+            if (pdfRequired) {
+                // Rolls back sendEstimateToClient, so the estimate stays DRAFT.
+                throw new RuntimeException("Could not generate the estimate PDF, email not sent", e);
+            }
+            return null;
+        }
+    }
+
     /**
      * Renders the estimate email exactly as the client would receive it,
-     * using live data from the database, without sending anything.
-     * A small banner at the top shows the From / To / Subject that would be used.
+     * using live data, without sending anything. A banner at the top shows
+     * From / To / Reply-To / Subject / Attachment.
      */
     @Transactional(readOnly = true)
     public String previewEstimateEmail(Long estimateId) {
@@ -213,7 +237,7 @@ public class EmailServiceImpl {
                 ? resolveEstimateRecipients(estimate, estimate.getUnit())
                 : List.of();
 
-        EstimateEmailComposer.EstimateEmail email = estimateEmailComposer.compose(estimate, false);
+        EstimateEmailComposer.EstimateEmail email = estimateEmailComposer.compose(estimate, true);
 
         String banner = """
                 <div style="font-family:Arial,sans-serif;font-size:13px;line-height:1.6;background:#fffbe6;\
@@ -222,7 +246,8 @@ public class EmailServiceImpl {
                 From: %s &lt;%s&gt;<br>
                 To: %s<br>
                 Reply-To: %s<br>
-                Subject: %s
+                Subject: %s<br>
+                Attachment: %s
                 </div>
                 """.formatted(
                 HtmlUtils.htmlEscape(estimateFromName),
@@ -231,9 +256,10 @@ public class EmailServiceImpl {
                         ? "<span style='color:#b00020'>no valid email found on this unit's contacts</span>"
                         : HtmlUtils.htmlEscape(String.join(", ", recipients)),
                 HtmlUtils.htmlEscape(email.replyTo() != null ? email.replyTo() : "-"),
-                HtmlUtils.htmlEscape(email.subject()));
+                HtmlUtils.htmlEscape(email.subject()),
+                HtmlUtils.htmlEscape(EstimatePdfService.fileName(estimate)));
 
-        return email.htmlBody().replaceFirst("(?i)(<body[^>]*>)", "$1" + java.util.regex.Matcher.quoteReplacement(banner));
+        return email.htmlBody().replaceFirst("(?i)(<body[^>]*>)", "$1" + Matcher.quoteReplacement(banner));
     }
 
     /**
@@ -296,6 +322,4 @@ public class EmailServiceImpl {
     private boolean isValidEmail(String email) {
         return EMAIL_PATTERN.matcher(email).matches();
     }
-
-
 }
