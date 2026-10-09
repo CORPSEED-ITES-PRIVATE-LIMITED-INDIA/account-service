@@ -28,6 +28,8 @@ import java.io.InputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.URL;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import static com.account.serviceImpl.email.EstimateEmailComposer.*;
@@ -36,9 +38,12 @@ import static com.account.serviceImpl.email.EstimateEmailComposer.*;
  * Generates Estimate_<no>.pdf from templates/estimate-pdf-template.html
  * (Thymeleaf -> HTML -> PDF with OpenHTMLtoPDF).
  *
+ * Layout: header (logo, company, CIN/GST/PAN, address, email, phone | Estimate no.,
+ * client PO, dates), Bill to / Ship to, items table with CGST/SGST (or IGST) rows
+ * and grand total, amount in words, HSN-wise tax details, bank box, note, terms.
+ *
  * Fonts: put NotoSans-Regular.ttf and NotoSans-Bold.ttf in
- * src/main/resources/fonts/ so the ₹ symbol renders. Without them the PDF
- * still generates, but "₹" is printed as "Rs.".
+ * src/main/resources/fonts/ so the ₹ symbol renders. Without them "₹" prints as "Rs.".
  *
  * Must be called inside a transaction (reads lazy associations).
  */
@@ -49,6 +54,8 @@ public class EstimatePdfService {
     private static final Logger log = LogManager.getLogger(EstimatePdfService.class);
 
     public static final String TEMPLATE_NAME = "estimate-pdf-template";
+
+    private static final DateTimeFormatter PDF_DATE = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
     private static final String FONT_FAMILY = "Noto Sans";
     private static final String FONT_REGULAR = "/fonts/NotoSans-Regular.ttf";
@@ -77,7 +84,7 @@ public class EstimatePdfService {
         boolean fontsAvailable = resourceExists(FONT_REGULAR) && resourceExists(FONT_BOLD);
         if (!fontsAvailable) {
             log.warn("PDF fonts missing ({} / {}); printing '₹' as 'Rs.'", FONT_REGULAR, FONT_BOLD);
-            html = html.replace("₹", "Rs. ");
+            html = html.replace("₹ ", "Rs. ").replace("₹", "Rs.");
         }
 
         // Jsoup turns Thymeleaf's HTML5 output into a DOM the PDF renderer accepts
@@ -137,119 +144,326 @@ public class EstimatePdfService {
         Map<String, Object> v = new LinkedHashMap<>();
         String currency = estimate.getCurrency();
         boolean zeroRated = estimate.isZeroRatedSupply();
+        boolean interState = zeroRated || isPositive(estimate.getIgstAmount());
 
         // ---------- Organization (seller) ----------
         v.put("orgName", org != null ? firstNonBlank(org.getName(), brandName) : brandName);
         v.put("orgLogoUrl", org != null ? httpUrlOrNull(org.getLogoUrl()) : null);
-        v.put("orgAddress", org != null ? joinNonBlank(", ",
-                org.getAddressLine1(), org.getAddressLine2(), org.getCity(),
-                org.getState(), org.getPinCode()) : null);
+        v.put("orgCin", prop(org, "getCinNumber", "getCin", "getCinNo"));
         v.put("orgGstNo", org != null ? trimToNull(org.getGstNo()) : null);
         v.put("orgPanNo", org != null ? trimToNull(org.getPanNo()) : null);
-        v.put("orgContactLine", org != null ? joinNonBlank(" | ",
-                org.getPhone(), org.getEmail(), org.getWebsite()) : null);
+        v.put("orgAddress", org != null ? joinNonBlank(", ",
+                org.getAddressLine1(), org.getAddressLine2(), org.getCity(),
+                org.getState(), prop(org, "getCountry"), org.getPinCode()) : null);
+        v.put("orgEmail", org != null ? trimToNull(org.getEmail()) : null);
+        v.put("orgPhone", org != null ? trimToNull(org.getPhone()) : null);
 
         // ---------- Estimate ----------
         v.put("estimateNumber", estimate.getEstimateNumber());
-        v.put("issueDate", formatDate(estimate.getEstimateDate()));
-        v.put("validUntil", formatDate(estimate.getValidUntil()));
         v.put("clientPoNumber", trimToNull(estimate.getClientPoNumber()));
-        v.put("paymentTerm", trimToNull(estimate.getPaymentTerm()));
+        v.put("issueDate", pdfDate(estimate.getEstimateDate()));
+        v.put("validUntil", pdfDate(estimate.getValidUntil()));
         v.put("serviceName", firstNonBlank(estimate.getSolutionName(), "-"));
         v.put("customerNotes", trimToNull(estimate.getCustomerNotes()));
 
-        // ---------- Bill to ----------
+        // ---------- Bill to / Ship to (same party unless a separate ship-to exists) ----------
         CompanyUnit unit = estimate.getUnit();
-        Contact contact = resolveContact(estimate);
-        v.put("billToCompany", estimate.getCompany() != null ? trimToNull(estimate.getCompany().getName()) : null);
-        v.put("billToUnit", unit != null ? trimToNull(unit.getUnitName()) : null);
-        v.put("billToAddress", unit != null ? joinNonBlank(", ",
+        String partyName = estimate.getCompany() != null ? trimToNull(estimate.getCompany().getName()) : null;
+        if (partyName == null && unit != null) {
+            partyName = trimToNull(unit.getUnitName());
+        }
+        String partyGst = unit != null ? trimToNull(unit.getGstNo()) : null;
+        String partyAddress = unit != null ? joinNonBlank(", ",
                 unit.getAddressLine1(), unit.getAddressLine2(), unit.getCity(),
-                unit.getState(), unit.getPinCode()) : null);
-        v.put("billToGstNo", unit != null ? trimToNull(unit.getGstNo()) : null);
-        v.put("billToContact", contact != null ? joinNonBlank(" | ",
-                contact.getName(), contact.getContactNo(), cleanEmails(contact.getEmails())) : null);
+                unit.getState(), unit.getPinCode()) : null;
 
-        // ---------- Amounts ----------
-        v.put("lineItems", buildLineRows(estimate, currency));
-        v.put("subTotal", money(estimate.getSubTotalExGst(), currency, true));
-        v.put("taxRows", buildTaxRows(estimate, currency, zeroRated));
-        v.put("grandTotal", money(estimate.getGrandTotal(), currency, true));
-        v.put("amountTotalNote", zeroRated ? "Zero-rated supply, no GST charged" : "Inclusive of GST");
+        v.put("billToName", partyName);
+        v.put("billToGstNo", partyGst);
+        v.put("billToAddress", partyAddress);
+        v.put("shipToName", partyName);
+        v.put("shipToGstNo", partyGst);
+        v.put("shipToAddress", partyAddress);
 
-        // ---------- Terms & bank ----------
-        v.put("terms", toLines(org != null ? org.getEstimateConditions() : null));
+        // ---------- Items + tax rows ----------
+        List<EstimateLineItem> items = sortedItems(estimate);
+        List<PdfLine> lines = buildLineRows(items, currency);
+        v.put("lineItems", lines);
+        v.put("taxLines", buildTaxLines(estimate, items, currency, zeroRated, lines.size() + 1));
+        v.put("grandTotal", amt(estimate.getGrandTotal(), currency));
+        v.put("amountInWords", amountInWords(estimate.getGrandTotal(), currency));
+
+        // ---------- HSN-wise tax details ----------
+        v.put("interState", interState);
+        buildHsnSummary(items, currency, zeroRated, v);
+
+        // ---------- Bank ----------
         boolean bank = org != null && org.isBankAccountPresent() && trimToNull(org.getAccountNo()) != null;
         v.put("bankPresent", bank);
         if (bank) {
-            v.put("bankAccountName", trimToNull(org.getAccountHolderName()));
-            v.put("bankName", joinNonBlank(", ", org.getBankName(), org.getBranch()));
+            v.put("bankName", trimToNull(org.getBankName()));
             v.put("bankAccountNo", trimToNull(org.getAccountNo()));
             v.put("bankIfsc", trimToNull(org.getIfscCode()));
-            v.put("bankUpi", trimToNull(org.getUpiId()));
         }
+
+        // ---------- Terms ----------
+        v.put("terms", toLines(org != null ? org.getEstimateConditions() : null));
         return v;
     }
 
-    private List<PdfLine> buildLineRows(Estimate estimate, String currency) {
+    private static List<EstimateLineItem> sortedItems(Estimate estimate) {
         if (estimate.getLineItems() == null) {
             return List.of();
         }
-        List<EstimateLineItem> items = estimate.getLineItems().stream()
+        return estimate.getLineItems().stream()
                 .filter(Objects::nonNull)
                 .sorted(Comparator.comparing(EstimateLineItem::getDisplayOrder,
                         Comparator.nullsLast(Comparator.naturalOrder())))
                 .toList();
+    }
 
+    private List<PdfLine> buildLineRows(List<EstimateLineItem> items, String currency) {
         List<PdfLine> rows = new ArrayList<>();
         int index = 1;
         for (EstimateLineItem item : items) {
-            Object unitOfMeasure = item.getUnit();
+            Object qty = item.getQuantity();
+            Object uom = item.getUnit();
             rows.add(new PdfLine(
                     index++,
                     firstNonBlank(item.getItemName(), "Item"),
                     trimToNull(item.getDescription()),
-                    trimToNull(item.getHsnSacCode()),
-                    item.getQuantity() != null ? String.valueOf(item.getQuantity()) : "1",
-                    unitOfMeasure != null ? trimToNull(String.valueOf(unitOfMeasure)) : null,
-                    money(item.getUnitPriceExGst(), currency, true),
-                    percent(item.getGstRate()),
-                    money(item.getLineTotalExGst(), currency, true)
+                    firstNonBlank(item.getHsnSacCode(), ""),
+                    qty == null ? "1" : plain(qty),
+                    amt(item.getUnitPriceExGst(), currency),
+                    uom != null ? firstNonBlank(String.valueOf(uom), "Nos") : "Nos",
+                    amt(item.getLineTotalExGst(), currency)
             ));
         }
         return rows;
     }
 
-    private List<AmountRow> buildTaxRows(Estimate estimate, String currency, boolean zeroRated) {
-        List<AmountRow> rows = new ArrayList<>();
+    /** CGST + SGST rows (intra-state) or one IGST row (inter-state / export), plus round off. */
+    private List<TaxLine> buildTaxLines(Estimate estimate, List<EstimateLineItem> items, String currency,
+                                        boolean zeroRated, int startIndex) {
+        List<TaxLine> rows = new ArrayList<>();
+        int index = startIndex;
+        BigDecimal subTotal = estimate.getSubTotalExGst();
+        BigDecimal singleRate = singleGstRate(items);
+
         if (zeroRated) {
-            rows.add(new AmountRow(estimate.isSezSupply()
-                    ? "GST (zero-rated SEZ supply)"
-                    : "GST (zero-rated export of services)", money(BigDecimal.ZERO, currency, true)));
+            rows.add(new TaxLine(index++, "IGST (zero-rated)", "0", "%", amt(BigDecimal.ZERO, currency)));
+        } else if (isPositive(estimate.getIgstAmount())) {
+            rows.add(new TaxLine(index++, "IGST",
+                    rateText(singleRate, estimate.getIgstAmount(), subTotal, false), "%",
+                    amt(estimate.getIgstAmount(), currency)));
         } else {
             if (isPositive(estimate.getCgstAmount())) {
-                rows.add(new AmountRow("CGST", money(estimate.getCgstAmount(), currency, true)));
+                rows.add(new TaxLine(index++, "CGST",
+                        rateText(singleRate, estimate.getCgstAmount(), subTotal, true), "%",
+                        amt(estimate.getCgstAmount(), currency)));
             }
             if (isPositive(estimate.getSgstAmount())) {
-                rows.add(new AmountRow("SGST", money(estimate.getSgstAmount(), currency, true)));
+                rows.add(new TaxLine(index++, "SGST",
+                        rateText(singleRate, estimate.getSgstAmount(), subTotal, true), "%",
+                        amt(estimate.getSgstAmount(), currency)));
             }
-            if (isPositive(estimate.getIgstAmount())) {
-                rows.add(new AmountRow("IGST", money(estimate.getIgstAmount(), currency, true)));
-            }
-            if (rows.isEmpty()) {
-                rows.add(new AmountRow("GST", money(estimate.getTotalGstAmount(), currency, true)));
+            if (rows.isEmpty() && isPositive(estimate.getTotalGstAmount())) {
+                rows.add(new TaxLine(index++, "GST",
+                        rateText(singleRate, estimate.getTotalGstAmount(), subTotal, false), "%",
+                        amt(estimate.getTotalGstAmount(), currency)));
             }
         }
+
         BigDecimal roundOff = estimate.getRoundOffAmount();
         if (roundOff != null && roundOff.setScale(2, RoundingMode.HALF_UP).signum() != 0) {
-            rows.add(new AmountRow("Round off", money(roundOff, currency, true)));
+            rows.add(new TaxLine(index, "Round off", "", "", amt(roundOff, currency)));
         }
         return rows;
+    }
+
+    /** One row per HSN/SAC + GST rate, plus a total row. */
+    private void buildHsnSummary(List<EstimateLineItem> items, String currency, boolean zeroRated,
+                                 Map<String, Object> v) {
+        Map<String, BigDecimal[]> groups = new LinkedHashMap<>();   // key -> [taxable, rate]
+        for (EstimateLineItem item : items) {
+            BigDecimal taxable = nz(item.getLineTotalExGst());
+            BigDecimal rate = zeroRated ? BigDecimal.ZERO : nz(item.getGstRate());
+            String hsn = firstNonBlank(item.getHsnSacCode(), "-");
+            String key = hsn + "|" + rate.stripTrailingZeros().toPlainString();
+            BigDecimal[] group = groups.computeIfAbsent(key, k -> new BigDecimal[]{BigDecimal.ZERO, rate});
+            group[0] = group[0].add(taxable);
+        }
+
+        List<HsnRow> rows = new ArrayList<>();
+        BigDecimal totalTaxable = BigDecimal.ZERO;
+        BigDecimal totalHalf = BigDecimal.ZERO;
+        BigDecimal totalTax = BigDecimal.ZERO;
+
+        for (Map.Entry<String, BigDecimal[]> e : groups.entrySet()) {
+            String hsn = e.getKey().substring(0, e.getKey().lastIndexOf('|'));
+            BigDecimal taxable = e.getValue()[0];
+            BigDecimal rate = e.getValue()[1];
+            BigDecimal tax = taxable.multiply(rate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+            BigDecimal half = tax.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+            BigDecimal halfRate = rate.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP);
+
+            rows.add(new HsnRow(hsn, amt(taxable, currency),
+                    pct(rate), pct(halfRate), amt(half, currency), amt(tax, currency)));
+
+            totalTaxable = totalTaxable.add(taxable);
+            totalHalf = totalHalf.add(half);
+            totalTax = totalTax.add(tax);
+        }
+
+        v.put("hsnRows", rows);
+        v.put("hsnTotal", new HsnRow("Total", amt(totalTaxable, currency), "-", "-",
+                amt(totalHalf, currency), amt(totalTax, currency)));
     }
 
     // =====================================================
     // HELPERS
     // =====================================================
+
+    /** The GST rate when every line has the same rate, else null. */
+    private static BigDecimal singleGstRate(List<EstimateLineItem> items) {
+        Set<BigDecimal> rates = new HashSet<>();
+        for (EstimateLineItem item : items) {
+            if (item.getGstRate() != null) {
+                rates.add(item.getGstRate().stripTrailingZeros());
+            }
+        }
+        return rates.size() == 1 ? rates.iterator().next() : null;
+    }
+
+    /** "9" for CGST at 18 %; falls back to tax / subtotal when lines have mixed rates. */
+    private static String rateText(BigDecimal singleRate, BigDecimal taxAmount, BigDecimal subTotal, boolean half) {
+        BigDecimal rate;
+        if (singleRate != null) {
+            rate = half ? singleRate.divide(BigDecimal.valueOf(2), 2, RoundingMode.HALF_UP) : singleRate;
+        } else if (subTotal != null && subTotal.signum() > 0 && taxAmount != null) {
+            rate = taxAmount.multiply(BigDecimal.valueOf(100)).divide(subTotal, 2, RoundingMode.HALF_UP);
+        } else {
+            return "";
+        }
+        return rate.stripTrailingZeros().toPlainString();
+    }
+
+    /** ₹ 40,000.00 (space after the symbol, as on the estimate layout). */
+    private static String amt(BigDecimal value, String currency) {
+        return money(value, currency, true).replaceFirst("^(-?)₹", "$1₹ ");
+    }
+
+    private static String pct(BigDecimal rate) {
+        return rate.stripTrailingZeros().toPlainString() + "%";
+    }
+
+    private static String plain(Object number) {
+        if (number instanceof BigDecimal bd) {
+            return bd.stripTrailingZeros().toPlainString();
+        }
+        if (number instanceof Double || number instanceof Float) {
+            return BigDecimal.valueOf(((Number) number).doubleValue()).stripTrailingZeros().toPlainString();
+        }
+        return String.valueOf(number);
+    }
+
+    private static String pdfDate(LocalDate date) {
+        return date != null ? date.format(PDF_DATE) : null;
+    }
+
+    private static BigDecimal nz(BigDecimal v) {
+        return v != null ? v : BigDecimal.ZERO;
+    }
+
+    /**
+     * Reads an optional String property (e.g. CIN, country) without a compile-time
+     * dependency on the getter's name. Returns null if no getter exists or it is blank.
+     */
+    private static String prop(Object target, String... getters) {
+        if (target == null) {
+            return null;
+        }
+        for (String getter : getters) {
+            try {
+                Object value = target.getClass().getMethod(getter).invoke(target);
+                String s = value != null ? trimToNull(String.valueOf(value)) : null;
+                if (s != null) {
+                    return s;
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // getter not present on this entity
+            }
+        }
+        return null;
+    }
+
+    // ---------- Amount in words: "Forty Seven Thousand Two Hundred Rupees Only" ----------
+
+    private static final String[] ONES = {
+            "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+            "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen",
+            "Eighteen", "Nineteen"
+    };
+    private static final String[] TENS = {
+            "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"
+    };
+
+    private static String amountInWords(BigDecimal amount, String currency) {
+        BigDecimal v = nz(amount).abs().setScale(2, RoundingMode.HALF_UP);
+        long whole = v.longValue();
+        int fraction = v.remainder(BigDecimal.ONE).movePointRight(2).intValue();
+
+        boolean inr = currency == null || "INR".equalsIgnoreCase(currency);
+        String major = inr ? "Rupees" : currency.toUpperCase(Locale.ROOT);
+        String minor = inr ? "Paise" : "Cents";
+
+        StringBuilder sb = new StringBuilder(words(whole)).append(' ').append(major);
+        if (fraction > 0) {
+            sb.append(" and ").append(words(fraction)).append(' ').append(minor);
+        }
+        return sb.append(" Only").toString();
+    }
+
+    private static String words(long n) {
+        if (n == 0) {
+            return "Zero";
+        }
+        StringBuilder sb = new StringBuilder();
+        long crore = n / 10_000_000;
+        n %= 10_000_000;
+        long lakh = n / 100_000;
+        n %= 100_000;
+        long thousand = n / 1_000;
+        n %= 1_000;
+        if (crore > 0) {
+            sb.append(words(crore)).append(" Crore ");
+        }
+        if (lakh > 0) {
+            sb.append(belowHundred((int) lakh)).append(" Lakh ");
+        }
+        if (thousand > 0) {
+            sb.append(belowHundred((int) thousand)).append(" Thousand ");
+        }
+        if (n > 0) {
+            int h = (int) n;
+            if (h >= 100) {
+                sb.append(ONES[h / 100]).append(" Hundred ");
+                h %= 100;
+            }
+            if (h > 0) {
+                sb.append(belowHundred(h));
+            }
+        }
+        return sb.toString().trim();
+    }
+
+    private static String belowHundred(int n) {
+        if (n < 20) {
+            return ONES[n];
+        }
+        return TENS[n / 10] + (n % 10 == 0 ? "" : " " + ONES[n % 10]);
+    }
+
+    // ---------- Terms / misc ----------
 
     /** estimateConditions may be a String (one per line) or a collection. */
     private static List<String> toLines(Object conditions) {
@@ -268,21 +482,9 @@ public class EstimatePdfService {
                 .toList();
     }
 
-    private static String cleanEmails(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String cleaned = raw.replaceAll("[\\[\\]\"]", " ").trim().replaceAll("\\s*[,;\\s]\\s*", ", ");
-        return trimToNull(cleaned);
-    }
-
     private static String httpUrlOrNull(String url) {
         String u = trimToNull(url);
         return u != null && u.matches("(?i)^https?://.*") ? u : null;
-    }
-
-    private static String percent(BigDecimal rate) {
-        return rate == null ? "0%" : rate.stripTrailingZeros().toPlainString() + "%";
     }
 
     private static boolean isPositive(BigDecimal value) {
@@ -314,17 +516,30 @@ public class EstimatePdfService {
         private final String description;
         private final String hsnSac;
         private final String quantity;
-        private final String unit;
         private final String rate;
-        private final String gstRate;
+        private final String per;
         private final String amount;
     }
 
     @Getter
     @AllArgsConstructor
-    public static class AmountRow {
+    public static class TaxLine {
+        private final int index;
         private final String label;
+        private final String rate;
+        private final String per;
         private final String amount;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    public static class HsnRow {
+        private final String hsnSac;
+        private final String taxable;
+        private final String fullRate;
+        private final String halfRate;
+        private final String halfTax;
+        private final String totalTax;
     }
 
     public record PdfFile(String fileName, byte[] content) {

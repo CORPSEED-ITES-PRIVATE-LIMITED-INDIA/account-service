@@ -1,4 +1,4 @@
-package com.account.serviceImpl;
+package com.account.serviceImpl.ledger;
 
 import com.account.domain.User;
 import com.account.domain.company.Company;

@@ -1,4 +1,4 @@
-package com.account.serviceImpl;
+package com.account.serviceImpl.advance;
 
 import com.account.domain.Contact;
 import com.account.domain.Organization;

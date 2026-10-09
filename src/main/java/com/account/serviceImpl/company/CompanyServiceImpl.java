@@ -1,4 +1,4 @@
-package com.account.serviceImpl;
+package com.account.serviceImpl.company;
 
 import com.account.domain.*;
 import com.account.domain.company.Company;

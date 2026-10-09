@@ -1,4 +1,4 @@
-package com.account.serviceImpl;
+package com.account.serviceImpl.payment;
 
 import com.account.domain.PaymentType;
 import com.account.dto.payment.PaymentTypeRequestDto;
